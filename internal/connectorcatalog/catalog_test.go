@@ -650,8 +650,8 @@ func TestBuiltinCatalogHashicorpVaultFamiliesMirrorRuntimeConfig(t *testing.T) {
 
 	for _, familyID := range []string{"users", "secrets", "audit_events"} {
 		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
-		if family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
-			t.Fatalf("%s config = %#v, want tenant_id config attribute", familyID, family.Config)
+		if family.Config != nil && family.Config.ConfigAttributes["tenant_id"] != "" {
+			t.Fatalf("%s config = %#v, want no tenant_id config attribute (tenant scoping lives on the envelope)", familyID, family.Config)
 		}
 		if family.Projection == nil {
 			t.Fatalf("%s projection = nil, want static fields", familyID)

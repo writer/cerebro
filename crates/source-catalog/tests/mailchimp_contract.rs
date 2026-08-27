@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use cerebro_source_catalog::{
     AuthModel, CollectionAuthority, HttpMethod, Pagination, PathParameterBinding, SourceCatalog,
-    UnsupportedReasonCode,
 };
 
 #[test]
-fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
+fn mailchimp_compiles_the_provider_shapes_and_is_fully_rust_authoritative() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let catalog = SourceCatalog::load(
         root.join("internal/connectorcatalog/catalog"),
@@ -15,7 +14,7 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
     .expect("load source catalog");
     let source = catalog.get("mailchimp").expect("Mailchimp source");
 
-    assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
+    assert_eq!(source.authority(), CollectionAuthority::Authoritative);
     assert_eq!(source.auth(), &AuthModel::Basic);
     assert_eq!(source.token_header(), "Authorization");
     assert_eq!(source.token_scheme(), "Basic");
@@ -49,10 +48,17 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
             }
         );
         assert!(
-            family
-                .unsupported_reasons()
-                .contains(&UnsupportedReasonCode::UnboundConfigAttribute),
-            "Mailchimp {family_id} must stay shadow-only until authenticated tenant binding is compiled"
+            family.unsupported_reasons().is_empty(),
+            "Mailchimp {family_id} should have no outstanding unsupported reasons, found {:?}",
+            family.unsupported_reasons()
+        );
+        assert!(
+            family.is_authoritative(),
+            "Mailchimp {family_id} must be collection-authoritative"
+        );
+        assert!(
+            family.is_projection_authoritative(),
+            "Mailchimp {family_id} must be projection-authoritative"
         );
     }
 

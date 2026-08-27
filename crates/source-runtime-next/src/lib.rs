@@ -41,6 +41,8 @@ mod evidence_cas;
 mod fixture_parity;
 mod gcp;
 mod github;
+#[cfg(test)]
+mod google_gemini_model_catalog_runtime_evidence;
 mod google_workspace;
 mod grc;
 mod http;
@@ -57,7 +59,7 @@ mod portable_ai;
 mod protocol;
 mod provider_failure;
 #[cfg(test)]
-mod qdrant_cloud_vertical_slice;
+mod qdrant_cloud;
 mod runtime_config;
 mod runtime_health;
 mod sdk;
@@ -143,7 +145,7 @@ pub use archetype::{
 pub use asana::{
     AsanaCheckpointCandidate, AsanaEntityFact, AsanaError, AsanaEventContract, AsanaFamily,
     AsanaKernel, AsanaPage, AsanaProjectionFacts, AsanaRecord, AsanaRelationFact, AsanaRequest,
-    AsanaRuntimeDefinition, project_asana_records,
+    AsanaRuntimeDefinition, asana_users_graph_batch, project_asana_records,
 };
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,

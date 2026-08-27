@@ -53,3 +53,28 @@ pub fn build_recovery_report(
         report_digest,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mismatched_projection_revisions_make_an_otherwise_passing_report_indeterminate() {
+        let report = build_recovery_report(
+            TenantId::parse("tenant-a").unwrap(),
+            7,
+            GraphRevision::new(3).unwrap(),
+            GraphRevision::new(4).unwrap(),
+            vec![RecoveryCheck {
+                name: "append log".to_owned(),
+                state: RecoveryState::Passed,
+                expected_digest: Some(ContentDigest::of_bytes("expected")),
+                observed_digest: Some(ContentDigest::of_bytes("expected")),
+                reason_code: None,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(report.state, RecoveryState::Indeterminate);
+    }
+}

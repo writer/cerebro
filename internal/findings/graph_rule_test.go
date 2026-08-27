@@ -7,16 +7,18 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 )
 
 type stubGraphRule struct {
-	spec     *cerebrov1.RuleSpec
-	sourceID string
-	query    ports.CypherQueryRequest
-	rows     []ports.CypherRow
-	emit     []*ports.FindingRecord
-	emitErr  error
+	spec      *cerebrov1.RuleSpec
+	sourceID  string
+	query     ports.CypherQueryRequest
+	rows      []ports.CypherRow
+	emit      []*ports.FindingRecord
+	emitErr   error
+	panicEval bool
 }
 
 func (r *stubGraphRule) Spec() *cerebrov1.RuleSpec {
@@ -50,6 +52,9 @@ func (r *stubGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRunti
 	}
 	if r.emitErr != nil {
 		return nil, r.emitErr
+	}
+	if r.panicEval {
+		panic("private rule detail")
 	}
 	r.rows = append(r.rows, rows...)
 	return r.emit, nil
@@ -595,6 +600,30 @@ func TestEvaluateSourceRuntimeGraphRulesContinuesAfterRuleFailure(t *testing.T) 
 	}
 	if healthyRun == nil || healthyRun.GetStatus() != "completed" {
 		t.Fatalf("healthy rule run status = %v, want completed (failures of one rule must not abort others)", healthyRun)
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesReportsRecoveredPanic(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@writer.com"}}}}
+	rule := &stubGraphRule{
+		spec:      &cerebrov1.RuleSpec{Id: "panicking-rule"},
+		sourceID:  "okta",
+		query:     ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+		panicEval: true,
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+	if !errors.Is(err, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v, want recovered panic", err)
+	}
+	if result == nil || len(result.Evaluations) != 0 {
+		t.Fatalf("result = %#v, want partial result without a completed evaluation", result)
 	}
 }
 

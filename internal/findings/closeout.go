@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -188,7 +189,7 @@ func (s *Service) startCloseoutRunHeartbeat(ctx context.Context, runID string) f
 	}
 	heartbeatCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
-	go func() {
+	panicsafe.Go(heartbeatCtx, "finding.closeout_heartbeat", func() {
 		defer close(done)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -204,7 +205,7 @@ func (s *Service) startCloseoutRunHeartbeat(ctx context.Context, runID string) f
 				return
 			}
 		}
-	}()
+	})
 	return func() {
 		cancel()
 		<-done

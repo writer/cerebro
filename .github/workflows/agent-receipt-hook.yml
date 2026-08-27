@@ -1,0 +1,76 @@
+name: Agent Receipt Hook
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/agent-receipt-hook.yml"
+      - "plugins/cerebro-agent-receipts/**"
+      - "tools/archtests/tracked_native_executables_test.go"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/agent-receipt-hook.yml"
+      - "plugins/cerebro-agent-receipts/**"
+      - "tools/archtests/tracked_native_executables_test.go"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: source-built universal helper
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reject tracked native executables
+        run: go test ./tools/archtests -run 'TestRepositoryDoesNotTrackNativeExecutables|TestNativeExecutableMagic' -count=1
+
+      - name: Build and check the source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift build \
+            --package-path plugins/cerebro-agent-receipts \
+            --product CerebroAgentReceiptHook
+          swift run \
+            --package-path plugins/cerebro-agent-receipts \
+            ReceiptCoreChecks
+
+      - name: Build the universal release helper
+        run: plugins/cerebro-agent-receipts/script/build_hook_release.sh
+
+      - name: Verify and inventory the generated helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          helper="plugins/cerebro-agent-receipts/bin/CerebroAgentReceiptHook"
+          test -x "${helper}"
+          lipo "${helper}" -verify_arch arm64 x86_64
+          codesign --verify --strict "${helper}"
+          shasum -a 256 "${helper}" > "${helper}.sha256"
+
+      - name: Upload exact-head helper artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: CerebroAgentReceiptHook-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            plugins/cerebro-agent-receipts/bin/CerebroAgentReceiptHook
+            plugins/cerebro-agent-receipts/bin/CerebroAgentReceiptHook.sha256
+          if-no-files-found: error
+          retention-days: 14

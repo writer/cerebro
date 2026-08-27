@@ -9,7 +9,10 @@ use cerebro_source_runtime_next::source_execution::{
 };
 use serde::Serialize;
 
-use crate::cutover::{CutoverError, CutoverPolicy};
+use crate::{
+    cutover::{CutoverError, CutoverPolicy},
+    promotion_evidence_store::VerifiedPromotionReceipt,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectionPromotionRequest {
@@ -96,6 +99,7 @@ pub struct CutoverDecision {
     pub(crate) reasons: Vec<String>,
     pub(crate) evidence_digest: String,
     pub(crate) qualification: AuthorityQualificationEvidence,
+    pub(crate) verified_receipts: Vec<VerifiedPromotionReceipt>,
 }
 
 impl CutoverDecision {
@@ -125,6 +129,10 @@ impl CutoverDecision {
 
     pub fn qualification(&self) -> &AuthorityQualificationEvidence {
         &self.qualification
+    }
+
+    pub fn verified_receipts(&self) -> &[VerifiedPromotionReceipt] {
+        &self.verified_receipts
     }
 }
 
@@ -192,6 +200,10 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
+    use cerebro_source_catalog::{
+        PagePublicationReceiptReference, PersistedReceiptReference,
+        SourceCollectionReceiptReference,
+    };
     use cerebro_source_runtime_next::source_execution::{
         SourceExecutionDispatcher, SourceExecutionSelectionRequestV1,
     };
@@ -233,18 +245,43 @@ mod tests {
             response_limits: "body=1048576,decompression=4x".to_owned(),
             credential_lease_mode: "one_operation".to_owned(),
             projection_dependency: "rust_projection".to_owned(),
-            rollback_receipt: "receipt:recovery-readiness".to_owned(),
+            rollback_receipt: PersistedReceiptReference {
+                receipt_id: "rollback-test".to_owned(),
+                receipt_digest_sha256: "c".repeat(64),
+            },
             parity_status: "passed".to_owned(),
             canonical_digest_vectors: vec!["plan".to_owned()],
             config_safety_proof: "receipt:config".to_owned(),
             cursor_checkpoint_proof: "receipt:checkpoint".to_owned(),
             fencing_recovery_proof: "receipt:fencing".to_owned(),
-            worker_build_id: "source-runtime-next:test".to_owned(),
-            promotion_receipt: "sig:promotion:test".to_owned(),
-            authenticated_collection_receipt: "receipt:collection".to_owned(),
-            append_projection_checkpoint_receipt: "receipt:durable".to_owned(),
-            lease_restart_receipt: "receipt:restart".to_owned(),
-            product_read_receipt: "receipt:product-read".to_owned(),
+            runtime_revision_sha256: "d".repeat(64),
+            worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+            promotion_receipt: PersistedReceiptReference {
+                receipt_id: "promotion-test".to_owned(),
+                receipt_digest_sha256: "e".repeat(64),
+            },
+            authenticated_collection_receipt: SourceCollectionReceiptReference {
+                source_runtime_id: "asana-runtime".to_owned(),
+                collection_id: "corpus-3".to_owned(),
+                manifest_digest_sha256: "f".repeat(64),
+            },
+            append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "asana-runtime".to_owned(),
+                logical_page_id: "page-test".to_owned(),
+                revision: 5,
+                snapshot_digest_sha256: "1".repeat(64),
+            },
+            lease_restart_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "asana-runtime".to_owned(),
+                logical_page_id: "page-restart-test".to_owned(),
+                revision: 6,
+                snapshot_digest_sha256: "2".repeat(64),
+            },
+            product_read_receipt: PersistedReceiptReference {
+                receipt_id: "product-read-test".to_owned(),
+                receipt_digest_sha256: "3".repeat(64),
+            },
+            parity_receipt_digests: vec!["4".repeat(64), "5".repeat(64), "6".repeat(64)],
         }
     }
 
@@ -266,7 +303,7 @@ mod tests {
         assert_eq!(request.family_id(), "users");
 
         let mut incomplete = qualification(&catalog);
-        incomplete.product_read_receipt.clear();
+        incomplete.product_read_receipt.receipt_id.clear();
         assert_eq!(
             ProjectionPromotionRequest::new(
                 "tenant-a",

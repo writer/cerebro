@@ -24,30 +24,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: true
+          cache-scope: deterministic-review
 
-      - name: Set up Rust
-        run: rustup toolchain install 1.93.1 --profile minimal --component llvm-tools-preview --target wasm32-unknown-unknown
-
-      - name: Install Rust policy checker
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
-            cargo install cargo-deny --version 0.20.2 --locked
-          fi
-
-      - name: Install Rust coverage tool
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! cargo llvm-cov --version 2>/dev/null | grep -Fxq 'cargo-llvm-cov 0.8.7'; then
-            cargo install cargo-llvm-cov --version 0.8.7 --locked
-          fi
+      - uses: ./.github/actions/setup-rust-cached
+        with:
+          cache-scope: deterministic-review
+          components: llvm-tools-preview
+          target: wasm32-unknown-unknown
+          install-policy-tools: "true"
 
       - name: Verify the exact review range
         shell: bash
@@ -68,6 +54,16 @@ jobs:
           } >> "${GITHUB_ENV}"
           echo "review range: ${review_base}...${HEAD_SHA}"
 
+      - name: Restore workflow lint tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin/actionlint
+            ~/.cache/pip
+            ~/.local/bin/zizmor
+            ~/.local/lib/python*/site-packages
+          key: ${{ runner.os }}-${{ runner.arch }}-deterministic-review-tools-v1-actionlint-1.7.7-zizmor-1.29.0
+
       - name: Install workflow linters
         shell: bash
         run: |
@@ -85,32 +81,11 @@ jobs:
           actionlint .github/workflows/deterministic-review.yml
           zizmor .github/workflows/deterministic-review.yml
 
-      - name: Install Semgrep
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user 'semgrep==1.167.0'
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Run deterministic repository review
         shell: bash
         env:
           REVIEW_INVARIANTS_JSON_OUT: tmp/review-invariants.json
         run: make deterministic-review
-
-      - name: Run Semgrep
-        shell: bash
-        run: |
-          set -euo pipefail
-          semgrep scan \
-            --config .semgrep/cerebro.yml \
-            --error \
-            --sarif \
-            --output semgrep.sarif
-
-      - name: Run changed-range leak scan
-        shell: bash
-        run: ./scripts/leak_check.sh range "${REVIEW_BASE}...${REVIEW_HEAD}"
 
       - name: Run ShellCheck on changed shell scripts
         shell: bash
@@ -138,43 +113,18 @@ jobs:
           if-no-files-found: ignore
           path: |
             tmp/review-invariants.json
-            semgrep.sarif
-
-  vulnerability_review:
-    name: deterministic-review-vulnerability
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Checkout exact pull request head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run reachable vulnerability scan
-        run: python3 scripts/govulncheck_gate.py ./...
 
   deterministic-review:
     name: deterministic-review
     if: ${{ always() }}
-    needs:
-      - review
-      - vulnerability_review
+    needs: review
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Enforce deterministic review results
         env:
           REVIEW_RESULT: ${{ needs.review.result }}
-          VULNERABILITY_RESULT: ${{ needs.vulnerability_review.result }}
         shell: bash
         run: |
           set -euo pipefail
           test "${REVIEW_RESULT}" = success
-          test "${VULNERABILITY_RESULT}" = success

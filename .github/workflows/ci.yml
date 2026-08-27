@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci-scope:
@@ -110,13 +110,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
+          cache-scope: web-integration
 
-      - name: Set up Rust
-        run: rustup toolchain install 1.93.1 --profile minimal
+      - uses: ./.github/actions/setup-rust-cached
+        with:
+          cache-scope: web-integration
 
       - uses: ./.github/actions/setup-javascript-workspaces
 
@@ -143,22 +143,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Rust
-        run: rustup toolchain install 1.93.1 --profile minimal
-
-      - name: Cache Rust build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: ./.github/actions/setup-rust-cached
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: ${{ runner.os }}-${{ runner.arch }}-rust-web-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-rust-web-v1-
-            ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
-            ${{ runner.os }}-${{ runner.arch }}-rust-v1-
+          cache-scope: web-rust-integration
 
       - uses: ./.github/actions/setup-javascript-workspaces
 
@@ -302,62 +289,17 @@ jobs:
         if: matrix.checkout_fetch_depth == '0'
         run: git fetch origin main:refs/remotes/origin/main
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
+          cache-scope: verify-${{ matrix.name }}
 
-      - name: Set up Rust
+      - uses: ./.github/actions/setup-rust-cached
         if: matrix.setup_rust == true
-        run: rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview --target wasm32-unknown-unknown
-
-      - name: Cache Rust build data
-        if: matrix.setup_rust == true
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/bin/cargo-deny
-            ~/.cargo/bin/cargo-llvm-cov
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2-cargo-llvm-cov-0.8.7
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
-            ${{ runner.os }}-${{ runner.arch }}-rust-v1-
-
-      - name: Install Rust dependency policy tool
-        if: matrix.setup_rust == true
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
-            cargo install cargo-deny --version 0.20.2 --locked
-          fi
-
-      - name: Install Rust coverage tool
-        if: matrix.setup_rust == true
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! cargo llvm-cov --version 2>/dev/null | grep -Fxq 'cargo-llvm-cov 0.8.7'; then
-            cargo install cargo-llvm-cov --version 0.8.7 --locked
-          fi
-
-      - name: Cache Go build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-${{ matrix.name }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-verify-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+          cache-scope: verify-${{ matrix.name }}
+          components: clippy,rustfmt,llvm-tools-preview
+          target: wasm32-unknown-unknown
+          install-policy-tools: "true"
 
       - name: Set up Docker Buildx
         if: matrix.name == 'docker-smoke'
@@ -428,36 +370,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Cache Go build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-${{ matrix.name }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-lint-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-
-
-      - name: Cache golangci-lint
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/golangci-lint
-            ~/go/bin/golangci-lint
-          key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-
-            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-${{ matrix.name }}-
-            ${{ runner.os }}-${{ runner.arch }}-golangci-lint-
+          cache-scope: lint-${{ matrix.name }}
+          golangci: "true"
 
       - name: Run ${{ matrix.name }} lint
         run: make lint-shard LINT_PACKAGES="${{ matrix.packages }}" LINT_SHARD_TOTAL="${{ matrix.shard_total }}" LINT_SHARD_INDEX="${{ matrix.shard_index }}"
@@ -480,24 +396,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Cache Go build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-${{ hashFiles('go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-${{ hashFiles('go.sum') }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-${{ matrix.name }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-catalog-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+          cache-scope: catalog-${{ matrix.name }}
 
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
@@ -516,24 +417,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Cache Go build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-${{ matrix.shard_index }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-test-shard-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+          cache-scope: test-shard-${{ matrix.shard_index }}
 
       - name: Run Go test shard ${{ matrix.shard_index }}
         env:
@@ -545,7 +431,7 @@ jobs:
     name: race-${{ matrix.shard_index }}
     runs-on: ubuntu-latest
     needs: ci-scope
-    if: needs.ci-scope.outputs.core == 'true'
+    if: needs.ci-scope.outputs.core == 'true' && github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -555,30 +441,47 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Cache Go build data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-${{ matrix.shard_index }}-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-race-shard-
-            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+          cache-scope: race-shard-${{ matrix.shard_index }}
 
       - name: Run Go race shard ${{ matrix.shard_index }}
         env:
           GO_TEST_SHARD_TOTAL: 16
           GO_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
         run: make test-race
+
+  go-race-changed:
+    name: race-changed
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true' && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-go-cached
+        with:
+          cache-scope: race-changed
+
+      - name: Race-test changed Go packages
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          packages=()
+          while IFS= read -r package; do
+            packages+=("${package}")
+          done < <(python3 scripts/changed_checks.py --base "${BASE_SHA}" --head "${HEAD_SHA}" --print-go-packages)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "No changed Go packages require a pull-request race check"
+            exit 0
+          fi
+          go test -race "${packages[@]}" -count=1
 
   test:
     runs-on: ubuntu-latest
@@ -595,16 +498,28 @@ jobs:
 
   race:
     runs-on: ubuntu-latest
-    needs: [ci-scope, go-race-shard]
+    needs: [ci-scope, go-race-shard, go-race-changed]
     if: always() && needs.ci-scope.outputs.core == 'true'
     steps:
       - name: Check Go race shards
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHANGED_RESULT: ${{ needs.go-race-changed.result }}
+          SHARD_RESULT: ${{ needs.go-race-shard.result }}
         run: |
-          if [ "${{ needs.go-race-shard.result }}" != "success" ]; then
-            echo "One or more Go race shards failed"
-            exit 1
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            if [ "${CHANGED_RESULT}" != "success" ]; then
+              echo "Changed-package Go race check failed"
+              exit 1
+            fi
+            echo "Changed-package Go race check passed"
+          else
+            if [ "${SHARD_RESULT}" != "success" ]; then
+              echo "One or more full Go race shards failed"
+              exit 1
+            fi
+            echo "All full Go race shards passed"
           fi
-          echo "All Go race shards passed"
 
   lint:
     runs-on: ubuntu-latest

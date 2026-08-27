@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/runtimeorchestration"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -110,7 +111,7 @@ func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ..
 
 func (a *App) startPlatformJobRecovery(ctx context.Context, logf func(string, ...any), retryInterval time.Duration) <-chan struct{} {
 	done := make(chan struct{})
-	go func() {
+	panicsafe.Go(ctx, "platform_job.bootstrap_recovery", func() {
 		defer close(done)
 		for {
 			_, err := a.RecoverPlatformJobs(ctx)
@@ -142,7 +143,7 @@ func (a *App) startPlatformJobRecovery(ctx context.Context, logf func(string, ..
 		assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
 		<-jobsDone
 		<-assessmentsDone
-	}()
+	})
 	return done
 }
 

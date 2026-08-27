@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     ParityReceipt, ParityStatus,
     promotion::{CutoverDecision, promotion_evidence_reasons},
+    promotion_evidence_store::{PromotionEvidenceVerification, VerifiedPromotionReceiptKind},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,16 +55,17 @@ impl fmt::Display for CutoverError {
 
 impl Error for CutoverError {}
 
-pub struct CutoverGate {
+pub(crate) struct CutoverGate {
     policy: CutoverPolicy,
 }
 
 impl CutoverGate {
-    pub fn new(policy: CutoverPolicy) -> Self {
+    pub(crate) fn new(policy: CutoverPolicy) -> Self {
         Self { policy }
     }
 
-    pub fn evaluate(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate(
         &self,
         catalog: &SourceCatalog,
         tenant_id: &str,
@@ -72,11 +74,24 @@ impl CutoverGate {
         receipts: &[ParityReceipt],
         projection_lag: u64,
         qualification: &AuthorityQualificationEvidence,
+        verification: &PromotionEvidenceVerification,
     ) -> Result<CutoverDecision, CutoverError> {
         let source = catalog
             .get(source_id)
             .ok_or_else(|| CutoverError::UnknownSource(source_id.to_owned()))?;
         let mut reasons = promotion_evidence_reasons(catalog, source_id, family_id, qualification)?;
+        reasons.extend(verification.reasons().iter().cloned());
+        reasons.extend(verified_scope_reasons(
+            tenant_id,
+            source_id,
+            family_id,
+            qualification,
+            verification,
+        ));
+        reasons.extend(verified_receipt_binding_reasons(
+            qualification,
+            verification,
+        ));
         let family = source
             .families()
             .iter()
@@ -126,6 +141,17 @@ impl CutoverGate {
                 self.policy.min_consecutive_matches
             ));
         }
+        let qualifying_receipt_digests = source_receipts
+            .iter()
+            .rev()
+            .take(self.policy.min_consecutive_matches)
+            .rev()
+            .map(|receipt| receipt.receipt_digest().to_owned())
+            .collect::<Vec<_>>();
+        if qualification.parity_receipt_digests != qualifying_receipt_digests {
+            reasons
+                .push("persisted parity receipt sequence does not match qualification".to_owned());
+        }
         let mut latest_by_corpus = BTreeMap::new();
         for receipt in &source_receipts {
             latest_by_corpus.insert(receipt.collection_id(), *receipt);
@@ -150,6 +176,7 @@ impl CutoverGate {
                 .push("qualification fixture corpus is not the latest parity receipt".to_owned());
         }
         let qualification_digest = authority_qualification_digest(qualification);
+        let verification_digest = verification.digest();
         let evidence_digest = digest(
             &source_receipts
                 .iter()
@@ -161,9 +188,12 @@ impl CutoverGate {
                     qualification_digest.as_str(),
                     catalog_plan_digest.as_str(),
                     qualification.runtime_plan_digest.as_str(),
+                    verification_digest.as_str(),
                 ])
                 .collect::<Vec<_>>(),
         );
+        reasons.sort();
+        reasons.dedup();
         Ok(CutoverDecision {
             tenant_id: tenant_id.to_owned(),
             source_id: source_id.to_owned(),
@@ -172,8 +202,154 @@ impl CutoverGate {
             reasons,
             evidence_digest,
             qualification: qualification.clone(),
+            verified_receipts: verification.receipts().to_vec(),
         })
     }
+}
+
+fn verified_scope_reasons(
+    tenant_id: &str,
+    source_id: &str,
+    family_id: &str,
+    qualification: &AuthorityQualificationEvidence,
+    verification: &PromotionEvidenceVerification,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if verification.tenant_id() != tenant_id {
+        reasons.push("persisted verification tenant does not match promotion request".to_owned());
+    }
+    if verification.source_id() != source_id {
+        reasons.push("persisted verification source does not match promotion request".to_owned());
+    }
+    if verification.family_id() != family_id {
+        reasons.push("persisted verification family does not match promotion request".to_owned());
+    }
+    let collection_runtime = qualification
+        .authenticated_collection_receipt
+        .source_runtime_id
+        .as_str();
+    if qualification
+        .append_projection_checkpoint_receipt
+        .source_runtime_id
+        != collection_runtime
+        || qualification.lease_restart_receipt.source_runtime_id != collection_runtime
+    {
+        reasons.push("qualified receipt runtime identifiers do not match".to_owned());
+    }
+    if verification.source_runtime_id() != collection_runtime {
+        reasons.push("persisted verification runtime does not match qualification".to_owned());
+    }
+    if verification.runtime_revision_sha256() != qualification.runtime_revision_sha256 {
+        reasons.push(
+            "persisted verification runtime revision does not match qualification".to_owned(),
+        );
+    }
+    reasons
+}
+
+fn verified_receipt_binding_reasons(
+    qualification: &AuthorityQualificationEvidence,
+    verification: &PromotionEvidenceVerification,
+) -> Vec<String> {
+    let collection = &qualification.authenticated_collection_receipt;
+    let append = &qualification.append_projection_checkpoint_receipt;
+    let restart = &qualification.lease_restart_receipt;
+    let mut reasons = Vec::new();
+    for (kind, receipt_id, receipt_digest, label) in [
+        (
+            VerifiedPromotionReceiptKind::DurableCollection,
+            collection.collection_id.as_str(),
+            collection.manifest_digest_sha256.as_str(),
+            "durable collection",
+        ),
+        (
+            VerifiedPromotionReceiptKind::AuthenticatedCollection,
+            collection.collection_id.as_str(),
+            collection.manifest_digest_sha256.as_str(),
+            "authenticated collection",
+        ),
+        (
+            VerifiedPromotionReceiptKind::AppendProjectionCheckpoint,
+            append.logical_page_id.as_str(),
+            append.snapshot_digest_sha256.as_str(),
+            "append/projection/checkpoint",
+        ),
+        (
+            VerifiedPromotionReceiptKind::LeaseRestart,
+            restart.logical_page_id.as_str(),
+            restart.snapshot_digest_sha256.as_str(),
+            "lease/restart",
+        ),
+        (
+            VerifiedPromotionReceiptKind::RuntimeRevision,
+            qualification.runtime_revision_sha256.as_str(),
+            qualification.runtime_revision_sha256.as_str(),
+            "runtime revision",
+        ),
+        (
+            VerifiedPromotionReceiptKind::ProductRead,
+            qualification.product_read_receipt.receipt_id.as_str(),
+            qualification
+                .product_read_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "product-read",
+        ),
+        (
+            VerifiedPromotionReceiptKind::PromotionApproval,
+            qualification.promotion_receipt.receipt_id.as_str(),
+            qualification
+                .promotion_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "promotion approval",
+        ),
+        (
+            VerifiedPromotionReceiptKind::Recovery,
+            qualification.rollback_receipt.receipt_id.as_str(),
+            qualification
+                .rollback_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "recovery",
+        ),
+    ] {
+        let matching_kind = verification
+            .receipts()
+            .iter()
+            .filter(|receipt| receipt.kind() == kind)
+            .collect::<Vec<_>>();
+        if matching_kind.is_empty() {
+            reasons.push(format!("verified {label} proof is missing"));
+        } else if matching_kind.len() != 1
+            || matching_kind[0].receipt_id() != receipt_id
+            || matching_kind[0].receipt_digest() != receipt_digest
+        {
+            reasons.push(format!(
+                "verified {label} proof does not match qualification"
+            ));
+        }
+    }
+
+    let mut actual_parity = verification
+        .receipts()
+        .iter()
+        .filter(|receipt| receipt.kind() == VerifiedPromotionReceiptKind::Parity)
+        .map(|receipt| (receipt.receipt_id(), receipt.receipt_digest()))
+        .collect::<Vec<_>>();
+    actual_parity.sort_unstable();
+    let mut expected_parity = qualification
+        .parity_receipt_digests
+        .iter()
+        .map(|digest| (digest.as_str(), digest.as_str()))
+        .collect::<Vec<_>>();
+    expected_parity.sort_unstable();
+    if actual_parity.is_empty() {
+        reasons.push("verified parity proof is missing".to_owned());
+    } else if actual_parity != expected_parity {
+        reasons.push("verified parity proof does not match qualification".to_owned());
+    }
+    reasons
 }
 
 fn digest(parts: &[&str]) -> String {
@@ -192,397 +368,5 @@ fn digest(parts: &[&str]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::SemanticSnapshot;
-    use cerebro_source_runtime_next::source_execution::{
-        SourceExecutionDispatcher, SourceExecutionError, SourceExecutionSelectionRequestV1,
-    };
-    use std::path::{Path, PathBuf};
-
-    fn repository_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .unwrap()
-    }
-
-    fn qualification(
-        catalog: &SourceCatalog,
-        source_id: &str,
-        family_id: &str,
-        corpus: &str,
-    ) -> AuthorityQualificationEvidence {
-        let plan_digest = catalog
-            .compiled_family_plan_digest(source_id, family_id)
-            .unwrap();
-        let selection = SourceExecutionSelectionRequestV1 {
-            source_id: source_id.to_owned(),
-            family_id: family_id.to_owned(),
-        };
-        let runtime_plan_digest = match SourceExecutionDispatcher.compile_plan(&selection) {
-            Ok(plan) => plan.plan_digest_sha256,
-            Err(SourceExecutionError::UnknownAdapter) => plan_digest.clone(),
-            Err(error) => panic!("compile runtime plan: {error}"),
-        };
-        AuthorityQualificationEvidence {
-            plan_digest,
-            runtime_plan_digest,
-            fixture_corpus_revision: corpus.to_owned(),
-            supported_auth_modes: vec!["api_key".to_owned()],
-            supported_pagination_grammar: vec!["cursor".to_owned()],
-            supported_provider_errors: vec!["unauthorized".to_owned()],
-            egress_allowlist: vec!["https://provider.example.test".to_owned()],
-            response_limits: "body=1048576,decompression=4x".to_owned(),
-            credential_lease_mode: "one_operation".to_owned(),
-            projection_dependency: "rust_projection".to_owned(),
-            rollback_receipt: "receipt:rollback".to_owned(),
-            parity_status: "passed".to_owned(),
-            canonical_digest_vectors: vec!["plan".to_owned()],
-            config_safety_proof: "receipt:config".to_owned(),
-            cursor_checkpoint_proof: "receipt:checkpoint".to_owned(),
-            fencing_recovery_proof: "receipt:fencing".to_owned(),
-            worker_build_id: "source-runtime-next:test".to_owned(),
-            promotion_receipt: "sig:promotion:test".to_owned(),
-            authenticated_collection_receipt: "receipt:collection".to_owned(),
-            append_projection_checkpoint_receipt: "receipt:durable".to_owned(),
-            lease_restart_receipt: "receipt:restart".to_owned(),
-            product_read_receipt: "receipt:product-read".to_owned(),
-        }
-    }
-
-    #[test]
-    fn promotion_gate_requires_complete_proof_three_matches_and_zero_lag() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let receipts: Vec<_> = (1..=3)
-            .map(|index| {
-                ParityReceipt::compare_scoped(
-                    "tenant-a",
-                    "asana-runtime",
-                    "asana",
-                    "users",
-                    format!("corpus-{index}"),
-                    "sha256:same",
-                    "sha256:same",
-                    true,
-                    index,
-                )
-                .unwrap()
-            })
-            .collect();
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        let qualification = qualification(&catalog, "asana", "users", "corpus-3");
-        let tenant_a = gate
-            .evaluate(
-                &catalog,
-                "tenant-a",
-                "asana",
-                "users",
-                &receipts,
-                0,
-                &qualification,
-            )
-            .unwrap();
-        assert!(tenant_a.is_allowed());
-        let tenant_b = gate
-            .evaluate(
-                &catalog,
-                "tenant-b",
-                "asana",
-                "users",
-                &receipts,
-                0,
-                &qualification,
-            )
-            .unwrap();
-        assert!(!tenant_b.is_allowed());
-        assert!(
-            tenant_b.reasons().iter().any(|reason| {
-                reason == "parity receipt tenant does not match promotion request"
-            })
-        );
-        assert_ne!(tenant_a.evidence_digest(), tenant_b.evidence_digest());
-        let shuffled = vec![
-            receipts[2].clone(),
-            receipts[0].clone(),
-            receipts[1].clone(),
-        ];
-        let shuffled_decision = gate
-            .evaluate(
-                &catalog,
-                "tenant-a",
-                "asana",
-                "users",
-                &shuffled,
-                0,
-                &qualification,
-            )
-            .unwrap();
-        assert!(
-            shuffled_decision.is_allowed(),
-            "receipt order must not change the latest qualifying parity sequence"
-        );
-        assert_eq!(
-            shuffled_decision.evidence_digest(),
-            tenant_a.evidence_digest()
-        );
-        assert!(
-            !gate
-                .evaluate(
-                    &catalog,
-                    "tenant-a",
-                    "asana",
-                    "users",
-                    &receipts[..2],
-                    0,
-                    &qualification
-                )
-                .unwrap()
-                .is_allowed()
-        );
-        assert!(
-            !gate
-                .evaluate(
-                    &catalog,
-                    "tenant-a",
-                    "agiloft",
-                    "users",
-                    &receipts,
-                    0,
-                    &qualification,
-                )
-                .unwrap()
-                .is_allowed()
-        );
-    }
-
-    #[test]
-    fn catalog_only_family_cannot_pass_without_a_closed_runtime_adapter() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let receipts = (1..=3)
-            .map(|index| {
-                ParityReceipt::compare_scoped(
-                    "tenant-a",
-                    "box-runtime",
-                    "box",
-                    "content_assets",
-                    format!("corpus-{index}"),
-                    "sha256:same",
-                    "sha256:same",
-                    true,
-                    index,
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-        let qualification = qualification(&catalog, "box", "content_assets", "corpus-3");
-        let decision = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap())
-            .evaluate(
-                &catalog,
-                "tenant-a",
-                "box",
-                "content_assets",
-                &receipts,
-                0,
-                &qualification,
-            )
-            .unwrap();
-        assert!(!decision.is_allowed());
-        assert!(
-            decision.reasons().iter().any(|reason| {
-                reason == "closed Rust source-execution adapter is not registered"
-            })
-        );
-    }
-
-    #[test]
-    fn promotion_gate_reports_each_failed_proof_instead_of_collapsing_them() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let receipts = vec![
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "asana-prod",
-                "asana",
-                "users",
-                "corpus-1",
-                "sha256:same",
-                "sha256:same",
-                true,
-                1,
-            )
-            .unwrap(),
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "asana-prod",
-                "asana",
-                "users",
-                "corpus-2",
-                "sha256:left",
-                "sha256:right",
-                true,
-                2,
-            )
-            .unwrap(),
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "asana-prod",
-                "asana",
-                "users",
-                "corpus-3",
-                "sha256:same",
-                "sha256:same",
-                false,
-                3,
-            )
-            .unwrap(),
-        ];
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        let qualification = qualification(&catalog, "asana", "users", "corpus-3");
-        let decision = gate
-            .evaluate(
-                &catalog,
-                "tenant-a",
-                "asana",
-                "users",
-                &receipts,
-                4,
-                &qualification,
-            )
-            .unwrap();
-        assert_eq!(decision.tenant_id(), "tenant-a");
-        assert_eq!(decision.source_id(), "asana");
-        assert_eq!(decision.family_id(), "users");
-        assert!(!decision.is_allowed());
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason.contains("projection lag 4"))
-        );
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason.contains("consecutive parity matches"))
-        );
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason == "latest corpus comparison is not a match")
-        );
-        assert!(decision.evidence_digest().starts_with("sha256:"));
-        let decision_json = serde_json::to_value(&decision).unwrap();
-        assert_eq!(decision_json["tenant_id"], "tenant-a");
-        assert_eq!(
-            decision_json["qualification"]["product_read_receipt"],
-            "receipt:product-read"
-        );
-
-        assert_eq!(
-            gate.evaluate(
-                &catalog,
-                "tenant-a",
-                "missing",
-                "users",
-                &receipts,
-                0,
-                &qualification,
-            ),
-            Err(CutoverError::UnknownSource("missing".to_owned()))
-        );
-        assert_eq!(
-            gate.evaluate(
-                &catalog,
-                "tenant-a",
-                "asana",
-                "missing",
-                &receipts,
-                0,
-                &qualification,
-            ),
-            Err(CutoverError::UnknownSource("asana/missing".to_owned()))
-        );
-    }
-
-    #[test]
-    fn receipt_lag_is_checked_independently_of_current_projection_lag() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let base = ParityReceipt::compare_scoped(
-            "tenant-a",
-            "asana-runtime",
-            "asana",
-            "users",
-            "corpus-1",
-            "sha256:same",
-            "sha256:same",
-            true,
-            1,
-        )
-        .unwrap();
-        let legacy = SemanticSnapshot::from_facts(
-            "tenant-a",
-            "asana-runtime",
-            "asana",
-            "users",
-            "corpus-1",
-            "legacy-shadow",
-            "legacy",
-            true,
-            Vec::new(),
-        )
-        .unwrap();
-        let rust = SemanticSnapshot::from_facts(
-            "tenant-a",
-            "asana-runtime",
-            "asana",
-            "users",
-            "corpus-1",
-            "legacy-shadow",
-            "rust",
-            true,
-            Vec::new(),
-        )
-        .unwrap();
-        let lagged =
-            ParityReceipt::compare_snapshots(&legacy, &rust, 3, 2, BTreeMap::new()).unwrap();
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        let qualification = qualification(&catalog, "asana", "users", "corpus-1");
-        let decision = gate
-            .evaluate(
-                &catalog,
-                "tenant-a",
-                "asana",
-                "users",
-                &[base.clone(), base, lagged],
-                0,
-                &qualification,
-            )
-            .unwrap();
-        assert!(!decision.is_allowed());
-        assert!(decision
-            .reasons()
-            .iter()
-            .any(|reason| reason == "a latest parity receipt exceeds the projection lag policy"));
-    }
-}
+#[path = "cutover_tests.rs"]
+mod tests;

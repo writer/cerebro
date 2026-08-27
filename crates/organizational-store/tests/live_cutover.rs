@@ -8,7 +8,10 @@ use std::{
 use cerebro_organizational_store::{
     CutoverPolicy, ParityReceipt, PostgresLedger, ProjectionAuthority, ProjectionPromotionRequest,
 };
-use cerebro_source_catalog::{AuthorityQualificationEvidence, SourceCatalog};
+use cerebro_source_catalog::{
+    AuthorityQualificationEvidence, PagePublicationReceiptReference, PersistedReceiptReference,
+    SourceCatalog, SourceCollectionReceiptReference,
+};
 use tokio_postgres::NoTls;
 
 fn qualification(
@@ -41,24 +44,49 @@ fn qualification(
         response_limits: "body=1048576,decompression=4x".to_owned(),
         credential_lease_mode: "one_operation".to_owned(),
         projection_dependency: "rust_projection".to_owned(),
-        rollback_receipt: "receipt:rollback".to_owned(),
+        rollback_receipt: PersistedReceiptReference {
+            receipt_id: "rollback-test".to_owned(),
+            receipt_digest_sha256: "c".repeat(64),
+        },
         parity_status: "passed".to_owned(),
         canonical_digest_vectors: vec!["plan".to_owned()],
         config_safety_proof: "receipt:config".to_owned(),
         cursor_checkpoint_proof: "receipt:checkpoint".to_owned(),
         fencing_recovery_proof: "receipt:fencing".to_owned(),
-        worker_build_id: "source-runtime-next:test".to_owned(),
-        promotion_receipt: "sig:promotion:test".to_owned(),
-        authenticated_collection_receipt: "receipt:collection".to_owned(),
-        append_projection_checkpoint_receipt: "receipt:durable".to_owned(),
-        lease_restart_receipt: "receipt:restart".to_owned(),
-        product_read_receipt: "receipt:product-read".to_owned(),
+        runtime_revision_sha256: "d".repeat(64),
+        worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+        promotion_receipt: PersistedReceiptReference {
+            receipt_id: "promotion-test".to_owned(),
+            receipt_digest_sha256: "e".repeat(64),
+        },
+        authenticated_collection_receipt: SourceCollectionReceiptReference {
+            source_runtime_id: "asana-runtime".to_owned(),
+            collection_id: corpus.to_owned(),
+            manifest_digest_sha256: "f".repeat(64),
+        },
+        append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+            source_runtime_id: "asana-runtime".to_owned(),
+            logical_page_id: "page-test".to_owned(),
+            revision: 5,
+            snapshot_digest_sha256: "1".repeat(64),
+        },
+        lease_restart_receipt: PagePublicationReceiptReference {
+            source_runtime_id: "asana-runtime".to_owned(),
+            logical_page_id: "page-restart-test".to_owned(),
+            revision: 6,
+            snapshot_digest_sha256: "2".repeat(64),
+        },
+        product_read_receipt: PersistedReceiptReference {
+            receipt_id: "product-read-test".to_owned(),
+            receipt_digest_sha256: "3".repeat(64),
+        },
+        parity_receipt_digests: vec!["4".repeat(64), "5".repeat(64), "6".repeat(64)],
     }
 }
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
-async fn persisted_promotion_requires_complete_evidence_and_three_matching_receipts()
+async fn persisted_promotion_rejects_fabricated_and_unverifiable_receipt_references()
 -> Result<(), Box<dyn Error>> {
     let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN")?;
     let (client, connection) = tokio_postgres::connect(&postgres_dsn, NoTls).await?;
@@ -72,26 +100,55 @@ async fn persisted_promotion_requires_complete_evidence_and_three_matching_recei
         .as_nanos()
         .to_string();
     let tenant_id = format!("promotion-evidence-{suffix}");
+    let mut parity_digests = Vec::new();
     for index in 1..=3 {
-        ledger
-            .record_parity(&ParityReceipt::compare_scoped(
-                tenant_id.clone(),
-                "asana-runtime",
-                "asana",
-                "users",
-                format!("promotion-evidence-{suffix}-{index}"),
-                "sha256:equal",
-                "sha256:equal",
-                true,
-                index,
-            )?)
-            .await?;
+        let receipt = ParityReceipt::compare_scoped(
+            tenant_id.clone(),
+            "asana-runtime",
+            "asana",
+            "users",
+            format!("promotion-evidence-{suffix}-{index}"),
+            "sha256:equal",
+            "sha256:equal",
+            true,
+            index,
+        )?;
+        parity_digests.push(receipt.receipt_digest().to_owned());
+        ledger.record_parity(&receipt).await?;
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let catalog = SourceCatalog::load(
         root.join("internal/connectorcatalog/catalog"),
         root.join("sources"),
     )?;
+    let mut evidence = qualification(
+        &catalog,
+        "asana",
+        "users",
+        &format!("promotion-evidence-{suffix}-3"),
+    );
+    evidence.parity_receipt_digests = parity_digests;
+    ledger
+        .record_source_collection(
+            &format!("other-tenant-{suffix}"),
+            &evidence.authenticated_collection_receipt.collection_id,
+            &evidence.authenticated_collection_receipt.source_runtime_id,
+            "asana",
+            1,
+            2,
+            "complete",
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            &evidence
+                .authenticated_collection_receipt
+                .manifest_digest_sha256,
+            &serde_json::json!({"observed_family_ids": ["users"]}),
+        )
+        .await?;
     let request = ProjectionPromotionRequest::new(
         tenant_id.clone(),
         "asana",
@@ -99,17 +156,42 @@ async fn persisted_promotion_requires_complete_evidence_and_three_matching_recei
         CutoverPolicy::new(3, 0)?,
         0,
         100,
-        qualification(
-            &catalog,
-            "asana",
-            "users",
-            &format!("promotion-evidence-{suffix}-3"),
-        ),
+        evidence,
     )?;
     let decision = ledger
         .evaluate_projection_authority(&catalog, &request)
         .await?;
-    assert!(decision.is_allowed());
+    assert!(!decision.is_allowed());
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted collection receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted product-read receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted promotion approval receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted rollback receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted source runtime was not found")
+    );
     assert_eq!(
         ledger
             .projection_authority(&tenant_id, "asana", "users")
@@ -118,83 +200,18 @@ async fn persisted_promotion_requires_complete_evidence_and_three_matching_recei
         ProjectionAuthority::Legacy,
         "evaluation must not change authority"
     );
-    let authority = ledger
-        .evaluate_and_promote_projection_authority(&catalog, &request)
-        .await?;
-    assert_eq!(authority.authority, ProjectionAuthority::Rust);
-
-    let (mut inspection, inspection_connection) =
-        tokio_postgres::connect(&postgres_dsn, NoTls).await?;
-    tokio::spawn(async move {
-        inspection_connection
+    assert!(
+        ledger
+            .evaluate_and_promote_projection_authority(&catalog, &request)
             .await
-            .expect("PostgreSQL inspection connection");
-    });
-    let inspection_transaction = inspection.transaction().await?;
-    inspection_transaction
-        .query_one(
-            "SELECT set_config('cerebro.tenant_id', $1, true)",
-            &[&tenant_id],
-        )
-        .await?;
-    let persisted_decision: serde_json::Value = inspection_transaction
-        .query_one(
-            "SELECT decision_json FROM organizational_projection_authority WHERE tenant_id = $1 AND source_id = 'asana' AND family_id = 'users'",
-            &[&tenant_id],
-        )
-        .await?
-        .get(0);
-    inspection_transaction.commit().await?;
-    assert_eq!(
-        persisted_decision["tenant_id"].as_str(),
-        Some(tenant_id.as_str())
-    );
-    assert_eq!(
-        persisted_decision["qualification"]["product_read_receipt"],
-        "receipt:product-read"
+            .is_err()
     );
     assert_eq!(
         ledger
             .projection_authority(&tenant_id, "asana", "users")
             .await?
             .authority,
-        ProjectionAuthority::Rust
-    );
-
-    ledger
-        .record_parity(&ParityReceipt::compare_scoped(
-            tenant_id.clone(),
-            "asana-runtime",
-            "asana",
-            "users",
-            format!("promotion-evidence-{suffix}-4"),
-            "sha256:equal",
-            "sha256:equal",
-            true,
-            4,
-        )?)
-        .await?;
-    assert!(
-        ledger
-            .evaluate_and_promote_projection_authority(
-                &catalog,
-                &ProjectionPromotionRequest::new(
-                    tenant_id.clone(),
-                    "asana",
-                    "users",
-                    CutoverPolicy::new(3, 0)?,
-                    0,
-                    101,
-                    qualification(
-                        &catalog,
-                        "asana",
-                        "users",
-                        &format!("promotion-evidence-{suffix}-4"),
-                    ),
-                )?,
-            )
-            .await
-            .is_err()
+        ProjectionAuthority::Legacy
     );
     Ok(())
 }

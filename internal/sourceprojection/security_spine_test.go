@@ -2,7 +2,6 @@ package sourceprojection
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -12,167 +11,13 @@ import (
 	"github.com/writer/cerebro/internal/mitre"
 )
 
-func TestProjectBackstageComponent(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	event := &cerebrov1.EventEnvelope{
-		Id:         "evt-1",
-		TenantId:   "writer",
-		SourceId:   "backstage",
-		Kind:       "backstage.component",
-		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"name":       "cerebro",
-			"namespace":  "default",
-			"kind":       "Component",
-			"type":       "service",
-			"lifecycle":  "production",
-			"owner":      "group:platform/security",
-			"system":     "security",
-			"repository": "WriterInternal/cerebro",
-		},
-		Payload: mustJSON(t, map[string]any{
-			"kind": "Component",
-			"metadata": map[string]any{
-				"name":      "cerebro",
-				"namespace": "default",
-			},
-		}),
-	}
-
-	result, err := service.Project(context.Background(), event)
-	if err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-	if result.EntitiesProjected != 7 {
-		t.Fatalf("EntitiesProjected = %d, want 7", result.EntitiesProjected)
-	}
-	serviceURN := "urn:cerebro:writer:service:component/default/cerebro"
-	ownerURN := "urn:cerebro:writer:owner:platform/security"
-	ownerIdentifierURN := "urn:cerebro:writer:identifier:login:security"
-	systemURN := "urn:cerebro:writer:system:security"
-	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/cerebro"
-	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
-	entity := state.entities[serviceURN]
-	if entity == nil || entity.EntityType != "service" || entity.Attributes["lifecycle"] != "production" {
-		t.Fatalf("service entity = %#v, want production service", entity)
-	}
-	assertProjectedLink(t, state, serviceURN, relationOwnedBy, ownerURN)
-	assertProjectedLink(t, state, serviceURN, relationBelongsTo, systemURN)
-	assertProjectedLink(t, state, serviceURN, relationBelongsTo, repoURN)
-	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
-	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, ownerIdentifierURN)
-	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:platform/security")
-	assertProjectedLinkMissing(t, state, ownerURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security")
-}
-
-func TestProjectBackstageComponentCanonicalizesEntityRef(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	event := &cerebrov1.EventEnvelope{
-		Id:       "evt-backstage-canonical",
-		TenantId: "writer",
-		SourceId: "backstage",
-		Kind:     "backstage.component",
-		Attributes: map[string]string{
-			"name":       "payments",
-			"namespace":  "default",
-			"kind":       "Component",
-			"entity_ref": "component:default/payments",
-			"type":       "service",
-		},
-	}
-
-	if _, err := service.Project(context.Background(), event); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-	serviceURN := "urn:cerebro:writer:service:component/default/payments"
-	entity := state.entities[serviceURN]
-	if entity == nil {
-		t.Fatalf("service entity %q missing from %#v", serviceURN, state.entities)
-	}
-	if got := entity.Attributes["backstage_entity_ref"]; got != "component/default/payments" {
-		t.Fatalf("backstage_entity_ref = %q, want canonical component/default/payments", got)
-	}
-}
-
-func TestProjectBackstageComponentLinksClassificationAndCriticality(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	event := &cerebrov1.EventEnvelope{
-		Id:         "evt-backstage-classification",
-		TenantId:   "writer",
-		SourceId:   "backstage",
-		Kind:       "backstage.component",
-		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"name":        "payments",
-			"namespace":   "default",
-			"kind":        "Component",
-			"type":        "service",
-			"data_class":  "restricted",
-			"criticality": "tier0",
-		},
-	}
-
-	if _, err := service.Project(context.Background(), event); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-
-	serviceURN := "urn:cerebro:writer:service:component/default/payments"
-	assertProjectedLink(t, state, serviceURN, relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
-	assertProjectedLink(t, state, serviceURN, relationTaggedAs, "urn:cerebro:writer:asset_tag:criticality:tier0")
-	assertProjectedLink(t, state, serviceURN, relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
-}
-
-func TestProjectBackstageComponentLinksKubernetesRuntime(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	event := &cerebrov1.EventEnvelope{
-		Id:         "evt-k8s",
-		TenantId:   "writer",
-		SourceId:   "backstage",
-		Kind:       "backstage.component",
-		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"name":      "cerebro",
-			"namespace": "default",
-			"type":      "service",
-		},
-		Payload: mustJSON(t, map[string]any{
-			"kind": "Component",
-			"metadata": map[string]any{
-				"name":      "cerebro",
-				"namespace": "default",
-				"annotations": map[string]any{
-					"backstage.io/kubernetes-id":            "cerebro",
-					"backstage.io/kubernetes-namespace":     "security",
-					"cerebro.io/aws-account-id":             "123456789012",
-					"cerebro.io/cloud-provider":             "aws",
-					"cerebro.io/kubernetes-cluster-id":      "prod-us1",
-					"cerebro.io/kubernetes-service-account": "cerebro-sa",
-					"cerebro.io/kubernetes-workload-kind":   "Deployment",
-				},
-			},
-		}),
-	}
-
-	if _, err := service.Project(context.Background(), event); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-
-	serviceURN := "urn:cerebro:writer:service:component/default/cerebro"
-	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-us1:security:Deployment/cerebro"
-	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-us1:security"
-	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-us1"
-	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-us1:security:cerebro-sa"
-	assertProjectedLink(t, state, serviceURN, relationRepresents, workloadURN)
-	assertProjectedLink(t, state, workloadURN, relationRepresents, serviceURN)
-	assertProjectedLink(t, state, workloadURN, relationBelongsTo, namespaceURN)
-	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
-	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
-	assertProjectedLink(t, state, workloadURN, relationRunsAs, serviceAccountURN)
-}
+// The backstage.component projection tests that used to live here
+// (TestProjectBackstageComponent and its canonicalization/classification/
+// Kubernetes-runtime/no-owner variants) were removed along with the real
+// backstageComponentProjections implementation once Backstage's Go
+// projection writer was retired to Rust authority (see backstage.go,
+// backstage_test.go). TestRegistryRoutesBackstageDeclaredKinds below still
+// confirms backstage.component stays routed (to the fail-closed stub).
 
 func TestRegistryRoutesBackstageDeclaredKinds(t *testing.T) {
 	declared := []string{
@@ -185,39 +30,6 @@ func TestRegistryRoutesBackstageDeclaredKinds(t *testing.T) {
 	for _, kind := range declared {
 		if _, ok := registered[kind]; !ok {
 			t.Fatalf("declared Backstage kind %q is not routed in the projection registry", kind)
-		}
-	}
-}
-
-func TestProjectBackstageComponentWithoutOwnerOmitsOwnerLink(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	event := &cerebrov1.EventEnvelope{
-		Id:         "evt-backstage-unowned",
-		TenantId:   "writer",
-		SourceId:   "backstage",
-		Kind:       "backstage.component",
-		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"name":        "ledger",
-			"namespace":   "default",
-			"kind":        "Component",
-			"type":        "service",
-			"criticality": "tier0",
-		},
-	}
-
-	if _, err := service.Project(context.Background(), event); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-
-	serviceURN := "urn:cerebro:writer:service:component/default/ledger"
-	if state.entities[serviceURN] == nil {
-		t.Fatalf("component entity %q was not projected", serviceURN)
-	}
-	for key := range state.links {
-		if strings.Contains(key, "|"+relationOwnedBy+"|") {
-			t.Fatalf("unexpected ownership link %q for component without an owner", key)
 		}
 	}
 }

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "incremental": false,
+    "noEmit": false,
+    "outDir": ".runtime-build",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src"
+  },
+  "include": ["src/index.ts", "src/jira.ts"],
+  "exclude": ["src/generated/proto"]
+}

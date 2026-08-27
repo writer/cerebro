@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/proto"
@@ -132,10 +133,13 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 			turn := &graphRulePersistenceTurn{ready: ready, next: next}
 			ready = next
 			group.Add(1)
-			go func(index int, rule GraphRule, turn *graphRulePersistenceTurn) {
+			ruleIndex := index
+			rule := candidates[index]
+			errorsByRule[ruleIndex] = panicsafe.ErrTaskPanicked
+			panicsafe.Go(ctx, "finding.graph_rule_evaluation", func() {
 				defer group.Done()
-				evaluations[index], errorsByRule[index] = s.evaluateGraphRule(ctx, runtime, rule, startedAt, dependencyRuntimes, turn)
-			}(index, candidates[index], turn)
+				evaluations[ruleIndex], errorsByRule[ruleIndex] = s.evaluateGraphRule(ctx, runtime, rule, startedAt, dependencyRuntimes, turn)
+			})
 		}
 		group.Wait()
 	}

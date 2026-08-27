@@ -31,8 +31,9 @@ mod page_publication;
 mod parity;
 mod postgres;
 mod promotion;
+mod promotion_evidence_store;
 
-pub use cutover::{CutoverGate, CutoverPolicy};
+pub use cutover::CutoverPolicy;
 pub use neo4j::{
     CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
     CloudAttackPathOwnership, CloudAttackPathPage, ComplianceImpactDependency,
@@ -55,13 +56,16 @@ pub use parity::{
 pub use postgres::{
     AskQueryRecord, AskQueryWrite, AuditEventPageQuery, ConsumerFamilyProgress,
     ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection, ConsumerRunProgress,
-    ConsumerRunReceiptState, ConsumerSkipCategory, LegacyProjectionReceipt, POSTGRES_SCHEMA,
-    PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
+    ConsumerRunReceiptState, ConsumerSkipCategory, IdentityDirectoryQuery, LegacyProjectionReceipt,
+    POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
     SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
-    StoredAuditEventPage, StoredSourceRuntime,
+    StoredAuditEventPage, StoredIdentityOrganization, StoredIdentityUser, StoredSourceRuntime,
 };
 pub use promotion::{
     CutoverDecision, ProjectionAuthority, ProjectionAuthorityRecord, ProjectionPromotionRequest,
+};
+pub use promotion_evidence_store::{
+    PromotionEvidenceReceiptKind, VerifiedPromotionReceipt, VerifiedPromotionReceiptKind,
 };
 
 use std::{error::Error, fmt};

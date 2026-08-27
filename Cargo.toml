@@ -6,6 +6,7 @@ members = [
     "crates/agent-context",
     "crates/agent-runtime",
     "crates/cerebro-platform",
+    "crates/cerebro-migrator",
     "crates/control-kernel",
     "crates/finding-rule-kernel",
     "crates/organizational-graph",
@@ -62,6 +63,7 @@ cerebro-action-catalog = { version = "0.1.0", path = "crates/action-catalog" }
 cerebro-action-provider = { version = "0.1.0", path = "crates/action-provider" }
 cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }
 cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
+cerebro-migrator = { version = "0.1.0", path = "crates/cerebro-migrator" }
 cerebro-finding-rule-kernel = { version = "0.1.0", path = "crates/finding-rule-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
 cerebro-organizational-model = { version = "0.1.0", path = "crates/organizational-model" }

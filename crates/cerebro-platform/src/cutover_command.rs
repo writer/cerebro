@@ -227,6 +227,7 @@ impl CutoverBatchSummary {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn evaluate_one_family(
     ledger: &PostgresLedger,
     catalog: &SourceCatalog,
@@ -336,7 +337,82 @@ pub(crate) async fn evaluate_all_families() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use cerebro_organizational_store::ProjectionAuthority;
+
     use super::*;
+    use crate::cutover_evidence;
+
+    #[tokio::test]
+    #[ignore = "requires disposable PostgreSQL"]
+    async fn unverifiable_asana_receipts_cannot_select_rust_authority() {
+        let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN").unwrap();
+        let authority = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
+        authority.migrate().await.unwrap();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .to_string();
+        let tenant_id = format!("platform-promotion-evidence-{suffix}");
+        let mut parity_digests = Vec::new();
+        for index in 1..=3 {
+            let receipt = cerebro_organizational_store::ParityReceipt::compare_scoped(
+                tenant_id.clone(),
+                "asana-runtime",
+                "asana",
+                "users",
+                format!("corpus-{suffix}-{index}"),
+                "sha256:equal",
+                "sha256:equal",
+                true,
+                index,
+            )
+            .unwrap();
+            parity_digests.push(receipt.receipt_digest().to_owned());
+            authority.record_parity(&receipt).await.unwrap();
+        }
+        let catalog = load_catalog().unwrap();
+        let mut qualification = cutover_evidence::authority_qualification_fixture(
+            &catalog,
+            "asana",
+            "users",
+            &format!("corpus-{suffix}-3"),
+        );
+        qualification.parity_receipt_digests = parity_digests;
+        let decision = authority
+            .evaluate_projection_authority(
+                &catalog,
+                &cerebro_organizational_store::ProjectionPromotionRequest::new(
+                    tenant_id.clone(),
+                    "asana",
+                    "users",
+                    cerebro_organizational_store::CutoverPolicy::new(3, 0).unwrap(),
+                    0,
+                    100,
+                    qualification,
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(!decision.is_allowed());
+        assert!(
+            decision
+                .reasons()
+                .iter()
+                .any(|reason| { reason == "product-read receipt verifier is unavailable" })
+        );
+        assert_eq!(
+            authority
+                .projection_authority(&tenant_id, "asana", "users")
+                .await
+                .unwrap()
+                .authority,
+            ProjectionAuthority::Legacy
+        );
+    }
 
     #[test]
     fn family_scope_identifier_prefers_argument_then_environment() {

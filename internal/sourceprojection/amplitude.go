@@ -1,14 +1,18 @@
 package sourceprojection
 
 import (
+	"errors"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func amplitudeUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "amplitude"})
+var errAmplitudeRustProjectionRequired = errors.New("amplitude projection requires Rust authority")
+
+func amplitudeUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errAmplitudeRustProjectionRequired
 }
 
-func amplitudeGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "amplitude"})
+func amplitudeGroupsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errAmplitudeRustProjectionRequired
 }

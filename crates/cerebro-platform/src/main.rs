@@ -6,9 +6,11 @@ mod audit_events;
 mod cutover_command;
 mod cutover_evidence;
 mod graph_provenance;
+mod identity_directory;
 mod oidc;
 mod parity_command;
 mod ratelimit;
+mod request_telemetry;
 mod rpc;
 mod slack_agent;
 mod slack_agent_eval;
@@ -33,7 +35,7 @@ use std::{
     io,
     path::PathBuf,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -100,6 +102,9 @@ use cerebro_source_runtime_next::{
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
+use request_telemetry::PlatformMetrics;
+#[cfg(test)]
+use request_telemetry::bounded_operation;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -477,19 +482,6 @@ impl ActionAuthority for PostgresActionLedger {
     }
 }
 
-#[derive(Clone, Default)]
-struct PlatformMetrics(Arc<Mutex<BTreeMap<&'static str, RequestSeries>>>);
-
-#[derive(Default)]
-struct RequestSeries {
-    successes: u64,
-    failures: u64,
-    duration_sum_seconds: f64,
-    duration_buckets: [u64; 8],
-}
-
-const LATENCY_BUCKETS_SECONDS: [f64; 8] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0];
-
 #[derive(Clone)]
 struct TenantRequestAuth {
     secret: Arc<[u8]>,
@@ -635,6 +627,8 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
         "/v1/audit-events" => "cerebro:read",
+        "/v1/identity/orgs" => "cerebro:read",
+        "/v1/identity/users" => "cerebro:read",
         "/v1/source-runtimes/health" | "/v1/source-runtimes/freshness" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
@@ -659,137 +653,6 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         _ if path.starts_with("/v1/actions/") => "cerebro:actions:read",
         "/v1/projections/legacy-deltas" | "/v1/projections/collections" => "cerebro:write",
         _ => "cerebro:read",
-    }
-}
-
-async fn record_request(
-    State(metrics): State<PlatformMetrics>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let operation = bounded_operation(request.method(), request.uri().path());
-    let started = Instant::now();
-    let response = next.run(request).await;
-    metrics
-        .record(
-            operation,
-            response.status(),
-            started.elapsed().as_secs_f64(),
-        )
-        .await;
-    response
-}
-
-fn bounded_operation(method: &Method, path: &str) -> &'static str {
-    match path {
-        "/healthz" => "healthz",
-        "/readyz" => "readyz",
-        "/metrics" => "metrics",
-        "/v1/me" => "current_user",
-        "/v1/finding-validations" => "record_finding_validation",
-        "/v1/action-definitions" => "action_definitions",
-        "/v1/policy-definitions" => "policy_definitions",
-        "/v1/action-dispatches" => "list_action_dispatches",
-        "/v1/action-reconciliation-runs" => "run_action_reconciliation",
-        "/v1/sources/summary" => "source_summary",
-        "/v1/audit-events" => "list_audit_events",
-        "/platform/graph/neighborhood" => "neighborhood",
-        "/v1/graph/search" => "search",
-        "/v1/graph/expand" => "expand",
-        "/v1/graph/expand-batch" => "expand_batch",
-        "/v1/graph/paths" => "paths",
-        "/v1/graph/provenance" => "graph_provenance",
-        "/platform/graph/provenance" => "graph_provenance",
-        "/v1/security/lifecycle" => "security_lifecycle",
-        "/v1/ask-queries" if method == Method::GET => "list_ask_queries",
-        "/v1/ask-queries" => "create_ask_query",
-        _ if path.starts_with("/v1/ask-queries/") && method == Method::DELETE => "delete_ask_query",
-        _ if path.starts_with("/v1/ask-queries/") => "update_ask_query",
-        "/v1/source-runtimes" => "list_source_runtimes",
-        "/v1/source-runtimes/freshness" => "runtime_freshness",
-        _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
-            "list_source_runtime_invalid_events"
-        }
-        _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => {
-            "put_source_runtime"
-        }
-        _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => {
-            "sync_source_runtime"
-        }
-        _ if path.starts_with("/v1/source-runtimes/") => "get_source_runtime",
-        "/v1/actions" if method == Method::GET => "list_actions",
-        "/v1/actions" => "propose_action",
-        "/v1/projections/legacy-deltas" => "record_legacy_projection",
-        "/v1/projections/collections" => "record_source_collection",
-        _ if path.starts_with("/v1/projections/collections/") => "get_source_collection",
-        "/v1/projections/authority" => "projection_authority",
-        _ if path.starts_with("/v1/entities/") => "get_entity",
-        _ if path.starts_with("/v1/finding-validations/") => "get_finding_validation",
-        _ if path.starts_with("/v1/action-dispatches/") => "get_action_dispatch",
-        _ if path.starts_with("/v1/assertions/") => "explain_assertion",
-        _ if path.starts_with("/v1/actions/") && path.ends_with("/history") => "action_history",
-        _ if path.starts_with("/v1/actions/") && path.ends_with("/provider-observation") => {
-            "observe_action_provider"
-        }
-        _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => "transition_action",
-        _ if path.starts_with("/v1/actions/") => "get_action",
-        _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
-        _ if path.starts_with("/cerebro.v1.SecurityLifecycleService/") => "security_lifecycle",
-        _ => "other",
-    }
-}
-
-impl PlatformMetrics {
-    async fn record(&self, operation: &'static str, status: StatusCode, elapsed_seconds: f64) {
-        let mut metrics = self.0.lock().await;
-        let series = metrics.entry(operation).or_default();
-        if status.is_success() {
-            series.successes += 1;
-        } else {
-            series.failures += 1;
-        }
-        series.duration_sum_seconds += elapsed_seconds;
-        for (index, upper_bound) in LATENCY_BUCKETS_SECONDS.iter().enumerate() {
-            if elapsed_seconds <= *upper_bound {
-                series.duration_buckets[index] += 1;
-            }
-        }
-    }
-
-    async fn render(&self) -> String {
-        let metrics = self.0.lock().await;
-        let mut output = String::from(
-            "# HELP cerebro_rust_http_requests_total Bounded Rust platform HTTP requests.\n\
-             # TYPE cerebro_rust_http_requests_total counter\n\
-             # HELP cerebro_rust_http_request_duration_seconds Rust platform request latency.\n\
-             # TYPE cerebro_rust_http_request_duration_seconds histogram\n",
-        );
-        for (operation, series) in metrics.iter() {
-            output.push_str(&format!(
-                "cerebro_rust_http_requests_total{{operation=\"{operation}\",status_class=\"success\"}} {}\n",
-                series.successes
-            ));
-            output.push_str(&format!(
-                "cerebro_rust_http_requests_total{{operation=\"{operation}\",status_class=\"failure\"}} {}\n",
-                series.failures
-            ));
-            for (upper_bound, count) in LATENCY_BUCKETS_SECONDS
-                .iter()
-                .zip(series.duration_buckets.iter())
-            {
-                output.push_str(&format!(
-                    "cerebro_rust_http_request_duration_seconds_bucket{{operation=\"{operation}\",le=\"{upper_bound}\"}} {count}\n"
-                ));
-            }
-            let count = series.successes + series.failures;
-            output.push_str(&format!(
-                "cerebro_rust_http_request_duration_seconds_bucket{{operation=\"{operation}\",le=\"+Inf\"}} {count}\n\
-                 cerebro_rust_http_request_duration_seconds_sum{{operation=\"{operation}\"}} {}\n\
-                 cerebro_rust_http_request_duration_seconds_count{{operation=\"{operation}\"}} {count}\n",
-                series.duration_sum_seconds
-            ));
-        }
-        output
     }
 }
 
@@ -2356,6 +2219,8 @@ fn router_with_backend(
             get(list_source_runtime_invalid_events),
         )
         .route("/v1/audit-events", get(list_audit_events))
+        .route("/v1/identity/orgs", get(list_identity_organizations))
+        .route("/v1/identity/users", get(list_identity_users))
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -2434,7 +2299,7 @@ fn router_with_backend(
         ))
         .layer(middleware::from_fn_with_state(
             platform_metrics,
-            record_request,
+            request_telemetry::record_request,
         ))
 }
 
@@ -2925,6 +2790,86 @@ fn source_runtime_invalid_events_error(
             "Source-runtime invalid-event evidence is temporarily unavailable.",
         ),
     }
+}
+
+/// Serves the persisted identity organizations for the authenticated tenant.
+/// Auth-config-derived organizations remain on the Go route until the auth
+/// pipeline moves; `meta.configured` is always zero here.
+async fn list_identity_organizations(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(params): Query<identity_directory::IdentityDirectoryRequestParams>,
+) -> Result<Json<identity_directory::ListOrganizationsResponse>, (StatusCode, Json<ErrorResponse>)>
+{
+    let ledger = state.runtime_ledger.clone().ok_or_else(|| {
+        service_unavailable(
+            "identity_directory_unavailable",
+            "The Rust identity directory store is not configured.",
+        )
+    })?;
+    let tenant_id = match params
+        .tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty())
+    {
+        Some(requested) => authorized_tenant(&authenticated, requested.to_owned())?,
+        None => authenticated.0.clone(),
+    };
+    let query = identity_directory::store_query(&params, tenant_id.as_str(), false);
+    let organizations = ledger
+        .list_identity_organizations(&query)
+        .await
+        .map_err(|error| {
+            eprintln!("Rust identity organization read failed: {error}");
+            service_unavailable(
+                "identity_directory_unavailable",
+                "Identity organizations are temporarily unavailable.",
+            )
+        })?;
+    Ok(Json(identity_directory::organizations_response(
+        tenant_id.as_str(),
+        query.limit,
+        organizations,
+    )))
+}
+
+/// Serves the persisted identity users for the authenticated tenant; see
+/// [`list_identity_organizations`] for the configured-identity scope note.
+async fn list_identity_users(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(params): Query<identity_directory::IdentityDirectoryRequestParams>,
+) -> Result<Json<identity_directory::ListUsersResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let ledger = state.runtime_ledger.clone().ok_or_else(|| {
+        service_unavailable(
+            "identity_directory_unavailable",
+            "The Rust identity directory store is not configured.",
+        )
+    })?;
+    let tenant_id = match params
+        .tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty())
+    {
+        Some(requested) => authorized_tenant(&authenticated, requested.to_owned())?,
+        None => authenticated.0.clone(),
+    };
+    let query = identity_directory::store_query(&params, tenant_id.as_str(), true);
+    let users = ledger.list_identity_users(&query).await.map_err(|error| {
+        eprintln!("Rust identity user read failed: {error}");
+        service_unavailable(
+            "identity_directory_unavailable",
+            "Identity users are temporarily unavailable.",
+        )
+    })?;
+    Ok(Json(identity_directory::users_response(
+        tenant_id.as_str(),
+        query.org_id.as_str(),
+        query.limit,
+        users,
+    )))
 }
 
 /// Native REST parity route for `GET /platform/audit-events`: one bounded,
@@ -5102,7 +5047,6 @@ mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         },
-        time::{SystemTime, UNIX_EPOCH},
     };
 
     use async_trait::async_trait;
@@ -8236,125 +8180,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(wrong_tenant.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    #[ignore = "requires disposable PostgreSQL and Neo4j instances"]
-    async fn promoted_asana_family_projects_only_through_rust() {
-        let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN").unwrap();
-        let authority = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
-        authority.migrate().await.unwrap();
-        let store_ledger = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
-        store_ledger.migrate().await.unwrap();
-        let graph = Neo4jProjector::connect(
-            &env::var("CEREBRO_TEST_NEO4J_URI").unwrap(),
-            &env::var("CEREBRO_TEST_NEO4J_USERNAME").unwrap(),
-            &env::var("CEREBRO_TEST_NEO4J_PASSWORD").unwrap(),
-        )
-        .await
-        .unwrap();
-        graph.migrate().await.unwrap();
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .to_string();
-        let tenant_id = format!("platform-promotion-evidence-{suffix}");
-        for index in 1..=3 {
-            authority
-                .record_parity(
-                    &cerebro_organizational_store::ParityReceipt::compare_scoped(
-                        tenant_id.clone(),
-                        "asana-runtime",
-                        "asana",
-                        "users",
-                        format!("corpus-{suffix}-{index}"),
-                        "sha256:equal",
-                        "sha256:equal",
-                        true,
-                        index,
-                    )
-                    .unwrap(),
-                )
-                .await
-                .unwrap();
-        }
-        let catalog = load_catalog().unwrap();
-        let qualification = cutover_evidence::authority_qualification_fixture(
-            &catalog,
-            "asana",
-            "users",
-            &format!("corpus-{suffix}-3"),
-        );
-        authority
-            .evaluate_and_promote_projection_authority(
-                &catalog,
-                &cerebro_organizational_store::ProjectionPromotionRequest::new(
-                    tenant_id.clone(),
-                    "asana",
-                    "users",
-                    cerebro_organizational_store::CutoverPolicy::new(3, 0).unwrap(),
-                    0,
-                    100,
-                    qualification,
-                )
-                .unwrap(),
-            )
-            .await
-            .unwrap();
-        let runtime = Arc::new(ProjectionRuntime {
-            catalog,
-            authority,
-            store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
-        });
-        let response = runtime
-            .project_committed_with_intent(
-                CommittedSourceEvent::from_input(
-                    cerebro_source_runtime_next::CommittedSourceInput {
-                        tenant_id: TenantId::parse(tenant_id.clone()).unwrap(),
-                        source_runtime_id: SourceRuntimeId::parse("asana-runtime").unwrap(),
-                        observation_id: ObservationId::parse("event-1").unwrap(),
-                        source_id: "asana".to_owned(),
-                        family_id: "users".to_owned(),
-                        event_kind: "asana.users".to_owned(),
-                        schema_ref: "asana/users/v1".to_owned(),
-                        observed_at_unix_ms: 100,
-                        attributes: BTreeMap::from([
-                            ("tenant_id".to_owned(), tenant_id.clone()),
-                            ("source_event_id".to_owned(), "event-1".to_owned()),
-                            ("user_id".to_owned(), "user-1".to_owned()),
-                        ]),
-                        payload: serde_json::json!({
-                            "gid": "user-1",
-                            "name": "Person One",
-                            "email": "person@example.test"
-                        }),
-                    },
-                )
-                .unwrap(),
-                false,
-            )
-            .await
-            .unwrap();
-        assert!(response.projected);
-        let tenant = TenantId::parse(tenant_id).unwrap();
-        let provider = ProviderIdentity::new(
-            tenant.clone(),
-            SourceRuntimeId::parse("asana-runtime").unwrap(),
-            ProviderKind::parse("asana.identity_user").unwrap(),
-            "user-1",
-            "Person One",
-        )
-        .unwrap();
-        let entity = graph
-            .resolve(&tenant, provider.entity().id().as_str())
-            .await
-            .unwrap();
-        assert_eq!(entity.label, "Person One");
-        assert_eq!(
-            entity.properties.get("email").map(String::as_str),
-            Some("person@example.test")
-        );
     }
 
     #[test]

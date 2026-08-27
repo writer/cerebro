@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/reportschedule"
@@ -290,7 +291,7 @@ func (a *App) StartReportScheduler(ctx context.Context, logf func(string, ...any
 		close(done)
 		return done
 	}
-	go func() {
+	panicsafe.Go(ctx, "report.schedule_dispatch", func() {
 		defer close(done)
 		ticker := time.NewTicker(reportSchedulePollInterval)
 		defer ticker.Stop()
@@ -304,7 +305,7 @@ func (a *App) StartReportScheduler(ctx context.Context, logf func(string, ...any
 				}
 			}
 		}
-	}()
+	})
 	return done
 }
 

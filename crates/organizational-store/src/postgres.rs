@@ -20,9 +20,10 @@ use tokio::sync::Mutex;
 use tokio_postgres::{Client, error::SqlState, types::ToSql};
 use zeroize::Zeroize;
 
+use crate::cutover::CutoverGate;
 use crate::{
-    CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
-    ProjectionAuthorityRecord, ProjectionPromotionRequest,
+    CutoverDecision, ParityReceipt, ParityStatus, ProjectionAuthority, ProjectionAuthorityRecord,
+    ProjectionPromotionRequest, PromotionEvidenceReceiptKind,
 };
 use crate::{
     StoreError,
@@ -342,6 +343,17 @@ CREATE TABLE IF NOT EXISTS organizational_projection_authority (
     (authority = 'rust' AND promoted_at_unix_ms > 0)
   )
 );
+CREATE TABLE IF NOT EXISTS organizational_promotion_evidence_receipts (
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('product_read', 'promotion_approval', 'rollback')),
+  receipt_id TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  payload_json JSONB NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, kind, receipt_id)
+);
 CREATE TABLE IF NOT EXISTS organizational_consumer_runs (
   consumer_name TEXT NOT NULL,
   run_id TEXT NOT NULL,
@@ -442,6 +454,8 @@ ALTER TABLE organizational_parity_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_parity_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_authority ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_authority FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_promotion_evidence_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_promotion_evidence_receipts FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -460,7 +474,8 @@ BEGIN
     'organizational_identity_claims',
     'organizational_projection_outbox',
     'organizational_parity_receipts',
-    'organizational_projection_authority'
+    'organizational_projection_authority',
+    'organizational_promotion_evidence_receipts'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -1441,6 +1456,64 @@ ON CONFLICT (id) DO NOTHING
         Ok(changed == 1)
     }
 
+    /// Records the durable runtime-revision proof that persisted promotion
+    /// verification reads directly off the stored runtime row. This augments
+    /// an already-admitted runtime definition's raw JSON with the two fields
+    /// the promotion gate checks, without widening
+    /// [`StoredSourceRuntime::new`]'s constructor and rippling a breaking
+    /// change into every call site that builds one.
+    pub async fn record_source_runtime_revision(
+        &self,
+        source_runtime_id: &SourceRuntimeId,
+        runtime_revision_sha256: &str,
+        worker_runtime_build_identity: &str,
+    ) -> Result<(), StoreError> {
+        if runtime_revision_sha256.trim().is_empty()
+            || worker_runtime_build_identity.trim().is_empty()
+        {
+            return Err(StoreError::Conflict(
+                "source runtime revision proof is invalid".to_owned(),
+            ));
+        }
+        let client = self.client.lock().await;
+        let changed = client
+            .execute(
+                r#"
+UPDATE source_runtimes
+SET runtime_json = runtime_json || jsonb_build_object(
+      'runtime_revision_sha256', $2::text,
+      'worker_runtime_build_identity', $3::text
+    ),
+    updated_at = NOW()
+WHERE id = $1
+  AND (runtime_json->>'runtime_revision_sha256' IS NULL
+       OR runtime_json->>'runtime_revision_sha256' = $2)
+  AND (runtime_json->>'worker_runtime_build_identity' IS NULL
+       OR runtime_json->>'worker_runtime_build_identity' = $3)
+"#,
+                &[
+                    &source_runtime_id.as_str(),
+                    &runtime_revision_sha256,
+                    &worker_runtime_build_identity,
+                ],
+            )
+            .await?;
+        if changed == 0 {
+            let stored = client
+                .query_opt(
+                    "SELECT 1 FROM source_runtimes WHERE id = $1",
+                    &[&source_runtime_id.as_str()],
+                )
+                .await?;
+            return Err(StoreError::Conflict(if stored.is_some() {
+                "source runtime revision proof conflicts with the stored proof".to_owned()
+            } else {
+                "source runtime is not stored".to_owned()
+            }));
+        }
+        Ok(())
+    }
+
     /// List source-runtime definitions within one authenticated tenant. All
     /// predicates are applied in PostgreSQL so cross-tenant rows never enter
     /// the application response path.
@@ -2147,6 +2220,159 @@ LIMIT $3
         })
     }
 
+    /// Lists persisted identity organizations for one tenant, mirroring the Go
+    /// state store: exact `org_id`, case-insensitive `provider`/`source`
+    /// (source defaulting to `identity_directory`), an unescaped lowercase
+    /// substring search, and top-N selection by recency. Timestamps are
+    /// returned as microsecond RFC 3339 UTC text so callers can order on full
+    /// precision before truncating for display. A missing table yields the Go
+    /// steady-state empty result.
+    pub async fn list_identity_organizations(
+        &self,
+        query: &IdentityDirectoryQuery,
+    ) -> Result<Vec<StoredIdentityOrganization>, StoreError> {
+        if query.tenant_id.trim().is_empty() || query.limit == 0 || query.limit > 500 {
+            return Err(StoreError::Conflict(
+                "identity directory query scope is invalid".to_owned(),
+            ));
+        }
+        let mut clauses = vec!["tenant_id = $1".to_owned()];
+        let mut values = vec![query.tenant_id.trim().to_owned()];
+        identity_exact_filter(&mut clauses, &mut values, "org_id", &query.org_id);
+        identity_normalized_filter(&mut clauses, &mut values, "provider", &query.provider);
+        identity_source_filter(&mut clauses, &mut values, &query.source);
+        if !query.text.trim().is_empty() {
+            values.push(format!("%{}%", query.text.trim().to_lowercase()));
+            let index = values.len();
+            clauses.push(format!(
+                "(LOWER(org_id) LIKE ${index} OR LOWER(name) LIKE ${index} OR LOWER(domain) LIKE ${index} \
+                 OR LOWER(provider) LIKE ${index} OR LOWER({IDENTITY_SOURCE_SQL}) LIKE ${index} \
+                 OR LOWER(external_id) LIKE ${index})"
+            ));
+        }
+        let limit = i64::from(query.limit);
+        let mut params: Vec<&(dyn ToSql + Sync)> = values
+            .iter()
+            .map(|value| value as &(dyn ToSql + Sync))
+            .collect();
+        params.push(&limit);
+        let statement = format!(
+            "SELECT tenant_id, org_id, name, slug, domain, provider, {IDENTITY_SOURCE_SQL}, external_id, \
+             GREATEST(user_count, (SELECT COUNT(*)::INTEGER FROM identity_users \
+             WHERE identity_users.tenant_id = identity_organizations.tenant_id \
+             AND identity_users.org_id = identity_organizations.org_id)), \
+             COALESCE(to_char(last_synced_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}'), ''), \
+             to_char(created_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}'), \
+             to_char(updated_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}') \
+             FROM identity_organizations WHERE {} \
+             ORDER BY updated_at DESC, name ASC, org_id ASC LIMIT ${}",
+            clauses.join(" AND "),
+            params.len()
+        );
+        let rows = match self.client.lock().await.query(&statement, &params).await {
+            Ok(rows) => rows,
+            Err(error) if error.code() == Some(&SqlState::UNDEFINED_TABLE) => {
+                return Ok(Vec::new());
+            }
+            Err(error) => return Err(StoreError::Postgres(error)),
+        };
+        Ok(rows
+            .iter()
+            .map(|row| StoredIdentityOrganization {
+                tenant_id: row.get(0),
+                org_id: row.get(1),
+                name: row.get(2),
+                slug: row.get(3),
+                domain: row.get(4),
+                provider: row.get(5),
+                source: row.get(6),
+                external_id: row.get(7),
+                user_count: row.get(8),
+                last_synced_at: row.get(9),
+                created_at: row.get(10),
+                updated_at: row.get(11),
+            })
+            .collect())
+    }
+
+    /// Lists persisted identity users for one tenant with the Go state
+    /// store's exact filter and selection semantics; see
+    /// [`Self::list_identity_organizations`].
+    pub async fn list_identity_users(
+        &self,
+        query: &IdentityDirectoryQuery,
+    ) -> Result<Vec<StoredIdentityUser>, StoreError> {
+        if query.tenant_id.trim().is_empty() || query.limit == 0 || query.limit > 500 {
+            return Err(StoreError::Conflict(
+                "identity directory query scope is invalid".to_owned(),
+            ));
+        }
+        let mut clauses = vec!["tenant_id = $1".to_owned()];
+        let mut values = vec![query.tenant_id.trim().to_owned()];
+        identity_exact_filter(&mut clauses, &mut values, "org_id", &query.org_id);
+        identity_exact_filter(&mut clauses, &mut values, "user_id", &query.user_id);
+        identity_normalized_filter(&mut clauses, &mut values, "provider", &query.provider);
+        identity_source_filter(&mut clauses, &mut values, &query.source);
+        identity_normalized_filter(&mut clauses, &mut values, "status", &query.status);
+        if !query.text.trim().is_empty() {
+            values.push(format!("%{}%", query.text.trim().to_lowercase()));
+            let index = values.len();
+            clauses.push(format!(
+                "(LOWER(user_id) LIKE ${index} OR LOWER(email) LIKE ${index} OR LOWER(display_name) LIKE ${index} \
+                 OR LOWER(subject) LIKE ${index} OR LOWER(provider) LIKE ${index} \
+                 OR LOWER({IDENTITY_SOURCE_SQL}) LIKE ${index})"
+            ));
+        }
+        let limit = i64::from(query.limit);
+        let mut params: Vec<&(dyn ToSql + Sync)> = values
+            .iter()
+            .map(|value| value as &(dyn ToSql + Sync))
+            .collect();
+        params.push(&limit);
+        let statement = format!(
+            "SELECT tenant_id, user_id, org_id, subject, email, display_name, status, provider, \
+             {IDENTITY_SOURCE_SQL}, roles_json::text, groups_json::text, \
+             COALESCE(to_char(last_seen_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}'), ''), \
+             COALESCE(to_char(last_synced_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}'), ''), \
+             to_char(created_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}'), \
+             to_char(updated_at AT TIME ZONE 'UTC', '{IDENTITY_TS_FORMAT}') \
+             FROM identity_users WHERE {} \
+             ORDER BY updated_at DESC, display_name ASC, user_id ASC LIMIT ${}",
+            clauses.join(" AND "),
+            params.len()
+        );
+        let rows = match self.client.lock().await.query(&statement, &params).await {
+            Ok(rows) => rows,
+            Err(error) if error.code() == Some(&SqlState::UNDEFINED_TABLE) => {
+                return Ok(Vec::new());
+            }
+            Err(error) => return Err(StoreError::Postgres(error)),
+        };
+        let mut users = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let roles_json: String = row.get(9);
+            let groups_json: String = row.get(10);
+            users.push(StoredIdentityUser {
+                tenant_id: row.get(0),
+                user_id: row.get(1),
+                org_id: row.get(2),
+                subject: row.get(3),
+                email: row.get(4),
+                display_name: row.get(5),
+                status: row.get(6),
+                provider: row.get(7),
+                source: row.get(8),
+                roles: serde_json::from_str(&roles_json)?,
+                groups: serde_json::from_str(&groups_json)?,
+                last_seen_at: row.get(11),
+                last_synced_at: row.get(12),
+                created_at: row.get(13),
+                updated_at: row.get(14),
+            });
+        }
+        Ok(users)
+    }
+
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
         let mismatch_count = i64::try_from(receipt.mismatch_count())
             .map_err(|_| StoreError::Conflict("parity mismatch count overflow".to_owned()))?;
@@ -2183,6 +2409,49 @@ LIMIT $3
             return Err(StoreError::Conflict(format!(
                 "parity receipt {} conflicts with stored evidence",
                 receipt.receipt_digest()
+            )));
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    /// Record one persisted product-read, promotion-approval, or rollback
+    /// receipt referenced by a promotion qualification. Recording is
+    /// append-only: replaying the same `(tenant_id, kind, receipt_id)` with an
+    /// identical digest is a no-op, and replaying it with a different digest
+    /// is a stored-contract conflict rather than a silent overwrite.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_promotion_evidence_receipt(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+        kind: PromotionEvidenceReceiptKind,
+        receipt_id: &str,
+        receipt_digest: &str,
+        payload: &Value,
+    ) -> Result<(), StoreError> {
+        let kind = kind.as_str();
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_promotion_evidence_receipts (tenant_id, source_id, family_id, kind, receipt_id, receipt_digest, payload_json) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tenant_id, kind, receipt_id) DO UPDATE SET receipt_digest = EXCLUDED.receipt_digest WHERE organizational_promotion_evidence_receipts.receipt_digest = EXCLUDED.receipt_digest RETURNING receipt_digest",
+                &[
+                    &tenant_id,
+                    &source_id,
+                    &family_id,
+                    &kind,
+                    &receipt_id,
+                    &receipt_digest,
+                    payload,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "promotion evidence receipt {receipt_id} conflicts with stored evidence"
             )));
         }
         transaction.commit().await?;
@@ -2290,8 +2559,8 @@ LIMIT $3
         .await
     }
 
-    /// Evaluate the durable cutover evidence without changing projection
-    /// authority. Operators use this before the irreversible promotion step.
+    /// Evaluate tenant-scoped persisted promotion evidence without changing
+    /// projection authority. Missing receipt owners fail closed.
     pub async fn evaluate_projection_authority(
         &self,
         catalog: &SourceCatalog,
@@ -2304,6 +2573,7 @@ LIMIT $3
                 request.family_id(),
             )
             .await?;
+        let verification = self.verify_projection_promotion_evidence(request).await?;
         let decision = CutoverGate::new(request.policy())
             .evaluate(
                 catalog,
@@ -2313,6 +2583,7 @@ LIMIT $3
                 &receipts,
                 request.projection_lag(),
                 request.qualification(),
+                &verification,
             )
             .map_err(|error| StoreError::Conflict(error.to_string()))?;
         Ok(decision)
@@ -3177,6 +3448,99 @@ pub struct StoredAuditEventPage {
     pub partial: bool,
 }
 
+/// The identity-directory read scope: one tenant plus the Go handler's
+/// optional exact and substring filters.
+#[derive(Clone, Debug, Default)]
+pub struct IdentityDirectoryQuery {
+    pub tenant_id: String,
+    pub org_id: String,
+    pub user_id: String,
+    pub provider: String,
+    pub source: String,
+    pub status: String,
+    pub text: String,
+    pub limit: u32,
+}
+
+/// One persisted identity organization row; timestamps are microsecond
+/// RFC 3339 UTC text (empty when NULL).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredIdentityOrganization {
+    pub tenant_id: String,
+    pub org_id: String,
+    pub name: String,
+    pub slug: String,
+    pub domain: String,
+    pub provider: String,
+    pub source: String,
+    pub external_id: String,
+    pub user_count: i32,
+    pub last_synced_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// One persisted identity user row; timestamps are microsecond RFC 3339 UTC
+/// text (empty when NULL).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredIdentityUser {
+    pub tenant_id: String,
+    pub user_id: String,
+    pub org_id: String,
+    pub subject: String,
+    pub email: String,
+    pub display_name: String,
+    pub status: String,
+    pub provider: String,
+    pub source: String,
+    pub roles: Vec<String>,
+    pub groups: Vec<String>,
+    pub last_seen_at: String,
+    pub last_synced_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+const IDENTITY_SOURCE_SQL: &str = "COALESCE(NULLIF(source, ''), 'identity_directory')";
+const IDENTITY_TS_FORMAT: &str = "YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"";
+
+fn identity_exact_filter(
+    clauses: &mut Vec<String>,
+    values: &mut Vec<String>,
+    column: &str,
+    value: &str,
+) {
+    let value = value.trim();
+    if value.is_empty() {
+        return;
+    }
+    values.push(value.to_owned());
+    clauses.push(format!("{column} = ${}", values.len()));
+}
+
+fn identity_normalized_filter(
+    clauses: &mut Vec<String>,
+    values: &mut Vec<String>,
+    column: &str,
+    value: &str,
+) {
+    let value = value.trim().to_lowercase();
+    if value.is_empty() {
+        return;
+    }
+    values.push(value);
+    clauses.push(format!("LOWER({column}) = ${}", values.len()));
+}
+
+fn identity_source_filter(clauses: &mut Vec<String>, values: &mut Vec<String>, value: &str) {
+    let value = value.trim().to_lowercase();
+    if value.is_empty() {
+        return;
+    }
+    values.push(value);
+    clauses.push(format!("LOWER({IDENTITY_SOURCE_SQL}) = ${}", values.len()));
+}
+
 fn audit_event_exact_filter(
     clauses: &mut Vec<String>,
     values: &mut Vec<String>,
@@ -3220,7 +3584,7 @@ fn audit_event_text_filter(clauses: &mut Vec<String>, values: &mut Vec<String>, 
     ));
 }
 
-async fn set_tenant(
+pub(crate) async fn set_tenant(
     transaction: &tokio_postgres::Transaction<'_>,
     tenant_id: &str,
 ) -> Result<(), tokio_postgres::Error> {
@@ -3925,6 +4289,7 @@ mod tests {
             "PRIMARY KEY (tenant_id, claim_kind, claim_value)",
             "organizational_projection_outbox",
             "organizational_parity_receipts",
+            "organizational_promotion_evidence_receipts",
             "organizational_source_event_receipts",
             "organizational_legacy_projection_receipts",
             "organizational_source_collection_receipts",

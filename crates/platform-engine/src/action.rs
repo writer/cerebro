@@ -316,3 +316,72 @@ pub fn transition_action(
     next.validate()?;
     Ok(next)
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{
+        ActionEffect, ActionOperationId, ActionProposal, GraphRevision, TenantId,
+    };
+
+    use super::*;
+
+    fn proposed_operation() -> ActionOperation {
+        let mut proposal = ActionProposal {
+            operation_id: ActionOperationId::parse("operation:inline-test").unwrap(),
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            finding_id: OpaqueId::parse("finding:inline-test").unwrap(),
+            finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
+            finding_validation_receipt_digest: ContentDigest::of_bytes("finding-validation"),
+            graph_revision: GraphRevision::new(1).unwrap(),
+            action_kind: "revoke_access".to_owned(),
+            action_definition_digest: ContentDigest::of_bytes("action-definition"),
+            target_id: OpaqueId::parse("grant:inline-test").unwrap(),
+            expected_effects: vec![ActionEffect {
+                target_id: OpaqueId::parse("grant:inline-test").unwrap(),
+                effect_kind: "access_removed".to_owned(),
+                expected_state_digest: ContentDigest::of_bytes("expected-state"),
+            }],
+            rollback_ref: OpaqueId::parse("rollback:inline-test").unwrap(),
+            idempotency_key: OpaqueId::parse("idempotency:inline-test").unwrap(),
+            simulation_digest: ContentDigest::of_bytes("simulation"),
+            verification_plan_digest: ContentDigest::of_bytes("verification-plan"),
+            proposed_by: ActorId::parse("actor:inline-test").unwrap(),
+            proposed_at_unix_ms: 1,
+            proposal_expires_at_unix_ms: 100,
+            proposal_digest: ContentDigest::of_bytes("unbound"),
+        };
+        proposal.bind_computed_digest().unwrap();
+        ActionOperation {
+            proposal,
+            state: ActionState::Proposed,
+            version: 1,
+            approval_receipt: None,
+            claimed_by: None,
+            claimed_at_unix_ms: None,
+            claim_expires_at_unix_ms: None,
+            executor_actor_id: None,
+            provider_receipt_digest: None,
+            provider_status: None,
+            provider_observed_at_unix_ms: None,
+            executed_at_unix_ms: None,
+            external_receipt_ref: None,
+            observed_effect_digest: None,
+            verification_state: VerificationState::Pending,
+            verification_receipt: None,
+        }
+    }
+
+    #[test]
+    fn transition_rejects_a_stale_operation_version_without_mutating_state() {
+        let operation = proposed_operation();
+
+        assert_eq!(
+            transition_action(&operation, 2, ActionCommand::RecordSimulation),
+            Err(SdkError::Conflict(
+                "stale action operation version".to_owned()
+            ))
+        );
+        assert_eq!(operation.state, ActionState::Proposed);
+        assert_eq!(operation.version, 1);
+    }
+}

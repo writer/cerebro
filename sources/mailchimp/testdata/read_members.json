@@ -20,7 +20,6 @@
       "source_event_id": "user-f660ab91@example.test",
       "source_provider": "mailchimp",
       "source_system": "mailchimp",
-      "tenant_id": "tenant",
       "user_id": "user-f660ab91@example.test"
     }
   }

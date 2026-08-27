@@ -214,8 +214,15 @@ pub fn validate_authority_evidence(evidence: &AuthorityEvidence) -> Result<(), P
         Err(cerebro_source_catalog::AuthorityEvidenceError::Invalid("runtime_plan_digest")) => {
             Err(ProtocolError::InvalidAuthorityDigest("runtime_plan_digest"))
         }
-        Err(cerebro_source_catalog::AuthorityEvidenceError::Invalid("promotion_receipt")) => {
-            Err(ProtocolError::UnauthenticatedPromotionReceipt)
+        Err(cerebro_source_catalog::AuthorityEvidenceError::Invalid(
+            "promotion_receipt_digest_sha256",
+        )) => Err(ProtocolError::InvalidAuthorityDigest(
+            "promotion_receipt_digest_sha256",
+        )),
+        Err(cerebro_source_catalog::AuthorityEvidenceError::Invalid(field))
+            if field.ends_with("_sha256") || field == "parity_receipt_digests" =>
+        {
+            Err(ProtocolError::InvalidAuthorityDigest(field))
         }
         Err(cerebro_source_catalog::AuthorityEvidenceError::Invalid(field)) => {
             Err(ProtocolError::MissingAuthorityEvidence(vec![field]))
@@ -503,6 +510,10 @@ fn fixture_envelope(operation: SourceRuntimeOperation) -> SourceRuntimeEnvelope 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_source_catalog::{
+        PagePublicationReceiptReference, PersistedReceiptReference,
+        SourceCollectionReceiptReference,
+    };
 
     #[test]
     fn source_runtime_protocol_contract_accepts_and_rejects_expected_shapes() {
@@ -665,6 +676,27 @@ mod tests {
 
     #[test]
     fn authority_readiness_requires_complete_evidence() {
+        let Err(ProtocolError::MissingAuthorityEvidence(all_missing)) =
+            validate_authority_evidence(&AuthorityEvidence::default())
+        else {
+            panic!("empty authority evidence did not report all missing fields")
+        };
+        for field in [
+            "compiled_plan_digest",
+            "runtime_plan_digest",
+            "authenticated_collection_receipt",
+            "append_projection_checkpoint_receipt",
+            "lease_restart_receipt",
+            "product_read_receipt",
+            "promotion_receipt",
+            "parity_receipt_digests",
+        ] {
+            assert!(
+                all_missing.contains(&field),
+                "missing field {field} was omitted"
+            );
+        }
+
         let complete = AuthorityEvidence {
             plan_digest: "a".repeat(64),
             runtime_plan_digest: "b".repeat(64),
@@ -676,7 +708,10 @@ mod tests {
             response_limits: "body=1048576,decompression=4x".to_owned(),
             credential_lease_mode: "one_operation".to_owned(),
             projection_dependency: "go_projection_dependency".to_owned(),
-            rollback_receipt: "rollback:test".to_owned(),
+            rollback_receipt: PersistedReceiptReference {
+                receipt_id: "rollback-test".to_owned(),
+                receipt_digest_sha256: "c".repeat(64),
+            },
             parity_status: "passed".to_owned(),
             canonical_digest_vectors: vec![
                 "plan".to_owned(),
@@ -686,17 +721,39 @@ mod tests {
             config_safety_proof: "config:redacted".to_owned(),
             cursor_checkpoint_proof: "cursor:go-compatible".to_owned(),
             fencing_recovery_proof: "fence:rejected-stale".to_owned(),
-            worker_build_id: "source-runtime-next:test".to_owned(),
-            promotion_receipt: "sig:promotion:test".to_owned(),
-            authenticated_collection_receipt: "receipt:collection:test".to_owned(),
-            append_projection_checkpoint_receipt: "receipt:durable-commit:test".to_owned(),
-            lease_restart_receipt: "receipt:lease-restart:test".to_owned(),
-            product_read_receipt: "receipt:product-read:test".to_owned(),
+            runtime_revision_sha256: "d".repeat(64),
+            worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+            promotion_receipt: PersistedReceiptReference {
+                receipt_id: "promotion-test".to_owned(),
+                receipt_digest_sha256: "e".repeat(64),
+            },
+            authenticated_collection_receipt: SourceCollectionReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                collection_id: "collection-test".to_owned(),
+                manifest_digest_sha256: "f".repeat(64),
+            },
+            append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-test".to_owned(),
+                revision: 5,
+                snapshot_digest_sha256: "1".repeat(64),
+            },
+            lease_restart_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-restart-test".to_owned(),
+                revision: 6,
+                snapshot_digest_sha256: "2".repeat(64),
+            },
+            product_read_receipt: PersistedReceiptReference {
+                receipt_id: "product-read-test".to_owned(),
+                receipt_digest_sha256: "3".repeat(64),
+            },
+            parity_receipt_digests: vec!["4".repeat(64), "5".repeat(64), "6".repeat(64)],
         };
         validate_authority_evidence(&complete).unwrap();
 
         let mut incomplete = complete;
-        incomplete.rollback_receipt.clear();
+        incomplete.rollback_receipt.receipt_id.clear();
         incomplete.egress_allowlist.clear();
         let Err(ProtocolError::MissingAuthorityEvidence(missing)) =
             validate_authority_evidence(&incomplete)
@@ -708,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn authority_evidence_rejects_malformed_digest_and_unsigned_promotion_receipt() {
+    fn authority_evidence_rejects_malformed_plan_and_receipt_digests() {
         let complete = AuthorityEvidence {
             plan_digest: "a".repeat(64),
             runtime_plan_digest: "b".repeat(64),
@@ -720,7 +777,10 @@ mod tests {
             response_limits: "body=1048576,decompression=4x".to_owned(),
             credential_lease_mode: "one_operation".to_owned(),
             projection_dependency: "go_projection_dependency".to_owned(),
-            rollback_receipt: "rollback:test".to_owned(),
+            rollback_receipt: PersistedReceiptReference {
+                receipt_id: "rollback-test".to_owned(),
+                receipt_digest_sha256: "c".repeat(64),
+            },
             parity_status: "passed".to_owned(),
             canonical_digest_vectors: vec![
                 "plan".to_owned(),
@@ -730,12 +790,34 @@ mod tests {
             config_safety_proof: "config:redacted".to_owned(),
             cursor_checkpoint_proof: "cursor:go-compatible".to_owned(),
             fencing_recovery_proof: "fence:rejected-stale".to_owned(),
-            worker_build_id: "source-runtime-next:test".to_owned(),
-            promotion_receipt: "sig:promotion:test".to_owned(),
-            authenticated_collection_receipt: "receipt:collection:test".to_owned(),
-            append_projection_checkpoint_receipt: "receipt:durable-commit:test".to_owned(),
-            lease_restart_receipt: "receipt:lease-restart:test".to_owned(),
-            product_read_receipt: "receipt:product-read:test".to_owned(),
+            runtime_revision_sha256: "d".repeat(64),
+            worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+            promotion_receipt: PersistedReceiptReference {
+                receipt_id: "promotion-test".to_owned(),
+                receipt_digest_sha256: "e".repeat(64),
+            },
+            authenticated_collection_receipt: SourceCollectionReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                collection_id: "collection-test".to_owned(),
+                manifest_digest_sha256: "f".repeat(64),
+            },
+            append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-test".to_owned(),
+                revision: 5,
+                snapshot_digest_sha256: "1".repeat(64),
+            },
+            lease_restart_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-restart-test".to_owned(),
+                revision: 6,
+                snapshot_digest_sha256: "2".repeat(64),
+            },
+            product_read_receipt: PersistedReceiptReference {
+                receipt_id: "product-read-test".to_owned(),
+                receipt_digest_sha256: "3".repeat(64),
+            },
+            parity_receipt_digests: vec!["4".repeat(64), "5".repeat(64), "6".repeat(64)],
         };
         let mut bad_digest = complete.clone();
         bad_digest.plan_digest = "not-a-sha256".to_owned();
@@ -754,10 +836,12 @@ mod tests {
         );
 
         let mut unsigned = complete;
-        unsigned.promotion_receipt = "promotion:test".to_owned();
+        unsigned.promotion_receipt.receipt_digest_sha256 = "sig:promotion:test".to_owned();
         assert_eq!(
             validate_authority_evidence(&unsigned),
-            Err(ProtocolError::UnauthenticatedPromotionReceipt)
+            Err(ProtocolError::InvalidAuthorityDigest(
+                "promotion_receipt_digest_sha256"
+            ))
         );
     }
 
