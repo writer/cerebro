@@ -172,7 +172,25 @@ async fn persisted_promotion_rejects_fabricated_and_unverifiable_receipt_referen
         decision
             .reasons()
             .iter()
-            .any(|reason| reason == "product-read receipt verifier is unavailable")
+            .any(|reason| reason == "persisted product-read receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted promotion approval receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted rollback receipt was not found")
+    );
+    assert!(
+        decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "persisted source runtime was not found")
     );
     assert_eq!(
         ledger

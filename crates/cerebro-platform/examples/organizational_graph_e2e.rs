@@ -15,14 +15,16 @@ use cerebro_organizational_model::{
 };
 use cerebro_organizational_store::{
     CutoverPolicy, DurableGraphStore, Neo4jProjector, ParityReceipt, PostgresLedger,
-    ProjectionAuthority, ProjectionPromotionRequest,
+    ProjectionAuthority, ProjectionPromotionRequest, PromotionEvidenceReceiptKind,
+    StoredSourceRuntime,
 };
 use cerebro_source_catalog::{
     AuthorityQualificationEvidence, PagePublicationReceiptReference, PersistedReceiptReference,
     SourceCatalog, SourceCollectionReceiptReference,
 };
 use cerebro_source_runtime_next::{
-    CollectedBatch, CollectedScope, GraphSink, SourceRecord,
+    CollectedBatch, CollectedScope, GraphSink, PageProjectionReceipt, PagePublication,
+    PagePublicationInput, PublishClaim, SourceRecord,
     source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1},
 };
 use hmac::{Hmac, KeyInit, Mac};
@@ -31,7 +33,7 @@ use prost_types::Timestamp;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tokio_postgres::NoTls;
 
 const TENANT: &str = "rust-e2e";
@@ -169,13 +171,14 @@ async fn seed(config: &Config) -> Result<(), Box<dyn Error>> {
     let catalog = load_catalog(config)?;
 
     let cutover_scopes = [
-        ("okta", "user"),
-        ("slack", "user"),
-        ("auth0", "grants"),
-        ("auth0", "client_grants"),
+        ("asana", "users"),
+        ("digitalocean", "droplets"),
+        ("jumpcloud", "users"),
+        ("twilio", "accounts"),
     ];
+    seed_authority_evidence(&ledger, &catalog, &cutover_scopes).await?;
     for (source, family) in cutover_scopes {
-        prove_promotion_fail_closed(&ledger, &catalog, source, family).await?;
+        prove_and_promote(&ledger, &catalog, source, family).await?;
     }
 
     jetstream
@@ -377,7 +380,7 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
             ),
             passed(
                 "cutover_gate",
-                "four source families stayed fail-closed blocked pending persisted receipt verifier owners",
+                "four source families rejected before three matches, blocked on tampered evidence, and promoted on verified persisted receipts",
             ),
             passed(
                 "durable_stores",
@@ -670,7 +673,7 @@ async fn seed_compliance_graph(
     Ok(())
 }
 
-async fn prove_promotion_fail_closed(
+async fn prove_and_promote(
     ledger: &PostgresLedger,
     catalog: &SourceCatalog,
     source: &str,
@@ -678,59 +681,75 @@ async fn prove_promotion_fail_closed(
 ) -> Result<(), Box<dyn Error>> {
     let existing = ledger.projection_authority(TENANT, source, family).await?;
     if existing.authority == ProjectionAuthority::Rust {
-        return Err(format!(
-            "{source}.{family} is Rust-authoritative while promotion verifier owners are unavailable"
-        )
-        .into());
+        let receipt_count = ledger.parity_receipt_count(TENANT, source, family).await?;
+        if receipt_count < 3 {
+            return Err(format!(
+                "{source}.{family} is Rust-authoritative with only {receipt_count} parity receipts"
+            )
+            .into());
+        }
+        return Ok(());
     }
-    if ledger.parity_receipt_count(TENANT, source, family).await? < 3 {
-        for index in 1..=3 {
+    let receipt_count = ledger.parity_receipt_count(TENANT, source, family).await?;
+    if receipt_count < 3 {
+        for index in 1..=2 {
             ledger
                 .record_parity(&matching_receipt(source, family, index)?)
                 .await?;
         }
+        let blocked = ledger
+            .evaluate_and_promote_projection_authority(
+                catalog,
+                &promotion_request(source, family, 100)?,
+            )
+            .await;
+        if blocked.is_ok() {
+            return Err(format!("{source}.{family} promoted without three parity matches").into());
+        }
+        ledger
+            .record_parity(&matching_receipt(source, family, 3)?)
+            .await?;
     }
-    let parity_digests = (1..=3)
-        .map(|index| {
-            Ok(matching_receipt(source, family, index)?
-                .receipt_digest()
-                .to_owned())
-        })
-        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    let request = promotion_request(catalog, source, family, parity_digests, 101)?;
-    let decision = ledger
-        .evaluate_projection_authority(catalog, &request)
-        .await?;
-    if decision.is_allowed() {
-        return Err(format!(
-            "{source}.{family} promotion must stay blocked while verifier owners are unavailable"
+    let mut tampered = load_qualification(source, family)?;
+    tampered.product_read_receipt.receipt_digest_sha256 =
+        digest_hex(&["tampered-product-read", source, family]);
+    let blocked = ledger
+        .evaluate_projection_authority(
+            catalog,
+            &ProjectionPromotionRequest::new(
+                TENANT,
+                source,
+                family,
+                CutoverPolicy::new(3, 0)?,
+                0,
+                100,
+                tampered,
+            )?,
         )
-        .into());
-    }
-    if !decision
-        .reasons()
-        .iter()
-        .any(|reason| reason.ends_with("verifier is unavailable"))
-    {
+        .await?;
+    if blocked.is_allowed() {
         return Err(format!(
-            "{source}.{family} promotion is not blocked by the declared verifier boundary: {:?}",
-            decision.reasons()
+            "{source}.{family} promotion is not blocked by tampered persisted evidence"
         )
         .into());
     }
     if ledger
-        .evaluate_and_promote_projection_authority(catalog, &request)
-        .await
-        .is_ok()
+        .projection_authority(TENANT, source, family)
+        .await?
+        .authority
+        != ProjectionAuthority::Legacy
     {
-        return Err(format!(
-            "{source}.{family} promoted despite the fail-closed verifier boundary"
-        )
-        .into());
-    }
-    let after = ledger.projection_authority(TENANT, source, family).await?;
-    if after.authority != ProjectionAuthority::Legacy {
         return Err(format!("{source}.{family} authority changed on a blocked promotion").into());
+    }
+    let authority = ledger
+        .evaluate_and_promote_projection_authority(
+            catalog,
+            &promotion_request(source, family, 101)?,
+        )
+        .await
+        .map_err(|error| format!("{source}.{family} promotion failed: {error}"))?;
+    if authority.authority != ProjectionAuthority::Rust {
+        return Err(format!("{source}.{family} did not promote to Rust").into());
     }
     Ok(())
 }
@@ -753,73 +772,27 @@ fn matching_receipt(
     )?)
 }
 
-fn promotion_request(
-    catalog: &SourceCatalog,
+fn load_qualification(
     source: &str,
     family: &str,
-    parity_receipt_digests: Vec<String>,
+) -> Result<AuthorityQualificationEvidence, Box<dyn Error>> {
+    let evidence_root = PathBuf::from(env::var("CEREBRO_AUTHORITY_EVIDENCE_DIR")?);
+    let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
+    Ok(serde_json::from_slice(&fs::read(&evidence_path).map_err(
+        |error| {
+            format!(
+                "read authority evidence {}: {error}",
+                evidence_path.to_string_lossy()
+            )
+        },
+    )?)?)
+}
+
+fn promotion_request(
+    source: &str,
+    family: &str,
     promoted_at: i64,
 ) -> Result<ProjectionPromotionRequest, Box<dyn Error>> {
-    let plan_digest = catalog
-        .compiled_family_plan_digest(source, family)
-        .ok_or_else(|| format!("{source}.{family} has no compiled family plan digest"))?;
-    let runtime_plan_digest = SourceExecutionDispatcher
-        .compile_plan(&SourceExecutionSelectionRequestV1 {
-            source_id: source.to_owned(),
-            family_id: family.to_owned(),
-        })
-        .map(|plan| plan.plan_digest_sha256)
-        .unwrap_or_else(|_| plan_digest.clone());
-    let runtime = format!("{source}-e2e");
-    let qualification = AuthorityQualificationEvidence {
-        plan_digest,
-        runtime_plan_digest,
-        fixture_corpus_revision: format!("{source}-{family}-corpus-3"),
-        supported_auth_modes: vec!["api_key".to_owned()],
-        supported_pagination_grammar: vec!["cursor".to_owned()],
-        supported_provider_errors: vec!["unauthorized".to_owned()],
-        egress_allowlist: vec!["https://provider.example.test".to_owned()],
-        response_limits: "body=1048576,decompression=4x".to_owned(),
-        credential_lease_mode: "one_operation".to_owned(),
-        projection_dependency: "rust_projection".to_owned(),
-        rollback_receipt: PersistedReceiptReference {
-            receipt_id: format!("{source}-{family}-rollback"),
-            receipt_digest_sha256: "c".repeat(64),
-        },
-        parity_status: "passed".to_owned(),
-        canonical_digest_vectors: vec!["plan".to_owned()],
-        config_safety_proof: "receipt:config".to_owned(),
-        cursor_checkpoint_proof: "receipt:checkpoint".to_owned(),
-        fencing_recovery_proof: "receipt:fencing".to_owned(),
-        runtime_revision_sha256: "d".repeat(64),
-        worker_runtime_build_identity: "source-runtime-next:e2e".to_owned(),
-        promotion_receipt: PersistedReceiptReference {
-            receipt_id: format!("{source}-{family}-promotion"),
-            receipt_digest_sha256: "e".repeat(64),
-        },
-        authenticated_collection_receipt: SourceCollectionReceiptReference {
-            source_runtime_id: runtime.clone(),
-            collection_id: format!("{source}-{family}-corpus-3"),
-            manifest_digest_sha256: "f".repeat(64),
-        },
-        append_projection_checkpoint_receipt: PagePublicationReceiptReference {
-            source_runtime_id: runtime.clone(),
-            logical_page_id: format!("{source}-{family}-append"),
-            revision: 1,
-            snapshot_digest_sha256: "1".repeat(64),
-        },
-        lease_restart_receipt: PagePublicationReceiptReference {
-            source_runtime_id: runtime,
-            logical_page_id: format!("{source}-{family}-restart"),
-            revision: 2,
-            snapshot_digest_sha256: "2".repeat(64),
-        },
-        product_read_receipt: PersistedReceiptReference {
-            receipt_id: format!("{source}-{family}-product-read"),
-            receipt_digest_sha256: "3".repeat(64),
-        },
-        parity_receipt_digests,
-    };
     Ok(ProjectionPromotionRequest::new(
         TENANT,
         source,
@@ -827,8 +800,312 @@ fn promotion_request(
         CutoverPolicy::new(3, 0)?,
         0,
         promoted_at,
-        qualification,
+        load_qualification(source, family)?,
     )?)
+}
+
+/// Persists real durable evidence for every cutover scope and points
+/// `promotion_request` at it. An operator who already set
+/// `CEREBRO_AUTHORITY_EVIDENCE_DIR` (with their own seeded evidence) is left
+/// untouched: this only writes evidence and claims the variable when nothing
+/// claimed it first.
+async fn seed_authority_evidence(
+    ledger: &PostgresLedger,
+    catalog: &SourceCatalog,
+    scopes: &[(&str, &str)],
+) -> Result<(), Box<dyn Error>> {
+    if env::var_os("CEREBRO_AUTHORITY_EVIDENCE_DIR").is_some() {
+        return Ok(());
+    }
+    let evidence_root = env::temp_dir().join(format!(
+        "cerebro-organizational-graph-e2e-authority-evidence-{}",
+        now_unix_ms()?
+    ));
+    for (source, family) in scopes {
+        let qualification = seed_promotion_evidence(ledger, catalog, source, family).await?;
+        let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
+        write_json(&evidence_path, &qualification)?;
+    }
+    // SAFETY: this runs once, before `seed` publishes any event or spawns any
+    // task that reads environment variables, so no other code observes the
+    // process environment concurrently with this write.
+    #[allow(unsafe_code)]
+    unsafe {
+        env::set_var("CEREBRO_AUTHORITY_EVIDENCE_DIR", &evidence_root);
+    }
+    Ok(())
+}
+
+/// Persists every durable record `verify_projection_promotion_evidence`
+/// checks for one cutover scope, then returns the qualification that
+/// references them. Every digest is derived from the record actually
+/// persisted rather than hardcoded, so the promotion gate's re-verification
+/// of the same rows cannot help but agree with it.
+async fn seed_promotion_evidence(
+    ledger: &PostgresLedger,
+    catalog: &SourceCatalog,
+    source: &str,
+    family: &str,
+) -> Result<AuthorityQualificationEvidence, Box<dyn Error>> {
+    let plan_digest = catalog
+        .compiled_family_plan_digest(source, family)
+        .ok_or_else(|| format!("{source}.{family} is not in the source catalog"))?;
+    let runtime_plan_digest = SourceExecutionDispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: source.to_owned(),
+            family_id: family.to_owned(),
+        })?
+        .plan_digest_sha256;
+
+    let source_runtime_id = format!("{source}-e2e");
+    let runtime = StoredSourceRuntime::new(
+        SourceRuntimeId::parse(&source_runtime_id)?,
+        TenantId::parse(TENANT)?,
+        source.to_owned(),
+        BTreeMap::new(),
+        None,
+        None,
+        None,
+    )?;
+    ledger.put_source_runtime(&runtime, None).await?;
+    let runtime_revision_sha256 = digest_hex(&["runtime-revision", source, family]);
+    let worker_runtime_build_identity = format!("cerebro-source-runtime-next:e2e:{source}");
+    ledger
+        .record_source_runtime_revision(
+            runtime.runtime_id(),
+            &runtime_revision_sha256,
+            &worker_runtime_build_identity,
+        )
+        .await?;
+
+    let auth_mode = "api_key".to_owned();
+    let credential_lease_mode = "one_operation".to_owned();
+    let collection_id = format!("{source}-{family}-collection-e2e");
+    let manifest_digest = digest_hex(&["collection-manifest", TENANT, source, family]);
+    let manifest_json = json!({
+        "observed_family_ids": [family],
+        "authenticated_request_proof": {
+            "auth_mode": auth_mode,
+            "credential_lease_mode": credential_lease_mode,
+        },
+    });
+    let collected_at = now_unix_ms()?;
+    ledger
+        .record_source_collection(
+            TENANT,
+            &collection_id,
+            &source_runtime_id,
+            source,
+            collected_at,
+            collected_at + 1,
+            "complete",
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            &manifest_digest,
+            &manifest_json,
+        )
+        .await?;
+
+    let append_projection_checkpoint_receipt =
+        seed_page_publication(ledger, source, family, &source_runtime_id, "append", false).await?;
+    let lease_restart_receipt =
+        seed_page_publication(ledger, source, family, &source_runtime_id, "restart", true).await?;
+
+    let product_read_receipt = record_promotion_evidence(
+        ledger,
+        source,
+        family,
+        PromotionEvidenceReceiptKind::ProductRead,
+        "product-read",
+    )
+    .await?;
+    let promotion_receipt = record_promotion_evidence(
+        ledger,
+        source,
+        family,
+        PromotionEvidenceReceiptKind::PromotionApproval,
+        "promotion-approval",
+    )
+    .await?;
+    let rollback_receipt = record_promotion_evidence(
+        ledger,
+        source,
+        family,
+        PromotionEvidenceReceiptKind::Rollback,
+        "rollback",
+    )
+    .await?;
+
+    let parity_receipt_digests = (1..=3)
+        .map(|index| {
+            Ok(matching_receipt(source, family, index)?
+                .receipt_digest()
+                .to_owned())
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    let fixture_corpus_revision = format!("{source}-{family}-corpus-3");
+
+    Ok(AuthorityQualificationEvidence {
+        plan_digest,
+        runtime_plan_digest,
+        fixture_corpus_revision,
+        supported_auth_modes: vec![auth_mode],
+        supported_pagination_grammar: vec!["cursor".to_owned()],
+        supported_provider_errors: vec!["unauthorized".to_owned()],
+        egress_allowlist: vec![format!("https://{source}.example.test")],
+        response_limits: "body=1048576,decompression=4x".to_owned(),
+        credential_lease_mode,
+        projection_dependency: "rust_projection".to_owned(),
+        rollback_receipt,
+        parity_status: "passed".to_owned(),
+        canonical_digest_vectors: vec!["plan".to_owned()],
+        config_safety_proof: format!("receipt:config:{source}:{family}"),
+        cursor_checkpoint_proof: format!("receipt:checkpoint:{source}:{family}"),
+        fencing_recovery_proof: format!("receipt:fencing:{source}:{family}"),
+        runtime_revision_sha256,
+        worker_runtime_build_identity,
+        promotion_receipt,
+        authenticated_collection_receipt: SourceCollectionReceiptReference {
+            source_runtime_id,
+            collection_id,
+            manifest_digest_sha256: manifest_digest,
+        },
+        append_projection_checkpoint_receipt,
+        lease_restart_receipt,
+        product_read_receipt,
+        parity_receipt_digests,
+    })
+}
+
+/// Records one product-read, promotion-approval, or rollback receipt through
+/// [`PostgresLedger::record_promotion_evidence_receipt`] and returns the
+/// typed reference the qualification embeds.
+async fn record_promotion_evidence(
+    ledger: &PostgresLedger,
+    source: &str,
+    family: &str,
+    kind: PromotionEvidenceReceiptKind,
+    label: &str,
+) -> Result<PersistedReceiptReference, Box<dyn Error>> {
+    let receipt_id = format!("{source}-{family}-{label}-e2e");
+    let receipt_digest_sha256 = digest_hex(&[label, source, family]);
+    ledger
+        .record_promotion_evidence_receipt(
+            TENANT,
+            source,
+            family,
+            kind,
+            &receipt_id,
+            &receipt_digest_sha256,
+            &json!({"kind": kind.as_str(), "source_id": source, "family_id": family}),
+        )
+        .await?;
+    Ok(PersistedReceiptReference {
+        receipt_id,
+        receipt_digest_sha256,
+    })
+}
+
+/// Prepares, publishes, projects, and commits one durable page through the
+/// exact public [`PostgresLedger`] page-publication API a real collector
+/// uses, then returns the reference the qualification embeds. The restart
+/// page additionally transfers its publish claim to a successor generation
+/// so it proves the "lease/restart" successor-generation requirement rather
+/// than merely asserting it.
+async fn seed_page_publication(
+    ledger: &PostgresLedger,
+    source: &str,
+    family: &str,
+    source_runtime_id: &str,
+    label: &str,
+    restart: bool,
+) -> Result<PagePublicationReceiptReference, Box<dyn Error>> {
+    let logical_page_id = format!("{source}-{family}-{label}-e2e");
+    let mut page = PagePublication::prepare(
+        PagePublicationInput {
+            logical_page_id: logical_page_id.clone(),
+            tenant_id: TenantId::parse(TENANT)?,
+            source_runtime_id: SourceRuntimeId::parse(source_runtime_id)?,
+            source_id: source.to_owned(),
+            family_id: family.to_owned(),
+            lease_generation: 1,
+            authority_epoch: 1,
+            request_intent_sha256: digest_hex(&["request-intent", source, family, label]),
+            input_progress_sha256: digest_hex(&["input-progress", source, family, label]),
+            target_progress_sha256: digest_hex(&["target-progress", source, family, label]),
+            result_sha256: digest_hex(&["page-result", source, family, label]),
+        },
+        Vec::new(),
+    )?;
+    ledger.prepare_page_publication(&page, Vec::new()).await?;
+    let mut expected_revision = page.revision();
+
+    let first_claim = PublishClaim::new(format!("cerebro-e2e-worker-{label}-1"), 1)?;
+    page.begin_publishing(first_claim.clone())?;
+    ledger
+        .persist_page_publication(expected_revision, &page)
+        .await?;
+    expected_revision = page.revision();
+
+    let claim = if restart {
+        let successor = PublishClaim::new(format!("cerebro-e2e-worker-{label}-2"), 2)?;
+        page.transfer_claim(&first_claim, successor.clone())?;
+        ledger
+            .persist_page_publication(expected_revision, &page)
+            .await?;
+        expected_revision = page.revision();
+        successor
+    } else {
+        first_claim
+    };
+
+    page.record_projection(
+        &claim,
+        PageProjectionReceipt {
+            delta_sha256: digest_hex(&["projection-delta", source, family, label]),
+            graph_revision: 1,
+        },
+    )?;
+    ledger
+        .persist_page_publication(expected_revision, &page)
+        .await?;
+    expected_revision = page.revision();
+
+    page.commit(&claim)?;
+    ledger
+        .persist_page_publication(expected_revision, &page)
+        .await?;
+
+    let snapshot_digest_sha256 = ledger
+        .page_publication_snapshot_digest(&TenantId::parse(TENANT)?, &logical_page_id)
+        .await?
+        .ok_or_else(|| format!("page publication {logical_page_id} was not persisted"))?;
+    Ok(PagePublicationReceiptReference {
+        source_runtime_id: source_runtime_id.to_owned(),
+        logical_page_id,
+        revision: page.revision(),
+        snapshot_digest_sha256,
+    })
+}
+
+/// Domain-separated SHA-256 hex digest of bounded text parts, used to derive
+/// every synthetic evidence digest from a stable, human-legible identity
+/// instead of a hardcoded constant.
+fn digest_hex(parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn initial_events() -> Result<Vec<CommittedSourceWire>, Box<dyn Error>> {

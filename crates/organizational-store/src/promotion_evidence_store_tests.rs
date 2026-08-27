@@ -155,9 +155,112 @@ fn persisted_page_verification_requires_restart_successor_generation() {
 }
 
 #[test]
-fn unavailable_receipt_owners_block_product_read_and_approval() {
-    let reasons = unavailable_verifier_reasons();
-    assert!(reasons.contains(&"product-read receipt verifier is unavailable".to_owned()));
-    assert!(reasons.contains(&"promotion approval receipt verifier is unavailable".to_owned()));
-    assert!(reasons.contains(&"runtime revision verifier is unavailable".to_owned()));
+fn authenticated_collection_verification_rejects_missing_and_mismatched_proof() {
+    let supported = ["api_key".to_owned()];
+    assert_eq!(
+        authenticated_collection_block_reason(&serde_json::json!({}), &supported, "one_operation"),
+        Some(
+            "authenticated collection manifest does not include an authenticated request proof"
+                .to_owned()
+        )
+    );
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"credential_lease_mode": "one_operation"}}),
+            &supported,
+            "one_operation",
+        ),
+        Some("authenticated request proof does not include an auth mode".to_owned())
+    );
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"auth_mode": "oauth", "credential_lease_mode": "one_operation"}}),
+            &supported,
+            "one_operation",
+        ),
+        Some("authenticated request proof auth mode does not match qualification".to_owned())
+    );
+    let blank_alongside_real = ["api_key".to_owned(), String::new()];
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"auth_mode": "", "credential_lease_mode": "one_operation"}}),
+            &blank_alongside_real,
+            "one_operation",
+        ),
+        Some("authenticated request proof does not include an auth mode".to_owned())
+    );
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"auth_mode": "api_key"}}),
+            &supported,
+            "one_operation",
+        ),
+        Some("authenticated request proof does not include a credential lease mode".to_owned())
+    );
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"auth_mode": "api_key", "credential_lease_mode": "session"}}),
+            &supported,
+            "one_operation",
+        ),
+        Some(
+            "authenticated request proof credential lease mode does not match qualification"
+                .to_owned()
+        )
+    );
+    assert_eq!(
+        authenticated_collection_block_reason(
+            &serde_json::json!({"authenticated_request_proof": {"auth_mode": "api_key", "credential_lease_mode": "one_operation"}}),
+            &supported,
+            "one_operation",
+        ),
+        None
+    );
+}
+
+#[test]
+fn runtime_revision_verification_rejects_missing_and_mismatched_fields() {
+    let revision = "a".repeat(64);
+    assert_eq!(
+        runtime_revision_block_reason(&serde_json::json!({}), &revision, "build-1"),
+        Some("stored source runtime does not record a runtime revision".to_owned())
+    );
+    assert_eq!(
+        runtime_revision_block_reason(
+            &serde_json::json!({"runtime_revision_sha256": "b".repeat(64)}),
+            &revision,
+            "build-1",
+        ),
+        Some("stored source runtime revision does not match qualification".to_owned())
+    );
+    assert_eq!(
+        runtime_revision_block_reason(
+            &serde_json::json!({"runtime_revision_sha256": revision.clone()}),
+            &revision,
+            "build-1",
+        ),
+        Some("stored source runtime does not record a worker build identity".to_owned())
+    );
+    assert_eq!(
+        runtime_revision_block_reason(
+            &serde_json::json!({
+                "runtime_revision_sha256": revision.clone(),
+                "worker_runtime_build_identity": "build-2",
+            }),
+            &revision,
+            "build-1",
+        ),
+        Some("stored source runtime build identity does not match qualification".to_owned())
+    );
+    assert_eq!(
+        runtime_revision_block_reason(
+            &serde_json::json!({
+                "runtime_revision_sha256": revision.clone(),
+                "worker_runtime_build_identity": "build-1",
+            }),
+            &revision,
+            "build-1",
+        ),
+        None
+    );
 }

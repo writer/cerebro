@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use cerebro_source_catalog::PagePublicationReceiptReference;
+use cerebro_source_catalog::{PagePublicationReceiptReference, PersistedReceiptReference};
 use cerebro_source_runtime_next::{PagePublication, PagePublicationState};
 use serde::Serialize;
 use serde_json::Value;
@@ -22,6 +22,28 @@ pub enum VerifiedPromotionReceiptKind {
     ProductRead,
     PromotionApproval,
     Recovery,
+}
+
+/// The kind of durably persisted receipt backing a promotion qualification's
+/// product-read, promotion-approval, or rollback proof. Distinct from
+/// [`VerifiedPromotionReceiptKind`], which additionally covers receipt kinds
+/// verified against other tables (collections, page publications, parity).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromotionEvidenceReceiptKind {
+    ProductRead,
+    PromotionApproval,
+    Rollback,
+}
+
+impl PromotionEvidenceReceiptKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ProductRead => "product_read",
+            Self::PromotionApproval => "promotion_approval",
+            Self::Rollback => "rollback",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -138,7 +160,7 @@ impl PostgresLedger {
         request: &ProjectionPromotionRequest,
     ) -> Result<PromotionEvidenceVerification, StoreError> {
         let qualification = request.qualification();
-        let mut reasons = unavailable_verifier_reasons();
+        let mut reasons = Vec::new();
         let mut receipts = Vec::new();
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
@@ -190,6 +212,19 @@ impl PostgresLedger {
                     receipts.push(VerifiedPromotionReceipt::new(
                         VerifiedPromotionReceiptKind::DurableCollection,
                         collection.collection_id.clone(),
+                        manifest_digest.clone(),
+                    ));
+                }
+                if let Some(reason) = authenticated_collection_block_reason(
+                    &manifest,
+                    &qualification.supported_auth_modes,
+                    &qualification.credential_lease_mode,
+                ) {
+                    reasons.push(reason);
+                } else {
+                    receipts.push(VerifiedPromotionReceipt::new(
+                        VerifiedPromotionReceiptKind::AuthenticatedCollection,
+                        collection.collection_id.clone(),
                         manifest_digest,
                     ));
                 }
@@ -219,6 +254,91 @@ impl PostgresLedger {
             &mut receipts,
         )
         .await?;
+
+        let source_runtime_row = transaction
+            .query_opt(
+                "SELECT runtime_json FROM source_runtimes WHERE id = $1 AND runtime_json->>'tenant_id' = $2 AND runtime_json->>'source_id' = $3",
+                &[
+                    &collection.source_runtime_id,
+                    &request.tenant_id(),
+                    &request.source_id(),
+                ],
+            )
+            .await?;
+        match source_runtime_row {
+            Some(row) => {
+                let runtime_json: Value = row.get(0);
+                if let Some(reason) = runtime_revision_block_reason(
+                    &runtime_json,
+                    &qualification.runtime_revision_sha256,
+                    &qualification.worker_runtime_build_identity,
+                ) {
+                    reasons.push(reason);
+                } else {
+                    receipts.push(VerifiedPromotionReceipt::new(
+                        VerifiedPromotionReceiptKind::RuntimeRevision,
+                        qualification.runtime_revision_sha256.clone(),
+                        qualification.runtime_revision_sha256.clone(),
+                    ));
+                }
+            }
+            None => reasons.push("persisted source runtime was not found".to_owned()),
+        }
+
+        verify_promotion_evidence_receipt(
+            &transaction,
+            request,
+            &qualification.product_read_receipt,
+            VerifiedPromotionReceiptKind::ProductRead,
+            PromotionEvidenceReceiptKind::ProductRead,
+            "product-read",
+            &mut reasons,
+            &mut receipts,
+        )
+        .await?;
+        verify_promotion_evidence_receipt(
+            &transaction,
+            request,
+            &qualification.promotion_receipt,
+            VerifiedPromotionReceiptKind::PromotionApproval,
+            PromotionEvidenceReceiptKind::PromotionApproval,
+            "promotion approval",
+            &mut reasons,
+            &mut receipts,
+        )
+        .await?;
+        verify_promotion_evidence_receipt(
+            &transaction,
+            request,
+            &qualification.rollback_receipt,
+            VerifiedPromotionReceiptKind::Recovery,
+            PromotionEvidenceReceiptKind::Rollback,
+            "rollback",
+            &mut reasons,
+            &mut receipts,
+        )
+        .await?;
+
+        let evidence_references = [
+            &qualification.product_read_receipt,
+            &qualification.promotion_receipt,
+            &qualification.rollback_receipt,
+        ];
+        let distinct_ids = evidence_references
+            .iter()
+            .map(|reference| reference.receipt_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let distinct_digests = evidence_references
+            .iter()
+            .map(|reference| reference.receipt_digest_sha256.as_str())
+            .collect::<BTreeSet<_>>();
+        if distinct_ids.len() != evidence_references.len()
+            || distinct_digests.len() != evidence_references.len()
+        {
+            reasons.push(
+                "promotion evidence receipts must reference distinct persisted records".to_owned(),
+            );
+        }
 
         let parity_rows = transaction
             .query(
@@ -398,20 +518,121 @@ fn page_block_reason(
     }
 }
 
-fn json_digest(value: &Value) -> String {
+fn authenticated_collection_block_reason(
+    manifest: &Value,
+    supported_auth_modes: &[String],
+    credential_lease_mode: &str,
+) -> Option<String> {
+    let Some(proof) = manifest.get("authenticated_request_proof") else {
+        return Some(
+            "authenticated collection manifest does not include an authenticated request proof"
+                .to_owned(),
+        );
+    };
+    let Some(auth_mode) = proof
+        .get("auth_mode")
+        .and_then(Value::as_str)
+        .filter(|mode| !mode.trim().is_empty())
+    else {
+        return Some("authenticated request proof does not include an auth mode".to_owned());
+    };
+    if !supported_auth_modes.iter().any(|mode| mode == auth_mode) {
+        return Some(
+            "authenticated request proof auth mode does not match qualification".to_owned(),
+        );
+    }
+    let Some(lease_mode) = proof.get("credential_lease_mode").and_then(Value::as_str) else {
+        return Some(
+            "authenticated request proof does not include a credential lease mode".to_owned(),
+        );
+    };
+    if lease_mode != credential_lease_mode {
+        return Some(
+            "authenticated request proof credential lease mode does not match qualification"
+                .to_owned(),
+        );
+    }
+    None
+}
+
+fn runtime_revision_block_reason(
+    runtime_json: &Value,
+    runtime_revision_sha256: &str,
+    worker_runtime_build_identity: &str,
+) -> Option<String> {
+    let Some(stored_revision) = runtime_json
+        .get("runtime_revision_sha256")
+        .and_then(Value::as_str)
+    else {
+        return Some("stored source runtime does not record a runtime revision".to_owned());
+    };
+    if stored_revision != runtime_revision_sha256 {
+        return Some("stored source runtime revision does not match qualification".to_owned());
+    }
+    let Some(stored_identity) = runtime_json
+        .get("worker_runtime_build_identity")
+        .and_then(Value::as_str)
+    else {
+        return Some("stored source runtime does not record a worker build identity".to_owned());
+    };
+    if stored_identity != worker_runtime_build_identity {
+        return Some(
+            "stored source runtime build identity does not match qualification".to_owned(),
+        );
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn verify_promotion_evidence_receipt(
+    transaction: &tokio_postgres::Transaction<'_>,
+    request: &ProjectionPromotionRequest,
+    reference: &PersistedReceiptReference,
+    kind: VerifiedPromotionReceiptKind,
+    stored_kind: PromotionEvidenceReceiptKind,
+    kind_label: &str,
+    reasons: &mut Vec<String>,
+    receipts: &mut Vec<VerifiedPromotionReceipt>,
+) -> Result<(), StoreError> {
+    let row = transaction
+        .query_opt(
+            "SELECT source_id, family_id, receipt_digest FROM organizational_promotion_evidence_receipts WHERE tenant_id = $1 AND kind = $2 AND receipt_id = $3",
+            &[
+                &request.tenant_id(),
+                &stored_kind.as_str(),
+                &reference.receipt_id,
+            ],
+        )
+        .await?;
+    let Some(row) = row else {
+        reasons.push(format!("persisted {kind_label} receipt was not found"));
+        return Ok(());
+    };
+    let source_id: String = row.get(0);
+    let family_id: String = row.get(1);
+    let receipt_digest: String = row.get(2);
+    if source_id != request.source_id() || family_id != request.family_id() {
+        reasons.push(format!(
+            "persisted {kind_label} receipt does not match promotion request"
+        ));
+    } else if receipt_digest != reference.receipt_digest_sha256 {
+        reasons.push(format!(
+            "persisted {kind_label} receipt digest does not match qualification"
+        ));
+    } else {
+        receipts.push(VerifiedPromotionReceipt::new(
+            kind,
+            reference.receipt_id.clone(),
+            receipt_digest,
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn json_digest(value: &Value) -> String {
     let bytes = serde_json::to_vec(value).expect("JSON value serializes");
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn unavailable_verifier_reasons() -> Vec<String> {
-    vec![
-        "authenticated provider collection verifier is unavailable".to_owned(),
-        "runtime revision verifier is unavailable".to_owned(),
-        "product-read receipt verifier is unavailable".to_owned(),
-        "promotion approval receipt verifier is unavailable".to_owned(),
-        "rollback receipt verifier is unavailable".to_owned(),
-    ]
 }
 
 #[cfg(test)]
