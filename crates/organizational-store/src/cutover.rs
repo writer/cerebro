@@ -64,6 +64,7 @@ impl CutoverGate {
         Self { policy }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate(
         &self,
         catalog: &SourceCatalog,

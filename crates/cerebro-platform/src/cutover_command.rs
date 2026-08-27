@@ -227,6 +227,7 @@ impl CutoverBatchSummary {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn evaluate_one_family(
     ledger: &PostgresLedger,
     catalog: &SourceCatalog,
@@ -341,6 +342,7 @@ mod tests {
     use cerebro_organizational_store::ProjectionAuthority;
 
     use super::*;
+    use crate::cutover_evidence;
 
     #[tokio::test]
     #[ignore = "requires disposable PostgreSQL"]

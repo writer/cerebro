@@ -20,9 +20,10 @@ use tokio::sync::Mutex;
 use tokio_postgres::{Client, error::SqlState, types::ToSql};
 use zeroize::Zeroize;
 
+use crate::cutover::CutoverGate;
 use crate::{
-    CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
-    ProjectionAuthorityRecord, ProjectionPromotionRequest,
+    CutoverDecision, ParityReceipt, ParityStatus, ProjectionAuthority, ProjectionAuthorityRecord,
+    ProjectionPromotionRequest,
 };
 use crate::{
     StoreError,

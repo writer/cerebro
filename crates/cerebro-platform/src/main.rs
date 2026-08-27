@@ -5047,7 +5047,6 @@ mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         },
-        time::{SystemTime, UNIX_EPOCH},
     };
 
     use async_trait::async_trait;

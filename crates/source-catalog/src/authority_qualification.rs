@@ -319,54 +319,55 @@ mod tests {
 
     #[test]
     fn opaque_receipt_labels_are_not_accepted_as_digests() {
-        let mut evidence = AuthorityQualificationEvidence::default();
-        evidence.plan_digest = "a".repeat(64);
-        evidence.runtime_plan_digest = "b".repeat(64);
-        evidence.fixture_corpus_revision = "fixtures:v1".to_owned();
-        evidence.supported_auth_modes = vec!["api_key".to_owned()];
-        evidence.supported_pagination_grammar = vec!["cursor".to_owned()];
-        evidence.supported_provider_errors = vec!["rate_limited".to_owned()];
-        evidence.egress_allowlist = vec!["https://provider.example.test".to_owned()];
-        evidence.response_limits = "body=1048576".to_owned();
-        evidence.credential_lease_mode = "one_operation".to_owned();
-        evidence.projection_dependency = "rust_projection".to_owned();
-        evidence.parity_status = "passed".to_owned();
-        evidence.canonical_digest_vectors = vec!["vector".to_owned()];
-        evidence.config_safety_proof = "receipt:config".to_owned();
-        evidence.cursor_checkpoint_proof = "receipt:checkpoint".to_owned();
-        evidence.fencing_recovery_proof = "receipt:fencing".to_owned();
-        evidence.runtime_revision_sha256 = "c".repeat(64);
-        evidence.worker_runtime_build_identity = "source-runtime-next:test".to_owned();
-        evidence.rollback_receipt = PersistedReceiptReference {
-            receipt_id: "rollback".to_owned(),
-            receipt_digest_sha256: "sig:rollback".to_owned(),
+        let evidence = AuthorityQualificationEvidence {
+            plan_digest: "a".repeat(64),
+            runtime_plan_digest: "b".repeat(64),
+            fixture_corpus_revision: "fixtures:v1".to_owned(),
+            supported_auth_modes: vec!["api_key".to_owned()],
+            supported_pagination_grammar: vec!["cursor".to_owned()],
+            supported_provider_errors: vec!["rate_limited".to_owned()],
+            egress_allowlist: vec!["https://provider.example.test".to_owned()],
+            response_limits: "body=1048576".to_owned(),
+            credential_lease_mode: "one_operation".to_owned(),
+            projection_dependency: "rust_projection".to_owned(),
+            parity_status: "passed".to_owned(),
+            canonical_digest_vectors: vec!["vector".to_owned()],
+            config_safety_proof: "receipt:config".to_owned(),
+            cursor_checkpoint_proof: "receipt:checkpoint".to_owned(),
+            fencing_recovery_proof: "receipt:fencing".to_owned(),
+            runtime_revision_sha256: "c".repeat(64),
+            worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+            rollback_receipt: PersistedReceiptReference {
+                receipt_id: "rollback".to_owned(),
+                receipt_digest_sha256: "sig:rollback".to_owned(),
+            },
+            promotion_receipt: PersistedReceiptReference {
+                receipt_id: "promotion".to_owned(),
+                receipt_digest_sha256: "d".repeat(64),
+            },
+            authenticated_collection_receipt: SourceCollectionReceiptReference {
+                source_runtime_id: "runtime".to_owned(),
+                collection_id: "collection".to_owned(),
+                manifest_digest_sha256: "e".repeat(64),
+            },
+            append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime".to_owned(),
+                logical_page_id: "page".to_owned(),
+                revision: 1,
+                snapshot_digest_sha256: "f".repeat(64),
+            },
+            lease_restart_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime".to_owned(),
+                logical_page_id: "restart".to_owned(),
+                revision: 2,
+                snapshot_digest_sha256: "1".repeat(64),
+            },
+            product_read_receipt: PersistedReceiptReference {
+                receipt_id: "product-read".to_owned(),
+                receipt_digest_sha256: "2".repeat(64),
+            },
+            parity_receipt_digests: vec!["3".repeat(64)],
         };
-        evidence.promotion_receipt = PersistedReceiptReference {
-            receipt_id: "promotion".to_owned(),
-            receipt_digest_sha256: "d".repeat(64),
-        };
-        evidence.authenticated_collection_receipt = SourceCollectionReceiptReference {
-            source_runtime_id: "runtime".to_owned(),
-            collection_id: "collection".to_owned(),
-            manifest_digest_sha256: "e".repeat(64),
-        };
-        evidence.append_projection_checkpoint_receipt = PagePublicationReceiptReference {
-            source_runtime_id: "runtime".to_owned(),
-            logical_page_id: "page".to_owned(),
-            revision: 1,
-            snapshot_digest_sha256: "f".repeat(64),
-        };
-        evidence.lease_restart_receipt = PagePublicationReceiptReference {
-            source_runtime_id: "runtime".to_owned(),
-            logical_page_id: "restart".to_owned(),
-            revision: 2,
-            snapshot_digest_sha256: "1".repeat(64),
-        };
-        evidence.product_read_receipt = PersistedReceiptReference {
-            receipt_id: "product-read".to_owned(),
-            receipt_digest_sha256: "2".repeat(64),
-        };
-        evidence.parity_receipt_digests = vec!["3".repeat(64)];
 
         assert_eq!(
             validate_authority_qualification_evidence(&evidence),

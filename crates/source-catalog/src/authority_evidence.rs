@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    AuthorityQualificationEvidence, PagePublicationReceiptReference, PersistedReceiptReference,
-    SourceCollectionReceiptReference, authority_qualification_digest,
+    AuthorityQualificationEvidence, authority_qualification_digest,
     validate_authority_qualification_evidence,
 };
 
@@ -249,6 +248,10 @@ fn is_sha256_hex(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        PagePublicationReceiptReference, PersistedReceiptReference,
+        SourceCollectionReceiptReference,
+    };
 
     #[test]
     fn authority_evidence_stream_is_append_only_queryable_and_validated() {
