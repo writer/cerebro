@@ -1,78 +1,82 @@
 package sourceprojection
 
 import (
+	"errors"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func oneloginUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "onelogin"})
+var errOneloginRustProjectionRequired = errors.New("onelogin projection requires Rust authority")
+
+func oneloginUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginGroupsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginRolesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginAppsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityApplicationProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginAppsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginAuditEventsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginPrivilegesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginPrivilegesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginMappingsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityPolicyRuleProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginMappingsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginUserAppsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAppAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginUserAppsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginUserPrivilegesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginUserPrivilegesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginDelegatedPrivilegesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginDelegatedPrivilegesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginMFADevicesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityCredentialProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginMFADevicesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginRoleUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginRoleUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginRoleAdminsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginRoleAdminsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginRoleAppsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAppAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginRoleAppsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginAppUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAppAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginAppUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginAppRulesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityPolicyRuleProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginAppRulesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginPrivilegeUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginPrivilegeUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }
 
-func oneloginPrivilegeRolesProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, identityProjectionProfile{Provider: "onelogin"})
+func oneloginPrivilegeRolesProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errOneloginRustProjectionRequired
 }

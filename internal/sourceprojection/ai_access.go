@@ -17,142 +17,33 @@ type aiInviteProjectMembership struct {
 	Role      string
 }
 
-var (
-	anthropicAccessProfile = aiAccessProfile{Provider: "anthropic"}
-	langChainAccessProfile = aiAccessProfile{Provider: "langchain"}
-	langfuseAccessProfile  = aiAccessProfile{Provider: "langfuse"}
-)
+var langfuseAccessProfile = aiAccessProfile{Provider: "langfuse"}
 
-func anthropicUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUserProjections(event, anthropicAccessProfile)
-}
-
-func langChainOrganizationMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUserProjections(event, langChainAccessProfile)
-}
-
-func anthropicProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectProjections(event, anthropicAccessProfile)
-}
-
-func langChainProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectProjections(event, langChainAccessProfile)
-}
+// anthropic and langchain used to have their own profile-based wrappers here
+// (anthropicAccessProfile, langChainAccessProfile). Both sources became fully
+// Rust-authoritative and their Go projection writers were retired
+// (internal/sourceprojection/anthropic.go, internal/sourceprojection/langchain.go
+// now fail closed under those exact function names), so the wrappers were
+// removed from this file to avoid redeclaring them. Test coverage for the
+// generic helpers below via anthropic's richer fixture shapes now runs
+// through the anthropicOracle* wrappers in openai_oracle_test.go, the same
+// pattern already used to keep exercising this shared logic after OpenAI's
+// own Go projection writer was retired.
 
 func langfuseProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiProjectProjections(event, langfuseAccessProfile)
-}
-
-func anthropicProjectCollaboratorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectCollaboratorProjections(event, anthropicAccessProfile)
 }
 
 func langfuseProjectMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiProjectCollaboratorProjections(event, langfuseAccessProfile)
 }
 
-func anthropicOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiOrganizationProjections(event, anthropicAccessProfile)
-}
-
-func langChainOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiOrganizationProjections(event, langChainAccessProfile)
-}
-
-func anthropicInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiInviteProjections(event, anthropicAccessProfile)
-}
-
-func anthropicWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiWorkspaceProjections(event, anthropicAccessProfile)
-}
-
-func langChainWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiWorkspaceProjections(event, langChainAccessProfile)
-}
-
-func anthropicWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedUserAccessProjections(event, anthropicAccessProfile, "workspace")
-}
-
-func langChainWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedUserAccessProjections(event, langChainAccessProfile, "workspace")
-}
-
-func anthropicComplianceGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupRoleAssignmentProjections(event, anthropicAccessProfile)
-}
-
-func anthropicComplianceGroupMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupMembershipProjections(event, anthropicAccessProfile)
-}
-
-func anthropicServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiServiceAccountProjections(event, anthropicAccessProfile, "organization")
-}
-
-func langChainServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiServiceAccountProjections(event, langChainAccessProfile, "organization")
-}
-
-func anthropicCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiCredentialProjections(event, anthropicAccessProfile)
-}
-
-func langChainCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiCredentialProjections(event, langChainAccessProfile)
-}
-
 func langfuseCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiCredentialProjections(event, langfuseAccessProfile)
 }
 
-func anthropicComplianceRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedRoleProjections(event, anthropicAccessProfile)
-}
-
-func langChainRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedRoleProjections(event, langChainAccessProfile)
-}
-
-func anthropicComplianceRolePermissionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiRolePermissionProjections(event, anthropicAccessProfile)
-}
-
-func anthropicGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGovernanceControlProjections(event, anthropicAccessProfile)
-}
-
-func langChainGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGovernanceControlProjections(event, langChainAccessProfile)
-}
-
-func anthropicUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUsageMetricProjections(event, anthropicAccessProfile)
-}
-
-func langChainUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUsageMetricProjections(event, langChainAccessProfile)
-}
-
 func langfuseUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiUsageMetricProjections(event, langfuseAccessProfile)
-}
-
-func anthropicFederationIssuerProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiFederationIssuerProjections(event, anthropicAccessProfile)
-}
-
-func anthropicFederationRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiFederationRuleProjections(event, anthropicAccessProfile)
-}
-
-func anthropicComplianceActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiAuditProjections(event, anthropicAccessProfile)
-}
-
-func langChainAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiAuditProjections(event, langChainAccessProfile)
 }
 
 func aiUserProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

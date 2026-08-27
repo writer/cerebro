@@ -541,8 +541,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"kubernetes.pod":                                kubernetesPodProjections,
 	"langchain.api_key":                             langChainCredentialProjections,
 	"langchain.audit_log":                           langChainAuditProjections,
-	"langchain.dataset":                             genericInventoryProjections,
-	"langchain.feedback":                            genericInventoryProjections,
+	"langchain.dataset":                             langChainDatasetProjections,
+	"langchain.feedback":                            langChainFeedbackProjections,
 	"langchain.organization":                        langChainOrganizationProjections,
 	"langchain.organization_member":                 langChainOrganizationMemberProjections,
 	"langchain.project":                             langChainProjectProjections,
@@ -5084,21 +5084,28 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"snowflake.cortex_search_services": snowflakeCortexSearchServicesProjections,
 	"snowflake.vulnerabilities":        snowflakeVulnerabilitiesProjections,
 
-	// snyk generated projectors (sourcegen promotion)
-	"snyk.groups":                      genericInventoryProjections,
-	"snyk.orgs":                        genericInventoryProjections,
-	"snyk.projects":                    genericInventoryProjections,
-	"snyk.targets":                     genericInventoryProjections,
+	// snyk generated projectors (sourcegen promotion). snyk.groups, snyk.orgs,
+	// snyk.projects, snyk.targets, snyk.collections, snyk.cloud_environments,
+	// and snyk.cloud_scans used to dispatch straight to the shared
+	// genericInventoryProjections fallback (still used by other sources'
+	// generic inventory kinds). Snyk's Go projection writer was retired to
+	// Rust authority (internal/sourceprojection/snyk.go now fails closed for
+	// every snyk.* kind), so these must route through the snyk stub too,
+	// rather than continuing to produce entities via the shared fallback.
+	"snyk.groups":                      snykInventoryProjections,
+	"snyk.orgs":                        snykInventoryProjections,
+	"snyk.projects":                    snykInventoryProjections,
+	"snyk.targets":                     snykInventoryProjections,
 	"snyk.assets":                      snykAssetsProjections,
 	"snyk.findings":                    snykFindingsProjections,
 	"snyk.vulnerabilities":             snykVulnerabilitiesProjections,
 	"snyk.org_memberships":             snykOrgMembershipsProjections,
 	"snyk.service_accounts":            snykServiceAccountsProjections,
 	"snyk.audit_logs":                  snykAuditLogsProjections,
-	"snyk.collections":                 genericInventoryProjections,
-	"snyk.cloud_environments":          genericInventoryProjections,
+	"snyk.collections":                 snykInventoryProjections,
+	"snyk.cloud_environments":          snykInventoryProjections,
 	"snyk.cloud_resources":             snykCloudResourcesProjections,
-	"snyk.cloud_scans":                 genericInventoryProjections,
+	"snyk.cloud_scans":                 snykInventoryProjections,
 	"snyk.group_memberships":           snykGroupMembershipsProjections,
 	"snyk.group_service_accounts":      snykGroupServiceAccountsProjections,
 	"snyk.group_audit_logs":            snykGroupAuditLogsProjections,

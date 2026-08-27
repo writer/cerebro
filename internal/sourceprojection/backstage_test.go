@@ -7,20 +7,18 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestMailchimpGoProjectionFailsClosedForRustAuthoritativeFamilies(t *testing.T) {
+func TestBackstageGoProjectionFailsClosedForRustAuthoritativeFamilies(t *testing.T) {
 	for _, kind := range []string{
-		"mailchimp.audit_events",
-		"mailchimp.lists",
-		"mailchimp.members",
+		"backstage.component",
 	} {
 		t.Run(kind, func(t *testing.T) {
 			entities, links, err := ProjectEvent(&cerebrov1.EventEnvelope{
 				Id:       "event-1",
 				TenantId: "tenant",
-				SourceId: "mailchimp",
+				SourceId: "backstage",
 				Kind:     kind,
 			})
-			if !errors.Is(err, errMailchimpRustProjectionRequired) {
+			if !errors.Is(err, errBackstageRustProjectionRequired) {
 				t.Fatalf("ProjectEvent() error = %v", err)
 			}
 			if len(entities) != 0 || len(links) != 0 {
