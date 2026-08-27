@@ -1,0 +1,59 @@
+name: Agent-ready task
+description: A scoped task specified tightly enough for a coding agent to execute without follow-up questions.
+title: "[agent-ready] "
+labels: ["agent-ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An agent-ready issue is a work order: it names the change, proves the
+        current behavior, and defines done. If you cannot fill in the
+        acceptance criteria, the issue is not agent-ready yet.
+        Do not include tenant names, environment details, hostnames, account
+        IDs, finding examples, or other operational data — this is a public
+        repository.
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: The specific change requested, scoped to one PR.
+      placeholder: e.g. Close stale posture findings when the owning resource reports a deprovisioned snapshot.
+    validations:
+      required: true
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior and evidence
+      description: What happens today, with file/package references or a failing command (sanitized).
+      placeholder: |
+        internal/findings/... currently ...
+        Repro: go test ./internal/findings -run TestX -count=1
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable statements that define done, including the tests that must exist.
+      placeholder: |
+        - [ ] ...
+        - [ ] Regression test covering ...
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation commands
+      description: Commands whose success proves the change (focused tests plus the relevant make checks).
+      placeholder: |
+        go test ./internal/... -count=1
+        make changed-check
+    validations:
+      required: true
+  - type: textarea
+    id: scope-boundaries
+    attributes:
+      label: Out of scope
+      description: What the agent must not touch, including any docs/engineering/non-goals.md entries that border this task.
+    validations:
+      required: false
