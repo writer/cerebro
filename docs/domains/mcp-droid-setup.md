@@ -185,6 +185,23 @@ http://localhost:53682/callback
 
 Only configure a static `oauth.clientId` when that client is known to allow the exact Droid redirect URI and requested scopes.
 
+## Claude Code client configuration
+
+The repo checks in a project-scoped `.mcp.json` that points Claude Code at a
+local Cerebro instance, so agents working on this repo can query the graph,
+findings, and evidence surfaces they are modifying. Claude Code prompts each
+user to approve the server on first use.
+
+- Default target: `http://127.0.0.1:8080/api/v1/mcp` with the local dev key
+  and the `task` toolset. `make agent-onboard-e2e` (or a locally served
+  build) provides the instance.
+- Override the target with `CEREBRO_MCP_URL` and the credential with
+  `CEREBRO_API_KEY` in your environment; the checked-in file contains no
+  secrets and no environment-specific endpoints.
+
+The same endpoint contract, toolset headers, and compatibility rules above
+apply to Claude Code as to any other Streamable HTTP MCP client.
+
 ## Instant source preview tools
 
 The source-preview tools work before durable stores are configured:
