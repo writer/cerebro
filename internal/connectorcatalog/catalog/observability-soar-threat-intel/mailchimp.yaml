@@ -62,9 +62,6 @@ entries:
             page_size: 100
             type: offset
           path: /lists
-          config:
-            config_attributes:
-              tenant_id: tenant_id
           projection:
             fields:
               description: permission_reminder
@@ -104,9 +101,6 @@ entries:
             page_size: 100
             type: offset
           path: /lists/${config.list_id}/members
-          config:
-            config_attributes:
-              tenant_id: tenant_id
           projection:
             fields:
               display_name: full_name|email_address
@@ -147,8 +141,6 @@ entries:
             type: offset
           path: /activity-feed/chimp-chatter
           config:
-            config_attributes:
-              tenant_id: tenant_id
             encode_urn_id: true
             identity_keys: [campaign_id, list_id, url, message]
           projection:

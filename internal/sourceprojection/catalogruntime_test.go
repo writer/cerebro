@@ -34,27 +34,30 @@ func TestBuiltinRegistryRegistersGenerateableCatalogProjectors(t *testing.T) {
 }
 
 func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
-	projector := BuiltinRegistry().projectors["akeneo.asset"]
+	// akeneo.asset was retired to Rust authority (fails closed in Go); this
+	// oracle now runs on dropbox_business.content_assets, which uses the same
+	// generic asset projection template and is not in a retirement lane.
+	projector := BuiltinRegistry().projectors["dropbox_business.content_assets"]
 	if projector == nil {
-		t.Fatal("BuiltinRegistry() missing akeneo.asset projector")
+		t.Fatal("BuiltinRegistry() missing dropbox_business.content_assets projector")
 	}
 	entities, links, err := projector(&cerebrov1.EventEnvelope{
-		Id:       "event-akeneo-asset-1",
+		Id:       "event-dropbox-business-content-assets-1",
 		TenantId: "tenant",
-		SourceId: "akeneo",
-		Kind:     "akeneo.asset",
+		SourceId: "dropbox_business",
+		Kind:     "dropbox_business.content_assets",
 		Attributes: map[string]string{
 			"resource_id":                       "asset-123",
 			"resource_name":                     "Laptop fleet",
 			"resource_type":                     "asset",
-			ports.EventAttributeSourceRuntimeID: "akeneo-runtime",
+			ports.EventAttributeSourceRuntimeID: "dropbox-business-runtime",
 		},
 	})
 	if err != nil {
-		t.Fatalf("akeneo asset projector error = %v", err)
+		t.Fatalf("dropbox_business content_assets projector error = %v", err)
 	}
 	if len(links) != 0 {
-		t.Fatalf("akeneo asset projector links = %#v, want none without evidence", links)
+		t.Fatalf("dropbox_business content_assets projector links = %#v, want none without evidence", links)
 	}
 	wantURN := "urn:cerebro:tenant:runtime_asset:asset-123"
 	var got *ports.ProjectedEntity
@@ -70,8 +73,8 @@ func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
 	if got.EntityType != "runtime.asset" {
 		t.Fatalf("entity type = %q, want runtime.asset", got.EntityType)
 	}
-	if got.Attributes[ports.EventAttributeSourceRuntimeID] != "akeneo-runtime" {
-		t.Fatalf("source runtime attr = %q, want akeneo-runtime", got.Attributes[ports.EventAttributeSourceRuntimeID])
+	if got.Attributes[ports.EventAttributeSourceRuntimeID] != "dropbox-business-runtime" {
+		t.Fatalf("source runtime attr = %q, want dropbox-business-runtime", got.Attributes[ports.EventAttributeSourceRuntimeID])
 	}
 }
 
@@ -1001,26 +1004,34 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 		}
 	})
 
-	t.Run("hashicorp_vault secrets belongs_to vault", func(t *testing.T) {
-		projector := registry.projectors["hashicorp_vault.secrets"]
+	// hashicorp_vault secrets belongs_to vault was covered here before
+	// hashicorp_vault.secrets became fully Rust-authoritative and its Go
+	// projection writer was retired (writer/cerebro#2822), at which point
+	// the registered projector always fails closed and can no longer reach
+	// this relationship-augmentation layer. pagerduty.integration is a
+	// still-live provider exercising the identical single-event,
+	// relationship-synthesizes-the-target-entity semantics.
+	t.Run("pagerduty integration belongs_to service", func(t *testing.T) {
+		projector := registry.projectors["pagerduty.integration"]
 		if projector == nil {
-			t.Fatal("missing registered projector for hashicorp_vault.secrets")
+			t.Fatal("missing registered projector for pagerduty.integration")
 		}
 		_, links, err := projector(&cerebrov1.EventEnvelope{
 			Id:       "event-1",
 			TenantId: "tenant",
-			SourceId: "hashicorp_vault",
-			Kind:     "hashicorp_vault.secrets",
+			SourceId: "pagerduty",
+			Kind:     "pagerduty.integration",
 			Attributes: map[string]string{
-				"secret_id":   "secret-1",
-				"secret_name": "kv/db",
-				"vault_id":    "kv",
+				"integration_id": "integration-1",
+				"name":           "Datadog",
+				"service_id":     "service-1",
+				"service_name":   "API",
 			},
 		})
 		if err != nil {
-			t.Fatalf("hashicorp_vault.secrets projector error = %v", err)
+			t.Fatalf("pagerduty.integration projector error = %v", err)
 		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+		if !projectedLinksContain(links, "urn:cerebro:tenant:pagerduty_integration:integration-1", relationBelongsTo, "urn:cerebro:tenant:pagerduty_service:service-1") {
 			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
 		}
 	})

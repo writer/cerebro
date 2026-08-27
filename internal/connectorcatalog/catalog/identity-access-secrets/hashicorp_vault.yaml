@@ -71,8 +71,7 @@ entries:
           config:
             static_query:
               list: "true"
-            config_attributes:
-              tenant_id: tenant_id
+            config_attributes: {}
           projection:
             fields:
               display_name: entity.name|name
@@ -127,8 +126,7 @@ entries:
           method: GET
           path: /v1/sys/mounts
           config:
-            config_attributes:
-              tenant_id: tenant_id
+            config_attributes: {}
           projection:
             entity:
               entity_type: secret
@@ -192,8 +190,7 @@ entries:
           method: GET
           path: /v1/sys/audit
           config:
-            config_attributes:
-              tenant_id: tenant_id
+            config_attributes: {}
           projection:
             fields:
               id: id
