@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -224,7 +225,14 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 	renewCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	interval := LeaseRenewalInterval(ttl)
-	go func() {
+	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
+		defer close(done)
+		defer func() {
+			select {
+			case done <- panicsafe.ErrTaskPanicked:
+			default:
+			}
+		}()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -246,7 +254,7 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 				}
 			}
 		}
-	}()
+	})
 	return func() error {
 		cancel()
 		return <-done
@@ -290,7 +298,14 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 	workCtx, cancelWork := context.WithCancel(ctx)
 	renewCtx, cancelRenew := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() {
+	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
+		defer close(done)
+		defer func() {
+			select {
+			case done <- panicsafe.ErrTaskPanicked:
+			default:
+			}
+		}()
 		ticker := time.NewTicker(LeaseRenewalInterval(ttl))
 		defer ticker.Stop()
 		for {
@@ -320,7 +335,7 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 				}
 			}
 		}
-	}()
+	})
 	var (
 		releaseOnce sync.Once
 		releaseErr  error
