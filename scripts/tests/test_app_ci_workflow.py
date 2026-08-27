@@ -26,10 +26,22 @@ class AppCIWorkflowTests(unittest.TestCase):
     def test_core_matrices_use_the_tested_scope(self):
         self.assertEqual(
             self.workflow.count("if: needs.ci-scope.outputs.core == 'true'"),
-            5,
+            6,
         )
-        for job in ("verify-shard", "go-lint-shard", "catalog-shard", "go-test-shard", "go-race-shard"):
+        for job in ("verify-shard", "go-lint-shard", "catalog-shard", "go-test-shard", "go-race-shard", "go-race-changed"):
             self.assertIn(f"  {job}:\n", self.workflow)
+
+    def test_pull_requests_race_only_changed_packages_and_main_keeps_full_shards(self):
+        self.assertIn(
+            "if: needs.ci-scope.outputs.core == 'true' && github.event_name != 'pull_request'",
+            self.workflow,
+        )
+        self.assertIn(
+            "if: needs.ci-scope.outputs.core == 'true' && github.event_name == 'pull_request'",
+            self.workflow,
+        )
+        self.assertIn("--print-go-packages", self.workflow)
+        self.assertIn('go test -race "${packages[@]}" -count=1', self.workflow)
 
     def test_scope_diff_includes_every_change_type_and_both_rename_paths(self):
         self.assertIn(

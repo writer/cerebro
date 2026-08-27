@@ -1,6 +1,9 @@
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import scripts.changed_checks as changed
 from scripts.embedded_wasm import EMBEDDED_WASM_MODULES
@@ -212,6 +215,22 @@ class ChangedChecksTests(unittest.TestCase):
             go_tests = [command for command in commands if command.name == "go-test-changed-packages"]
             self.assertEqual(len(go_tests), 1)
             self.assertIn("./internal/demo", go_tests[0].argv)
+
+    def test_print_go_packages_uses_validated_package_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_dir = root / "internal" / "demo"
+            package_dir.mkdir(parents=True)
+            (package_dir / "demo.go").write_text("package demo\n", encoding="utf-8")
+            stdout = io.StringIO()
+            with (
+                mock.patch.object(changed, "changed_files", return_value=["internal/demo/demo.go"]),
+                mock.patch("sys.argv", ["changed_checks.py", "--repo", str(root), "--print-go-packages"]),
+                contextlib.redirect_stdout(stdout),
+            ):
+                exit_code = changed.main()
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stdout.getvalue(), "./internal/demo\n")
 
     def test_go_files_under_nested_modules_do_not_select_root_package_tests(self):
         with tempfile.TemporaryDirectory() as tmp:

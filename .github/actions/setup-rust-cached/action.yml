@@ -1,0 +1,73 @@
+name: Set up cached Rust toolchain
+description: Install the repository Rust toolchain and restore shared Cargo caches.
+
+inputs:
+  cache-scope:
+    description: Stable cache namespace for the owning job.
+    required: false
+    default: shared
+  components:
+    description: Comma-separated rustup components.
+    required: false
+    default: ""
+  target:
+    description: Optional rustup compilation target.
+    required: false
+    default: ""
+  install-policy-tools:
+    description: Install the pinned dependency-policy and coverage tools.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      shell: bash
+      env:
+        COMPONENTS: ${{ inputs.components }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        args=(toolchain install 1.93.1 --profile minimal)
+        if [ -n "${COMPONENTS}" ]; then
+          args+=(--component "${COMPONENTS}")
+        fi
+        if [ -n "${TARGET}" ]; then
+          args+=(--target "${TARGET}")
+        fi
+        rustup "${args[@]}"
+
+    - name: Restore Rust build data
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/bin/cargo-deny
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          target
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-v2-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2-cargo-llvm-cov-0.8.7
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-rust-v2-${{ inputs.cache-scope }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v2-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v1-
+
+    - name: Install Rust dependency policy tool
+      if: inputs.install-policy-tools == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
+          cargo install cargo-deny --version 0.20.2 --locked
+        fi
+
+    - name: Install Rust coverage tool
+      if: inputs.install-policy-tools == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! cargo llvm-cov --version 2>/dev/null | grep -Fxq 'cargo-llvm-cov 0.8.7'; then
+          cargo install cargo-llvm-cov --version 0.8.7 --locked
+        fi
