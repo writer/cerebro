@@ -144,3 +144,34 @@ fn change_for_key(
             .map_or(0, |value| value.observed_at_unix_millis),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_must_be_bound_to_the_current_snapshot_diff_digest() {
+        let before = RevisionSnapshot {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            revision: GraphRevision::new(1).unwrap(),
+            values: BTreeMap::new(),
+        };
+        let after = RevisionSnapshot {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            revision: GraphRevision::new(2).unwrap(),
+            values: BTreeMap::new(),
+        };
+        let request = GraphDiffRequest {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            from_revision: GraphRevision::new(1).unwrap(),
+            to_revision: RevisionSelector::Exact(GraphRevision::new(2).unwrap()),
+            limit: 1,
+            cursor: Some("0:stale-digest".to_owned()),
+        };
+
+        assert_eq!(
+            diff_snapshots(&request, &before, &after),
+            Err(SdkError::Invalid("graph diff cursor"))
+        );
+    }
+}

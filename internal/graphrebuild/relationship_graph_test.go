@@ -61,21 +61,26 @@ func TestRebuildDryRunMergesDopplerSecretProjectWithoutFragmentation(t *testing.
 	}
 }
 
-// TestRebuildDryRunLinksHashicorpVaultSecretToMount pins the relationship
-// Vault can prove from /sys/mounts: a secret engine belongs to its mounted
-// Vault engine, with no identity fragmentation.
-func TestRebuildDryRunLinksHashicorpVaultSecretToMount(t *testing.T) {
+// TestRebuildDryRunSynthesizesDopplerProjectFromSecretRelationship pins the
+// single-event relationship-synthesis case previously covered by HashiCorp
+// Vault's secret-belongs-to-mount edge (retired along with its Go projection
+// writer once the family became fully Rust-authoritative, see
+// writer/cerebro#2822): a lone doppler.secrets event carries only project_id,
+// with no separate project event, and the catalog-declared secret_project
+// relationship must still synthesize the doppler.project entity and link to
+// it, with no identity fragmentation.
+func TestRebuildDryRunSynthesizesDopplerProjectFromSecretRelationship(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
-		testRuntimeEvent("vault-secret-1", "hashicorp_vault.secrets", "writer-vault", map[string]string{
-			"secret_id":   "vsecret-1",
-			"secret_name": "kv/",
-			"vault_id":    "kv",
+		testRuntimeEvent("doppler-secret-1", "doppler.secrets", "writer-doppler", map[string]string{
+			"secret_id":   "secret-1",
+			"secret_name": "DATABASE_URL",
+			"project_id":  "proj-1",
 		}),
 	}
-	result := replayDryRun(t, "writer-vault", "hashicorp_vault", events)
+	result := replayDryRun(t, "writer-doppler", "doppler", events)
 
-	vaultURN := "urn:cerebro:writer:hashicorp_vault_vault:kv"
-	if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:vsecret-1", "belongs_to", vaultURN) {
+	projectURN := "urn:cerebro:writer:doppler_project:proj-1"
+	if !containsLink(result.PreviewLinks, "urn:cerebro:writer:secret:secret-1", "belongs_to", projectURN) {
 		t.Fatalf("missing belongs_to edge: %#v", result.PreviewLinks)
 	}
 	if !containsAssertion(result.GraphAssertions, "cross_kind_identity_fragmentation", 0, 0, true) {

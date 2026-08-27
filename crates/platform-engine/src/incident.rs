@@ -53,3 +53,40 @@ pub fn package_incident_snapshot(
     snapshot.validate()?;
     Ok(snapshot)
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{EntityId, IncidentSnapshotId};
+
+    use super::*;
+
+    fn manifest_with_digest(digest: ContentDigest) -> IncidentSnapshotManifest {
+        IncidentSnapshotManifest {
+            snapshot_id: IncidentSnapshotId::parse("snapshot:test").unwrap(),
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            graph_revision: GraphRevision::new(1).unwrap(),
+            created_at_unix_millis: 10,
+            entity_ids: vec![EntityId::parse("repository:one").unwrap()],
+            source_receipt_digests: vec![ContentDigest::of_bytes("source")],
+            policy_digests: Vec::new(),
+            mission_ids: Vec::new(),
+            verification_receipt_digests: Vec::new(),
+            manifest_digest: digest,
+        }
+    }
+
+    #[test]
+    fn packaging_rejects_a_manifest_digest_not_bound_to_its_contents() {
+        let error = package_incident_snapshot(
+            manifest_with_digest(ContentDigest::of_bytes("wrong")),
+            b"payload".to_vec(),
+            vec![1],
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            SdkError::Invalid("incident snapshot manifest digest")
+        );
+    }
+}

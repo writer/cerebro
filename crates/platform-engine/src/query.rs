@@ -46,3 +46,56 @@ pub fn plan_query(
         deadline_millis: budget.max_query_millis,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{QueryEdge, QueryNode};
+
+    use super::*;
+
+    #[test]
+    fn planner_rejects_a_positive_query_deeper_than_the_tenant_budget() {
+        let query = FactQuery::new(
+            vec![
+                QueryNode {
+                    variable: "repository".to_owned(),
+                    kinds: vec!["repository".to_owned()],
+                    keys: Vec::new(),
+                },
+                QueryNode {
+                    variable: "service".to_owned(),
+                    kinds: vec!["service".to_owned()],
+                    keys: Vec::new(),
+                },
+                QueryNode {
+                    variable: "environment".to_owned(),
+                    kinds: vec!["environment".to_owned()],
+                    keys: Vec::new(),
+                },
+            ],
+            vec![
+                QueryEdge {
+                    variable: "build".to_owned(),
+                    from_variable: "repository".to_owned(),
+                    relation: "builds".to_owned(),
+                    to_variable: "service".to_owned(),
+                },
+                QueryEdge {
+                    variable: "runtime".to_owned(),
+                    from_variable: "service".to_owned(),
+                    relation: "runs_in".to_owned(),
+                    to_variable: "environment".to_owned(),
+                },
+            ],
+            Vec::new(),
+            10,
+        )
+        .unwrap();
+        let budget = ResourceBudget::new(10, 1, 100, 1, 1, 10, 1_024, 100).expect("valid budget");
+
+        assert_eq!(
+            plan_query(&query, &budget),
+            Err(SdkError::OutOfRange("query depth"))
+        );
+    }
+}

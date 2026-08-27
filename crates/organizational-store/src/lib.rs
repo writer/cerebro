@@ -57,10 +57,10 @@ pub use parity::{
 pub use postgres::{
     AskQueryRecord, AskQueryWrite, AuditEventPageQuery, ConsumerFamilyProgress,
     ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection, ConsumerRunProgress,
-    ConsumerRunReceiptState, ConsumerSkipCategory, LegacyProjectionReceipt, POSTGRES_SCHEMA,
-    PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
+    ConsumerRunReceiptState, ConsumerSkipCategory, IdentityDirectoryQuery, LegacyProjectionReceipt,
+    POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
     SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
-    StoredAuditEventPage, StoredSourceRuntime,
+    StoredAuditEventPage, StoredIdentityOrganization, StoredIdentityUser, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};

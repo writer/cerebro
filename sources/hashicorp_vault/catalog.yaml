@@ -86,7 +86,6 @@ event_contracts:
   - kind: hashicorp_vault.users
     schema_ref: hashicorp_vault/users/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - user_id
     required_payload_fields:
@@ -94,7 +93,6 @@ event_contracts:
   - kind: hashicorp_vault.secrets
     schema_ref: hashicorp_vault/secrets/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - secret_id
       - secret_name
@@ -103,7 +101,6 @@ event_contracts:
   - kind: hashicorp_vault.audit_events
     schema_ref: hashicorp_vault/audit_events/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - event_type
       - actor_id

@@ -92,3 +92,42 @@ pub fn evaluate_assertion(
         evidence_digest,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{AssertionDefinitionId, EvaluationTrigger, QueryNode};
+
+    use super::*;
+
+    fn definition() -> AssertionDefinition {
+        AssertionDefinition {
+            assertion_id: AssertionDefinitionId::parse("assertion-definition:test").unwrap(),
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            name: "Repository exists".to_owned(),
+            query: FactQuery::new(
+                vec![QueryNode {
+                    variable: "repository".to_owned(),
+                    kinds: vec!["repository".to_owned()],
+                    keys: vec!["repository:one".to_owned()],
+                }],
+                Vec::new(),
+                Vec::new(),
+                10,
+            )
+            .unwrap(),
+            condition: AssertionCondition::AtLeastOneMatch,
+            triggers: vec![EvaluationTrigger::GraphChange],
+            evidence_max_age_seconds: 60,
+            enabled: true,
+            definition_digest: ContentDigest::of_bytes("wrong"),
+        }
+    }
+
+    #[test]
+    fn compilation_rejects_a_digest_that_does_not_match_definition_material() {
+        assert_eq!(
+            compile_assertion(definition()),
+            Err(SdkError::Invalid("assertion definition digest"))
+        );
+    }
+}

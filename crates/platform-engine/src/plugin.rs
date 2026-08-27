@@ -17,3 +17,47 @@ pub fn validate_plugin_execution(
         .validate(budget)
         .map_err(|_| SdkError::OutOfRange("plugin execution budget"))
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{
+        AnalysisPluginManifest, ContentDigest, PluginCapability, PluginId, PluginLimits,
+        ResourceBudget, ResourceUsage,
+    };
+
+    use super::*;
+
+    #[test]
+    fn execution_rejects_manifests_without_both_safety_requirements() {
+        let manifest = AnalysisPluginManifest {
+            plugin_id: PluginId::parse("plugin:test").unwrap(),
+            abi_version: "v1".to_owned(),
+            artifact_digest: ContentDigest::of_bytes("artifact"),
+            capabilities: vec![PluginCapability::AssertionEvaluation],
+            limits: PluginLimits {
+                memory_bytes: 512,
+                execution_millis: 50,
+                input_bytes: 1,
+                output_bytes: 1,
+            },
+            zero_imports_required: false,
+            deterministic_output_required: true,
+        };
+        let budget = ResourceBudget::new(10, 1, 100, 1, 1, 10, 1_024, 100).expect("valid budget");
+        let usage = ResourceUsage {
+            query_results: 0,
+            query_depth: 0,
+            query_millis: 0,
+            concurrent_queries: 0,
+            subscription_batch: 0,
+            snapshot_entities: 0,
+            plugin_memory_bytes: 0,
+            plugin_millis: 0,
+        };
+
+        assert_eq!(
+            validate_plugin_execution(&manifest, &budget, &usage),
+            Err(SdkError::Invalid("plugin safety requirements"))
+        );
+    }
+}

@@ -12,7 +12,7 @@ const PAGE_TWO: &str =
     r#"{"items":[{"id":"cluster-2","name":"Cluster two","status":"ready"}],"next_page_token":""}"#;
 
 #[tokio::test]
-async fn clusters_round_trip_two_pages_and_keep_cursor_on_the_declared_origin() {
+async fn clusters_collect_two_pages_and_bind_cursor_query_to_the_declared_origin() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
@@ -72,21 +72,22 @@ async fn clusters_round_trip_two_pages_and_keep_cursor_on_the_declared_origin() 
         .await
         .unwrap();
     assert!(matches!(&page_one.scope, CollectedScope::Complete(_)));
+    assert_eq!(page_one.records.len(), 2);
     assert_eq!(page_one.records[0].provider_id, "cluster-1");
-    assert_eq!(page_one.next_cursor.as_deref(), Some("page-2"));
+    assert_eq!(page_one.records[1].provider_id, "cluster-2");
+    assert!(page_one.next_cursor.is_none());
 
-    let page_two = connector
-        .collect(CollectionRequest {
-            tenant_id: tenant.clone(),
-            source_runtime_id: runtime_id.clone(),
-            cursor: page_one.next_cursor,
-        })
-        .await
-        .unwrap();
-    assert_eq!(page_two.records[0].provider_id, "cluster-2");
-    assert!(page_two.next_cursor.is_none());
-
-    let origin_bound_page = connector
+    // The origin-binding probe is a separate operation and needs its own
+    // one-operation credential lease.
+    let mut origin_bound_connector = qdrant_connector(
+        &source,
+        "clusters",
+        tenant.as_str(),
+        runtime_id.as_str(),
+        &base_url,
+        2,
+    );
+    let origin_bound_page = origin_bound_connector
         .collect(CollectionRequest {
             tenant_id: tenant,
             source_runtime_id: runtime_id,

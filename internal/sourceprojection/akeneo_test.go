@@ -1,32 +1,40 @@
 package sourceprojection
 
 import (
+	"errors"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestAkeneoAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "akeneo", Kind: "akeneo.attribute", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := akeneoAttributeProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
-	}
-}
-
-func TestAkeneoIdentityGroupProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "akeneo", Kind: "akeneo.attribute_group", Attributes: map[string]string{"group_id": "group-1", "group_email": "group@example.test", "group_name": "Group One"}}
-	entities, _, err := akeneoAttributeGroupProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected identity group")
+func TestAkeneoGoProjectionFailsClosedForRustAuthoritativeFamilies(t *testing.T) {
+	for _, kind := range []string{
+		"akeneo.asset",
+		"akeneo.asset_families_attribute",
+		"akeneo.asset_family",
+		"akeneo.attribute",
+		"akeneo.attribute_group",
+		"akeneo.attributes_option",
+		"akeneo.draft",
+		"akeneo.option",
+		"akeneo.products_draft",
+		"akeneo.products_uuid_draft",
+		"akeneo.reference_entities_attribute",
+		"akeneo.v1_attribute",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			entities, links, err := ProjectEvent(&cerebrov1.EventEnvelope{
+				Id:       "event-1",
+				TenantId: "tenant",
+				SourceId: "akeneo",
+				Kind:     kind,
+			})
+			if !errors.Is(err, errAkeneoRustProjectionRequired) {
+				t.Fatalf("ProjectEvent() error = %v", err)
+			}
+			if len(entities) != 0 || len(links) != 0 {
+				t.Fatalf("Go projection produced entities=%d links=%d", len(entities), len(links))
+			}
+		})
 	}
 }
