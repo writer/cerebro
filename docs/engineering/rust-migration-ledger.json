@@ -1,0 +1,32 @@
+{
+  "description": "Machine-checked ledger of every package that directly references the retained raw-Cypher compatibility surface (ports.RawCypherQueryStore / ExecuteReadCypher). scripts/rust_migration_ledger_check.py verifies this file against the code: 'compat' and 'permanent' entries must still reference the surface, 'migrated' entries must not, and packages that start referencing it without a ledger entry fail the check. See docs/engineering/rust-organizational-platform.md for the authority model and the per-caller capability gaps.",
+  "statuses": {
+    "compat": "still reads through the compatibility port; migration work remains",
+    "permanent": "retained by design (runtime-authored query text); not migration work",
+    "migrated": "no longer references the compatibility surface"
+  },
+  "infrastructure": [
+    { "package": "internal/ports", "role": "defines the compatibility contract" },
+    { "package": "internal/graphstore/neo4j", "role": "implements the compatibility contract" },
+    { "package": "internal/bootstrap", "role": "dependency wiring" },
+    { "package": "cmd/cerebro", "role": "dependency wiring" },
+    { "package": "internal/sourcehttp/organizationalgraph", "role": "serves the compatibility HTTP port" },
+    { "package": "internal/testauthor/policy", "role": "test authoring fixture" },
+    { "package": "apps/web/scripts/testdata/grc-e2e-seed", "role": "e2e seed fixture" }
+  ],
+  "callers": [
+    { "package": "internal/agentauthoring", "status": "compat" },
+    { "package": "internal/attackpath", "status": "compat", "blocked_on": "relation-filtered variable-length traversal, aggregations, attribute substring predicates" },
+    { "package": "internal/findingdsl", "status": "compat" },
+    { "package": "internal/findings", "status": "compat", "blocked_on": "aggregations, optional match, variable-length traversal (per graph rule)" },
+    { "package": "internal/graphagent", "status": "compat", "note": "ask flow is a permanent resident (LLM-drafted Cypher); probe counts still migrate, then flip this entry to permanent" },
+    { "package": "internal/graphquery", "status": "compat", "blocked_on": "variable-length traversal with relation whitelist, union variants, substring predicates, batched traversal" },
+    { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
+    { "package": "internal/grcvendor", "status": "compat" },
+    { "package": "internal/knowledge", "status": "compat" },
+    { "package": "internal/policycandidate", "status": "compat", "note": "shadow/experiment evaluation is a permanent resident (rule.Spec.Graph.Query); grounding still migrates, then flip this entry to permanent" },
+    { "package": "internal/reports", "status": "compat" },
+    { "package": "internal/runtimeorchestration", "status": "compat" },
+    { "package": "internal/workflowprojection", "status": "compat", "blocked_on": "keyset cursors, organizational mapping for finding kinds" }
+  ]
+}

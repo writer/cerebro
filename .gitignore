@@ -46,6 +46,10 @@ node_modules/
 .factory/*
 !.factory/skills/
 !.factory/skills/**
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/skills/**
 **/.cerebro/
 
 # OS

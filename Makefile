@@ -793,6 +793,9 @@ govulncheck: ## Run govulncheck gate for reachable vulnerabilities.
 contracts-check: ## Run contract and compatibility checks with a final summary.
 	python3 scripts/contracts_check.py
 
+rust-migration-ledger-check: ## Verify the raw-Cypher compatibility ledger against the code.
+	python3 scripts/rust_migration_ledger_check.py
+
 changed-check: ## Run validation selected from changed paths.
 	python3 scripts/changed_checks.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --run
 
@@ -824,6 +827,23 @@ security-operator-benchmark: ## Compare two releases through the Infosec risk-to
 		--concurrency "$(SECURITY_BENCHMARK_CONCURRENCY)" \
 		--json-out "$(SECURITY_BENCHMARK_JSON_OUT)" \
 		--markdown-out "$(SECURITY_BENCHMARK_MARKDOWN_OUT)"
+
+agent-env-up: ## Start the local backing stack (NATS, Postgres, Neo4j) without running an onboarding plan.
+	@command -v docker >/dev/null || { echo "docker is required for agent-env-up" >&2; exit 2; }
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	echo "agent-env-up: stack ready (JetStream nats://127.0.0.1:4222, Postgres 127.0.0.1:5432, Neo4j bolt://127.0.0.1:7687)"
+
+agent-env-down: ## Stop the local backing stack started by agent-env-up.
+	@command -v docker >/dev/null || { echo "docker is required for agent-env-down" >&2; exit 2; }
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml down
 
 agent-onboard: build ## Run an agent onboarding plan and write a redacted receipt.
 	python3 scripts/agent_onboard.py \
@@ -1019,4 +1039,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check agent-docs-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny rust-migration-ledger-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check agent-docs-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
