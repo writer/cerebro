@@ -239,6 +239,34 @@ WHERE tenant_id = $1
         Ok(())
     }
 
+    /// Returns the exact SHA-256 digest of the persisted publication
+    /// snapshot, matching how persisted promotion verification digests the
+    /// same stored row. Callers that stage qualification evidence ahead of a
+    /// promotion request use this to learn the digest they must reference
+    /// rather than recomputing it against an assumed JSON encoding.
+    pub async fn page_publication_snapshot_digest(
+        &self,
+        tenant_id: &TenantId,
+        logical_page_id: &str,
+    ) -> Result<Option<String>, StoreError> {
+        if logical_page_id.trim().is_empty() {
+            return Err(StoreError::Conflict(
+                "logical page id is required".to_owned(),
+            ));
+        }
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT publication_json FROM source_runtime_page_publications WHERE tenant_id = $1 AND logical_page_id = $2",
+                &[&tenant_id.as_str(), &logical_page_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        Ok(row.map(|row| crate::promotion_evidence_store::json_digest(&row.get(0))))
+    }
+
     /// Loads one page through tenant row-level security and revalidates its
     /// entire snapshot before returning it to recovery code.
     pub async fn load_page_publication(

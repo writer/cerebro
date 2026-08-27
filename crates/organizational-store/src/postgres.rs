@@ -23,7 +23,7 @@ use zeroize::Zeroize;
 use crate::cutover::CutoverGate;
 use crate::{
     CutoverDecision, ParityReceipt, ParityStatus, ProjectionAuthority, ProjectionAuthorityRecord,
-    ProjectionPromotionRequest,
+    ProjectionPromotionRequest, PromotionEvidenceReceiptKind,
 };
 use crate::{
     StoreError,
@@ -343,6 +343,17 @@ CREATE TABLE IF NOT EXISTS organizational_projection_authority (
     (authority = 'rust' AND promoted_at_unix_ms > 0)
   )
 );
+CREATE TABLE IF NOT EXISTS organizational_promotion_evidence_receipts (
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('product_read', 'promotion_approval', 'rollback')),
+  receipt_id TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  payload_json JSONB NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, kind, receipt_id)
+);
 CREATE TABLE IF NOT EXISTS organizational_consumer_runs (
   consumer_name TEXT NOT NULL,
   run_id TEXT NOT NULL,
@@ -443,6 +454,8 @@ ALTER TABLE organizational_parity_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_parity_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_authority ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_authority FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_promotion_evidence_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_promotion_evidence_receipts FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -461,7 +474,8 @@ BEGIN
     'organizational_identity_claims',
     'organizational_projection_outbox',
     'organizational_parity_receipts',
-    'organizational_projection_authority'
+    'organizational_projection_authority',
+    'organizational_promotion_evidence_receipts'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -1442,6 +1456,64 @@ ON CONFLICT (id) DO NOTHING
         Ok(changed == 1)
     }
 
+    /// Records the durable runtime-revision proof that persisted promotion
+    /// verification reads directly off the stored runtime row. This augments
+    /// an already-admitted runtime definition's raw JSON with the two fields
+    /// the promotion gate checks, without widening
+    /// [`StoredSourceRuntime::new`]'s constructor and rippling a breaking
+    /// change into every call site that builds one.
+    pub async fn record_source_runtime_revision(
+        &self,
+        source_runtime_id: &SourceRuntimeId,
+        runtime_revision_sha256: &str,
+        worker_runtime_build_identity: &str,
+    ) -> Result<(), StoreError> {
+        if runtime_revision_sha256.trim().is_empty()
+            || worker_runtime_build_identity.trim().is_empty()
+        {
+            return Err(StoreError::Conflict(
+                "source runtime revision proof is invalid".to_owned(),
+            ));
+        }
+        let client = self.client.lock().await;
+        let changed = client
+            .execute(
+                r#"
+UPDATE source_runtimes
+SET runtime_json = runtime_json || jsonb_build_object(
+      'runtime_revision_sha256', $2::text,
+      'worker_runtime_build_identity', $3::text
+    ),
+    updated_at = NOW()
+WHERE id = $1
+  AND (runtime_json->>'runtime_revision_sha256' IS NULL
+       OR runtime_json->>'runtime_revision_sha256' = $2)
+  AND (runtime_json->>'worker_runtime_build_identity' IS NULL
+       OR runtime_json->>'worker_runtime_build_identity' = $3)
+"#,
+                &[
+                    &source_runtime_id.as_str(),
+                    &runtime_revision_sha256,
+                    &worker_runtime_build_identity,
+                ],
+            )
+            .await?;
+        if changed == 0 {
+            let stored = client
+                .query_opt(
+                    "SELECT 1 FROM source_runtimes WHERE id = $1",
+                    &[&source_runtime_id.as_str()],
+                )
+                .await?;
+            return Err(StoreError::Conflict(if stored.is_some() {
+                "source runtime revision proof conflicts with the stored proof".to_owned()
+            } else {
+                "source runtime is not stored".to_owned()
+            }));
+        }
+        Ok(())
+    }
+
     /// List source-runtime definitions within one authenticated tenant. All
     /// predicates are applied in PostgreSQL so cross-tenant rows never enter
     /// the application response path.
@@ -2337,6 +2409,49 @@ LIMIT $3
             return Err(StoreError::Conflict(format!(
                 "parity receipt {} conflicts with stored evidence",
                 receipt.receipt_digest()
+            )));
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    /// Record one persisted product-read, promotion-approval, or rollback
+    /// receipt referenced by a promotion qualification. Recording is
+    /// append-only: replaying the same `(tenant_id, kind, receipt_id)` with an
+    /// identical digest is a no-op, and replaying it with a different digest
+    /// is a stored-contract conflict rather than a silent overwrite.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_promotion_evidence_receipt(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+        kind: PromotionEvidenceReceiptKind,
+        receipt_id: &str,
+        receipt_digest: &str,
+        payload: &Value,
+    ) -> Result<(), StoreError> {
+        let kind = kind.as_str();
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_promotion_evidence_receipts (tenant_id, source_id, family_id, kind, receipt_id, receipt_digest, payload_json) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tenant_id, kind, receipt_id) DO UPDATE SET receipt_digest = EXCLUDED.receipt_digest WHERE organizational_promotion_evidence_receipts.receipt_digest = EXCLUDED.receipt_digest RETURNING receipt_digest",
+                &[
+                    &tenant_id,
+                    &source_id,
+                    &family_id,
+                    &kind,
+                    &receipt_id,
+                    &receipt_digest,
+                    payload,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "promotion evidence receipt {receipt_id} conflicts with stored evidence"
             )));
         }
         transaction.commit().await?;
@@ -4174,6 +4289,7 @@ mod tests {
             "PRIMARY KEY (tenant_id, claim_kind, claim_value)",
             "organizational_projection_outbox",
             "organizational_parity_receipts",
+            "organizational_promotion_evidence_receipts",
             "organizational_source_event_receipts",
             "organizational_legacy_projection_receipts",
             "organizational_source_collection_receipts",

@@ -64,7 +64,9 @@ pub use postgres::{
 pub use promotion::{
     CutoverDecision, ProjectionAuthority, ProjectionAuthorityRecord, ProjectionPromotionRequest,
 };
-pub use promotion_evidence_store::{VerifiedPromotionReceipt, VerifiedPromotionReceiptKind};
+pub use promotion_evidence_store::{
+    PromotionEvidenceReceiptKind, VerifiedPromotionReceipt, VerifiedPromotionReceiptKind,
+};
 
 use std::{error::Error, fmt};
 
