@@ -89,7 +89,7 @@ func TestRepanicWithNilValuePanicsWithNil(t *testing.T) {
 
 func TestGoCompletesNormalTask(t *testing.T) {
 	called := make(chan struct{})
-	done := Go(nil, "test.normal", func() { close(called) })
+	done := Go(context.Background(), "test.normal", func() { close(called) })
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -131,7 +131,7 @@ func TestGoRecoversAndCapturesPanic(t *testing.T) {
 	}
 	attributes := map[string]string{}
 	for _, attribute := range events[0].Attributes {
-		attributes[string(attribute.Key)] = attribute.Value.Emit()
+		attributes[string(attribute.Key)] = attribute.Value.AsString()
 	}
 	if got, want := attributes["operation"], "test.panicking_task"; got != want {
 		t.Fatalf("operation = %q, want %q", got, want)

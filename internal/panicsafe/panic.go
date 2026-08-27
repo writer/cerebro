@@ -33,9 +33,6 @@ func (recoveredPanicError) Unwrap() error { return ErrTaskPanicked }
 // the panic from terminating the process. The returned channel closes after
 // the task exits so tests and shutdown paths can observe completion when needed.
 func Go(ctx context.Context, name string, fn func()) <-chan struct{} {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "unnamed"
