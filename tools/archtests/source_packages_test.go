@@ -70,6 +70,21 @@ const (
 
 var catalogRuntimeOnlySourcePackages = catalogRuntimeOnlyPackages()
 
+// retiredProviderInternalPackages were implementation details of provider-local
+// Go runtimes that now execute from the portable catalog and Rust catalog
+// runtime. Keep the exact internal package paths deleted as part of the same
+// authority boundary enforced for their top-level source packages.
+var retiredProviderInternalPackages = []struct {
+	packageName string
+	sourceID    string
+}{
+	{packageName: "boxapi", sourceID: "box"},
+	{packageName: "fivetranapi", sourceID: "fivetran"},
+	{packageName: "jiraapi", sourceID: "jira"},
+	{packageName: "jumpcloudapi", sourceID: "jumpcloud"},
+	{packageName: "newrelicapi", sourceID: "new_relic"},
+}
+
 func catalogRuntimeOnlyPackages() map[string]struct{} {
 	packages := make(map[string]struct{}, len(priorCatalogRuntimeOnlySourcePackages)+catalogRuntimeGoRetirementCount)
 	for name := range priorCatalogRuntimeOnlySourcePackages {
@@ -120,6 +135,23 @@ func TestCatalogRuntimeGoRetirementInventoryIsDeterministic(t *testing.T) {
 	}
 	if _, retired := catalogRuntimeOnlySourcePackages["slack"]; !retired {
 		t.Fatal("Slack provider-local Go must remain retired")
+	}
+}
+
+func TestRetiredProviderInternalPackagesStayDeleted(t *testing.T) {
+	root := repoRoot(t)
+	for _, retiredPackage := range retiredProviderInternalPackages {
+		if _, retired := catalogRuntimeOnlySourcePackages[retiredPackage.sourceID]; !retired {
+			t.Errorf("source %q must enter the catalog-runtime retirement inventory before deleting internal package %q", retiredPackage.sourceID, retiredPackage.packageName)
+			continue
+		}
+		path := filepath.Join(root, "sources", "internal", retiredPackage.packageName)
+		goFiles, err := filepath.Glob(filepath.Join(path, "*.go"))
+		if err != nil {
+			t.Errorf("find Go files for retired provider-local package %s: %v", path, err)
+		} else if len(goFiles) != 0 {
+			t.Errorf("retired provider-local Go package %s was restored: %v", path, goFiles)
+		}
 	}
 }
 
