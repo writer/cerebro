@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cerebro.dev/schemas/migrator-plan-request-v1.schema.json",
+  "title": "Cerebro migrator PlanRequest v1 projection bridge",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["objective", "units"],
+  "properties": {
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_line_weight",
+        "test_line_weight",
+        "package_weight",
+        "runtime_entrypoint_weight",
+        "effort_weight"
+      ],
+      "properties": {
+        "production_line_weight": {"type": "integer", "minimum": 0},
+        "test_line_weight": {"type": "integer", "minimum": 0},
+        "package_weight": {"type": "integer", "minimum": 0},
+        "runtime_entrypoint_weight": {"type": "integer", "minimum": 0},
+        "effort_weight": {"type": "integer", "minimum": 0}
+      }
+    },
+    "units": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/projectionUnit"}
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9/._:-]+$"
+    },
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "deletionTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {"const": "path"},
+        "path": {
+          "type": "string",
+          "pattern": "^[^/?*\\[\\]{}]+(?:/[^/?*\\[\\]{}]+)+$",
+          "not": {"pattern": "(^|/)\\.\\.?(/|$)"}
+        }
+      }
+    },
+    "benefit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_lines", "test_lines", "packages", "runtime_entrypoints"],
+      "properties": {
+        "production_lines": {"type": "integer", "minimum": 0},
+        "test_lines": {"type": "integer", "minimum": 0},
+        "packages": {"type": "integer", "minimum": 0},
+        "runtime_entrypoints": {"type": "integer", "minimum": 0}
+      }
+    },
+    "projectionUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "base_sha",
+        "go_owners",
+        "production_entrypoints",
+        "rust_operation",
+        "contract_digest",
+        "prerequisites",
+        "authority_gates",
+        "required_receipts",
+        "deletion_targets",
+        "benefit",
+        "effort",
+        "status",
+        "blockers"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "kind": {"const": "projection"},
+        "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "go_owners": {"$ref": "#/$defs/stringSet"},
+        "production_entrypoints": {"$ref": "#/$defs/stringSet"},
+        "rust_operation": {"$ref": "#/$defs/identifier"},
+        "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "prerequisites": {"$ref": "#/$defs/stringSet"},
+        "authority_gates": {"$ref": "#/$defs/stringSet"},
+        "required_receipts": {"$ref": "#/$defs/stringSet"},
+        "deletion_targets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/deletionTarget"}
+        },
+        "benefit": {"$ref": "#/$defs/benefit"},
+        "effort": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["blocked", "candidate"]},
+        "blockers": {"$ref": "#/$defs/stringSet"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "blocked"}}},
+          "then": {"properties": {"blockers": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "candidate"}}},
+          "then": {"properties": {"blockers": {"maxItems": 0}}}
+        }
+      ]
+    }
+  }
+}

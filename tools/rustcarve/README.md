@@ -13,6 +13,39 @@ go run ./tools/rustcarve \
 
 Use `-check` with a committed output directory to verify deterministic generation.
 
+To discover deletion batches for source IDs whose complete catalog family set
+is projection-compile-ready, run:
+
+```sh
+go run ./tools/rustcarve \
+  -root . \
+  -projection-batches \
+  -exclude-paths tools/rustcarve/testdata/projection-batch-pr-2827-exclusions.json \
+  -out /tmp/rustcarve-projection-batches
+```
+
+The command emits two deterministic artifacts:
+
+- `projection-batch-plan.json` joins the provider-proof and
+  projection-template gates used by the Rust source catalog to the static Go
+  projection registry. Every exact implementation or paired test-file
+  candidate includes its SHA-256 digest, source ownership, and line benefit.
+- `projection-plan-request.json` is a closed
+  `cerebro_migrator::PlanRequest` v1 input with one projection unit per
+  projection-ready source, the exact Git base, exact path targets, measured
+  production and test benefits, Rust operation, contract digest, authority
+  gates, and required receipts. Unblocked units are always `candidate`, never
+  `deletion_eligible`.
+
+Shared files fail closed. Ownership exclusions and every discovery blocker are
+preserved as `blocked` migration units; they are not silently omitted from the
+planner request. The supplied exclusion manifest binds paths already owned by
+PR #2827 to its exact head and prevents those paths from becoming deletion
+targets. Generating either artifact never deletes a file and is not deletion
+authority. The bridge contract is checked against
+`testdata/schema/cerebro-migrator-plan-request-v1.schema.json`; tests also run
+an installed `cerebro-migrator plan` command when one is available.
+
 The canonical closed types are:
 
 - request, migration envelope, source variants, evidence, and deletion manifest: `tools/rustcarve/model.go`
@@ -79,4 +112,4 @@ The initial closed set includes:
 
 ## Ownership boundary
 
-This tool owns only `tools/rustcarve`, its generated fixtures, and its schema/manifest contracts. It does not edit provider packages, graph-query callers or runtimes, finding evaluators, source projections, or source fixtures/oracles.
+This tool owns only `tools/rustcarve`, its generated fixtures, and its schema/manifest contracts. It does not edit provider packages, graph-query callers or runtimes, finding evaluators, source projections, or source fixtures/oracles. Projection batch discovery is read-only and emits candidates only; applying any candidate remains a separately reviewed, digest-checked operation.
