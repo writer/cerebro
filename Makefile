@@ -816,6 +816,23 @@ security-operator-benchmark: ## Compare two releases through the Infosec risk-to
 		--json-out "$(SECURITY_BENCHMARK_JSON_OUT)" \
 		--markdown-out "$(SECURITY_BENCHMARK_MARKDOWN_OUT)"
 
+agent-env-up: ## Start the local backing stack (NATS, Postgres, Neo4j) without running an onboarding plan.
+	@command -v docker >/dev/null || { echo "docker is required for agent-env-up" >&2; exit 2; }
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d; \
+	echo "agent-env-up: stack ready (JetStream nats://127.0.0.1:4222, Postgres 127.0.0.1:5432, Neo4j bolt://127.0.0.1:7687)"
+
+agent-env-down: ## Stop the local backing stack started by agent-env-up.
+	@command -v docker >/dev/null || { echo "docker is required for agent-env-down" >&2; exit 2; }
+	@set -e; \
+	$(CEREBRO_LOCAL_POSTGRES_ENV_SH); \
+	CEREBRO_LOCAL_POSTGRES_USER="$(CEREBRO_LOCAL_POSTGRES_USER)" \
+	CEREBRO_LOCAL_POSTGRES_PASSWORD="$$local_postgres_password" \
+	docker compose -f docker-compose.yml -f docker-compose.build.yml down
+
 agent-onboard: build ## Run an agent onboarding plan and write a redacted receipt.
 	python3 scripts/agent_onboard.py \
 		--plan "$(AGENT_ONBOARD_EFFECTIVE_PLAN)" \
