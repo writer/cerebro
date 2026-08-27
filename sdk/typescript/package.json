@@ -17,7 +17,9 @@
     "directory": "sdk/typescript"
   },
   "scripts": {
-    "check": "npm run typecheck && npm test",
+    "build:runtime": "tsc -p tsconfig.runtime.json",
+    "check": "npm run typecheck && npm run check:runtime && npm test",
+    "check:runtime": "npm run build:runtime && node scripts/check-runtime-sync.mjs",
     "test": "node --test test/*.mjs",
     "typecheck": "tsc --noEmit"
   },

@@ -24,6 +24,7 @@ tmp/
 sdk/python/build/
 sdk/python/*.egg-info/
 sdk/typescript/src/generated/proto/
+sdk/typescript/.runtime-build/
 
 # Node
 node_modules/
