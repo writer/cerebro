@@ -14,13 +14,18 @@ func TestDeterministicReviewIsExactShaScopedAndReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read deterministic review workflow: %v", err)
 	}
-	gateBody, err := os.ReadFile(filepath.Join(root, "scripts", "govulncheck_gate.py"))
+	if errors := deterministicReviewGuardrailErrors(string(workflowBody)); len(errors) != 0 {
+		t.Fatalf("deterministic review guardrails failed:\n- %s", strings.Join(errors, "\n- "))
+	}
+}
+
+func TestGovulncheckGateRemainsPinnedAndFullRepository(t *testing.T) {
+	gateBody, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts", "govulncheck_gate.py"))
 	if err != nil {
 		t.Fatalf("read govulncheck gate: %v", err)
 	}
-
-	if errors := deterministicReviewGuardrailErrors(string(workflowBody), string(gateBody)); len(errors) != 0 {
-		t.Fatalf("deterministic review guardrails failed:\n- %s", strings.Join(errors, "\n- "))
+	if errors := govulncheckGateGuardrailErrors(string(gateBody)); len(errors) != 0 {
+		t.Fatalf("govulncheck gate guardrails failed:\n- %s", strings.Join(errors, "\n- "))
 	}
 }
 
@@ -30,84 +35,53 @@ func TestDeterministicReviewGuardrailsRejectUnsafeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read deterministic review workflow: %v", err)
 	}
-	gateBody, err := os.ReadFile(filepath.Join(root, "scripts", "govulncheck_gate.py"))
-	if err != nil {
-		t.Fatalf("read govulncheck gate: %v", err)
-	}
 	workflow := string(workflowBody)
-	gate := string(gateBody)
 
 	tests := []struct {
 		name      string
 		workflow  string
-		gate      string
 		wantError string
 	}{
 		{
-			name:      "make target replaces bounded Go-only gate",
-			workflow:  strings.Replace(workflow, "python3 scripts/govulncheck_gate.py ./...", "make govulncheck", 1),
-			gate:      gate,
-			wantError: "invoke the direct full-repository govulncheck gate exactly once",
-		},
-		{
-			name:      "gate runs twice",
-			workflow:  strings.Replace(workflow, "python3 scripts/govulncheck_gate.py ./...", "python3 scripts/govulncheck_gate.py ./...\n          python3 scripts/govulncheck_gate.py ./...", 1),
-			gate:      gate,
-			wantError: "invoke the direct full-repository govulncheck gate exactly once",
-		},
-		{
-			name:      "scan narrows package scope",
-			workflow:  strings.Replace(workflow, "python3 scripts/govulncheck_gate.py ./...", "python3 scripts/govulncheck_gate.py ./cmd/...", 1),
-			gate:      gate,
-			wantError: "invoke the direct full-repository govulncheck gate exactly once",
-		},
-		{
 			name:      "core checkout is not exact head",
 			workflow:  replaceInCoreJob(t, workflow, `ref: ${{ github.event.pull_request.head.sha }}`, `ref: ${{ github.sha }}`),
-			gate:      gate,
 			wantError: "core job must check out the exact pull request head",
 		},
 		{
-			name:      "vulnerability checkout is not exact head",
-			workflow:  replaceInVulnerabilityJob(t, workflow, `ref: ${{ github.event.pull_request.head.sha }}`, `ref: ${{ github.sha }}`),
-			gate:      gate,
-			wantError: "vulnerability job must check out the exact pull request head",
-		},
-		{
-			name:      "vulnerability checkout persists credentials",
-			workflow:  replaceInVulnerabilityJob(t, workflow, "persist-credentials: false", "persist-credentials: true"),
-			gate:      gate,
-			wantError: "vulnerability checkout must disable persisted credentials",
+			name:      "core checkout persists credentials",
+			workflow:  replaceInCoreJob(t, workflow, "persist-credentials: false", "persist-credentials: true"),
+			wantError: "core checkout must disable persisted credentials",
 		},
 		{
 			name:      "workflow requests write access",
 			workflow:  strings.Replace(workflow, "permissions:\n  contents: read", "permissions:\n  contents: write", 1),
-			gate:      gate,
 			wantError: "workflow must declare read-only contents permission",
 		},
 		{
-			name:      "aggregate accepts vulnerability failure",
-			workflow:  strings.Replace(workflow, `test "${VULNERABILITY_RESULT}" = success`, `test "${VULNERABILITY_RESULT}" != cancelled`, 1),
-			gate:      gate,
-			wantError: "aggregate must require vulnerability success",
+			name:      "duplicate leak scan",
+			workflow:  strings.Replace(workflow, "run: make deterministic-review", `run: ./scripts/leak_check.sh range "${REVIEW_BASE}...${REVIEW_HEAD}"`, 1),
+			wantError: "must not duplicate the dedicated leak check",
 		},
 		{
-			name:      "scanner version is unpinned",
-			workflow:  workflow,
-			gate:      strings.Replace(gate, "golang.org/x/vuln/cmd/govulncheck@v1.1.4", "golang.org/x/vuln/cmd/govulncheck@latest", 1),
-			wantError: "gate must pin govulncheck v1.1.4",
+			name:      "duplicate Semgrep scan",
+			workflow:  strings.Replace(workflow, "run: make deterministic-review", "run: semgrep scan", 1),
+			wantError: "must not duplicate the dedicated Semgrep check",
 		},
 		{
-			name:      "scanner drops requested patterns",
-			workflow:  workflow,
-			gate:      strings.Replace(gate, `"json", *patterns`, `"json"`, 1),
-			wantError: "gate must pass the exact requested package patterns",
+			name:      "duplicate govulncheck scan",
+			workflow:  strings.Replace(workflow, "run: make deterministic-review", "run: make govulncheck", 1),
+			wantError: "must not duplicate the dedicated govulncheck check",
+		},
+		{
+			name:      "aggregate accepts core failure",
+			workflow:  strings.Replace(workflow, `test "${REVIEW_RESULT}" = success`, `test "${REVIEW_RESULT}" != cancelled`, 1),
+			wantError: "aggregate must require core review success",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			errors := deterministicReviewGuardrailErrors(test.workflow, test.gate)
+			errors := deterministicReviewGuardrailErrors(test.workflow)
 			if !containsError(errors, test.wantError) {
 				t.Fatalf("expected error %q, got %v", test.wantError, errors)
 			}
@@ -115,7 +89,30 @@ func TestDeterministicReviewGuardrailsRejectUnsafeChanges(t *testing.T) {
 	}
 }
 
-func deterministicReviewGuardrailErrors(workflow, gate string) []string {
+func TestGovulncheckGateGuardrailsRejectUnsafeChanges(t *testing.T) {
+	gateBody, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts", "govulncheck_gate.py"))
+	if err != nil {
+		t.Fatalf("read govulncheck gate: %v", err)
+	}
+	gate := string(gateBody)
+	tests := []struct {
+		name      string
+		gate      string
+		wantError string
+	}{
+		{"scanner version is unpinned", strings.Replace(gate, "golang.org/x/vuln/cmd/govulncheck@v1.1.4", "golang.org/x/vuln/cmd/govulncheck@latest", 1), "gate must pin govulncheck v1.1.4"},
+		{"scanner drops requested patterns", strings.Replace(gate, `"json", *patterns`, `"json"`, 1), "gate must pass the exact requested package patterns"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if errors := govulncheckGateGuardrailErrors(test.gate); !containsError(errors, test.wantError) {
+				t.Fatalf("expected error %q, got %v", test.wantError, errors)
+			}
+		})
+	}
+}
+
+func deterministicReviewGuardrailErrors(workflow string) []string {
 	var errors []string
 	if !strings.Contains(workflow, "permissions:\n  contents: read") {
 		errors = append(errors, "workflow must declare read-only contents permission")
@@ -127,12 +124,10 @@ func deterministicReviewGuardrailErrors(workflow, gate string) []string {
 		`git merge-base --is-ancestor "${review_base}" "${HEAD_SHA}"`,
 		`echo "REVIEW_BASE=${review_base}"`,
 		`echo "REVIEW_HEAD=${HEAD_SHA}"`,
-		`./scripts/leak_check.sh range "${REVIEW_BASE}...${REVIEW_HEAD}"`,
 		`git diff --name-only --diff-filter=ACMR "${REVIEW_BASE}...${REVIEW_HEAD}"`,
 		"actionlint .github/workflows/deterministic-review.yml",
 		"zizmor .github/workflows/deterministic-review.yml",
 		"make deterministic-review",
-		"semgrep scan",
 		"shellcheck",
 	}
 	for _, marker := range required {
@@ -155,11 +150,21 @@ func deterministicReviewGuardrailErrors(workflow, gate string) []string {
 			errors = append(errors, fmt.Sprintf("workflow must not contain %q", marker))
 		}
 	}
+	for marker, message := range map[string]string{
+		"leak_check.sh":       "workflow must not duplicate the dedicated leak check",
+		"semgrep scan":        "workflow must not duplicate the dedicated Semgrep check",
+		"govulncheck_gate.py": "workflow must not duplicate the dedicated govulncheck check",
+		"make govulncheck":    "workflow must not duplicate the dedicated govulncheck check",
+	} {
+		if strings.Contains(workflow, marker) {
+			errors = append(errors, message)
+		}
+	}
 	if strings.Contains(workflow, ": write") {
 		errors = append(errors, "workflow must not request any write permission")
 	}
 
-	coreJob, ok := workflowSection(workflow, "  review:\n", "  vulnerability_review:\n")
+	coreJob, ok := workflowSection(workflow, "  review:\n", "  deterministic-review:\n")
 	if !ok {
 		errors = append(errors, "workflow must define the core review job")
 	} else {
@@ -171,40 +176,6 @@ func deterministicReviewGuardrailErrors(workflow, gate string) []string {
 		}
 	}
 
-	vulnerabilityJob, ok := workflowSection(workflow, "  vulnerability_review:\n", "  deterministic-review:\n")
-	if !ok {
-		errors = append(errors, "workflow must define separate vulnerability and aggregate jobs")
-	} else {
-		if !strings.Contains(vulnerabilityJob, `ref: ${{ github.event.pull_request.head.sha }}`) {
-			errors = append(errors, "vulnerability job must check out the exact pull request head")
-		}
-		if !strings.Contains(vulnerabilityJob, "persist-credentials: false") {
-			errors = append(errors, "vulnerability checkout must disable persisted credentials")
-		}
-		for _, marker := range []string{"make ", "cargo ", "rustup "} {
-			if strings.Contains(vulnerabilityJob, marker) {
-				errors = append(errors, fmt.Sprintf("vulnerability job must remain Go-only and must not contain %q", marker))
-			}
-		}
-	}
-
-	if strings.Count(workflow, "python3 scripts/govulncheck_gate.py") != 1 ||
-		strings.Count(workflow, "python3 scripts/govulncheck_gate.py ./...") != 1 {
-		errors = append(errors, "workflow must invoke the direct full-repository govulncheck gate exactly once")
-	}
-	if strings.Contains(workflow, "make govulncheck") {
-		errors = append(errors, "workflow must not route the vulnerability job through the multi-tool Make target")
-	}
-	if !strings.Contains(gate, `DEFAULT_TOOL = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"`) {
-		errors = append(errors, "gate must pin govulncheck v1.1.4")
-	}
-	if !strings.Contains(gate, `command = ["go", "run", DEFAULT_TOOL, "-format", "json", *patterns]`) {
-		errors = append(errors, "gate must pass the exact requested package patterns")
-	}
-	if !strings.Contains(gate, `parser.add_argument("patterns", nargs="*", default=["./..."])`) {
-		errors = append(errors, "gate must default to the full repository package pattern")
-	}
-
 	aggregate, ok := workflowSection(workflow, "  deterministic-review:\n", "")
 	if !ok {
 		errors = append(errors, "workflow must define the stable deterministic-review aggregate")
@@ -214,10 +185,8 @@ func deterministicReviewGuardrailErrors(workflow, gate string) []string {
 			error  string
 		}{
 			{"if: ${{ always() }}", "aggregate must run for every dependency result"},
-			{"- review", "aggregate must depend on the core review job"},
-			{"- vulnerability_review", "aggregate must depend on the vulnerability review job"},
+			{"needs: review", "aggregate must depend on the core review job"},
 			{`test "${REVIEW_RESULT}" = success`, "aggregate must require core review success"},
-			{`test "${VULNERABILITY_RESULT}" = success`, "aggregate must require vulnerability success"},
 		} {
 			if !strings.Contains(aggregate, requirement.marker) {
 				errors = append(errors, requirement.error)
@@ -225,6 +194,20 @@ func deterministicReviewGuardrailErrors(workflow, gate string) []string {
 		}
 	}
 
+	return errors
+}
+
+func govulncheckGateGuardrailErrors(gate string) []string {
+	var errors []string
+	if !strings.Contains(gate, `DEFAULT_TOOL = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"`) {
+		errors = append(errors, "gate must pin govulncheck v1.1.4")
+	}
+	if !strings.Contains(gate, `command = ["go", "run", DEFAULT_TOOL, "-format", "json", *patterns]`) {
+		errors = append(errors, "gate must pass the exact requested package patterns")
+	}
+	if !strings.Contains(gate, `parser.add_argument("patterns", nargs="*", default=["./..."])`) {
+		errors = append(errors, "gate must default to the full repository package pattern")
+	}
 	return errors
 }
 
@@ -244,18 +227,9 @@ func workflowSection(workflow, startMarker, endMarker string) (string, bool) {
 	return section[:len(startMarker)+end], true
 }
 
-func replaceInVulnerabilityJob(t *testing.T, workflow, old, replacement string) string {
-	t.Helper()
-	section, ok := workflowSection(workflow, "  vulnerability_review:\n", "  deterministic-review:\n")
-	if !ok || !strings.Contains(section, old) {
-		t.Fatalf("vulnerability job fixture missing %q", old)
-	}
-	return strings.Replace(workflow, section, strings.Replace(section, old, replacement, 1), 1)
-}
-
 func replaceInCoreJob(t *testing.T, workflow, old, replacement string) string {
 	t.Helper()
-	section, ok := workflowSection(workflow, "  review:\n", "  vulnerability_review:\n")
+	section, ok := workflowSection(workflow, "  review:\n", "  deterministic-review:\n")
 	if !ok || !strings.Contains(section, old) {
 		t.Fatalf("core job fixture missing %q", old)
 	}
