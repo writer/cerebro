@@ -765,6 +765,9 @@ docs-drift-check: ## Check documentation drift rules.
 	go run ./tools/codegencatalog -check
 	python3 scripts/docs_drift_check.py
 
+agent-docs-check: ## Verify agent instruction files reference real make targets and repo docs.
+	python3 scripts/agent_docs_check.py
+
 readme-check: ## Check README formatting and changed-line whitespace.
 	@base_ref="$(README_CHECK_BASE)"; \
 	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
@@ -1010,4 +1013,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check agent-docs-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
