@@ -119,7 +119,7 @@ func TestAgentReceiptHookIsBuiltFromSourceInCI(t *testing.T) {
 		"swift run",
 		"ReceiptCoreChecks",
 		"script/build_hook_release.sh",
-		"lipo -verify_arch arm64 x86_64",
+		"lipo \"${helper}\" -verify_arch arm64 x86_64",
 		"codesign --verify --strict",
 		"shasum -a 256",
 		"actions/upload-artifact@",

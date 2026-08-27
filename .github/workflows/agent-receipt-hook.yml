@@ -61,7 +61,7 @@ jobs:
           set -euo pipefail
           helper="plugins/cerebro-agent-receipts/bin/CerebroAgentReceiptHook"
           test -x "${helper}"
-          lipo -verify_arch arm64 x86_64 "${helper}"
+          lipo "${helper}" -verify_arch arm64 x86_64
           codesign --verify --strict "${helper}"
           shasum -a 256 "${helper}" > "${helper}.sha256"
 
