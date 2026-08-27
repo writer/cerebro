@@ -20,9 +20,10 @@ use tokio::sync::Mutex;
 use tokio_postgres::{Client, error::SqlState, types::ToSql};
 use zeroize::Zeroize;
 
+use crate::cutover::CutoverGate;
 use crate::{
-    CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
-    ProjectionAuthorityRecord, ProjectionPromotionRequest,
+    CutoverDecision, ParityReceipt, ParityStatus, ProjectionAuthority, ProjectionAuthorityRecord,
+    ProjectionPromotionRequest,
 };
 use crate::{
     StoreError,
@@ -2443,8 +2444,8 @@ LIMIT $3
         .await
     }
 
-    /// Evaluate the durable cutover evidence without changing projection
-    /// authority. Operators use this before the irreversible promotion step.
+    /// Evaluate tenant-scoped persisted promotion evidence without changing
+    /// projection authority. Missing receipt owners fail closed.
     pub async fn evaluate_projection_authority(
         &self,
         catalog: &SourceCatalog,
@@ -2457,13 +2458,17 @@ LIMIT $3
                 request.family_id(),
             )
             .await?;
+        let verification = self.verify_projection_promotion_evidence(request).await?;
         let decision = CutoverGate::new(request.policy())
             .evaluate(
                 catalog,
+                request.tenant_id(),
                 request.source_id(),
                 request.family_id(),
                 &receipts,
                 request.projection_lag(),
+                request.qualification(),
+                &verification,
             )
             .map_err(|error| StoreError::Conflict(error.to_string()))?;
         Ok(decision)
@@ -2475,6 +2480,11 @@ LIMIT $3
         decision: &CutoverDecision,
         promoted_at_unix_ms: i64,
     ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        if decision.tenant_id() != tenant_id {
+            return Err(StoreError::Conflict(
+                "projection promotion tenant does not match decision evidence".to_owned(),
+            ));
+        }
         if !decision.is_allowed() {
             return Err(StoreError::Conflict(format!(
                 "projection cutover is blocked: {}",
@@ -3459,7 +3469,7 @@ fn audit_event_text_filter(clauses: &mut Vec<String>, values: &mut Vec<String>, 
     ));
 }
 
-async fn set_tenant(
+pub(crate) async fn set_tenant(
     transaction: &tokio_postgres::Transaction<'_>,
     tenant_id: &str,
 ) -> Result<(), tokio_postgres::Error> {

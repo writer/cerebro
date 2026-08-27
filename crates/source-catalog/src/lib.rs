@@ -16,9 +16,16 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 mod authority_evidence;
+mod authority_qualification;
+mod authority_readiness;
 pub use authority_evidence::{
     AuthorityDecisionKind, AuthorityEvidenceError, AuthorityEvidenceRecord,
     AuthorityEvidenceStream, validate_authority_evidence_record,
+};
+pub use authority_qualification::{
+    AuthorityQualificationEvidence, PagePublicationReceiptReference, PersistedReceiptReference,
+    SourceCollectionReceiptReference, authority_qualification_digest,
+    missing_authority_qualification_evidence, validate_authority_qualification_evidence,
 };
 
 const MAX_PAGE_SIZE: usize = 1_000;
@@ -820,57 +827,22 @@ impl SourceCatalog {
     }
 
     pub fn authority_readiness_report(&self) -> AuthorityReadinessReport {
-        let mut families = Vec::new();
-        for source in self.sources() {
-            for family in source.families() {
-                let plan_digest = family_plan_digest(source, family);
-                let mut blocking_reasons = vec![
-                    "fixture_corpus_revision".to_owned(),
-                    "supported_auth_modes".to_owned(),
-                    "supported_pagination_grammar".to_owned(),
-                    "supported_provider_error_modes".to_owned(),
-                    "egress_allowlist".to_owned(),
-                    "response_decompression_limits".to_owned(),
-                    "credential_lease_mode".to_owned(),
-                    "rollback_receipt".to_owned(),
-                    "fixture_parity_status".to_owned(),
-                    "canonical_digest_vectors".to_owned(),
-                    "credential_config_safety_proof".to_owned(),
-                    "cursor_checkpoint_rollback_proof".to_owned(),
-                    "operational_fencing_recovery_proof".to_owned(),
-                    "worker_runtime_build_identity".to_owned(),
-                    "promotion_receipt".to_owned(),
-                ];
-                if !family.is_projection_authoritative() {
-                    blocking_reasons.push("projection_intent_readiness".to_owned());
-                }
-                blocking_reasons.sort();
-                families.push(AuthorityReadinessFamilyReport {
-                    source_id: source.id().to_owned(),
-                    family_id: family.id().to_owned(),
-                    engine: "go_or_shadow_only".to_owned(),
-                    authority_epoch: 0,
-                    plan_digest,
-                    proof_revision: "provider-proof:incomplete".to_owned(),
-                    fixture_revision: String::new(),
-                    parity_status: "missing".to_owned(),
-                    rollback_status: "missing".to_owned(),
-                    projection_status: if family.is_projection_authoritative() {
-                        "go_projection_dependency".to_owned()
-                    } else {
-                        "missing".to_owned()
-                    },
-                    promotion_decision_id: String::new(),
-                    blocking_reasons,
-                });
-            }
-        }
-        AuthorityReadinessReport {
-            total_families: families.len(),
-            rust_authoritative_families: 0,
-            shadow_or_go_families: families.len(),
-            families,
-        }
+        self.authority_readiness_report_with_evidence("", &AuthorityEvidenceStream::default())
+    }
+
+    /// Return the exact compiled catalog plan digest for one source family.
+    pub fn compiled_family_plan_digest(&self, source_id: &str, family_id: &str) -> Option<String> {
+        authority_readiness::compiled_family_plan_digest(self, source_id, family_id)
+    }
+
+    /// Render one tenant's audit evidence against the compiled catalog. This
+    /// report never substitutes for the persisted projection-authority ledger.
+    pub fn authority_readiness_report_with_evidence(
+        &self,
+        tenant_id: &str,
+        evidence: &AuthorityEvidenceStream,
+    ) -> AuthorityReadinessReport {
+        authority_readiness::report_with_evidence(self, tenant_id, evidence)
     }
 }
 

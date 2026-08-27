@@ -1,10 +1,15 @@
 use std::{collections::BTreeMap, error::Error, fmt};
 
-use cerebro_source_catalog::SourceCatalog;
-use serde::Serialize;
+use cerebro_source_catalog::{
+    AuthorityQualificationEvidence, SourceCatalog, authority_qualification_digest,
+};
 use sha2::{Digest, Sha256};
 
-use crate::{ParityReceipt, ParityStatus};
+use crate::{
+    ParityReceipt, ParityStatus,
+    promotion::{CutoverDecision, promotion_evidence_reasons},
+    promotion_evidence_store::{PromotionEvidenceVerification, VerifiedPromotionReceiptKind},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CutoverPolicy {
@@ -24,121 +29,6 @@ impl CutoverPolicy {
             min_consecutive_matches,
             max_projection_lag,
         })
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectionPromotionRequest {
-    tenant_id: String,
-    source_id: String,
-    family_id: String,
-    policy: CutoverPolicy,
-    projection_lag: u64,
-    promoted_at_unix_ms: i64,
-}
-
-impl ProjectionPromotionRequest {
-    pub fn new(
-        tenant_id: impl Into<String>,
-        source_id: impl Into<String>,
-        family_id: impl Into<String>,
-        policy: CutoverPolicy,
-        projection_lag: u64,
-        promoted_at_unix_ms: i64,
-    ) -> Result<Self, CutoverError> {
-        let tenant_id = checked_text(tenant_id.into(), "tenant_id")?;
-        let source_id = checked_text(source_id.into(), "source_id")?;
-        let family_id = checked_text(family_id.into(), "family_id")?;
-        if promoted_at_unix_ms <= 0 {
-            return Err(CutoverError::Invalid("promoted_at_unix_ms"));
-        }
-        Ok(Self {
-            tenant_id,
-            source_id,
-            family_id,
-            policy,
-            projection_lag,
-            promoted_at_unix_ms,
-        })
-    }
-
-    pub fn tenant_id(&self) -> &str {
-        &self.tenant_id
-    }
-
-    pub fn source_id(&self) -> &str {
-        &self.source_id
-    }
-
-    pub fn family_id(&self) -> &str {
-        &self.family_id
-    }
-
-    pub(crate) fn policy(&self) -> CutoverPolicy {
-        self.policy
-    }
-
-    pub fn projection_lag(&self) -> u64 {
-        self.projection_lag
-    }
-
-    pub(crate) fn promoted_at_unix_ms(&self) -> i64 {
-        self.promoted_at_unix_ms
-    }
-}
-
-fn checked_text(value: String, field: &'static str) -> Result<String, CutoverError> {
-    if value.is_empty() || value.trim() != value {
-        return Err(CutoverError::Invalid(field));
-    }
-    Ok(value)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct CutoverDecision {
-    source_id: String,
-    family_id: String,
-    allowed: bool,
-    reasons: Vec<String>,
-    evidence_digest: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectionAuthority {
-    Legacy,
-    Rust,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectionAuthorityRecord {
-    pub tenant_id: String,
-    pub source_id: String,
-    pub family_id: String,
-    pub authority: ProjectionAuthority,
-    pub evidence_digest: String,
-    pub promoted_at_unix_ms: Option<i64>,
-}
-
-impl CutoverDecision {
-    pub fn source_id(&self) -> &str {
-        &self.source_id
-    }
-
-    pub fn family_id(&self) -> &str {
-        &self.family_id
-    }
-
-    pub fn is_allowed(&self) -> bool {
-        self.allowed
-    }
-
-    pub fn reasons(&self) -> &[String] {
-        &self.reasons
-    }
-
-    pub fn evidence_digest(&self) -> &str {
-        &self.evidence_digest
     }
 }
 
@@ -165,31 +55,50 @@ impl fmt::Display for CutoverError {
 
 impl Error for CutoverError {}
 
-pub struct CutoverGate {
+pub(crate) struct CutoverGate {
     policy: CutoverPolicy,
 }
 
 impl CutoverGate {
-    pub fn new(policy: CutoverPolicy) -> Self {
+    pub(crate) fn new(policy: CutoverPolicy) -> Self {
         Self { policy }
     }
 
-    pub fn evaluate(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate(
         &self,
         catalog: &SourceCatalog,
+        tenant_id: &str,
         source_id: &str,
         family_id: &str,
         receipts: &[ParityReceipt],
         projection_lag: u64,
+        qualification: &AuthorityQualificationEvidence,
+        verification: &PromotionEvidenceVerification,
     ) -> Result<CutoverDecision, CutoverError> {
         let source = catalog
             .get(source_id)
             .ok_or_else(|| CutoverError::UnknownSource(source_id.to_owned()))?;
-        let mut reasons = Vec::new();
+        let mut reasons = promotion_evidence_reasons(catalog, source_id, family_id, qualification)?;
+        reasons.extend(verification.reasons().iter().cloned());
+        reasons.extend(verified_scope_reasons(
+            tenant_id,
+            source_id,
+            family_id,
+            qualification,
+            verification,
+        ));
+        reasons.extend(verified_receipt_binding_reasons(
+            qualification,
+            verification,
+        ));
         let family = source
             .families()
             .iter()
             .find(|family| family.id() == family_id)
+            .ok_or_else(|| CutoverError::UnknownSource(format!("{source_id}/{family_id}")))?;
+        let catalog_plan_digest = catalog
+            .compiled_family_plan_digest(source_id, family_id)
             .ok_or_else(|| CutoverError::UnknownSource(format!("{source_id}/{family_id}")))?;
         if !family.is_projection_authoritative() {
             reasons.push("provider method and path proof is incomplete".to_owned());
@@ -203,11 +112,24 @@ impl CutoverGate {
                 self.policy.max_projection_lag
             ));
         }
-        let source_receipts: Vec<_> = receipts
+        if receipts.iter().any(|receipt| {
+            receipt.source_id() == source_id
+                && receipt.family_id() == family_id
+                && receipt.tenant_id() != tenant_id
+        }) {
+            reasons.push("parity receipt tenant does not match promotion request".to_owned());
+        }
+        let mut source_receipts: Vec<_> = receipts
             .iter()
+            .filter(|receipt| receipt.tenant_id() == tenant_id)
             .filter(|receipt| receipt.source_id() == source_id)
             .filter(|receipt| receipt.family_id() == family_id)
             .collect();
+        source_receipts.sort_by(|left, right| {
+            left.compared_at_unix_ms()
+                .cmp(&right.compared_at_unix_ms())
+                .then_with(|| left.receipt_digest().cmp(right.receipt_digest()))
+        });
         let consecutive = source_receipts
             .iter()
             .rev()
@@ -219,9 +141,20 @@ impl CutoverGate {
                 self.policy.min_consecutive_matches
             ));
         }
+        let qualifying_receipt_digests = source_receipts
+            .iter()
+            .rev()
+            .take(self.policy.min_consecutive_matches)
+            .rev()
+            .map(|receipt| receipt.receipt_digest().to_owned())
+            .collect::<Vec<_>>();
+        if qualification.parity_receipt_digests != qualifying_receipt_digests {
+            reasons
+                .push("persisted parity receipt sequence does not match qualification".to_owned());
+        }
         let mut latest_by_corpus = BTreeMap::new();
-        for receipt in source_receipts {
-            latest_by_corpus.insert(receipt.collection_id(), receipt);
+        for receipt in &source_receipts {
+            latest_by_corpus.insert(receipt.collection_id(), *receipt);
         }
         if latest_by_corpus
             .values()
@@ -235,22 +168,188 @@ impl CutoverGate {
         {
             reasons.push("a latest parity receipt exceeds the projection lag policy".to_owned());
         }
+        if source_receipts
+            .last()
+            .is_some_and(|receipt| receipt.collection_id() != qualification.fixture_corpus_revision)
+        {
+            reasons
+                .push("qualification fixture corpus is not the latest parity receipt".to_owned());
+        }
+        let qualification_digest = authority_qualification_digest(qualification);
+        let verification_digest = verification.digest();
         let evidence_digest = digest(
-            &receipts
+            &source_receipts
                 .iter()
-                .filter(|receipt| receipt.source_id() == source_id)
-                .filter(|receipt| receipt.family_id() == family_id)
-                .map(ParityReceipt::receipt_digest)
+                .map(|receipt| receipt.receipt_digest())
+                .chain([
+                    tenant_id,
+                    source_id,
+                    family_id,
+                    qualification_digest.as_str(),
+                    catalog_plan_digest.as_str(),
+                    qualification.runtime_plan_digest.as_str(),
+                    verification_digest.as_str(),
+                ])
                 .collect::<Vec<_>>(),
         );
+        reasons.sort();
+        reasons.dedup();
         Ok(CutoverDecision {
+            tenant_id: tenant_id.to_owned(),
             source_id: source_id.to_owned(),
             family_id: family_id.to_owned(),
             allowed: reasons.is_empty(),
             reasons,
             evidence_digest,
+            qualification: qualification.clone(),
+            verified_receipts: verification.receipts().to_vec(),
         })
     }
+}
+
+fn verified_scope_reasons(
+    tenant_id: &str,
+    source_id: &str,
+    family_id: &str,
+    qualification: &AuthorityQualificationEvidence,
+    verification: &PromotionEvidenceVerification,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if verification.tenant_id() != tenant_id {
+        reasons.push("persisted verification tenant does not match promotion request".to_owned());
+    }
+    if verification.source_id() != source_id {
+        reasons.push("persisted verification source does not match promotion request".to_owned());
+    }
+    if verification.family_id() != family_id {
+        reasons.push("persisted verification family does not match promotion request".to_owned());
+    }
+    let collection_runtime = qualification
+        .authenticated_collection_receipt
+        .source_runtime_id
+        .as_str();
+    if qualification
+        .append_projection_checkpoint_receipt
+        .source_runtime_id
+        != collection_runtime
+        || qualification.lease_restart_receipt.source_runtime_id != collection_runtime
+    {
+        reasons.push("qualified receipt runtime identifiers do not match".to_owned());
+    }
+    if verification.source_runtime_id() != collection_runtime {
+        reasons.push("persisted verification runtime does not match qualification".to_owned());
+    }
+    if verification.runtime_revision_sha256() != qualification.runtime_revision_sha256 {
+        reasons.push(
+            "persisted verification runtime revision does not match qualification".to_owned(),
+        );
+    }
+    reasons
+}
+
+fn verified_receipt_binding_reasons(
+    qualification: &AuthorityQualificationEvidence,
+    verification: &PromotionEvidenceVerification,
+) -> Vec<String> {
+    let collection = &qualification.authenticated_collection_receipt;
+    let append = &qualification.append_projection_checkpoint_receipt;
+    let restart = &qualification.lease_restart_receipt;
+    let mut reasons = Vec::new();
+    for (kind, receipt_id, receipt_digest, label) in [
+        (
+            VerifiedPromotionReceiptKind::DurableCollection,
+            collection.collection_id.as_str(),
+            collection.manifest_digest_sha256.as_str(),
+            "durable collection",
+        ),
+        (
+            VerifiedPromotionReceiptKind::AuthenticatedCollection,
+            collection.collection_id.as_str(),
+            collection.manifest_digest_sha256.as_str(),
+            "authenticated collection",
+        ),
+        (
+            VerifiedPromotionReceiptKind::AppendProjectionCheckpoint,
+            append.logical_page_id.as_str(),
+            append.snapshot_digest_sha256.as_str(),
+            "append/projection/checkpoint",
+        ),
+        (
+            VerifiedPromotionReceiptKind::LeaseRestart,
+            restart.logical_page_id.as_str(),
+            restart.snapshot_digest_sha256.as_str(),
+            "lease/restart",
+        ),
+        (
+            VerifiedPromotionReceiptKind::RuntimeRevision,
+            qualification.runtime_revision_sha256.as_str(),
+            qualification.runtime_revision_sha256.as_str(),
+            "runtime revision",
+        ),
+        (
+            VerifiedPromotionReceiptKind::ProductRead,
+            qualification.product_read_receipt.receipt_id.as_str(),
+            qualification
+                .product_read_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "product-read",
+        ),
+        (
+            VerifiedPromotionReceiptKind::PromotionApproval,
+            qualification.promotion_receipt.receipt_id.as_str(),
+            qualification
+                .promotion_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "promotion approval",
+        ),
+        (
+            VerifiedPromotionReceiptKind::Recovery,
+            qualification.rollback_receipt.receipt_id.as_str(),
+            qualification
+                .rollback_receipt
+                .receipt_digest_sha256
+                .as_str(),
+            "recovery",
+        ),
+    ] {
+        let matching_kind = verification
+            .receipts()
+            .iter()
+            .filter(|receipt| receipt.kind() == kind)
+            .collect::<Vec<_>>();
+        if matching_kind.is_empty() {
+            reasons.push(format!("verified {label} proof is missing"));
+        } else if matching_kind.len() != 1
+            || matching_kind[0].receipt_id() != receipt_id
+            || matching_kind[0].receipt_digest() != receipt_digest
+        {
+            reasons.push(format!(
+                "verified {label} proof does not match qualification"
+            ));
+        }
+    }
+
+    let mut actual_parity = verification
+        .receipts()
+        .iter()
+        .filter(|receipt| receipt.kind() == VerifiedPromotionReceiptKind::Parity)
+        .map(|receipt| (receipt.receipt_id(), receipt.receipt_digest()))
+        .collect::<Vec<_>>();
+    actual_parity.sort_unstable();
+    let mut expected_parity = qualification
+        .parity_receipt_digests
+        .iter()
+        .map(|digest| (digest.as_str(), digest.as_str()))
+        .collect::<Vec<_>>();
+    expected_parity.sort_unstable();
+    if actual_parity.is_empty() {
+        reasons.push("verified parity proof is missing".to_owned());
+    } else if actual_parity != expected_parity {
+        reasons.push("verified parity proof does not match qualification".to_owned());
+    }
+    reasons
 }
 
 fn digest(parts: &[&str]) -> String {
@@ -269,230 +368,5 @@ fn digest(parts: &[&str]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::SemanticSnapshot;
-    use std::path::{Path, PathBuf};
-
-    fn repository_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .unwrap()
-    }
-
-    #[test]
-    fn cutover_requires_proof_three_matches_and_zero_lag() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let receipts: Vec<_> = (1..=3)
-            .map(|index| {
-                ParityReceipt::compare(
-                    "box",
-                    "users",
-                    format!("corpus-{index}"),
-                    "sha256:same",
-                    "sha256:same",
-                    true,
-                    index,
-                )
-                .unwrap()
-            })
-            .collect();
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        assert!(
-            gate.evaluate(&catalog, "box", "users", &receipts, 0)
-                .unwrap()
-                .is_allowed()
-        );
-        assert!(
-            !gate
-                .evaluate(&catalog, "box", "users", &receipts[..2], 0)
-                .unwrap()
-                .is_allowed()
-        );
-        assert!(
-            !gate
-                .evaluate(&catalog, "agiloft", "users", &receipts, 0)
-                .unwrap()
-                .is_allowed()
-        );
-    }
-
-    #[test]
-    fn promotion_request_and_decision_bind_the_exact_scope() {
-        let policy = CutoverPolicy::new(3, 2).unwrap();
-        let request =
-            ProjectionPromotionRequest::new("tenant-a", "box", "users", policy, 1, 100).unwrap();
-        assert_eq!(request.tenant_id(), "tenant-a");
-        assert_eq!(request.source_id(), "box");
-        assert_eq!(request.family_id(), "users");
-        assert_eq!(request.policy(), policy);
-        assert_eq!(request.projection_lag(), 1);
-        assert_eq!(request.promoted_at_unix_ms(), 100);
-
-        assert_eq!(CutoverPolicy::new(2, 0), Err(CutoverError::UnsafePolicy));
-        assert_eq!(
-            ProjectionPromotionRequest::new("", "box", "users", policy, 0, 1),
-            Err(CutoverError::Invalid("tenant_id"))
-        );
-        assert_eq!(
-            ProjectionPromotionRequest::new("tenant", " box", "users", policy, 0, 1),
-            Err(CutoverError::Invalid("source_id"))
-        );
-        assert_eq!(
-            ProjectionPromotionRequest::new("tenant", "box", "users", policy, 0, 0),
-            Err(CutoverError::Invalid("promoted_at_unix_ms"))
-        );
-        assert_eq!(
-            CutoverError::UnsafePolicy.to_string(),
-            "cutover requires at least three matching runs"
-        );
-        assert_eq!(
-            CutoverError::UnknownSource("missing".to_owned()).to_string(),
-            "source missing is not in the catalog"
-        );
-    }
-
-    #[test]
-    fn cutover_reports_each_failed_proof_instead_of_collapsing_them() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let receipts = vec![
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "box-prod",
-                "box",
-                "users",
-                "corpus-1",
-                "sha256:same",
-                "sha256:same",
-                true,
-                1,
-            )
-            .unwrap(),
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "box-prod",
-                "box",
-                "users",
-                "corpus-2",
-                "sha256:left",
-                "sha256:right",
-                true,
-                2,
-            )
-            .unwrap(),
-            ParityReceipt::compare_scoped(
-                "tenant-a",
-                "box-prod",
-                "box",
-                "users",
-                "corpus-3",
-                "sha256:same",
-                "sha256:same",
-                false,
-                3,
-            )
-            .unwrap(),
-        ];
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        let decision = gate
-            .evaluate(&catalog, "box", "users", &receipts, 4)
-            .unwrap();
-        assert_eq!(decision.source_id(), "box");
-        assert_eq!(decision.family_id(), "users");
-        assert!(!decision.is_allowed());
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason.contains("projection lag 4"))
-        );
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason.contains("consecutive parity matches"))
-        );
-        assert!(
-            decision
-                .reasons()
-                .iter()
-                .any(|reason| reason == "latest corpus comparison is not a match")
-        );
-        assert!(decision.evidence_digest().starts_with("sha256:"));
-
-        assert_eq!(
-            gate.evaluate(&catalog, "missing", "users", &receipts, 0),
-            Err(CutoverError::UnknownSource("missing".to_owned()))
-        );
-        assert_eq!(
-            gate.evaluate(&catalog, "box", "missing", &receipts, 0),
-            Err(CutoverError::UnknownSource("box/missing".to_owned()))
-        );
-    }
-
-    #[test]
-    fn receipt_lag_is_checked_independently_of_current_projection_lag() {
-        let root = repository_root();
-        let catalog = SourceCatalog::load(
-            root.join("internal/connectorcatalog/catalog"),
-            root.join("sources"),
-        )
-        .unwrap();
-        let base = ParityReceipt::compare(
-            "box",
-            "users",
-            "corpus-1",
-            "sha256:same",
-            "sha256:same",
-            true,
-            1,
-        )
-        .unwrap();
-        let legacy = SemanticSnapshot::from_facts(
-            "legacy-shadow",
-            "legacy-shadow",
-            "box",
-            "users",
-            "corpus-1",
-            "legacy-shadow",
-            "legacy",
-            true,
-            Vec::new(),
-        )
-        .unwrap();
-        let rust = SemanticSnapshot::from_facts(
-            "legacy-shadow",
-            "legacy-shadow",
-            "box",
-            "users",
-            "corpus-1",
-            "legacy-shadow",
-            "rust",
-            true,
-            Vec::new(),
-        )
-        .unwrap();
-        let lagged =
-            ParityReceipt::compare_snapshots(&legacy, &rust, 3, 2, BTreeMap::new()).unwrap();
-        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
-        let decision = gate
-            .evaluate(&catalog, "box", "users", &[base.clone(), base, lagged], 0)
-            .unwrap();
-        assert!(!decision.is_allowed());
-        assert!(decision
-            .reasons()
-            .iter()
-            .any(|reason| reason == "a latest parity receipt exceeds the projection lag policy"));
-    }
-}
+#[path = "cutover_tests.rs"]
+mod tests;

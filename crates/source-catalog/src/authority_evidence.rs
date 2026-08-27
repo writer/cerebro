@@ -1,10 +1,15 @@
 use std::collections::BTreeSet;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::{
+    AuthorityQualificationEvidence, authority_qualification_digest,
+    validate_authority_qualification_evidence,
+};
+
 /// Source-family authority decision kinds recorded in the append-only evidence stream.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthorityDecisionKind {
     /// Promote one tenant/source/family to Rust authority.
@@ -18,7 +23,7 @@ pub enum AuthorityDecisionKind {
 }
 
 /// Immutable authority evidence for one tenant/source/family decision.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AuthorityEvidenceRecord {
     /// Tenant scope.
     pub tenant_id: String,
@@ -44,6 +49,11 @@ pub struct AuthorityEvidenceRecord {
     pub authenticated_receipt_id: String,
     /// Detached signature, when available.
     pub receipt_signature: String,
+    /// Prior decision in the exact tenant/source/family authority chain.
+    pub previous_decision_id: String,
+    /// Complete proof bundle for a promotion decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qualification: Option<AuthorityQualificationEvidence>,
     /// Canonical record digest assigned at append time.
     pub record_digest_sha256: String,
 }
@@ -71,16 +81,58 @@ impl AuthorityEvidenceStream {
         mut record: AuthorityEvidenceRecord,
     ) -> Result<AuthorityEvidenceRecord, AuthorityEvidenceError> {
         validate_authority_evidence_record(&record)?;
+        self.validate_append_sequence(&record)?;
+        record.record_digest_sha256.clear();
+        record.record_digest_sha256 = digest_authority_evidence_record(&record);
+        self.insert_validated(record.clone())?;
+        Ok(record)
+    }
+
+    /// Hydrate one already-persisted record after verifying its digest and
+    /// monotonic family decision chain.
+    pub fn append_persisted(
+        &mut self,
+        record: AuthorityEvidenceRecord,
+    ) -> Result<(), AuthorityEvidenceError> {
+        validate_authority_evidence_record(&record)?;
+        if !is_sha256_hex(&record.record_digest_sha256)
+            || digest_authority_evidence_record(&record) != record.record_digest_sha256
+        {
+            return Err(AuthorityEvidenceError::Invalid("record_digest_sha256"));
+        }
+        self.validate_append_sequence(&record)?;
+        self.insert_validated(record)
+    }
+
+    fn insert_validated(
+        &mut self,
+        record: AuthorityEvidenceRecord,
+    ) -> Result<(), AuthorityEvidenceError> {
         if !self
             .decision_ids
             .insert(record.decision_id.trim().to_owned())
         {
             return Err(AuthorityEvidenceError::Immutable);
         }
-        record.record_digest_sha256.clear();
-        record.record_digest_sha256 = digest_authority_evidence_record(&record);
-        self.records.push(record.clone());
-        Ok(record)
+        self.records.push(record);
+        Ok(())
+    }
+
+    fn validate_append_sequence(
+        &self,
+        record: &AuthorityEvidenceRecord,
+    ) -> Result<(), AuthorityEvidenceError> {
+        let previous = self.latest(&record.tenant_id, &record.source_id, &record.family_id);
+        match previous {
+            Some(previous)
+                if record.authority_epoch == previous.authority_epoch + 1
+                    && record.previous_decision_id == previous.decision_id =>
+            {
+                Ok(())
+            }
+            None if record.previous_decision_id.trim().is_empty() => Ok(()),
+            _ => Err(AuthorityEvidenceError::Invalid("authority_sequence")),
+        }
     }
 
     /// Return ordered authority history for one tenant/source/family.
@@ -99,6 +151,20 @@ impl AuthorityEvidenceStream {
             })
             .cloned()
             .collect()
+    }
+
+    /// Return the latest verified record for one exact authority scope.
+    pub fn latest(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+    ) -> Option<&AuthorityEvidenceRecord> {
+        self.records.iter().rev().find(|record| {
+            record.tenant_id == tenant_id
+                && record.source_id == source_id
+                && record.family_id == family_id
+        })
     }
 
     /// Reject any post-append mutation to a stored record.
@@ -121,7 +187,8 @@ impl AuthorityEvidenceStream {
     }
 }
 
-/// Validate an authority evidence record before any authority decision can use it.
+/// Validate the shape and chain binding of an audit evidence record. This does
+/// not verify persisted receipts or authorize projection.
 pub fn validate_authority_evidence_record(
     record: &AuthorityEvidenceRecord,
 ) -> Result<(), AuthorityEvidenceError> {
@@ -134,7 +201,7 @@ pub fn validate_authority_evidence_record(
     {
         return Err(AuthorityEvidenceError::Invalid("required_identity"));
     }
-    if record.authority_epoch == 0 {
+    if record.authority_epoch == 0 || record.timestamp_unix_ms <= 0 {
         return Err(AuthorityEvidenceError::Invalid("authority_epoch"));
     }
     if !is_sha256_hex(&record.input_evidence_digest_sha256) {
@@ -142,17 +209,33 @@ pub fn validate_authority_evidence_record(
             "input_evidence_digest_sha256",
         ));
     }
-    if record.decision_kind == AuthorityDecisionKind::Promotion
-        && record.authenticated_receipt_id.trim().is_empty()
-        && !record.receipt_signature.trim().starts_with("sig:")
-    {
-        return Err(AuthorityEvidenceError::Invalid("promotion_receipt"));
+    if record.decision_kind == AuthorityDecisionKind::Promotion {
+        if record.authenticated_receipt_id.trim().is_empty() {
+            return Err(AuthorityEvidenceError::Invalid("promotion_receipt"));
+        }
+        let qualification = record
+            .qualification
+            .as_ref()
+            .ok_or(AuthorityEvidenceError::Invalid("qualification_evidence"))?;
+        validate_authority_qualification_evidence(qualification)?;
+        if authority_qualification_digest(qualification)
+            != record
+                .input_evidence_digest_sha256
+                .trim()
+                .to_ascii_lowercase()
+        {
+            return Err(AuthorityEvidenceError::Invalid(
+                "input_evidence_digest_sha256",
+            ));
+        }
     }
     Ok(())
 }
 
 fn digest_authority_evidence_record(record: &AuthorityEvidenceRecord) -> String {
-    let bytes = serde_json::to_vec(record).expect("authority evidence serializes");
+    let mut record = record.clone();
+    record.record_digest_sha256.clear();
+    let bytes = serde_json::to_vec(&record).expect("authority evidence serializes");
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -165,6 +248,10 @@ fn is_sha256_hex(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        PagePublicationReceiptReference, PersistedReceiptReference,
+        SourceCollectionReceiptReference,
+    };
 
     #[test]
     fn authority_evidence_stream_is_append_only_queryable_and_validated() {
@@ -209,6 +296,15 @@ mod tests {
             Err(AuthorityEvidenceError::Immutable)
         );
 
+        let mut hydrated = AuthorityEvidenceStream::default();
+        hydrated.append_persisted(first.clone()).unwrap();
+        let mut tampered = second.clone();
+        tampered.reason_code = "tampered".to_owned();
+        assert_eq!(
+            hydrated.append_persisted(tampered),
+            Err(AuthorityEvidenceError::Invalid("record_digest_sha256"))
+        );
+
         let mut bad_digest =
             authority_record("decision-bad-digest", 4, AuthorityDecisionKind::Promotion);
         bad_digest.input_evidence_digest_sha256 = "not-a-sha".to_owned();
@@ -221,7 +317,7 @@ mod tests {
         let mut unsigned =
             authority_record("decision-unsigned", 5, AuthorityDecisionKind::Promotion);
         unsigned.authenticated_receipt_id.clear();
-        unsigned.receipt_signature.clear();
+        unsigned.receipt_signature = "sig:unverified-prefix".to_owned();
         assert_eq!(
             validate_authority_evidence_record(&unsigned),
             Err(AuthorityEvidenceError::Invalid("promotion_receipt"))
@@ -229,6 +325,13 @@ mod tests {
         let mut blocked = unsigned;
         blocked.decision_kind = AuthorityDecisionKind::ShadowOnlyBlocked;
         assert_eq!(validate_authority_evidence_record(&blocked), Ok(()));
+
+        let mut incomplete = qualification_evidence("a".repeat(64));
+        incomplete.product_read_receipt.receipt_id.clear();
+        assert_eq!(
+            validate_authority_qualification_evidence(&incomplete),
+            Err(AuthorityEvidenceError::Invalid("product_read_receipt"))
+        );
     }
 
     fn authority_record(
@@ -236,6 +339,11 @@ mod tests {
         authority_epoch: u64,
         decision_kind: AuthorityDecisionKind,
     ) -> AuthorityEvidenceRecord {
+        let qualification = (decision_kind == AuthorityDecisionKind::Promotion)
+            .then(|| qualification_evidence("a".repeat(64)));
+        let input_evidence_digest_sha256 = qualification
+            .as_ref()
+            .map_or_else(|| "a".repeat(64), authority_qualification_digest);
         AuthorityEvidenceRecord {
             tenant_id: "tenant-a".to_owned(),
             source_id: "custom_deposit".to_owned(),
@@ -243,13 +351,71 @@ mod tests {
             authority_epoch,
             decision_id: decision_id.to_owned(),
             decision_kind,
-            input_evidence_digest_sha256: "a".repeat(64),
+            input_evidence_digest_sha256,
             actor_id: "system:cutover".to_owned(),
             timestamp_unix_ms: 1_787_136_000_000,
             reason_code: "provider_proof_complete".to_owned(),
             authenticated_receipt_id: "receipt:promotion".to_owned(),
             receipt_signature: String::new(),
+            previous_decision_id: match authority_epoch {
+                1 => String::new(),
+                2 => "decision-promote".to_owned(),
+                _ => "decision-rollback".to_owned(),
+            },
+            qualification,
             record_digest_sha256: String::new(),
+        }
+    }
+
+    fn qualification_evidence(plan_digest: String) -> AuthorityQualificationEvidence {
+        AuthorityQualificationEvidence {
+            plan_digest,
+            runtime_plan_digest: "b".repeat(64),
+            fixture_corpus_revision: "fixture-corpus:v1".to_owned(),
+            supported_auth_modes: vec!["api_key".to_owned()],
+            supported_pagination_grammar: vec!["cursor".to_owned()],
+            supported_provider_errors: vec!["unauthorized".to_owned(), "rate_limited".to_owned()],
+            egress_allowlist: vec!["https://provider.example.test".to_owned()],
+            response_limits: "body=1048576,decompression=4x".to_owned(),
+            credential_lease_mode: "one_operation".to_owned(),
+            projection_dependency: "rust_projection".to_owned(),
+            rollback_receipt: PersistedReceiptReference {
+                receipt_id: "rollback-test".to_owned(),
+                receipt_digest_sha256: "c".repeat(64),
+            },
+            parity_status: "passed".to_owned(),
+            canonical_digest_vectors: vec!["plan".to_owned(), "result".to_owned()],
+            config_safety_proof: "receipt:config-safety".to_owned(),
+            cursor_checkpoint_proof: "receipt:cursor-checkpoint".to_owned(),
+            fencing_recovery_proof: "receipt:fencing-recovery".to_owned(),
+            runtime_revision_sha256: "d".repeat(64),
+            worker_runtime_build_identity: "source-runtime-next:test".to_owned(),
+            promotion_receipt: PersistedReceiptReference {
+                receipt_id: "promotion-test".to_owned(),
+                receipt_digest_sha256: "e".repeat(64),
+            },
+            authenticated_collection_receipt: SourceCollectionReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                collection_id: "collection-test".to_owned(),
+                manifest_digest_sha256: "f".repeat(64),
+            },
+            append_projection_checkpoint_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-test".to_owned(),
+                revision: 5,
+                snapshot_digest_sha256: "1".repeat(64),
+            },
+            lease_restart_receipt: PagePublicationReceiptReference {
+                source_runtime_id: "runtime-test".to_owned(),
+                logical_page_id: "page-restart-test".to_owned(),
+                revision: 6,
+                snapshot_digest_sha256: "2".repeat(64),
+            },
+            product_read_receipt: PersistedReceiptReference {
+                receipt_id: "product-read-test".to_owned(),
+                receipt_digest_sha256: "3".repeat(64),
+            },
+            parity_receipt_digests: vec!["4".repeat(64), "5".repeat(64), "6".repeat(64)],
         }
     }
 }
