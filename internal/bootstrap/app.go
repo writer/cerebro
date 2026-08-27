@@ -55,6 +55,7 @@ import (
 	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/policycandidate"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
@@ -1388,10 +1389,11 @@ func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.Che
 	var wg sync.WaitGroup
 	wg.Add(len(checks))
 	for index, check := range checks {
-		go func() {
+		components[index] = &cerebrov1.ComponentStatus{Name: check.name, Status: "error", Detail: "check panicked"}
+		panicsafe.Go(ctx, "health.dependency_check", func() {
 			defer wg.Done()
 			components[index] = componentStatus(ctx, check.name, check.dependency)
-		}()
+		})
 	}
 	wg.Wait()
 	status := "ready"

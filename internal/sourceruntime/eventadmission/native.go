@@ -14,6 +14,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/wasmhost"
@@ -214,10 +215,17 @@ func (c *NativeClient) evaluate(ctx context.Context, encoding byte, payload []by
 		err     error
 	}
 	done := make(chan result, 1)
-	go func() {
+	panicsafe.Go(callCtx, "source_event_admission.native_round_trip", func() {
+		defer close(done)
+		defer func() {
+			select {
+			case done <- result{err: panicsafe.ErrTaskPanicked}:
+			default:
+			}
+		}()
 		response, err := roundTripNative(stdin, stdout, encoding, payload)
 		done <- result{payload: response, err: err}
-	}()
+	})
 
 	select {
 	case result := <-done:

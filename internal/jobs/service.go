@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -184,7 +185,7 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 	s.asyncCancels[asyncID] = cancel
 	s.wg.Add(1)
 	s.mu.Unlock()
-	go func() {
+	panicsafe.Go(runCtx, "platform_job.async_run", func() {
 		defer func() {
 			cancel()
 			s.mu.Lock()
@@ -194,7 +195,7 @@ func (s *Service) StartAsync(ctx context.Context, job *ports.Job) { //nolint:con
 		}()
 		telemetry.Event(runCtx, "platform.job.async_started", jobTelemetryAttrs(job).WithField(telemetry.Field{Key: "job.async_id", Value: asyncID}))
 		_ = s.Run(runCtx, job.ID)
-	}()
+	})
 }
 
 func (s *Service) Wait(ctx context.Context) error {
@@ -211,10 +212,10 @@ func (s *Service) Wait(ctx context.Context) error {
 		cancel()
 	}
 	done := make(chan struct{})
-	go func() {
+	panicsafe.Go(ctx, "platform_job.wait", func() {
+		defer close(done)
 		s.wg.Wait()
-		close(done)
-	}()
+	})
 	var ctxDone <-chan struct{}
 	if ctx != nil {
 		ctxDone = ctx.Done()
@@ -291,7 +292,7 @@ func (s *Service) StartRecovery(ctx context.Context, logf func(string, ...any)) 
 		close(done)
 		return done
 	}
-	go func() {
+	panicsafe.Go(ctx, "platform_job.recovery", func() {
 		defer close(done)
 		ticker := time.NewTicker(defaultRecoveryInterval)
 		defer ticker.Stop()
@@ -305,7 +306,7 @@ func (s *Service) StartRecovery(ctx context.Context, logf func(string, ...any)) 
 				}
 			}
 		}
-	}()
+	})
 	return done
 }
 
@@ -406,7 +407,7 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 	var leaseLost atomic.Bool
 	heartbeatCtx, stopHeartbeat := context.WithCancel(context.WithoutCancel(ctx))
 	heartbeatDone := make(chan struct{})
-	go func() {
+	panicsafe.Go(heartbeatCtx, "platform_job.lease_heartbeat", func() {
 		defer close(heartbeatDone)
 		ticker := time.NewTicker(s.heartbeatInterval)
 		defer ticker.Stop()
@@ -430,7 +431,7 @@ func (s *Service) runWithLease(ctx context.Context, jobID string, leaseStore por
 				}
 			}
 		}
-	}()
+	})
 	var cleanupHeartbeat sync.Once
 	cleanup := func() {
 		cleanupHeartbeat.Do(func() {

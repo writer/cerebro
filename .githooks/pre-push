@@ -11,4 +11,8 @@ if [ "${CEREBRO_SKIP_LEAK_CHECK:-}" != "1" ]; then
   "$repo_root/scripts/leak_check.sh" pushed
 fi
 
-make verify
+if [ "${CEREBRO_PRE_PUSH_FULL_VERIFY:-}" = "1" ]; then
+  make verify
+else
+  make changed-check
+fi

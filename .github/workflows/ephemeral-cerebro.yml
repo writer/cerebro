@@ -2,6 +2,31 @@ name: Ephemeral Cerebro
 
 on:
   pull_request:
+    paths:
+      - .dockerignore
+      - .github/workflows/ephemeral-cerebro.yml
+      - Cargo.lock
+      - Cargo.toml
+      - Dockerfile
+      - Dockerfile.rust
+      - Makefile
+      - docker-compose.yml
+      - docker-compose.rust.yml
+      - go.mod
+      - go.sum
+      - rust-toolchain.toml
+      - api/**
+      - cmd/**
+      - crates/**
+      - gen/**
+      - internal/**
+      - policies/**
+      - proto/**
+      - schemas/**
+      - scripts/qualify-rust-graph.sh
+      - sources/**
+      - testdata/**
+      - tools/**
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -30,7 +55,7 @@ permissions:
 
 concurrency:
   group: ephemeral-cerebro-${{ inputs.candidate_sha || github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   topology:

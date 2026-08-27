@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/evidencepackets"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	questionnairedomain "github.com/writer/cerebro/internal/questionnaire"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -971,7 +972,7 @@ func (h *Handler) projectQuestionnaireRunAsync(parent context.Context, projectio
 	if len(h.projections) == 0 {
 		return
 	}
-	go func() {
+	panicsafe.Go(parent, "questionnaire.graph_projection", func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), questionnaireProjectionTimeout)
 		defer cancel()
 		if err := h.projectQuestionnaireRun(ctx, projection); err != nil {
@@ -980,7 +981,7 @@ func (h *Handler) projectQuestionnaireRunAsync(parent context.Context, projectio
 				telemetry.Field{Key: "questionnaire.run_id", Value: projection.Record.RunID},
 			))
 		}
-	}()
+	})
 }
 
 func (h *Handler) projectQuestionnaireRun(ctx context.Context, projection questionnairedomain.GraphProjection) error {

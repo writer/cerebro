@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -436,7 +437,7 @@ func (s *Service) StartInterruptedRunRecovery(ctx context.Context, interval time
 	if interval <= 0 {
 		interval = defaultInterruptedRunRecoveryInterval
 	}
-	go func() {
+	panicsafe.Go(ctx, "compliance_assessment.interrupted_run_recovery", func() {
 		defer close(done)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -450,7 +451,7 @@ func (s *Service) StartInterruptedRunRecovery(ctx context.Context, interval time
 			case <-ticker.C:
 			}
 		}
-	}()
+	})
 	return done
 }
 

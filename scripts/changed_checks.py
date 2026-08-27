@@ -304,12 +304,24 @@ def main() -> int:
     parser.add_argument("--base", default=os.environ.get("REVIEW_BASE", "origin/main"))
     parser.add_argument("--head", default=os.environ.get("REVIEW_HEAD", "HEAD"))
     parser.add_argument("--repo", default=".")
-    parser.add_argument("--json", action="store_true", help="Print the command plan as JSON.")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="Print the command plan as JSON.")
+    output.add_argument(
+        "--print-go-packages",
+        action="store_true",
+        help="Print changed root-module Go packages, one per line.",
+    )
     parser.add_argument("--run", action="store_true", help="Execute the selected commands.")
     args = parser.parse_args()
 
     repo = Path(args.repo).resolve()
     files = changed_files(args.base, args.head, repo)
+    if args.print_go_packages:
+        if args.run:
+            parser.error("--print-go-packages cannot be combined with --run")
+        for package in go_packages(files, repo):
+            print(package)
+        return 0
     commands = select_commands(files, repo)
     payload = {"base": args.base, "head": args.head, "changed_files": files, "commands": [command.as_dict() for command in commands]}
     if args.json:

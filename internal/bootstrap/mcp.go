@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/mcptransport"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -110,9 +111,9 @@ func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.Graph
 	var wg sync.WaitGroup
 	for index, rootURN := range roots {
 		index, rootURN := index, rootURN
-		results[index].urn = rootURN
+		results[index] = mcpGraphStoreNeighborhoodResult{urn: rootURN, err: panicsafe.ErrTaskPanicked}
 		wg.Add(1)
-		go func() {
+		panicsafe.Go(ctx, "mcp.graph_neighborhood_fetch", func() {
 			defer wg.Done()
 			select {
 			case sem <- struct{}{}:
@@ -124,7 +125,7 @@ func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.Graph
 			neighborhood, err := graphStore.GetEntityNeighborhood(ctx, rootURN, limit)
 			results[index].neighborhood = neighborhood
 			results[index].err = err
-		}()
+		})
 	}
 	wg.Wait()
 	return results
@@ -148,8 +149,9 @@ func (app *App) fetchMCPInvestigationResources(ctx context.Context, r *http.Requ
 	graphService := app.graphQueryService()
 	for index, resourceURN := range resourceURNs {
 		index, resourceURN := index, resourceURN
+		results[index].assetErr = panicsafe.ErrTaskPanicked
 		wg.Add(1)
-		go func() {
+		panicsafe.Go(ctx, "mcp.investigation_resource_fetch", func() {
 			defer wg.Done()
 			select {
 			case sem <- struct{}{}:
@@ -160,21 +162,21 @@ func (app *App) fetchMCPInvestigationResources(ctx context.Context, r *http.Requ
 			}
 
 			found, err := app.mcpAssetSearchResults(r.Clone(ctx), map[string]any{"urn": resourceURN, "limit": 1})
+			results[index].assetErr = err
 			if err == nil && len(found) > 0 {
 				asset := found[0]
 				results[index].asset = &asset
-			} else if err != nil {
-				results[index].assetErr = err
 			}
 			if !includeGraph || graphService == nil {
 				return
 			}
+			results[index].graphErr = panicsafe.ErrTaskPanicked
 			neighborhood, err := graphService.GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
 				RootURN: resourceURN,
 				Limit:   uint32(defaultMCPGraphLimit),
 			})
+			results[index].graphErr = err
 			if err != nil {
-				results[index].graphErr = err
 				return
 			}
 			if neighborhood == nil {
@@ -186,7 +188,7 @@ func (app *App) fetchMCPInvestigationResources(ctx context.Context, r *http.Requ
 				return
 			}
 			results[index].neighborhood = mcpAddResponseMetadata(value, mcpResponseMetadata(defaultMCPGraphLimit, mcpNeighborhoodResultCount(neighborhood), nil))
-		}()
+		})
 	}
 	wg.Wait()
 	return results

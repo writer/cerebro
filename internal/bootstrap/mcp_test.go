@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/mcpoperations"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -56,12 +57,16 @@ type mcpBatchGraphStore struct {
 	batchCalls  [][]string
 	singleCalls []string
 	neighbors   map[string]*ports.EntityNeighborhood
+	panicSingle bool
 }
 
 func (s *mcpBatchGraphStore) Ping(context.Context) error { return nil }
 
 func (s *mcpBatchGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, _ int) (*ports.EntityNeighborhood, error) {
 	s.singleCalls = append(s.singleCalls, rootURN)
+	if s.panicSingle {
+		panic("private graph detail")
+	}
 	if neighborhood := s.neighbors[rootURN]; neighborhood != nil {
 		return neighborhood, nil
 	}
@@ -81,6 +86,19 @@ func (s *mcpBatchGraphStore) GetEntityNeighborhoods(_ context.Context, roots []s
 
 func (s *mcpBatchGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	return nil, nil
+}
+
+type mcpSingleOnlyGraphStore struct {
+	panicSingle bool
+}
+
+func (*mcpSingleOnlyGraphStore) Ping(context.Context) error { return nil }
+
+func (s *mcpSingleOnlyGraphStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	if s.panicSingle {
+		panic("private graph detail")
+	}
+	return nil, ports.ErrGraphEntityNotFound
 }
 
 type mcpStubSource struct {
@@ -158,6 +176,15 @@ func TestFetchMCPGraphStoreNeighborhoodsUsesBatchStore(t *testing.T) {
 	}
 	if results[1].err != nil || results[1].neighborhood.Root.URN != secondURN {
 		t.Fatalf("second result = %#v, err=%v", results[1], results[1].err)
+	}
+}
+
+func TestFetchMCPGraphStoreNeighborhoodsReportsRecoveredPanic(t *testing.T) {
+	store := &mcpSingleOnlyGraphStore{panicSingle: true}
+	results := fetchMCPGraphStoreNeighborhoods(context.Background(), store, []string{"urn:cerebro:writer:asset:first"}, 3)
+
+	if len(results) != 1 || !errors.Is(results[0].err, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("results = %#v, want recovered panic error", results)
 	}
 }
 
