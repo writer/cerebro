@@ -17,6 +17,12 @@ class AppCIWorkflowTests(unittest.TestCase):
         self.assertIn("All selected CI scopes passed", self.workflow)
         self.assertNotIn("paths-ignore:", self.workflow)
 
+    def test_cancels_superseded_pull_requests_without_cancelling_main(self):
+        self.assertIn(
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            self.workflow,
+        )
+
     def test_core_matrices_use_the_tested_scope(self):
         self.assertEqual(
             self.workflow.count("if: needs.ci-scope.outputs.core == 'true'"),
