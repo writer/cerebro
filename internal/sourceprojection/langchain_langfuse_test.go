@@ -9,9 +9,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// TestProjectLangChainWorkspaceMemberAccess exercises the shared
+// aiScopedUserAccessProjections helper via the langChainOracle* override in
+// openai_oracle_test.go: langchain's own Go projection writer was retired to
+// Rust authority, so the real registry now fails closed for langchain.*
+// kinds and this test routes through the oracle service instead.
 func TestProjectLangChainWorkspaceMemberAccess(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	event := &cerebrov1.EventEnvelope{
 		Id:         "langchain-workspace-member",
 		TenantId:   "writer",

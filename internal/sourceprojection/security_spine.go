@@ -10,112 +10,13 @@ import (
 	"github.com/writer/cerebro/internal/securitytooling"
 )
 
-func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	payload := payloadMap(event)
-	name := firstNonEmpty(attrs["name"], nestedString(payload, "metadata.name"))
-	if name == "" {
-		return nil, nil, nil
-	}
-	kind := firstNonEmpty(attrs["kind"], nestedString(payload, "kind"), "Component")
-	namespace := firstNonEmpty(attrs["namespace"], nestedString(payload, "metadata.namespace"), "default")
-	entityRef := canonicalBackstageEntityRef(firstNonEmpty(attrs["entity_ref"], backstageEntityRef(kind, namespace, name)), kind, namespace, name)
-	componentURN := projectionURN(tenantID, "service", strings.ToLower(entityRef))
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        componentURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: backstageComponentEntityType(attrs["type"]),
-		Label:      name,
-		Attributes: compactAttributes(map[string]string{
-			"backstage_entity_ref": entityRef,
-			"backstage_kind":       kind,
-			"name":                 name,
-			"namespace":            namespace,
-			"type":                 attrs["type"],
-			"lifecycle":            attrs["lifecycle"],
-			"description":          attrs["description"],
-			"criticality":          attrs["criticality"],
-			"data_class":           attrs["data_class"],
-			"score_grade":          attrs["score_grade"],
-			"source_product":       attrs["source_product"],
-			"source_url":           attrs["source_url"],
-		}),
-	})
-	addOwnerLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["owner"], nestedString(payload, "spec.owner")))
-	addBackstageClassificationLinks(entities, links, event, tenantID, componentURN, attrs)
-	addSystemLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["system"], nestedString(payload, "spec.system")))
-	addRepoLink(entities, links, event, tenantID, componentURN, firstNonEmpty(
-		attrs["repository"],
-		backstageAnnotation(payload, "github.com/project-slug"),
-		attrs["source_url"],
-		backstageAnnotation(payload, "backstage.io/source-location"),
-	))
-	addBackstageKubernetesLinks(entities, links, event, tenantID, componentURN, attrs, payload)
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
-	return projectedEntities, projectedLinks, nil
-}
-
-func addBackstageClassificationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, componentURN string, attrs map[string]string) {
-	for _, classification := range splitCSV(attrs["data_class"]) {
-		classificationURN := projectionURN(tenantID, "data_classification", classification)
-		if classificationURN == "" {
-			continue
-		}
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        classificationURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "data.classification",
-			Label:      classification,
-			Attributes: map[string]string{"classification": classification},
-		})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, classificationURN, relationHasClassification, map[string]string{"event_id": event.GetId(), "source_attribute": "data_class"}))
-	}
-	for _, criticality := range splitCSV(attrs["criticality"]) {
-		tagValue := "criticality:" + normalizeIdentifier(criticality)
-		tagURN := projectionURN(tenantID, "asset_tag", tagValue)
-		if tagURN == "" {
-			continue
-		}
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        tagURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "asset.tag",
-			Label:      tagValue,
-			Attributes: map[string]string{"criticality": criticality, "tag": tagValue},
-		})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, tagURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "criticality"}))
-		if backstageCriticalityIsCrownJewel(criticality) {
-			crownJewelURN := projectionURN(tenantID, "asset_tag", "crown_jewel")
-			addEntity(entities, &ports.ProjectedEntity{
-				URN:        crownJewelURN,
-				TenantID:   tenantID,
-				SourceID:   event.GetSourceId(),
-				EntityType: "asset.tag",
-				Label:      "crown_jewel",
-				Attributes: map[string]string{"tag": "crown_jewel"},
-			})
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, crownJewelURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "criticality"}))
-		}
-	}
-}
-
-func backstageCriticalityIsCrownJewel(value string) bool {
-	switch normalizeIdentifier(value) {
-	case "crown_jewel", "crown-jewel", "tier0", "tier_0", "tier-0", "critical":
-		return true
-	default:
-		return false
-	}
-}
+// backstageComponentProjections and its exclusive helpers (the Backstage
+// entity-ref/Kubernetes-link/classification machinery below) previously
+// lived here. Backstage's Go projection writer was retired to Rust authority
+// (internal/sourceprojection/backstage.go now fails closed for
+// backstage.component), so the real implementation was removed to avoid
+// redeclaring it. addOwnerLink and addRepoLink stay: securityToolingMapToolProjections
+// below still uses them.
 
 func securityToolingMapToolProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
@@ -228,16 +129,6 @@ func addOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*
 	addOwnerIdentityLinks(entities, links, event, tenantID, ownerURN, owner)
 }
 
-func addSystemLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, system string) {
-	system = strings.TrimSpace(system)
-	if system == "" {
-		return
-	}
-	systemURN := projectionURN(tenantID, "system", normalizeBackstageRef(system))
-	addEntity(entities, &ports.ProjectedEntity{URN: systemURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "system", Label: ownerLabel(system), Attributes: map[string]string{"system": system}})
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, systemURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
-}
-
 func addRepoLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, repository string) {
 	repository = strings.TrimSpace(repository)
 	if normalized := normalizeGitHubRepository(repository); normalized != "" {
@@ -329,139 +220,6 @@ func ownerIdentifierCandidates(owner string) []string {
 		out = append(out, candidate)
 	}
 	return out
-}
-
-func addBackstageKubernetesLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, componentURN string, attrs map[string]string, payload map[string]any) {
-	kubernetesID := firstNonEmpty(
-		attrs["kubernetes_id"],
-		attrs["kubernetes-id"],
-		backstageAnnotation(payload, "backstage.io/kubernetes-id"),
-		backstageAnnotation(payload, "cerebro.io/kubernetes-id"),
-	)
-	workloadName := firstNonEmpty(
-		attrs["workload_name"],
-		attrs["kubernetes_workload_name"],
-		attrs["kubernetes_name"],
-		kubernetesID,
-	)
-	clusterID := firstNonEmpty(
-		attrs["cluster_id"],
-		attrs["kubernetes_cluster_id"],
-		backstageAnnotation(payload, "cerebro.io/kubernetes-cluster-id"),
-		backstageAnnotation(payload, "backstage.io/kubernetes-cluster-id"),
-	)
-	clusterName := firstNonEmpty(
-		attrs["cluster_name"],
-		attrs["kubernetes_cluster_name"],
-		backstageAnnotation(payload, "cerebro.io/kubernetes-cluster-name"),
-		backstageAnnotation(payload, "backstage.io/kubernetes-cluster-name"),
-	)
-	cloudProvider := firstNonEmpty(
-		attrs["cloud_provider"],
-		attrs["provider"],
-		backstageAnnotation(payload, "cerebro.io/cloud-provider"),
-	)
-	cloudAccountID := firstNonEmpty(
-		attrs["cloud_account_id"],
-		attrs["aws_account_id"],
-		attrs["gcp_project_id"],
-		attrs["project_id"],
-		backstageAnnotation(payload, "cerebro.io/cloud-account-id"),
-		backstageAnnotation(payload, "cerebro.io/aws-account-id"),
-		backstageAnnotation(payload, "cerebro.io/gcp-project-id"),
-	)
-	if strings.TrimSpace(workloadName) == "" || (strings.TrimSpace(clusterID) == "" && (strings.TrimSpace(clusterName) == "" || strings.TrimSpace(cloudAccountID) == "")) {
-		return
-	}
-	kubernetesAttrs := map[string]string{
-		"account_id":           cloudAccountID,
-		"aws_account_id":       cloudAccountID,
-		"cloud_account_id":     cloudAccountID,
-		"cloud_provider":       cloudProvider,
-		"cluster_id":           clusterID,
-		"cluster_name":         clusterName,
-		"gcp_project_id":       cloudAccountID,
-		"namespace":            firstNonEmpty(backstageAnnotation(payload, "backstage.io/kubernetes-namespace"), backstageAnnotation(payload, "cerebro.io/kubernetes-namespace"), attrs["kubernetes_namespace"], attrs["namespace"], "default"),
-		"provider":             cloudProvider,
-		"service_account_name": firstNonEmpty(attrs["service_account_name"], attrs["kubernetes_service_account"], backstageAnnotation(payload, "cerebro.io/kubernetes-service-account")),
-		"workload_kind":        firstNonEmpty(attrs["workload_kind"], attrs["kubernetes_workload_kind"], backstageAnnotation(payload, "cerebro.io/kubernetes-workload-kind"), "Deployment"),
-		"workload_name":        workloadName,
-		"workload_uid":         attrs["workload_uid"],
-	}
-	workloadURN := kubernetesWorkloadURN(tenantID, kubernetesAttrs)
-	if workloadURN == "" {
-		return
-	}
-	namespaceURN := kubernetesNamespaceURN(tenantID, kubernetesAttrs)
-	clusterURN := kubernetesClusterURN(tenantID, kubernetesAttrs)
-	serviceAccountURN := kubernetesServiceAccountURN(tenantID, kubernetesAttrs)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        workloadURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "kubernetes.workload",
-		Label:      workloadName,
-		Attributes: compactAttributes(kubernetesAttrs),
-	})
-	addKubernetesCluster(entities, tenantID, event.GetSourceId(), kubernetesAttrs, clusterURN)
-	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), kubernetesAttrs, namespaceURN)
-	if serviceAccountURN != "" && strings.TrimSpace(kubernetesAttrs["service_account_name"]) != "" {
-		addEntity(entities, &ports.ProjectedEntity{URN: serviceAccountURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "kubernetes.service_account", Label: kubernetesAttrs["service_account_name"]})
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_service_account"}))
-	}
-	if namespaceURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_namespace"}))
-	}
-	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, kubernetesAttrs, namespaceURN, clusterURN)
-	attrsOut := map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_workload"}
-	addProjectedAttribute(attrsOut, "kubernetes_id", kubernetesID)
-	addProjectedAttribute(attrsOut, "workload_kind", kubernetesAttrs["workload_kind"])
-	addProjectedAttribute(attrsOut, "workload_name", workloadName)
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, workloadURN, relationRepresents, attrsOut))
-	addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, componentURN, relationRepresents, attrsOut))
-}
-
-func backstageComponentEntityType(componentType string) string {
-	if strings.EqualFold(strings.TrimSpace(componentType), "service") {
-		return "service"
-	}
-	return "backstage.component"
-}
-
-func backstageEntityRef(kind string, namespace string, name string) string {
-	return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.ToLower(firstNonEmpty(namespace, "default")) + "/" + strings.ToLower(strings.TrimSpace(name))
-}
-
-func canonicalBackstageEntityRef(entityRef string, kind string, namespace string, name string) string {
-	value := strings.ToLower(strings.TrimSpace(entityRef))
-	if value == "" {
-		return backstageEntityRef(kind, namespace, name)
-	}
-	if colon := strings.Index(value, ":"); colon > 0 {
-		refKind := strings.TrimSpace(value[:colon])
-		remainder := strings.TrimSpace(value[colon+1:])
-		if slash := strings.Index(remainder, "/"); slash > 0 {
-			return refKind + "/" + strings.TrimSpace(remainder[:slash]) + "/" + strings.TrimSpace(remainder[slash+1:])
-		}
-		return refKind + "/default/" + remainder
-	}
-	parts := strings.Split(value, "/")
-	if len(parts) == 3 {
-		return strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1]) + "/" + strings.TrimSpace(parts[2])
-	}
-	if len(parts) == 2 {
-		return strings.ToLower(firstNonEmpty(kind, "Component")) + "/" + strings.TrimSpace(parts[0]) + "/" + strings.TrimSpace(parts[1])
-	}
-	return value
-}
-
-func backstageAnnotation(payload map[string]any, key string) string {
-	annotations, ok := nestedValue(payload, "metadata.annotations").(map[string]any)
-	if !ok {
-		return ""
-	}
-	value, _ := annotations[key].(string)
-	return strings.TrimSpace(value)
 }
 
 func repositoryFromTool(attrs map[string]string) string {
