@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/writer/cerebro/internal/panicsafe"
 )
 
 const complianceMonitorPollInterval = 15 * time.Second
@@ -24,7 +26,7 @@ func (a *App) StartComplianceMonitorScheduler(ctx context.Context, logf func(str
 		close(done)
 		return done
 	}
-	go func() {
+	panicsafe.Go(ctx, "compliance_monitor.scheduler", func() {
 		defer close(done)
 		ticker := time.NewTicker(complianceMonitorPollInterval)
 		defer ticker.Stop()
@@ -38,6 +40,6 @@ func (a *App) StartComplianceMonitorScheduler(ctx context.Context, logf func(str
 			case <-ticker.C:
 			}
 		}
-	}()
+	})
 	return done
 }

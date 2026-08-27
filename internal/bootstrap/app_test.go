@@ -631,6 +631,13 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+type panickingAppendLog struct{}
+
+func (panickingAppendLog) Ping(context.Context) error { panic("private dependency detail") }
+func (panickingAppendLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	return nil
+}
+
 type healthCheckBarrier struct {
 	mu      sync.Mutex
 	started int
@@ -4881,6 +4888,21 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Detail; got == rawDependencyError {
 		t.Fatalf("state_store detail leaked raw dependency error")
+	}
+}
+
+func TestBootstrapHealthDegradesWhenDependencyPanics(t *testing.T) {
+	response := publicHealthResponse(context.Background(), Dependencies{AppendLog: panickingAppendLog{}})
+
+	if response.GetStatus() != "degraded" {
+		t.Fatalf("health status = %q, want degraded", response.GetStatus())
+	}
+	component := response.GetComponents()[0]
+	if component.GetName() != "append_log" || component.GetStatus() != "error" {
+		t.Fatalf("append log component = %#v", component)
+	}
+	if component.GetDetail() != "check panicked" {
+		t.Fatalf("append log detail = %q, want bounded panic detail", component.GetDetail())
 	}
 }
 

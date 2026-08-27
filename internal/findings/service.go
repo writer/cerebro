@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/appendlogindex"
 	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/proto"
@@ -1514,7 +1515,14 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 	if renewalInterval <= 0 {
 		renewalInterval = time.Nanosecond
 	}
-	go func() {
+	panicsafe.Go(renewCtx, "finding.source_runtime_lease_renewal", func() {
+		defer close(renewalDone)
+		defer func() {
+			select {
+			case renewalDone <- panicsafe.ErrTaskPanicked:
+			default:
+			}
+		}()
 		ticker := time.NewTicker(renewalInterval)
 		defer ticker.Stop()
 		for {
@@ -1544,7 +1552,7 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 				}
 			}
 		}
-	}()
+	})
 	return workCtx, func() error {
 		cancelRenew()
 		renewalErr := <-renewalDone
