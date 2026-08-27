@@ -115,6 +115,7 @@ func TestAgentReceiptHookIsBuiltFromSourceInCI(t *testing.T) {
 	workflowText := string(workflow)
 	for _, marker := range []string{
 		"plugins/cerebro-agent-receipts/**",
+		"runs-on: macos-15-intel",
 		"swift run",
 		"ReceiptCoreChecks",
 		"script/build_hook_release.sh",
