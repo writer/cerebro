@@ -380,7 +380,7 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
             ),
             passed(
                 "cutover_gate",
-                "four source families rejected before three matches and promoted after three",
+                "four source families rejected before three matches, blocked on tampered evidence, and promoted on verified persisted receipts",
             ),
             passed(
                 "durable_stores",
@@ -710,6 +710,37 @@ async fn prove_and_promote(
             .record_parity(&matching_receipt(source, family, 3)?)
             .await?;
     }
+    let mut tampered = load_qualification(source, family)?;
+    tampered.product_read_receipt.receipt_digest_sha256 =
+        digest_hex(&["tampered-product-read", source, family]);
+    let blocked = ledger
+        .evaluate_projection_authority(
+            catalog,
+            &ProjectionPromotionRequest::new(
+                TENANT,
+                source,
+                family,
+                CutoverPolicy::new(3, 0)?,
+                0,
+                100,
+                tampered,
+            )?,
+        )
+        .await?;
+    if blocked.is_allowed() {
+        return Err(format!(
+            "{source}.{family} promotion is not blocked by tampered persisted evidence"
+        )
+        .into());
+    }
+    if ledger
+        .projection_authority(TENANT, source, family)
+        .await?
+        .authority
+        != ProjectionAuthority::Legacy
+    {
+        return Err(format!("{source}.{family} authority changed on a blocked promotion").into());
+    }
     let authority = ledger
         .evaluate_and_promote_projection_authority(
             catalog,
@@ -741,20 +772,27 @@ fn matching_receipt(
     )?)
 }
 
+fn load_qualification(
+    source: &str,
+    family: &str,
+) -> Result<AuthorityQualificationEvidence, Box<dyn Error>> {
+    let evidence_root = PathBuf::from(env::var("CEREBRO_AUTHORITY_EVIDENCE_DIR")?);
+    let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
+    Ok(serde_json::from_slice(&fs::read(&evidence_path).map_err(
+        |error| {
+            format!(
+                "read authority evidence {}: {error}",
+                evidence_path.to_string_lossy()
+            )
+        },
+    )?)?)
+}
+
 fn promotion_request(
     source: &str,
     family: &str,
     promoted_at: i64,
 ) -> Result<ProjectionPromotionRequest, Box<dyn Error>> {
-    let evidence_root = PathBuf::from(env::var("CEREBRO_AUTHORITY_EVIDENCE_DIR")?);
-    let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
-    let qualification: AuthorityQualificationEvidence =
-        serde_json::from_slice(&fs::read(&evidence_path).map_err(|error| {
-            format!(
-                "read authority evidence {}: {error}",
-                evidence_path.to_string_lossy()
-            )
-        })?)?;
     Ok(ProjectionPromotionRequest::new(
         TENANT,
         source,
@@ -762,7 +800,7 @@ fn promotion_request(
         CutoverPolicy::new(3, 0)?,
         0,
         promoted_at,
-        qualification,
+        load_qualification(source, family)?,
     )?)
 }
 
