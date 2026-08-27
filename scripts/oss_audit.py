@@ -102,6 +102,7 @@ ALLOWED_PUBLIC_PROVIDER_HOSTS = {
     "hub.docker.com",
     "huggingface.co",
     "invoke-ai.github.io",
+    "json-schema.org",
     "launchpad.net",
     "learn.microsoft.com",
     "logos.haveibeenpwned.com",

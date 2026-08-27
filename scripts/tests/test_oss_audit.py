@@ -11,6 +11,7 @@ class OSSAuditTests(unittest.TestCase):
             "api.datadoghq.com",
             "docs.datadoghq.com",
             "fivetran.com",
+            "json-schema.org",
             "nvd.nist.gov",
             "ok11static.oktacdn.com",
             "ok12static.oktacdn.com",
