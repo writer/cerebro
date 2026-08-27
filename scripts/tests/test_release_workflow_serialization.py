@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -10,6 +11,7 @@ CUT_RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "cut-release.yml"
 RUST_ONLY_CANDIDATE_WORKFLOW = (
     ROOT / ".github" / "workflows" / "rust-only-candidate.yml"
 )
+MINIMUM_CANDIDATE_CI_GATE_SECONDS = 90 * 60
 
 
 class ReleaseWorkflowSerializationTest(unittest.TestCase):
@@ -33,6 +35,24 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("group: candidate-build-main", concurrency)
         self.assertIn("cancel-in-progress: false", concurrency)
         self.assertNotIn("cancel-in-progress: true", concurrency)
+
+    def test_candidate_ci_gate_covers_a_queued_full_ci_run(self) -> None:
+        workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        ci_gate = workflow.split("  ci-gate:\n", 1)[1].split("\n  binary:\n", 1)[0]
+
+        budget = re.search(r'CI_GATE_DEADLINE_SECONDS: "(\d+)"', ci_gate)
+        self.assertIsNotNone(budget, "ci-gate must declare a named deadline budget")
+        self.assertGreaterEqual(
+            int(budget.group(1)),
+            MINIMUM_CANDIDATE_CI_GATE_SECONDS,
+        )
+        self.assertIn(
+            "deadline=$((SECONDS + CI_GATE_DEADLINE_SECONDS))",
+            ci_gate,
+        )
+        self.assertNotIn("deadline=$((SECONDS + 1800))", ci_gate)
+        self.assertIn("needs: resolve", ci_gate)
+        self.assertIn("Require successful CI for candidate commit", ci_gate)
 
     def test_candidate_web_images_use_native_architecture_runners(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
