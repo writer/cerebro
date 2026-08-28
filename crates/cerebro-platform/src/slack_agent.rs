@@ -908,8 +908,7 @@ impl SlackAgentService {
                 "delivery receipt belongs to another request".into(),
             ));
         }
-        let offer = offered_followup_for_request(&session, &receipt.request_id);
-        let delivery_markdown = turn_delivery_markdown(&pending.draft.message, offer.as_ref());
+        let delivery_markdown = turn_delivery_markdown(&pending.draft.message);
         if receipt.payload_digest != message_digest(&delivery_markdown) {
             return Err(AgentRuntimeError::InvalidRequest(
                 "delivery receipt payload does not match the pending response".into(),
@@ -993,12 +992,9 @@ impl SlackAgentService {
         let pending = session.pending_delivery.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("wake delivery has no pending response".into())
         })?;
-        let offer = offered_followup_for_request(&session, &receipt.request_id);
         if pending.request_id != receipt.request_id
-            || message_digest(&turn_delivery_markdown(
-                &pending.draft.message,
-                offer.as_ref(),
-            )) != receipt.payload_digest
+            || message_digest(&turn_delivery_markdown(&pending.draft.message))
+                != receipt.payload_digest
         {
             return Err(AgentRuntimeError::InvalidRequest(
                 "wake delivery does not match the durable pending response".into(),
@@ -1325,7 +1321,7 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
             AgentTurnOutcome::PendingDelivery {
                 schema_version: cerebro_agent_runtime::AGENT_TURN_RESULT_V1,
                 lane,
-                markdown: turn_delivery_markdown(&markdown, proactive_followup_offer.as_deref()),
+                markdown: turn_delivery_markdown(&markdown),
                 final_state,
                 evidence_refs: evidence_atom_refs,
                 tool_call_count,
@@ -1541,17 +1537,8 @@ fn offered_followup_for_request(
         })
 }
 
-fn turn_delivery_markdown(markdown: &str, offer: Option<&ProactiveFollowupOffer>) -> String {
-    let markdown = render_slack_mrkdwn(markdown.trim());
-    offer.map_or_else(
-        || markdown.clone(),
-        |offer| {
-            format!(
-                "{markdown}\n\nReply `{}` to schedule this follow-up.",
-                offer.action
-            )
-        },
-    )
+fn turn_delivery_markdown(markdown: &str) -> String {
+    render_slack_mrkdwn(markdown.trim())
 }
 
 pub(crate) fn durable_operator_message<'a>(
@@ -7883,6 +7870,14 @@ mod tests {
             panic!("validated Slack answer should remain pending delivery");
         };
         assert_eq!(markdown, "*Current state*\n\n*Healthy*");
+    }
+
+    #[test]
+    fn delivery_markdown_contains_only_the_model_message() {
+        assert_eq!(
+            turn_delivery_markdown("## Current state\n\n**Healthy**"),
+            "*Current state*\n\n*Healthy*"
+        );
     }
 
     #[test]
