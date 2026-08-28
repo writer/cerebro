@@ -23,18 +23,21 @@ use cerebro_agent_runtime::{
     AGENT_DELIVERY_RECEIPT_V1, AgentDeliveryReceipt, AgentModel, AgentRuntimeError, AgentTools,
     AgentTurnOutcome, AgentTurnRequest, CRITIC_MAX_TOKENS, CritiqueDecision, CritiqueTurn,
     DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, HARD_MAX_GENERATION_TOKENS,
-    ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
-    ResolvedRequestRoute, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
-    ToolEffectClass, ToolResult, ToolResultState, resolve_request_route, run_turn,
+    ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PROACTIVE_FOLLOWUP_CAPABILITY_V1,
+    PresentationDecision, PresentationTurn, ResolvedRequestRoute, RouteDecision, RouteTurn,
+    ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
+    resolve_request_route, run_turn,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
         EvidenceAssertion, EvidenceAtom, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview,
-        MissionState, SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel,
-        SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
-        SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
-        message_digest, run_session_turn_recorded, semantic_evidence_atoms,
+        MissionState, ProactiveFollowupOffer, SemanticEvidenceAtomization,
+        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
+        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
+        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
+        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft, message_digest,
+        run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
+        semantic_evidence_atoms, validate_followup_acceptance,
     },
     validate_agent_turn_request,
 };
@@ -89,6 +92,7 @@ const STARTUP_DEPENDENCY_ATTEMPTS: usize = 5;
 const STARTUP_DEPENDENCY_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
 const OPERATOR_ROUTE_TIMEOUT: StdDuration = StdDuration::from_secs(90);
 const OPERATOR_TURN_LEASE_SECONDS: i64 = 1_000;
+const MAX_ACCEPTANCE_CLOCK_DELAY_SECONDS: i64 = 900;
 const SLACK_ROUTE_MAX_TOKENS: i32 = 768;
 const SLACK_SESSION_DECISION_MAX_TOKENS: i32 = 4_096;
 const SLACK_CLAIM_REVIEW_MAX_TOKENS: i32 = 1_024;
@@ -573,6 +577,11 @@ impl SlackAgentService {
                 "another turn currently owns this Slack session".into(),
             ));
         }
+        if request.followup_acceptance.is_some() {
+            return self
+                .accept_followup_offer(store, session, request, message_exists, &lease_owner)
+                .await;
+        }
         let requested_route = match accepted_route.clone() {
             Some(route) => route,
             None => {
@@ -678,25 +687,44 @@ impl SlackAgentService {
             OPERATOR_TURN_LEASE_SECONDS,
             expected_sequence,
         );
-        let outcome = tokio::time::timeout(
-            StdDuration::from_secs(900),
-            run_session_turn_recorded(
-                self.model.as_ref(),
-                self.tools.as_ref(),
-                &journal,
-                session.clone(),
-                SessionTurnInput {
-                    request_id: request.request_id.clone(),
-                    actor_ref: request.actor_ref.clone(),
-                    assessment_at: request.assessment_at.clone(),
-                    requested_lane: Some(requested_route.lane),
-                    trigger: cerebro_agent_runtime::session::SessionTurnTrigger::Operator,
-                },
-            ),
-        )
-        .await
-        .map_err(|_| AgentRuntimeError::ModelUnavailable("session turn deadline exceeded".into()))
-        .and_then(|result| result);
+        let offers_enabled = request
+            .capabilities
+            .iter()
+            .any(|capability| capability == PROACTIVE_FOLLOWUP_CAPABILITY_V1);
+        let session_turn = async {
+            let input = SessionTurnInput {
+                request_id: request.request_id.clone(),
+                actor_ref: request.actor_ref.clone(),
+                assessment_at: request.assessment_at.clone(),
+                requested_lane: Some(requested_route.lane),
+                trigger: cerebro_agent_runtime::session::SessionTurnTrigger::Operator,
+            };
+            if offers_enabled {
+                run_session_turn_recorded_with_followup_offers(
+                    self.model.as_ref(),
+                    self.tools.as_ref(),
+                    &journal,
+                    session.clone(),
+                    input,
+                )
+                .await
+            } else {
+                run_session_turn_recorded(
+                    self.model.as_ref(),
+                    self.tools.as_ref(),
+                    &journal,
+                    session.clone(),
+                    input,
+                )
+                .await
+            }
+        };
+        let outcome = tokio::time::timeout(StdDuration::from_secs(900), session_turn)
+            .await
+            .map_err(|_| {
+                AgentRuntimeError::ModelUnavailable("session turn deadline exceeded".into())
+            })
+            .and_then(|result| result);
         match outcome {
             Ok(outcome @ SessionTurnOutcome::PendingDelivery { .. }) => {
                 Ok(session_outcome_to_turn(outcome))
@@ -709,6 +737,159 @@ impl SlackAgentService {
                 &session.session_ref,
                 &request.request_id,
                 &lease_owner,
+                error,
+            )
+            .await),
+        }
+    }
+
+    async fn accept_followup_offer(
+        &self,
+        store: &Arc<PostgresAgentSessionStore>,
+        session: AgentSession,
+        request: AgentTurnRequest,
+        message_exists: bool,
+        lease_owner: &str,
+    ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+        let result = async {
+            if message_exists {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "proactive follow-up acceptance retry has no committed outcome".into(),
+                ));
+            }
+            let acceptance = request.followup_acceptance.as_ref().ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest(
+                    "proactive follow-up acceptance payload is missing".into(),
+                )
+            })?;
+            let accepted_at = OffsetDateTime::now_utc();
+            let assessment_at =
+                OffsetDateTime::parse(&request.assessment_at, &Rfc3339).map_err(|_| {
+                    AgentRuntimeError::InvalidRequest("assessment_at is invalid".into())
+                })?;
+            if accepted_at < assessment_at
+                || accepted_at - assessment_at
+                    > TimeDuration::seconds(MAX_ACCEPTANCE_CLOCK_DELAY_SECONDS)
+            {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "follow-up acceptance exceeded the bounded host-entry window".into(),
+                ));
+            }
+            let accepted_at_text = accepted_at
+                .format(&Rfc3339)
+                .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+            let resolved = validate_followup_acceptance(&session, acceptance, accepted_at)?;
+            let normalized = |value: &str| {
+                value
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .to_lowercase()
+            };
+            if normalized(&request.message) != normalized(&resolved.offer.action) {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "ordinary follow-up acceptance text does not match the exact offered action"
+                        .into(),
+                ));
+            }
+            let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+            let mut events = vec![
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 1,
+                    occurred_at: accepted_at_text.clone(),
+                    event: SessionEvent::UserMessageQueued {
+                        message: SessionMessage {
+                            role: SessionMessageRole::User,
+                            message_ref: format!("operator:{}", request.request_id),
+                            actor_ref: request.actor_ref.clone(),
+                            text: request.message.clone(),
+                            received_at: accepted_at_text.clone(),
+                        },
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 2,
+                    occurred_at: accepted_at_text.clone(),
+                    event: SessionEvent::RouteAccepted {
+                        request_id: request.request_id.clone(),
+                        lane: ExecutionLane::Investigate,
+                        future_observation:
+                            cerebro_agent_runtime::FutureObservationDisposition::Inherited,
+                        future_observation_excerpt: None,
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 3,
+                    occurred_at: accepted_at_text.clone(),
+                    event: SessionEvent::TurnStarted {
+                        request_id: request.request_id.clone(),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 4,
+                    occurred_at: accepted_at_text.clone(),
+                    event: SessionEvent::FollowupAccepted {
+                        request_id: request.request_id.clone(),
+                        offer_ref: resolved.offer.offer_ref.clone(),
+                    },
+                },
+            ];
+            let accepted_session = apply_session_events(&session, &events)?;
+            let draft = followup_acceptance_draft(
+                &accepted_session,
+                &resolved.offer.offer_ref,
+                accepted_at,
+            )?;
+            events.push(SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: expected_sequence + 5,
+                occurred_at: accepted_at_text,
+                event: SessionEvent::DraftProduced {
+                    request_id: request.request_id.clone(),
+                    draft: draft.clone(),
+                },
+            });
+            store
+                .append_operator_finalized(
+                    &session.session_ref,
+                    &request.request_id,
+                    lease_owner,
+                    OPERATOR_TURN_LEASE_SECONDS,
+                    expected_sequence,
+                    &events,
+                )
+                .await?;
+            Ok(session_outcome_to_turn(
+                SessionTurnOutcome::PendingDelivery {
+                    lane: ExecutionLane::Investigate,
+                    delivery: DeliveryDisposition::Visible,
+                    markdown: draft.message,
+                    final_state: draft.state,
+                    evidence_atom_refs: Vec::new(),
+                    proactive_followup_offer: None,
+                    accepted_followup_ref: Some(resolved.offer.offer_ref),
+                    mission: draft.mission,
+                    events,
+                },
+            ))
+        }
+        .await;
+        match result {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => Err(release_turn_after_failure(
+                store,
+                &session.session_ref,
+                &request.request_id,
+                lease_owner,
                 error,
             )
             .await),
@@ -740,7 +921,8 @@ impl SlackAgentService {
                 "delivery receipt belongs to another request".into(),
             ));
         }
-        let delivery_markdown = render_slack_mrkdwn(pending.draft.message.trim());
+        let offer = offered_followup_for_request(&session, &receipt.request_id);
+        let delivery_markdown = turn_delivery_markdown(&pending.draft.message, offer.as_ref());
         if receipt.payload_digest != message_digest(&delivery_markdown) {
             return Err(AgentRuntimeError::InvalidRequest(
                 "delivery receipt payload does not match the pending response".into(),
@@ -824,9 +1006,12 @@ impl SlackAgentService {
         let pending = session.pending_delivery.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("wake delivery has no pending response".into())
         })?;
+        let offer = offered_followup_for_request(&session, &receipt.request_id);
         if pending.request_id != receipt.request_id
-            || message_digest(&render_slack_mrkdwn(pending.draft.message.trim()))
-                != receipt.payload_digest
+            || message_digest(&turn_delivery_markdown(
+                &pending.draft.message,
+                offer.as_ref(),
+            )) != receipt.payload_digest
         {
             return Err(AgentRuntimeError::InvalidRequest(
                 "wake delivery does not match the durable pending response".into(),
@@ -1113,6 +1298,8 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
             markdown,
             final_state,
             evidence_atom_refs,
+            proactive_followup_offer,
+            accepted_followup_ref,
             mission,
             events,
         } => {
@@ -1151,7 +1338,7 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
             AgentTurnOutcome::PendingDelivery {
                 schema_version: cerebro_agent_runtime::AGENT_TURN_RESULT_V1,
                 lane,
-                markdown: render_slack_mrkdwn(markdown.trim()),
+                markdown: turn_delivery_markdown(&markdown, proactive_followup_offer.as_deref()),
                 final_state,
                 evidence_refs: evidence_atom_refs,
                 tool_call_count,
@@ -1164,6 +1351,8 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
                     requires_current_evidence: Some(lane != ExecutionLane::Converse),
                     open_loops,
                 }),
+                proactive_followup_offer: proactive_followup_offer.map(|offer| *offer),
+                accepted_followup_ref,
             }
         }
     }
@@ -1233,6 +1422,19 @@ pub(crate) fn replay_completed_session_turn(
         markdown: draft.message,
         final_state: draft.state,
         evidence_atom_refs,
+        proactive_followup_offer: events.iter().rev().find_map(|event| match &event.event {
+            SessionEvent::FollowupOffered {
+                offer, request_id, ..
+            } if request_id == &request.request_id => Some(Box::new(offer.clone())),
+            _ => None,
+        }),
+        accepted_followup_ref: events.iter().rev().find_map(|event| match &event.event {
+            SessionEvent::FollowupAccepted {
+                offer_ref,
+                request_id,
+            } if request_id == &request.request_id => Some(offer_ref.clone()),
+            _ => None,
+        }),
         mission: draft.mission,
         events,
     });
@@ -1244,6 +1446,8 @@ pub(crate) fn replay_completed_session_turn(
         evidence_refs,
         tool_call_count,
         working_state,
+        proactive_followup_offer,
+        accepted_followup_ref,
     } = outcome
     else {
         return Err(AgentRuntimeError::InvalidRequest(
@@ -1258,6 +1462,8 @@ pub(crate) fn replay_completed_session_turn(
         evidence_refs,
         tool_call_count,
         working_state,
+        proactive_followup_offer,
+        accepted_followup_ref,
     }))
 }
 
@@ -1313,10 +1519,52 @@ pub(crate) fn replay_pending_session_turn(
             markdown: pending.draft.message.clone(),
             final_state: pending.draft.state,
             evidence_atom_refs,
+            proactive_followup_offer: offered_followup_for_request(session, &request.request_id)
+                .map(Box::new),
+            accepted_followup_ref: session.events.iter().rev().find_map(|event| {
+                match &event.event {
+                    SessionEvent::FollowupAccepted {
+                        offer_ref,
+                        request_id,
+                    } if request_id == &request.request_id => Some(offer_ref.clone()),
+                    _ => None,
+                }
+            }),
             mission: pending.draft.mission.clone(),
             events,
         },
     ))
+}
+
+fn offered_followup_for_request(
+    session: &AgentSession,
+    request_id: &str,
+) -> Option<ProactiveFollowupOffer> {
+    session
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::FollowupOffered {
+                request_id: offered_request_id,
+                offer,
+                ..
+            } if offered_request_id == request_id => Some(offer.clone()),
+            _ => None,
+        })
+}
+
+fn turn_delivery_markdown(markdown: &str, offer: Option<&ProactiveFollowupOffer>) -> String {
+    let markdown = render_slack_mrkdwn(markdown.trim());
+    offer.map_or_else(
+        || markdown.clone(),
+        |offer| {
+            format!(
+                "{markdown}\n\nReply `{}` to schedule this follow-up.",
+                offer.action
+            )
+        },
+    )
 }
 
 pub(crate) fn durable_operator_message<'a>(
@@ -2574,6 +2822,16 @@ fn session_decision_schema() -> Value {
         },
         "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria", "next_action", "attention_policy", "check_after_seconds", "verification"]
     });
+    let planned_follow_through_offer = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Propose only when the current evidence supports a useful optional future observation that the operator has not already authorized. The runtime will offer it for explicit acceptance and will not schedule it from this model output alone.",
+        "properties": {
+            "kind": {"type": "string", "enum": ["watch_answer", "recheck_evidence"], "description": "Use watch_answer for a complete current answer worth monitoring; use recheck_evidence for a partial answer whose named evidence can be retried."},
+            "follow_through": planned_follow_through.clone()
+        },
+        "required": ["kind", "follow_through"]
+    });
     let plan = json!({
         "type": "object",
         "additionalProperties": false,
@@ -2586,6 +2844,7 @@ fn session_decision_schema() -> Value {
             "stop_conditions": string_array(),
             "user_visible_work": string_array(),
             "follow_through": {"oneOf": [planned_follow_through, {"type": "null"}]},
+            "follow_through_offer": {"oneOf": [planned_follow_through_offer, {"type": "null"}], "description": "Optional, explicit-acceptance-only follow-up. Never copy an operator-authorized follow_through here."},
         },
         "required": ["decision", "lane", "resolved_entities", "claims", "selected_tools", "stop_conditions", "user_visible_work", "follow_through"]
     });
@@ -4169,6 +4428,8 @@ impl SessionTools for PlatformAgentTools {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: session.effect_authorizations.clone(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         <Self as AgentTools>::invoke(self, &request, call).await
     }
@@ -6170,6 +6431,8 @@ mod tests {
             }],
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
 
         let session = new_session(&request).unwrap();
@@ -6211,6 +6474,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         }
     }
 
@@ -6699,6 +6964,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let mut session = new_session(&request).unwrap();
         let receipt = AgentDeliveryReceipt {
@@ -7350,6 +7617,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let call = cerebro_agent_runtime::ToolCall {
             call_id: "catalog-1".into(),
@@ -7450,6 +7719,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let mission = new_session(&request).unwrap().mission;
         let outcome = session_outcome_to_turn(SessionTurnOutcome::PendingDelivery {
@@ -7458,6 +7729,8 @@ mod tests {
             markdown: "## Current state\n\n**Healthy**".into(),
             final_state: FinalState::Answered,
             evidence_atom_refs: Vec::new(),
+            proactive_followup_offer: None,
+            accepted_followup_ref: None,
             mission,
             events: Vec::new(),
         });
@@ -7497,6 +7770,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let mut session = new_session(&request).unwrap();
         session.memories = (0..MAX_SESSION_MEMORIES)

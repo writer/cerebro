@@ -29,6 +29,10 @@ pub const AGENT_SESSION_V2: &str = "agent-session/v2";
 pub const AGENT_SESSION_EVENT_V2: &str = "agent-session-event/v2";
 /// Schema discriminator for structured evidence supplied by an authoritative tool.
 pub const AGENT_SEMANTIC_EVIDENCE_V1: &str = "agent-semantic-evidence/v1";
+/// Schema discriminator for one Rust-authored proactive follow-up offer.
+pub const PROACTIVE_FOLLOWUP_OFFER_V1: &str = "proactive-followup-offer/v1";
+/// Schema discriminator for exact acceptance of a proactive follow-up offer.
+pub const PROACTIVE_FOLLOWUP_ACCEPTANCE_V1: &str = "proactive-followup-acceptance/v1";
 /// Maximum number of durable memories retained in a session snapshot.
 pub const MAX_SESSION_MEMORIES: usize = 128;
 
@@ -55,6 +59,8 @@ const MAX_SEMANTIC_CANDIDATES: usize = 16;
 const MAX_SEMANTIC_PRINCIPALS: usize = 16;
 const MAX_SEMANTIC_RESULT_COUNT: u32 = 1_000_000;
 const MAX_SEMANTIC_SEARCH_LIMIT: u32 = 10_000;
+const PROACTIVE_FOLLOWUP_TTL_SECONDS: i64 = 60 * 60;
+const MAX_PROACTIVE_FOLLOWUP_GROUNDING_REFS: usize = 16;
 
 fn contains_credential_shaped_text(value: &str) -> bool {
     static PATTERNS: OnceLock<RegexSet> = OnceLock::new();
@@ -254,6 +260,67 @@ pub struct ResearchPlan {
     /// Durable follow-through to create when this turn cannot complete the outcome.
     #[serde(default)]
     pub follow_through: Option<PlannedFollowThrough>,
+    /// Optional future observation that may be offered but is not authorized yet.
+    #[serde(default)]
+    pub follow_through_offer: Option<PlannedFollowThroughOffer>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+/// Closed set of proactive follow-up actions the runtime may render.
+pub enum ProactiveFollowupKind {
+    /// Re-observe the evidence supporting an answered turn for material changes.
+    WatchAnswer,
+    /// Retry a bounded observation that left a partial evidence gap.
+    RecheckEvidence,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+/// Model-authored candidate whose executable payload remains uncommitted until accepted.
+pub struct PlannedFollowThroughOffer {
+    /// Closed action kind used for deterministic operator copy.
+    pub kind: ProactiveFollowupKind,
+    /// Exact future-observation contract to materialize after acceptance.
+    pub follow_through: PlannedFollowThrough,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+/// Public, evidence-bound offer returned to a capable transport host.
+pub struct ProactiveFollowupOffer {
+    /// Must equal [`PROACTIVE_FOLLOWUP_OFFER_V1`].
+    pub schema_version: String,
+    /// Stable digest identity for this exact offer.
+    pub offer_ref: String,
+    /// Stable action identity checked again on acceptance.
+    pub action_key: String,
+    /// Exact ordinary operator message that accepts the offer.
+    pub action: String,
+    /// Short operator-facing label.
+    pub title: String,
+    /// Tenant boundary copied from the authoritative session.
+    pub tenant_id: String,
+    /// Thread boundary copied from the authoritative session.
+    pub thread_ref: String,
+    /// Turn that produced and grounded the offer.
+    pub turn_ref: String,
+    /// Current evidence atoms that justified offering the follow-through.
+    pub grounding_refs: Vec<String>,
+    /// RFC 3339 time at which the runtime authored the offer.
+    pub created_at: String,
+    /// RFC 3339 deadline after which acceptance fails closed.
+    pub expires_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+/// Exact full-offer echo submitted with an ordinary turn acceptance.
+pub struct ProactiveFollowupAcceptance {
+    /// Must equal [`PROACTIVE_FOLLOWUP_ACCEPTANCE_V1`].
+    pub schema_version: String,
+    /// Full Rust-authored offer; every field must match durable session history.
+    pub offer: ProactiveFollowupOffer,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1112,6 +1179,22 @@ pub enum SessionEvent {
         /// Exact grounded draft held in `pending_delivery`.
         draft: GroundedDraft,
     },
+    /// Persists a Rust-authored offer before any transport sends its invitation.
+    FollowupOffered {
+        /// Request whose validated evidence produced the offer.
+        request_id: String,
+        /// Public exact offer returned to the transport.
+        offer: ProactiveFollowupOffer,
+        /// Private future-observation contract materialized only after acceptance.
+        planned_follow_through: PlannedFollowThrough,
+    },
+    /// Records exact acceptance and materializes its offered follow-through.
+    FollowupAccepted {
+        /// Ordinary operator request carrying the acceptance.
+        request_id: String,
+        /// Exact durable offer being accepted.
+        offer_ref: String,
+    },
     /// Records that an effect cannot proceed without an authorization.
     ApprovalRequested {
         /// Effectful tool awaiting authorization.
@@ -1567,6 +1650,10 @@ pub enum SessionTurnOutcome {
         final_state: FinalState,
         /// Evidence atoms cited by the delivered claims.
         evidence_atom_refs: Vec<String>,
+        /// Rust-authored proactive offer, when the capable host may present one.
+        proactive_followup_offer: Option<Box<ProactiveFollowupOffer>>,
+        /// Offer accepted by this turn, when acceptance committed successfully.
+        accepted_followup_ref: Option<String>,
         /// Next durable mission state.
         mission: MissionState,
         /// Events that were atomically appended for this outcome.
@@ -2158,6 +2245,74 @@ pub fn apply_session_events(
                     produced_at: record.occurred_at.clone(),
                 });
             }
+            SessionEvent::FollowupOffered {
+                request_id,
+                offer,
+                planned_follow_through,
+            } => {
+                validate_proactive_followup_offer(&next, request_id, offer)?;
+                if next.events.iter().any(|event| {
+                    matches!(
+                        &event.event,
+                        SessionEvent::FollowupOffered { offer: prior, .. }
+                            if prior.offer_ref == offer.offer_ref
+                    )
+                }) {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "proactive follow-up offer identity was reused".into(),
+                    ));
+                }
+                let available = next
+                    .events
+                    .iter()
+                    .filter_map(|event| match &event.event {
+                        SessionEvent::ToolInvoked { observation } => {
+                            Some(observation.descriptor.tool_id.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect::<BTreeSet<_>>();
+                if planned_follow_through
+                    .required_tool_ids
+                    .iter()
+                    .any(|tool_id| !available.contains(tool_id.as_str()))
+                {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "proactive follow-up offer references an unavailable observed tool".into(),
+                    ));
+                }
+            }
+            SessionEvent::FollowupAccepted {
+                request_id,
+                offer_ref,
+            } => {
+                let accepted_at =
+                    OffsetDateTime::parse(&record.occurred_at, &Rfc3339).map_err(|_| {
+                        AgentRuntimeError::InvalidRequest(
+                            "proactive follow-up acceptance time is invalid".into(),
+                        )
+                    })?;
+                let accepted = resolve_followup_offer(&next, offer_ref, accepted_at)?;
+                if !bounded(request_id, MAX_TEXT_BYTES)
+                    || next.events.iter().any(|event| {
+                        matches!(
+                            &event.event,
+                            SessionEvent::FollowupAccepted { offer_ref: prior, .. }
+                                if prior == offer_ref
+                        )
+                    })
+                {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "proactive follow-up offer was already accepted".into(),
+                    ));
+                }
+                let commitment = planned_commitment(&accepted.planned_follow_through, accepted_at)?;
+                next.mission
+                    .commitments
+                    .retain(|candidate| candidate.commitment_ref != commitment.commitment_ref);
+                next.mission.commitments.push(commitment);
+                next.mission.status = SessionStatus::Active;
+            }
             SessionEvent::WakeExhausted {
                 request_id, draft, ..
             } => {
@@ -2289,8 +2444,11 @@ pub async fn run_session_turn_at(
         &NoopSessionJournal,
         session,
         input,
-        host_entry_at,
-        Instant::now(),
+        SessionTurnHostContext {
+            host_entry_at,
+            host_turn_started_at: Instant::now(),
+            proactive_followup_offers_enabled: false,
+        },
     )
     .await
 }
@@ -2317,10 +2475,44 @@ pub async fn run_session_turn_recorded(
         journal,
         session,
         input,
-        host_entry_at,
-        host_turn_started_at,
+        SessionTurnHostContext {
+            host_entry_at,
+            host_turn_started_at,
+            proactive_followup_offers_enabled: false,
+        },
     )
     .await
+}
+
+/// Runs a recorded session turn with proactive follow-up offer output enabled.
+pub async fn run_session_turn_recorded_with_followup_offers(
+    model: &dyn SessionAgentModel,
+    tools: &dyn SessionTools,
+    journal: &dyn SessionJournal,
+    session: AgentSession,
+    input: SessionTurnInput,
+) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    let host_entry_at = OffsetDateTime::now_utc();
+    let host_turn_started_at = Instant::now();
+    run_session_turn_recorded_at(
+        model,
+        tools,
+        journal,
+        session,
+        input,
+        SessionTurnHostContext {
+            host_entry_at,
+            host_turn_started_at,
+            proactive_followup_offers_enabled: true,
+        },
+    )
+    .await
+}
+
+struct SessionTurnHostContext {
+    host_entry_at: OffsetDateTime,
+    host_turn_started_at: Instant,
+    proactive_followup_offers_enabled: bool,
 }
 
 async fn run_session_turn_recorded_at(
@@ -2329,9 +2521,13 @@ async fn run_session_turn_recorded_at(
     journal: &dyn SessionJournal,
     session: AgentSession,
     input: SessionTurnInput,
-    host_entry_at: OffsetDateTime,
-    host_turn_started_at: Instant,
+    host: SessionTurnHostContext,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    let SessionTurnHostContext {
+        host_entry_at,
+        host_turn_started_at,
+        proactive_followup_offers_enabled,
+    } = host;
     validate_session(&session)?;
     validate_turn_input(&session, &input)?;
     let trigger = input.trigger.clone();
@@ -2961,11 +3157,31 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
-                let mut final_events = Vec::with_capacity(draft.memory_updates.len() + 1);
+                let proactive_followup = if proactive_followup_offers_enabled {
+                    materialize_proactive_followup_offer(
+                        &session,
+                        &input,
+                        plan.as_ref(),
+                        &draft,
+                        &observations,
+                        &validated.evidence_atom_refs,
+                        accepted_at,
+                    )?
+                } else {
+                    None
+                };
+                let mut final_events = Vec::with_capacity(draft.memory_updates.len() + 2);
                 final_events.push(SessionEvent::DraftProduced {
                     request_id: input.request_id.clone(),
                     draft: draft.clone(),
                 });
+                if let Some((offer, planned_follow_through)) = &proactive_followup {
+                    final_events.push(SessionEvent::FollowupOffered {
+                        request_id: input.request_id.clone(),
+                        offer: offer.clone(),
+                        planned_follow_through: planned_follow_through.clone(),
+                    });
+                }
                 final_events.extend(
                     draft
                         .memory_updates
@@ -2981,12 +3197,15 @@ async fn run_session_turn_recorded_at(
                     journal,
                 )
                 .await?;
+                let proactive_followup_offer = proactive_followup.map(|(offer, _)| Box::new(offer));
                 return Ok(SessionTurnOutcome::PendingDelivery {
                     lane: turn_outcome_lane(&input, plan.as_ref()),
                     delivery: draft.delivery,
                     markdown: validated.markdown,
                     final_state: draft.state,
                     evidence_atom_refs: validated.evidence_atom_refs,
+                    proactive_followup_offer,
+                    accepted_followup_ref: None,
                     mission: draft.mission,
                     events,
                 });
@@ -3267,6 +3486,8 @@ async fn repair_fallback_outcome(
             markdown: validated.markdown,
             final_state: FinalState::Answered,
             evidence_atom_refs: validated.evidence_atom_refs,
+            proactive_followup_offer: None,
+            accepted_followup_ref: None,
             mission: routine_silent_draft.mission,
             events,
         });
@@ -3492,6 +3713,8 @@ async fn repair_fallback_outcome(
         markdown: validated.markdown,
         final_state: state,
         evidence_atom_refs: validated.evidence_atom_refs,
+        proactive_followup_offer: None,
+        accepted_followup_ref: None,
         mission: draft.mission,
         events,
     })
@@ -3598,6 +3821,7 @@ fn wake_research_plan(
         stop_conditions,
         user_visible_work: Vec::new(),
         follow_through: None,
+        follow_through_offer: None,
     })
 }
 
@@ -5908,6 +6132,17 @@ pub fn validate_plan(
             "user-visible plan updates must contain at most four unique bounded messages".into(),
         ));
     }
+    if plan.follow_through.is_some() && plan.follow_through_offer.is_some() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a plan cannot both commit and merely offer the same future observation".into(),
+        ));
+    }
+    if let Some(offer) = &plan.follow_through_offer {
+        let mut offered_plan = plan.clone();
+        offered_plan.follow_through = Some(offer.follow_through.clone());
+        offered_plan.follow_through_offer = None;
+        validate_plan(&offered_plan, available_tools)?;
+    }
     if let Some(follow_through) = &plan.follow_through {
         if !bounded(&follow_through.commitment_ref, MAX_TEXT_BYTES) {
             return Err(AgentRuntimeError::InvalidFinal(
@@ -6029,8 +6264,12 @@ fn validate_explicit_follow_through(
                 "operator follow-through validation requires a durable semantic route".into(),
             )
         })?;
-    match (route, plan.follow_through.is_some()) {
-        (FutureObservationDisposition::Delegated, false) => Err(
+    match (
+        route,
+        plan.follow_through.is_some(),
+        plan.follow_through_offer.is_some(),
+    ) {
+        (FutureObservationDisposition::Delegated, false, _) => Err(
             AgentRuntimeError::InvalidFinal(
                 "the semantic route records delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
                     .into(),
@@ -6039,10 +6278,18 @@ fn validate_explicit_follow_through(
         (
             FutureObservationDisposition::Refused | FutureObservationDisposition::None,
             true,
+            _,
         ) => Err(AgentRuntimeError::InvalidFinal(
             "the semantic route does not authorize future observation. Remove follow_through and finish the current bounded work; do not invent a timer, monitor, or later assistant update"
                 .into(),
         )),
+        (FutureObservationDisposition::Delegated, _, true)
+        | (FutureObservationDisposition::Refused, _, true) => Err(
+            AgentRuntimeError::InvalidFinal(
+                "a proactive follow-through offer is allowed only when the operator did not already delegate or explicitly request refusal of future observation"
+                    .into(),
+            ),
+        ),
         _ => Ok(()),
     }
 }
@@ -6188,6 +6435,375 @@ fn planned_commitment(
     })
 }
 
+#[derive(Clone, Debug)]
+/// Private durable payload resolved after validating an exact public offer.
+pub struct ResolvedFollowupOffer {
+    /// Exact public offer retained in the event log.
+    pub offer: ProactiveFollowupOffer,
+    /// Private executor contract retained with the offer event.
+    pub planned_follow_through: PlannedFollowThrough,
+}
+
+/// Returns the exact durable offer when it is delivered, unaccepted, and current.
+pub fn resolve_followup_offer(
+    session: &AgentSession,
+    offer_ref: &str,
+    accepted_at: OffsetDateTime,
+) -> Result<ResolvedFollowupOffer, AgentRuntimeError> {
+    let (offer_index, offer, planned_follow_through) = session
+        .events
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, event)| match &event.event {
+            SessionEvent::FollowupOffered {
+                offer,
+                planned_follow_through,
+                ..
+            } if offer.offer_ref == offer_ref => {
+                Some((index, offer.clone(), planned_follow_through.clone()))
+            }
+            _ => None,
+        })
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest(
+                "proactive follow-up acceptance has no matching durable offer".into(),
+            )
+        })?;
+    let expires_at = OffsetDateTime::parse(&offer.expires_at, &Rfc3339).map_err(|_| {
+        AgentRuntimeError::InvalidRequest("proactive follow-up expiry is invalid".into())
+    })?;
+    if accepted_at > expires_at {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up offer expired before acceptance".into(),
+        ));
+    }
+    let source_request_id = offer
+        .turn_ref
+        .strip_prefix("agent-turn://")
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest(
+                "proactive follow-up turn reference is invalid".into(),
+            )
+        })?;
+    let delivered = session.events[offer_index + 1..].iter().any(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::DeliveryRecorded { request_id, .. }
+                if request_id == source_request_id
+        )
+    });
+    if !delivered {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up offer was not delivered".into(),
+        ));
+    }
+    if session.events[offer_index + 1..].iter().any(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::FollowupAccepted { offer_ref: accepted, .. }
+                if accepted == offer_ref
+        )
+    }) {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up offer was already accepted".into(),
+        ));
+    }
+    for grounding_ref in &offer.grounding_refs {
+        let current = session.events[..offer_index].iter().any(|event| {
+            let SessionEvent::ToolInvoked { observation } = &event.event else {
+                return false;
+            };
+            matches!(
+                observation.result.state,
+                ToolResultState::Succeeded | ToolResultState::Partial
+            ) && observation.result.evidence.iter().any(|evidence| {
+                evidence.complete
+                    && evidence
+                        .fresh_until
+                        .as_deref()
+                        .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+                        .is_some_and(|fresh_until| fresh_until >= accepted_at)
+                    && evidence.atoms.iter().any(|atom| {
+                        atom.atom_ref == *grounding_ref
+                            && atom
+                                .fresh_until
+                                .as_deref()
+                                .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+                                .is_some_and(|fresh_until| fresh_until >= accepted_at)
+                    })
+            })
+        });
+        if !current {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "proactive follow-up grounding evidence is no longer authoritative".into(),
+            ));
+        }
+    }
+    Ok(ResolvedFollowupOffer {
+        offer,
+        planned_follow_through,
+    })
+}
+
+/// Validates a full acceptance echo against the durable Rust-authored offer.
+pub fn validate_followup_acceptance(
+    session: &AgentSession,
+    acceptance: &ProactiveFollowupAcceptance,
+    accepted_at: OffsetDateTime,
+) -> Result<ResolvedFollowupOffer, AgentRuntimeError> {
+    if acceptance.schema_version != PROACTIVE_FOLLOWUP_ACCEPTANCE_V1 {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up acceptance schema is unsupported".into(),
+        ));
+    }
+    let resolved = resolve_followup_offer(session, &acceptance.offer.offer_ref, accepted_at)?;
+    if acceptance.offer != resolved.offer {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up acceptance does not exactly match the durable offer".into(),
+        ));
+    }
+    Ok(resolved)
+}
+
+/// Builds the deterministic grounded confirmation after a follow-up acceptance event.
+pub fn followup_acceptance_draft(
+    session: &AgentSession,
+    offer_ref: &str,
+    assessment_at: OffsetDateTime,
+) -> Result<GroundedDraft, AgentRuntimeError> {
+    let accepted = session.events.iter().rev().any(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::FollowupAccepted { offer_ref: accepted, .. }
+                if accepted == offer_ref
+        )
+    });
+    let resolved = session
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::FollowupOffered {
+                offer,
+                planned_follow_through,
+                ..
+            } if offer.offer_ref == offer_ref => Some((offer, planned_follow_through)),
+            _ => None,
+        });
+    let Some((_, planned)) = resolved.filter(|_| accepted) else {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up confirmation has no accepted durable offer".into(),
+        ));
+    };
+    let commitment = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == planned.commitment_ref)
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest(
+                "proactive follow-up acceptance did not materialize its commitment".into(),
+            )
+        })?;
+    let claim_text = render_commitment_claim(commitment).ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest(
+            "proactive follow-up commitment has no scheduled assessment".into(),
+        )
+    })?;
+    let message = claim_text.clone();
+    let draft = GroundedDraft {
+        state: FinalState::Answered,
+        delivery: DeliveryDisposition::Visible,
+        message: message.clone(),
+        claims: vec![GroundedClaim {
+            claim_ref: format!("followup-accepted:{}", planned.commitment_ref),
+            planned_claim_ref: None,
+            text: claim_text,
+            required_for_answer: true,
+            content: ClaimContent::Commitment {
+                commitment_ref: planned.commitment_ref.clone(),
+            },
+        }],
+        coverage_notice: None,
+        question: None,
+        mission: session.mission.clone(),
+        memory_updates: Vec::new(),
+        presentation_ready: true,
+    };
+    validate_grounded_draft_at(session, &draft, &[], assessment_at, assessment_at)?;
+    Ok(draft)
+}
+
+fn validate_proactive_followup_offer(
+    session: &AgentSession,
+    request_id: &str,
+    offer: &ProactiveFollowupOffer,
+) -> Result<(), AgentRuntimeError> {
+    let created_at = OffsetDateTime::parse(&offer.created_at, &Rfc3339);
+    let expires_at = OffsetDateTime::parse(&offer.expires_at, &Rfc3339);
+    if offer.schema_version != PROACTIVE_FOLLOWUP_OFFER_V1
+        || !bounded(request_id, MAX_TEXT_BYTES)
+        || !bounded(&offer.offer_ref, MAX_TEXT_BYTES)
+        || !bounded(&offer.action_key, MAX_TEXT_BYTES)
+        || !bounded(&offer.action, MAX_TEXT_BYTES)
+        || !bounded(&offer.title, MAX_TEXT_BYTES)
+        || offer.tenant_id != session.tenant_id
+        || offer.thread_ref != session.thread_ref
+        || offer.turn_ref != format!("agent-turn://{request_id}")
+        || offer.grounding_refs.is_empty()
+        || offer.grounding_refs.len() > MAX_PROACTIVE_FOLLOWUP_GROUNDING_REFS
+        || offer.grounding_refs.iter().collect::<BTreeSet<_>>().len() != offer.grounding_refs.len()
+        || offer
+            .grounding_refs
+            .iter()
+            .any(|reference| !bounded(reference, MAX_TEXT_BYTES))
+        || created_at.is_err()
+        || expires_at.is_err()
+        || created_at
+            .ok()
+            .zip(expires_at.ok())
+            .is_none_or(|(created, expires)| {
+                expires <= created
+                    || expires - created > Duration::seconds(PROACTIVE_FOLLOWUP_TTL_SECONDS)
+            })
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up offer is invalid or crosses its authority boundary".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn materialize_proactive_followup_offer(
+    session: &AgentSession,
+    input: &SessionTurnInput,
+    plan: Option<&ResearchPlan>,
+    draft: &GroundedDraft,
+    observations: &[ToolObservation],
+    cited_atom_refs: &[String],
+    accepted_at: OffsetDateTime,
+) -> Result<Option<(ProactiveFollowupOffer, PlannedFollowThrough)>, AgentRuntimeError> {
+    if !matches!(input.trigger, SessionTurnTrigger::Operator)
+        || !matches!(draft.state, FinalState::Answered | FinalState::Partial)
+    {
+        return Ok(None);
+    }
+    let Some(candidate) = plan.and_then(|plan| plan.follow_through_offer.as_ref()) else {
+        return Ok(None);
+    };
+    if !matches!(
+        (candidate.kind, draft.state),
+        (ProactiveFollowupKind::WatchAnswer, FinalState::Answered)
+            | (ProactiveFollowupKind::RecheckEvidence, FinalState::Partial)
+    ) {
+        return Ok(None);
+    }
+    if session.events.iter().rev().any(|event| match &event.event {
+        SessionEvent::FollowupOffered { offer, .. } => {
+            OffsetDateTime::parse(&offer.expires_at, &Rfc3339)
+                .is_ok_and(|expires_at| expires_at >= accepted_at)
+        }
+        _ => false,
+    }) {
+        return Ok(None);
+    }
+    let cited = cited_atom_refs.iter().collect::<BTreeSet<_>>();
+    let required_tools = candidate
+        .follow_through
+        .required_tool_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut grounding_refs = BTreeSet::new();
+    let mut grounded_tools = BTreeSet::new();
+    let mut expires_at = accepted_at
+        .checked_add(Duration::seconds(PROACTIVE_FOLLOWUP_TTL_SECONDS))
+        .ok_or_else(|| AgentRuntimeError::InvalidFinal("follow-up expiry overflowed".into()))?;
+    for observation in observations {
+        if !required_tools.contains(observation.descriptor.tool_id.as_str()) {
+            continue;
+        }
+        for evidence in &observation.result.evidence {
+            if !evidence_record_supports_current_draft(
+                evidence,
+                observation.result.state,
+                draft.state,
+                accepted_at,
+            ) {
+                continue;
+            }
+            for atom in &evidence.atoms {
+                if cited.contains(&atom.atom_ref) {
+                    let Some(fresh_until) = atom
+                        .fresh_until
+                        .as_deref()
+                        .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+                    else {
+                        continue;
+                    };
+                    expires_at = expires_at.min(fresh_until);
+                    grounding_refs.insert(atom.atom_ref.clone());
+                    grounded_tools.insert(observation.descriptor.tool_id.as_str());
+                }
+            }
+        }
+    }
+    if grounding_refs.is_empty() || grounded_tools != required_tools || expires_at <= accepted_at {
+        return Ok(None);
+    }
+    let grounding_refs = grounding_refs
+        .into_iter()
+        .take(MAX_PROACTIVE_FOLLOWUP_GROUNDING_REFS)
+        .collect::<Vec<_>>();
+    let (action, title) = match candidate.kind {
+        ProactiveFollowupKind::WatchAnswer => (
+            "watch this answer for changes",
+            "Watch this answer for changes",
+        ),
+        ProactiveFollowupKind::RecheckEvidence => (
+            "recheck the missing evidence",
+            "Recheck the missing evidence",
+        ),
+    };
+    let created_at = accepted_at.format(&Rfc3339).map_err(|_| {
+        AgentRuntimeError::InvalidFinal("follow-up creation time is invalid".into())
+    })?;
+    let expires_at = expires_at
+        .format(&Rfc3339)
+        .map_err(|_| AgentRuntimeError::InvalidFinal("follow-up expiry is invalid".into()))?;
+    let identity = serde_json::to_vec(&serde_json::json!({
+        "tenant_id": session.tenant_id,
+        "thread_ref": session.thread_ref,
+        "request_id": input.request_id,
+        "kind": candidate.kind,
+        "grounding_refs": grounding_refs,
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "planned_follow_through": candidate.follow_through,
+    }))
+    .map_err(|_| AgentRuntimeError::InvalidFinal("follow-up identity is invalid".into()))?;
+    let digest = Sha256::digest(identity)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let offer = ProactiveFollowupOffer {
+        schema_version: PROACTIVE_FOLLOWUP_OFFER_V1.into(),
+        offer_ref: format!("proactive-followup://sha256/{digest}"),
+        action_key: format!("followup:{}", &digest[..32]),
+        action: action.into(),
+        title: title.into(),
+        tenant_id: session.tenant_id.clone(),
+        thread_ref: session.thread_ref.clone(),
+        turn_ref: format!("agent-turn://{}", input.request_id),
+        grounding_refs,
+        created_at,
+        expires_at,
+    };
+    validate_proactive_followup_offer(session, &input.request_id, &offer)?;
+    Ok(Some((offer, candidate.follow_through.clone())))
+}
+
 fn materialize_planned_follow_through(
     session: &AgentSession,
     trigger: &SessionTurnTrigger,
@@ -6232,7 +6848,13 @@ fn validate_planned_follow_through_viability(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
 ) -> Result<(), AgentRuntimeError> {
-    let Some(follow_through) = plan.and_then(|plan| plan.follow_through.as_ref()) else {
+    let Some(follow_through) = plan.and_then(|plan| {
+        plan.follow_through.as_ref().or_else(|| {
+            plan.follow_through_offer
+                .as_ref()
+                .map(|offer| &offer.follow_through)
+        })
+    }) else {
         return Ok(());
     };
     for tool_id in &follow_through.required_tool_ids {
@@ -10324,8 +10946,11 @@ mod tests {
             journal,
             session,
             input,
-            host_entry_at,
-            Instant::now(),
+            SessionTurnHostContext {
+                host_entry_at,
+                host_turn_started_at: Instant::now(),
+                proactive_followup_offers_enabled: false,
+            },
         )
         .await
     }
@@ -11237,6 +11862,7 @@ mod tests {
             stop_conditions: vec!["Current state is observed.".into()],
             user_visible_work: vec!["Checking connector alpha.".into()],
             follow_through: None,
+            follow_through_offer: None,
         }
     }
 
@@ -11301,6 +11927,183 @@ mod tests {
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
         }
+    }
+
+    fn delivered_proactive_followup() -> (AgentSession, ProactiveFollowupOffer) {
+        let current = session();
+        let observed = observation(true, Some("2026-07-31T00:10:00Z"));
+        let mut offered_plan = plan();
+        offered_plan.follow_through_offer = Some(PlannedFollowThroughOffer {
+            kind: ProactiveFollowupKind::WatchAnswer,
+            follow_through: planned_follow_through(),
+        });
+        let answer = draft();
+        let input = SessionTurnInput {
+            request_id: "request:1".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let (offer, private_plan) = materialize_proactive_followup_offer(
+            &current,
+            &input,
+            Some(&offered_plan),
+            &answer,
+            std::slice::from_ref(&observed),
+            &["atom:status".into()],
+            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+        )
+        .unwrap()
+        .expect("a capable host should receive a current grounded offer");
+        let events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::ToolInvoked {
+                    observation: observed,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "request:1".into(),
+                    draft: answer,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::FollowupOffered {
+                    request_id: "request:1".into(),
+                    offer: offer.clone(),
+                    planned_follow_through: private_plan,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 4,
+                occurred_at: "2026-07-31T00:01:01Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "request:1".into(),
+                    transport: "slack".into(),
+                    delivery_ref: "slack-message:1".into(),
+                    payload_digest: message_digest("delivered answer and offer"),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 5,
+                occurred_at: "2026-07-31T00:01:01Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: "request:1".into(),
+                    state: FinalState::Answered,
+                },
+            },
+        ];
+        (apply_session_events(&current, &events).unwrap(), offer)
+    }
+
+    #[test]
+    fn proactive_followup_acceptance_is_exact_current_and_materializes_without_a_model() {
+        let (session, offer) = delivered_proactive_followup();
+        let accepted_at = OffsetDateTime::parse("2026-07-31T00:02:00Z", &Rfc3339).unwrap();
+        let acceptance = ProactiveFollowupAcceptance {
+            schema_version: PROACTIVE_FOLLOWUP_ACCEPTANCE_V1.into(),
+            offer: offer.clone(),
+        };
+        validate_followup_acceptance(&session, &acceptance, accepted_at).unwrap();
+
+        let mut tampered_action = acceptance.clone();
+        tampered_action.offer.action_key.push_str(":tampered");
+        assert!(validate_followup_acceptance(&session, &tampered_action, accepted_at).is_err());
+        let mut wrong_tenant = acceptance.clone();
+        wrong_tenant.offer.tenant_id = "tenant:other".into();
+        assert!(validate_followup_acceptance(&session, &wrong_tenant, accepted_at).is_err());
+        let mut wrong_thread = acceptance.clone();
+        wrong_thread.offer.thread_ref = "thread:other".into();
+        assert!(validate_followup_acceptance(&session, &wrong_thread, accepted_at).is_err());
+        assert!(
+            validate_followup_acceptance(
+                &session,
+                &acceptance,
+                OffsetDateTime::parse("2026-07-31T00:10:01Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
+        );
+
+        let accepted = apply_session_events(
+            &session,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 6,
+                occurred_at: "2026-07-31T00:02:00Z".into(),
+                event: SessionEvent::FollowupAccepted {
+                    request_id: "request:accept".into(),
+                    offer_ref: offer.offer_ref.clone(),
+                },
+            }],
+        )
+        .unwrap();
+        let commitment = accepted
+            .mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .expect("acceptance must materialize the private executor contract atomically");
+        assert_eq!(commitment.required_tool_ids, vec!["connector.read"]);
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:07:00Z"));
+        let confirmation =
+            followup_acceptance_draft(&accepted, &offer.offer_ref, accepted_at).unwrap();
+        assert_eq!(
+            confirmation.message,
+            "I’ll check again at 2026-07-31T00:07:00Z."
+        );
+    }
+
+    #[test]
+    fn proactive_followup_offer_requires_capability_and_all_executor_evidence() {
+        let current = session();
+        let observed = observation(true, Some("2026-07-31T00:10:00Z"));
+        let mut offered_plan = plan();
+        let mut follow_through = planned_follow_through();
+        follow_through.required_tool_ids.push("graph.read".into());
+        offered_plan.selected_tools.push("graph.read".into());
+        offered_plan.follow_through_offer = Some(PlannedFollowThroughOffer {
+            kind: ProactiveFollowupKind::WatchAnswer,
+            follow_through,
+        });
+        let input = SessionTurnInput {
+            request_id: "request:1".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let accepted_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        assert!(
+            materialize_proactive_followup_offer(
+                &current,
+                &input,
+                Some(&offered_plan),
+                &draft(),
+                &[observed],
+                &["atom:status".into()],
+                accepted_at,
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     struct ScriptedSessionModel {
@@ -11495,6 +12298,7 @@ mod tests {
                 stop_conditions: vec!["The exact message is observed after dispatch.".into()],
                 user_visible_work: vec!["I’ll send the approved message and verify it.".into()],
                 follow_through: None,
+                follow_through_offer: None,
             }
         }
 

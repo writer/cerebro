@@ -7,15 +7,31 @@ export type AssistantTurnSourceGapState =
   | "unavailable";
 
 export interface CerebroAskResult {
+  acceptedFollowupRef?: string;
   citationValidationPassed: boolean;
   deliveryAckRequired?: boolean;
   executionLane: "act" | "continue" | "converse" | "ignore" | "investigate" | "lookup";
   finalState?: "answered" | "blocked" | "needs_input" | "partial";
+  followupOffer?: RustProactiveFollowupOffer;
   markdown: string;
   pendingApproval?: AgentApprovalRequest;
   safeRefusal: boolean;
   traceId?: string;
   workingState?: RustWorkingState;
+}
+
+export interface RustProactiveFollowupOffer {
+  action: string;
+  action_key: string;
+  created_at: string;
+  expires_at: string;
+  grounding_refs: string[];
+  offer_ref: string;
+  schema_version: "proactive-followup-offer/v1";
+  tenant_id: string;
+  thread_ref: string;
+  title: string;
+  turn_ref: string;
 }
 
 export interface RustWakeExecutionReceipt {
@@ -135,6 +151,7 @@ export class CerebroAskClient {
     assessmentAt: string;
     contextScopeRef?: string;
     effectAuthorizations?: readonly AgentApprovalRequest[];
+    followupAcceptance?: RustProactiveFollowupOffer;
     history?: readonly CerebroAskHistoryMessage[];
     question: string;
     requestId: string;
@@ -188,6 +205,15 @@ export class CerebroAskClient {
           thread_ref: input.threadRef,
           tool_id: authorization.toolId,
         })),
+        capabilities: ["proactive_followup_offer/v1"],
+        ...(input.followupAcceptance === undefined
+          ? {}
+          : {
+              followup_acceptance: {
+                offer: input.followupAcceptance,
+                schema_version: "proactive-followup-acceptance/v1",
+              },
+            }),
         history: history.map(({ content, role }) => ({ content, role })),
         ...(attributedHistory
           ? {
@@ -242,6 +268,9 @@ export class CerebroAskClient {
     }
     if (outcome.outcome === "delivered" || outcome.outcome === "pending_delivery") {
       return {
+        ...(outcome.accepted_followup_ref == null
+          ? {}
+          : { acceptedFollowupRef: outcome.accepted_followup_ref }),
         citationValidationPassed:
           outcome.final_state === "answered"
           && outcome.evidence_refs.length > 0,
@@ -250,6 +279,15 @@ export class CerebroAskClient {
           ? { deliveryAckRequired: true }
           : {}),
         finalState: outcome.final_state,
+        ...(outcome.proactive_followup_offer == null
+          ? {}
+          : {
+              followupOffer: parseProactiveFollowupOffer(
+                outcome.proactive_followup_offer,
+                this.options.tenantId,
+                input.threadRef,
+              ),
+            }),
         markdown: outcome.markdown,
         safeRefusal: outcome.final_state !== "answered",
         traceId: input.requestId,
@@ -654,8 +692,10 @@ export class CerebroAskClient {
 
 type RustAgentTurnOutcome =
   | {
+      accepted_followup_ref: string | null;
       evidence_refs: string[];
       final_state: "answered" | "blocked" | "needs_input" | "partial";
+      proactive_followup_offer: unknown | null;
       lane: CerebroAskResult["executionLane"];
       markdown: string;
       outcome: "delivered" | "pending_delivery";
@@ -675,6 +715,48 @@ type RustAgentTurnOutcome =
   | {
       outcome: "ignored";
     };
+
+function parseProactiveFollowupOffer(
+  value: unknown,
+  tenantId: string,
+  threadRef: string,
+): RustProactiveFollowupOffer {
+  const offer = objectWithKeys(value, [
+    "action",
+    "action_key",
+    "created_at",
+    "expires_at",
+    "grounding_refs",
+    "offer_ref",
+    "schema_version",
+    "tenant_id",
+    "thread_ref",
+    "title",
+    "turn_ref",
+  ], "proactive follow-up offer");
+  if (
+    offer.schema_version !== "proactive-followup-offer/v1"
+    || offer.tenant_id !== tenantId
+    || offer.thread_ref !== threadRef
+    || !/^[a-z0-9][a-z0-9._:-]{0,127}$/u.test(text(offer.action_key))
+    || !boundedText(offer.action, 512)
+    || !/^proactive-followup:\/\/sha256\/[a-f0-9]{64}$/u.test(text(offer.offer_ref))
+    || !boundedText(offer.title, 512)
+    || !boundedText(offer.turn_ref, 2_048)
+    || !text(offer.turn_ref).startsWith("agent-turn://")
+    || text(offer.turn_ref).length === "agent-turn://".length
+    || !canonicalTimestamp(offer.created_at)
+    || !canonicalTimestamp(offer.expires_at)
+    || Date.parse(String(offer.created_at)) >= Date.parse(String(offer.expires_at))
+    || !Array.isArray(offer.grounding_refs)
+    || offer.grounding_refs.length === 0
+    || offer.grounding_refs.length > 16
+    || offer.grounding_refs.some((reference) => !boundedText(reference, 2_048))
+  ) {
+    throw new CerebroAskError("unavailable", "The Rust proactive follow-up offer is invalid.");
+  }
+  return offer as unknown as RustProactiveFollowupOffer;
+}
 
 function parseAgentTurnProgress(value: unknown): {
   latestSequence: number;
@@ -1007,6 +1089,12 @@ function sourceState(status: number): AssistantTurnSourceGapState {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function boundedText(value: unknown, maxBytes: number): value is string {
+  return typeof value === "string"
+    && Boolean(value.trim())
+    && Buffer.byteLength(value, "utf8") <= maxBytes;
 }
 
 function errorMessage(value: unknown): string {

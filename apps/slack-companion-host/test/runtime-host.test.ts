@@ -761,6 +761,7 @@ test("Slack uses the Rust agent turn endpoint without calling the legacy ask rou
     actor_ref: "slack-user:U-ONE",
     assessment_at: "2026-07-29T20:00:00.000Z",
     effect_authorizations: [],
+    capabilities: ["proactive_followup_offer/v1"],
     history: [{ content: "Earlier thread context.", role: "user" }],
     message: "Investigate the connector failure.",
     request_id: "request-one",

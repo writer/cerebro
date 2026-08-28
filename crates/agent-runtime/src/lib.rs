@@ -28,6 +28,8 @@ pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
 pub const AGENT_TURN_RESULT_V1: &str = "agent-turn-result/v1";
 /// Schema identifier required on acknowledged delivery receipts.
 pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
+/// Request capability enabling Rust-authored proactive follow-up offers.
+pub const PROACTIVE_FOLLOWUP_CAPABILITY_V1: &str = "proactive-followup-offer/v1";
 /// Maximum number of prior conversation messages accepted in one turn.
 pub const MAX_HISTORY_ITEMS: usize = 200;
 /// Maximum UTF-8 byte length of one prior conversation message.
@@ -202,10 +204,10 @@ pub struct ConversationMessage {
 #[serde(deny_unknown_fields)]
 /// Transport provenance aligned by index with a [`ConversationMessage`].
 pub struct ConversationMessageMetadata {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Stable identity of the actor that authored the message.
     pub actor_ref: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Transport-owned immutable message identifier.
     pub message_ref: Option<String>,
     #[serde(default)]
@@ -292,6 +294,12 @@ pub struct AgentTurnRequest {
     pub working_state: Option<WorkingState>,
     /// Exact pre-authorizations available for state-changing tool calls.
     pub effect_authorizations: Vec<EffectAuthorization>,
+    /// Optional transport capabilities explicitly supported by this caller.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Exact Rust-authored proactive offer accepted by this ordinary turn.
+    #[serde(default)]
+    pub followup_acceptance: Option<session::ProactiveFollowupAcceptance>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -861,6 +869,12 @@ pub enum AgentTurnOutcome {
         tool_call_count: usize,
         /// Durable continuation state retained after this response.
         working_state: Option<WorkingState>,
+        /// Rust-authored proactive follow-up that is part of the exact payload.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        proactive_followup_offer: Option<session::ProactiveFollowupOffer>,
+        /// Exact offer committed by this turn, when applicable.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        accepted_followup_ref: Option<String>,
     },
     /// Exact response payload has a validated transport receipt.
     Delivered {
@@ -878,6 +892,12 @@ pub enum AgentTurnOutcome {
         tool_call_count: usize,
         /// Durable continuation state retained after delivery.
         working_state: Option<WorkingState>,
+        /// Rust-authored proactive follow-up that was part of the delivered payload.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        proactive_followup_offer: Option<session::ProactiveFollowupOffer>,
+        /// Exact offer committed by this turn, when applicable.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        accepted_followup_ref: Option<String>,
     },
     /// An exact state-changing call cannot run without user authorization.
     ApprovalRequired {
@@ -1303,6 +1323,8 @@ pub async fn run_turn(
                         resumed_mission,
                         &draft,
                     )),
+                    proactive_followup_offer: None,
+                    accepted_followup_ref: None,
                 });
             }
         }
@@ -1354,6 +1376,8 @@ fn repair_limit_outcome(
         evidence_refs: Vec::new(),
         tool_call_count: observations.len(),
         working_state: Some(next_working_state(request, lane, resumed_mission, &draft)),
+        proactive_followup_offer: None,
+        accepted_followup_ref: None,
     }
 }
 
@@ -3497,6 +3521,30 @@ pub fn validate_agent_turn_request(request: &AgentTurnRequest) -> Result<(), Age
             "schema version is unsupported".into(),
         ));
     }
+    if request.capabilities.len() > 16
+        || request.capabilities.iter().collect::<BTreeSet<_>>().len() != request.capabilities.len()
+        || request
+            .capabilities
+            .iter()
+            .any(|capability| !bounded_text(capability))
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "transport capabilities are invalid or duplicated".into(),
+        ));
+    }
+    if let Some(acceptance) = &request.followup_acceptance
+        && (acceptance.schema_version != session::PROACTIVE_FOLLOWUP_ACCEPTANCE_V1
+            || !request
+                .capabilities
+                .iter()
+                .any(|capability| capability == PROACTIVE_FOLLOWUP_CAPABILITY_V1)
+            || acceptance.offer.tenant_id != request.tenant_id
+            || acceptance.offer.thread_ref != request.thread_ref)
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "proactive follow-up acceptance is not capability or authority bound".into(),
+        ));
+    }
     for (label, value) in [
         ("tenant_id", request.tenant_id.as_str()),
         ("request_id", request.request_id.as_str()),
@@ -4010,6 +4058,8 @@ fn finalize_unknown_effect(
             .collect(),
         tool_call_count: observations.len(),
         working_state: None,
+        proactive_followup_offer: None,
+        accepted_followup_ref: None,
     })
 }
 
@@ -4305,6 +4355,8 @@ mod grounding_tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         }
     }
 
@@ -4995,6 +5047,8 @@ mod grounding_tests {
                 history_metadata: vec![],
                 working_state: None,
                 effect_authorizations: vec![],
+                capabilities: Vec::new(),
+                followup_acceptance: None,
             },
             lane: ExecutionLane::Lookup,
             grounding_units: critique_grounding_units(&draft),

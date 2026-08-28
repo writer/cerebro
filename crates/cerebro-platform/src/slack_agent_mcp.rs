@@ -2456,6 +2456,8 @@ mod tests {
             history_metadata: vec![],
             working_state: None,
             effect_authorizations: vec![],
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         }
     }
 }
