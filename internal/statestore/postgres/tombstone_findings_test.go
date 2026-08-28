@@ -97,6 +97,63 @@ func TestResetTombstoneSchema_LeavesSchemaUsableForCachedStore(t *testing.T) {
 	}
 }
 
+func TestFindingWorkspaceScopePersistsAndRejectsCrossWorkspaceOverwrite(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	id := fmt.Sprintf("finding-workspace-scope-%d", now.UnixNano())
+	fingerprint := fmt.Sprintf("fp-workspace-scope-%d", now.UnixNano())
+	workspaceA := newUpsertFinding(id, fingerprint, "open", now)
+	workspaceA.ApplicationWorkspaceID = "workspace-a"
+
+	stored, err := store.UpsertFinding(ctx, workspaceA)
+	if err != nil {
+		t.Fatalf("upsert workspace-a finding: %v", err)
+	}
+	if stored.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("stored workspace = %q, want workspace-a", stored.ApplicationWorkspaceID)
+	}
+
+	listed, err := store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:               workspaceA.TenantID,
+		ApplicationWorkspaceID: "workspace-a",
+		RuntimeID:              workspaceA.RuntimeID,
+	})
+	if err != nil {
+		t.Fatalf("list workspace-a findings: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != id {
+		t.Fatalf("workspace-a findings = %#v, want only %q", listed, id)
+	}
+
+	other, err := store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:               workspaceA.TenantID,
+		ApplicationWorkspaceID: "workspace-b",
+		RuntimeID:              workspaceA.RuntimeID,
+	})
+	if err != nil {
+		t.Fatalf("list workspace-b findings: %v", err)
+	}
+	if len(other) != 0 {
+		t.Fatalf("workspace-b findings = %#v, want none", other)
+	}
+
+	workspaceB := newUpsertFinding(id, fingerprint, "open", now.Add(time.Minute))
+	workspaceB.ApplicationWorkspaceID = "workspace-b"
+	if _, err := store.UpsertFinding(ctx, workspaceB); err == nil {
+		t.Fatal("cross-workspace overwrite error = nil, want fail-closed error")
+	}
+	reloaded, err := store.GetFinding(ctx, id)
+	if err != nil {
+		t.Fatalf("reload workspace-a finding: %v", err)
+	}
+	if reloaded.ApplicationWorkspaceID != "workspace-a" || !reloaded.LastObservedAt.Equal(now) {
+		t.Fatalf("cross-workspace write changed stored finding: workspace=%q last=%s", reloaded.ApplicationWorkspaceID, reloaded.LastObservedAt)
+	}
+}
+
 func TestEnsureFindingStatements_AddsTombstoneColumns(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)

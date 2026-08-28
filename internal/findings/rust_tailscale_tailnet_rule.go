@@ -57,8 +57,11 @@ type rustFindingRequest struct {
 	EventTenantID      string            `json:"event_tenant_id"`
 	EventSourceID      string            `json:"event_source_id"`
 	EventKind          string            `json:"event_kind"`
+	EventSchemaRef     string            `json:"event_schema_ref"`
 	OccurredAt         string            `json:"occurred_at"`
+	ReplaySequence     uint64            `json:"replay_sequence"`
 	Attributes         map[string]string `json:"attributes"`
+	Payload            []int             `json:"payload"`
 }
 type rustFindingResponse struct {
 	SchemaVersion    string               `json:"schema_version"`
@@ -124,6 +127,10 @@ func (r *rustTailscaleRule) CloseOnEventContext(ctx context.Context, event Event
 	return strings.TrimSpace(response.Anchor), true, nil
 }
 func (r *rustTailscaleRule) run(ctx context.Context, request rustFindingRequest) (rustFindingResponse, error) {
+	return runRustFinding(ctx, r.evaluator, request, tailscaleRustDefinitionDigest)
+}
+
+func runRustFinding(ctx context.Context, evaluator findingRuleEvaluator, request rustFindingRequest, definitionDigest string) (rustFindingResponse, error) {
 	requestBody, err := json.Marshal(request)
 	if err != nil {
 		return rustFindingResponse{}, err
@@ -137,32 +144,35 @@ func (r *rustTailscaleRule) run(ctx context.Context, request rustFindingRequest)
 	if err != nil {
 		return rustFindingResponse{}, err
 	}
-	output, err := r.evaluator.Evaluate(ctx, payload)
+	output, err := evaluator.Evaluate(ctx, payload)
 	if err != nil {
 		return rustFindingResponse{}, fmt.Errorf("rust finding-rule authority unavailable: %w", err)
 	}
 	var response rustFindingResponse
-	if err := json.Unmarshal(output, &response); err != nil {
+	if err := decodeStrictRustFindingResponse(output, &response); err != nil {
 		return rustFindingResponse{}, fmt.Errorf("decode Rust finding-rule authority: %w", err)
 	}
-	fingerprint := ""
-	if response.Finding != nil {
-		fingerprint = response.Finding.Fingerprint
+	decisionDigest, err := rustFindingDecisionDigest(response.Action, response.Anchor, response.Finding)
+	if err != nil {
+		return rustFindingResponse{}, fmt.Errorf("digest Rust finding-rule decision: %w", err)
 	}
-	if response.SchemaVersion != tailscaleRustAuthoritySchema || response.RuleID != tailscaleTailnetDeviceApprovalDisabledRuleID || response.DefinitionDigest != tailscaleRustDefinitionDigest || response.InputDigest != inputDigest || response.DecisionDigest != rustFindingDecisionDigest(response.Action, response.Anchor, fingerprint) {
+	if response.SchemaVersion != tailscaleRustAuthoritySchema || response.RuleID != request.RuleID || response.DefinitionDigest != definitionDigest || response.InputDigest != inputDigest || response.DecisionDigest != decisionDigest {
 		return rustFindingResponse{}, fmt.Errorf("rust finding-rule authority receipt mismatch")
+	}
+	if err := validateRustFindingResponse(request, response); err != nil {
+		return rustFindingResponse{}, err
 	}
 	return response, nil
 }
 
 func rustTailscaleRequest(operation string, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, attributes map[string]string) rustFindingRequest {
-	request := rustFindingRequest{Operation: operation, RuleID: tailscaleTailnetDeviceApprovalDisabledRuleID, Attributes: attributes}
+	request := rustFindingRequest{Operation: operation, RuleID: tailscaleTailnetDeviceApprovalDisabledRuleID, Attributes: attributes, Payload: []int{}}
 	if runtime != nil {
 		request.RuntimeID, request.RuntimeSourceID, request.RuntimeTenantID = runtime.GetId(), runtime.GetSourceId(), runtime.GetTenantId()
 		request.RuntimeWorkspaceID = runtime.GetConfig()[ports.SourceRuntimeApplicationWorkspaceIDConfigKey]
 	}
 	if event != nil {
-		request.EventID, request.EventTenantID, request.EventSourceID, request.EventKind, request.Attributes = event.GetId(), event.GetTenantId(), event.GetSourceId(), event.GetKind(), event.GetAttributes()
+		request.EventID, request.EventTenantID, request.EventSourceID, request.EventKind, request.EventSchemaRef, request.Attributes = event.GetId(), event.GetTenantId(), event.GetSourceId(), event.GetKind(), event.GetSchemaRef(), event.GetAttributes()
 		if event.GetOccurredAt() != nil {
 			request.OccurredAt = event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339Nano)
 		}
@@ -173,11 +183,40 @@ func rustTailscaleRequest(operation string, runtime *cerebrov1.SourceRuntime, ev
 	return request
 }
 
-func rustFindingDecisionDigest(action string, anchor string, fingerprint string) string {
+func rustFindingDecisionDigest(action string, anchor string, finding *ports.FindingRecord) (string, error) {
+	var findingBody []byte
+	if finding != nil {
+		var err error
+		findingBody, err = json.Marshal(struct {
+			ID                string                    `json:"ID"`
+			Fingerprint       string                    `json:"Fingerprint"`
+			TenantID          string                    `json:"TenantID"`
+			RuntimeID         string                    `json:"RuntimeID"`
+			RuleID            string                    `json:"RuleID"`
+			Title             string                    `json:"Title"`
+			Severity          string                    `json:"Severity"`
+			Status            string                    `json:"Status"`
+			Summary           string                    `json:"Summary"`
+			ResourceURNs      []string                  `json:"ResourceURNs"`
+			EventIDs          []string                  `json:"EventIDs"`
+			ObservedPolicyIDs []string                  `json:"ObservedPolicyIDs"`
+			PolicyID          string                    `json:"PolicyID"`
+			PolicyName        string                    `json:"PolicyName"`
+			CheckID           string                    `json:"CheckID"`
+			CheckName         string                    `json:"CheckName"`
+			ControlRefs       []ports.FindingControlRef `json:"ControlRefs"`
+			Attributes        map[string]string         `json:"Attributes"`
+			FirstObservedAt   time.Time                 `json:"FirstObservedAt"`
+			LastObservedAt    time.Time                 `json:"LastObservedAt"`
+		}{finding.ID, finding.Fingerprint, finding.TenantID, finding.RuntimeID, finding.RuleID, finding.Title, finding.Severity, finding.Status, finding.Summary, finding.ResourceURNs, finding.EventIDs, finding.ObservedPolicyIDs, finding.PolicyID, finding.PolicyName, finding.CheckID, finding.CheckName, finding.ControlRefs, finding.Attributes, finding.FirstObservedAt, finding.LastObservedAt})
+		if err != nil {
+			return "", err
+		}
+	}
 	hash := sha256.New()
-	for _, value := range []string{action, anchor, fingerprint} {
-		_, _ = hash.Write([]byte(strings.TrimSpace(value)))
+	for _, value := range [][]byte{[]byte(strings.TrimSpace(action)), []byte(strings.TrimSpace(anchor)), findingBody} {
+		_, _ = hash.Write(value)
 		_, _ = hash.Write([]byte{0})
 	}
-	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
+	return fmt.Sprintf("sha256:%x", hash.Sum(nil)), nil
 }

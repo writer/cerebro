@@ -428,6 +428,34 @@ func TestFindingCandidateListQueryFiltersRuntimeRuleStatusAndFingerprint(t *test
 	}
 }
 
+func TestFindingCandidateQueriesBindApplicationWorkspace(t *testing.T) {
+	request := ports.ListFindingCandidatesRequest{
+		TenantID:               "writer",
+		ApplicationWorkspaceID: "workspace-a",
+		RuntimeID:              "writer-okta-audit",
+		RuleID:                 "rule-a",
+		Status:                 "candidate",
+		Limit:                  5,
+	}
+	for name, build := range map[string]func(ports.ListFindingCandidatesRequest) (string, []any, error){
+		"candidate": findingCandidateListQuery,
+		"run":       findingCandidateRunListQuery,
+	} {
+		t.Run(name, func(t *testing.T) {
+			query, args, err := build(request)
+			if err != nil {
+				t.Fatalf("build query: %v", err)
+			}
+			if !strings.Contains(query, "application_workspace_id = $2") {
+				t.Fatalf("query does not bind application workspace: %s", query)
+			}
+			if len(args) < 2 || args[1] != "workspace-a" {
+				t.Fatalf("workspace argument = %#v", args)
+			}
+		})
+	}
+}
+
 func TestValidateFindingCandidateRequiresSnapshotAndLastRun(t *testing.T) {
 	err := validateFindingCandidate(&ports.FindingCandidateRecord{
 		ID:          "candidate-1",

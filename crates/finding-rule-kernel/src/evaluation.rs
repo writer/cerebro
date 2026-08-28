@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use sha2::{Digest, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-
+use crate::digest::sha256;
 use crate::model::{
-    Action, ControlRef, EvaluationEnvelope, EvaluationResponse, FindingRecord, KernelError,
-    Operation, RuleRequest, SCHEMA_VERSION, TAILSCALE_DEFINITION_DIGEST, TAILSCALE_RULE_ID,
+    AURELIUS_DEFINITION_DIGEST, AURELIUS_RULE_ID, Action, COSMO_DEFINITION_DIGEST, COSMO_RULE_ID,
+    ControlRef, EvaluationEnvelope, EvaluationResponse, FindingRecord, KernelError, Operation,
+    RuleRequest, SCHEMA_VERSION, TAILSCALE_DEFINITION_DIGEST, TAILSCALE_RULE_ID,
 };
+use crate::payload_findings;
 
 /// Wasm host/guest ABI version.
 pub const ABI_VERSION: u32 = 1;
@@ -26,23 +26,24 @@ pub fn evaluate(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, Kern
     if envelope.schema_version != SCHEMA_VERSION {
         return Err(KernelError::UnsupportedSchema);
     }
-    if envelope.request.rule_id.trim() != TAILSCALE_RULE_ID {
-        return Err(KernelError::UnsupportedRule);
-    }
     let request_bytes =
         serde_json::to_vec(&envelope.request).map_err(|_| KernelError::InvalidInput)?;
     if envelope.input_digest != prefixed_digest(&request_bytes) {
         return Err(KernelError::InputDigestMismatch);
+    }
+    let rule_id = envelope.request.rule_id.trim();
+    if matches!(rule_id, AURELIUS_RULE_ID | COSMO_RULE_ID) {
+        return evaluate_payload_rule(envelope);
+    }
+    if rule_id != TAILSCALE_RULE_ID {
+        return Err(KernelError::UnsupportedRule);
     }
     let (action, anchor, finding) = match envelope.request.operation {
         Operation::Evaluate => evaluate_open(&envelope.request)?,
         Operation::OpenAnchor => evaluate_open_anchor(&envelope.request),
         Operation::Close => evaluate_close(&envelope.request)?,
     };
-    let fingerprint = finding
-        .as_ref()
-        .map_or("", |record| record.fingerprint.as_str());
-    let decision_digest = decision_digest(action, &anchor, fingerprint);
+    let decision_digest = decision_digest(action, &anchor, finding.as_ref())?;
     Ok(EvaluationResponse {
         schema_version: SCHEMA_VERSION,
         rule_id: TAILSCALE_RULE_ID,
@@ -53,6 +54,116 @@ pub fn evaluate(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, Kern
         anchor,
         finding,
     })
+}
+
+fn evaluate_payload_rule(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, KernelError> {
+    let source_request = &envelope.request;
+    let request = payload_findings::RuleRequest {
+        operation: match source_request.operation {
+            Operation::Evaluate => payload_findings::Operation::Evaluate,
+            Operation::OpenAnchor => payload_findings::Operation::OpenAnchor,
+            Operation::Close => payload_findings::Operation::Close,
+        },
+        rule_id: source_request.rule_id.trim().into(),
+        runtime: payload_findings::TrustedRuntime {
+            runtime_id: source_request.runtime_id.trim().into(),
+            source_id: source_request.runtime_source_id.trim().into(),
+            tenant_id: source_request.runtime_tenant_id.trim().into(),
+            workspace_id: source_request.runtime_workspace_id.trim().into(),
+        },
+        event: payload_findings::EventInput {
+            id: source_request.event_id.trim().into(),
+            tenant_id: source_request.event_tenant_id.trim().into(),
+            source_id: source_request.event_source_id.trim().into(),
+            kind: source_request.event_kind.trim().into(),
+            schema_ref: source_request.event_schema_ref.trim().into(),
+            observed_at: source_request.occurred_at.trim().into(),
+            replay_sequence: source_request.replay_sequence,
+            attributes: source_request.attributes.clone(),
+            payload: source_request.payload.clone(),
+        },
+    };
+    let decision = payload_findings::evaluate(&request).map_err(map_payload_error)?;
+    let (rule_id, definition_digest) = match request.rule_id.as_str() {
+        AURELIUS_RULE_ID => (AURELIUS_RULE_ID, AURELIUS_DEFINITION_DIGEST),
+        COSMO_RULE_ID => (COSMO_RULE_ID, COSMO_DEFINITION_DIGEST),
+        _ => return Err(KernelError::UnsupportedRule),
+    };
+    let action = match decision.action {
+        payload_findings::Action::None => Action::None,
+        payload_findings::Action::Open => Action::Open,
+        payload_findings::Action::Close => Action::Close,
+        payload_findings::Action::OpenAnchor => Action::OpenAnchor,
+    };
+    let finding = decision.finding.map(convert_payload_finding);
+    Ok(EvaluationResponse {
+        schema_version: SCHEMA_VERSION,
+        rule_id,
+        definition_digest,
+        input_digest: envelope.input_digest,
+        decision_digest: decision_digest(action, &decision.anchor, finding.as_ref())?,
+        action,
+        anchor: decision.anchor,
+        finding,
+    })
+}
+
+fn convert_payload_finding(record: payload_findings::RuleFindingDecision) -> FindingRecord {
+    FindingRecord {
+        id: record.id,
+        fingerprint: record.fingerprint,
+        tenant_id: record.tenant_id,
+        runtime_id: record.runtime_id,
+        rule_id: record.rule_id,
+        title: record.title,
+        severity: record.severity,
+        status: record.status,
+        summary: record.summary,
+        resource_urns: record.resource_urns,
+        event_ids: record.event_ids,
+        observed_policy_ids: record.observed_policy_ids,
+        policy_id: record.policy_id,
+        policy_name: record.policy_name,
+        check_id: record.check_id,
+        check_name: record.check_name,
+        control_refs: record
+            .control_refs
+            .into_iter()
+            .map(|reference| ControlRef {
+                framework_name: reference.framework_name,
+                control_id: reference.control_id,
+            })
+            .collect(),
+        attributes: record.attributes,
+        first_observed_at: record.first_observed_at,
+        last_observed_at: record.last_observed_at,
+    }
+}
+
+fn map_payload_error(error: payload_findings::KernelError) -> KernelError {
+    match error {
+        payload_findings::KernelError::UnsupportedRule
+        | payload_findings::KernelError::UnsupportedOperation => KernelError::UnsupportedRule,
+        payload_findings::KernelError::ScopeMismatch => KernelError::ScopeMismatch,
+        payload_findings::KernelError::WorkspaceMismatch => KernelError::WorkspaceMismatch,
+        payload_findings::KernelError::SchemaMismatch => KernelError::SchemaMismatch,
+        payload_findings::KernelError::ActionPayloadNotEmpty => KernelError::ActionPayloadNotEmpty,
+        payload_findings::KernelError::MissingTrustedContext => KernelError::MissingTrustedContext,
+        payload_findings::KernelError::PayloadTooLarge => KernelError::PayloadTooLarge,
+        payload_findings::KernelError::PayloadTooDeep => KernelError::PayloadTooDeep,
+        payload_findings::KernelError::PayloadArrayTooLarge => KernelError::PayloadArrayTooLarge,
+        payload_findings::KernelError::PayloadObjectTooLarge => KernelError::PayloadObjectTooLarge,
+        payload_findings::KernelError::PayloadStringTooLarge => KernelError::PayloadStringTooLarge,
+        payload_findings::KernelError::DuplicatePayloadField => KernelError::DuplicatePayloadField,
+        payload_findings::KernelError::MalformedPayload => KernelError::MalformedPayload,
+        payload_findings::KernelError::InvalidObservationTime => {
+            KernelError::InvalidObservationTime
+        }
+        payload_findings::KernelError::InvalidAttributes => KernelError::InvalidAttributes,
+        payload_findings::KernelError::EvaluatorFailure
+        | payload_findings::KernelError::MalformedEvaluatorResponse
+        | payload_findings::KernelError::InvalidEvaluatorReceipt => KernelError::InvalidInput,
+    }
 }
 
 fn evaluate_open(
@@ -104,23 +215,26 @@ fn evaluate_open(
         fingerprint,
         tenant_id: tenant_id.into(),
         runtime_id: runtime_id.into(),
-        rule_id: TAILSCALE_RULE_ID,
-        title: TITLE,
-        severity: "MEDIUM",
-        status: "open",
+        rule_id: TAILSCALE_RULE_ID.into(),
+        title: TITLE.into(),
+        severity: "MEDIUM".into(),
+        status: "open".into(),
         summary: format!("Tailscale tailnet {tailnet} has device approval disabled"),
         resource_urns: vec![tailnet_urn.clone()],
         event_ids: vec![request.event_id.trim().into()],
-        check_id: CHECK_ID,
-        check_name: CHECK_NAME,
+        observed_policy_ids: None,
+        policy_id: String::new(),
+        policy_name: String::new(),
+        check_id: CHECK_ID.into(),
+        check_name: CHECK_NAME.into(),
         control_refs: vec![
             ControlRef {
-                framework_name: "SOC 2",
-                control_id: "CC6.1",
+                framework_name: "SOC 2".into(),
+                control_id: "CC6.1".into(),
             },
             ControlRef {
-                framework_name: "ISO 27001:2022",
-                control_id: "A.8.2",
+                framework_name: "ISO 27001:2022".into(),
+                control_id: "A.8.2".into(),
             },
         ],
         attributes,
@@ -199,11 +313,7 @@ fn validate_evaluation_scope(request: &RuleRequest) -> Result<(), KernelError> {
 }
 
 fn normalized_timestamp(value: &str) -> Result<String, KernelError> {
-    let parsed =
-        OffsetDateTime::parse(value.trim(), &Rfc3339).map_err(|_| KernelError::InvalidInput)?;
-    parsed
-        .format(&Rfc3339)
-        .map_err(|_| KernelError::InvalidInput)
+    payload_findings::normalized_observation_time(value).map_err(|_| KernelError::InvalidInput)
 }
 
 fn attribute<'a>(request: &'a RuleRequest, key: &str) -> &'a str {
@@ -219,29 +329,42 @@ fn parse_optional_bool(value: &str) -> Option<bool> {
 }
 
 fn fingerprint(parts: &str, anchor: &str) -> String {
-    let mut digest = Sha256::new();
-    digest.update(parts.trim().as_bytes());
-    digest.update([0]);
-    digest.update(anchor.trim().as_bytes());
-    digest.update([0]);
-    hex_digest(&digest.finalize())
+    let mut input = Vec::with_capacity(parts.len() + anchor.len() + 2);
+    input.extend_from_slice(parts.trim().as_bytes());
+    input.push(0);
+    input.extend_from_slice(anchor.trim().as_bytes());
+    input.push(0);
+    hex_digest(&sha256(&input))
 }
 
-fn decision_digest(action: Action, anchor: &str, fingerprint: &str) -> String {
+fn decision_digest(
+    action: Action,
+    anchor: &str,
+    finding: Option<&FindingRecord>,
+) -> Result<String, KernelError> {
     let action = serde_json::to_value(action)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_default();
-    let mut digest = Sha256::new();
-    for value in [action.as_str(), anchor, fingerprint] {
-        digest.update(value.trim().as_bytes());
-        digest.update([0]);
+    let finding_json = finding
+        .map(serde_json::to_vec)
+        .transpose()
+        .map_err(|_| KernelError::InvalidInput)?
+        .unwrap_or_default();
+    let mut input = Vec::new();
+    for value in [
+        action.as_bytes(),
+        anchor.trim().as_bytes(),
+        finding_json.as_slice(),
+    ] {
+        input.extend_from_slice(value);
+        input.push(0);
     }
-    format!("sha256:{}", hex_digest(&digest.finalize()))
+    Ok(format!("sha256:{}", hex_digest(&sha256(&input))))
 }
 
 fn prefixed_digest(value: &[u8]) -> String {
-    format!("sha256:{}", hex_digest(&Sha256::digest(value)))
+    format!("sha256:{}", hex_digest(&sha256(value)))
 }
 
 fn hex_digest(value: &[u8]) -> String {
@@ -269,12 +392,15 @@ mod tests {
             event_tenant_id: "tenant-a".into(),
             event_source_id: "tailscale".into(),
             event_kind: "tailscale.tailnet".into(),
+            event_schema_ref: String::new(),
             occurred_at: "2026-04-23T12:05:00Z".into(),
+            replay_sequence: 0,
             attributes: BTreeMap::from([
                 ("tailnet".into(), "example.com".into()),
                 ("devices_approval_on".into(), approval.into()),
                 (WORKSPACE_ATTRIBUTE.into(), "workspace-a".into()),
             ]),
+            payload: Vec::new(),
         };
         let input_digest = prefixed_digest(&serde_json::to_vec(&request).unwrap());
         EvaluationEnvelope {

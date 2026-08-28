@@ -653,6 +653,23 @@ fn exact_schema_and_utc_observation_are_host_contracts() {
             offset.decision.finding.as_ref().unwrap().first_observed_at,
             "2026-05-22T12:00:00Z"
         );
+
+        let mut fractional = make(Operation::Evaluate);
+        fractional.event.observed_at = "2026-05-22T12:00:00.120000000Z".into();
+        let fractional = evaluate_scoped(&fractional).unwrap();
+        assert_eq!(fractional.observed_at, "2026-05-22T12:00:00.12Z");
+
+        let mut zero_fraction = make(Operation::Evaluate);
+        zero_fraction.event.observed_at = "2026-05-22T12:00:00.000000000Z".into();
+        let zero_fraction = evaluate_scoped(&zero_fraction).unwrap();
+        assert_eq!(zero_fraction.observed_at, "2026-05-22T12:00:00Z");
+
+        let mut over_precision = make(Operation::Evaluate);
+        over_precision.event.observed_at = "2026-05-22T12:00:00.1234567890Z".into();
+        assert_eq!(
+            evaluate_scoped(&over_precision),
+            Err(KernelError::InvalidObservationTime)
+        );
     }
 }
 

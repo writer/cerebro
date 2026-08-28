@@ -22,6 +22,7 @@ var ensureFindingCandidateStatements = []string{
 	`CREATE TABLE IF NOT EXISTS finding_candidate_runs (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
+  application_workspace_id TEXT NOT NULL DEFAULT '',
   runtime_id TEXT NOT NULL,
   rule_id TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -41,6 +42,7 @@ var ensureFindingCandidateStatements = []string{
 	`CREATE TABLE IF NOT EXISTS finding_candidates (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
+  application_workspace_id TEXT NOT NULL DEFAULT '',
   runtime_id TEXT NOT NULL,
   rule_id TEXT NOT NULL,
   fingerprint TEXT NOT NULL,
@@ -63,7 +65,9 @@ var ensureFindingCandidateStatements = []string{
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`ALTER TABLE finding_candidate_runs ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejected_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejection_rationale TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS finding_candidates_runtime_idx ON finding_candidates (tenant_id, runtime_id, last_observed_at DESC, id)`,
@@ -84,6 +88,10 @@ func (s *Store) PutFindingCandidateRun(ctx context.Context, run *ports.FindingCa
 	tenantID := strings.TrimSpace(run.TenantID)
 	if tenantID == "" {
 		return errors.New("finding candidate run tenant id is required")
+	}
+	applicationWorkspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, run.ApplicationWorkspaceID)
+	if err != nil {
+		return fmt.Errorf("finding candidate run application workspace: %w", err)
 	}
 	runtimeID := strings.TrimSpace(run.RuntimeID)
 	if runtimeID == "" {
@@ -107,15 +115,16 @@ func (s *Store) PutFindingCandidateRun(ctx context.Context, run *ports.FindingCa
 	if err := s.ensureFindingCandidateTables(ctx); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO finding_candidate_runs (
-  id, tenant_id, runtime_id, rule_id, status, event_limit, events_evaluated,
+  id, tenant_id, application_workspace_id, runtime_id, rule_id, status, event_limit, events_evaluated,
   events_matched, candidates, started_at, finished_at, error
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
+  application_workspace_id = finding_candidate_runs.application_workspace_id,
   runtime_id = EXCLUDED.runtime_id,
   rule_id = EXCLUDED.rule_id,
   status = EXCLUDED.status,
@@ -126,9 +135,11 @@ DO UPDATE SET
   started_at = EXCLUDED.started_at,
   finished_at = EXCLUDED.finished_at,
   error = EXCLUDED.error,
-  updated_at = NOW()`,
+  updated_at = NOW()
+WHERE finding_candidate_runs.application_workspace_id = EXCLUDED.application_workspace_id`,
 		id,
 		tenantID,
+		applicationWorkspaceID,
 		runtimeID,
 		ruleID,
 		status,
@@ -161,12 +172,13 @@ func (s *Store) GetFindingCandidateRun(ctx context.Context, runID string) (*port
 	run := &ports.FindingCandidateRun{}
 	var finishedAt sql.NullTime
 	if err := s.db.QueryRowContext(ctx, `
-SELECT id, tenant_id, runtime_id, rule_id, status, event_limit, events_evaluated,
+SELECT id, tenant_id, application_workspace_id, runtime_id, rule_id, status, event_limit, events_evaluated,
   events_matched, candidates, started_at, finished_at, error
 FROM finding_candidate_runs
 WHERE id = $1`, id).Scan(
 		&run.ID,
 		&run.TenantID,
+		&run.ApplicationWorkspaceID,
 		&run.RuntimeID,
 		&run.RuleID,
 		&run.Status,
@@ -214,7 +226,7 @@ func (s *Store) ListFindingCandidateRuns(ctx context.Context, request ports.List
 	for rows.Next() {
 		run := &ports.FindingCandidateRun{}
 		var finishedAt sql.NullTime
-		if err := rows.Scan(&run.ID, &run.TenantID, &run.RuntimeID, &run.RuleID, &run.Status, &run.EventLimit, &run.EventsEvaluated, &run.EventsMatched, &run.Candidates, &run.StartedAt, &finishedAt, &run.Error); err != nil {
+		if err := rows.Scan(&run.ID, &run.TenantID, &run.ApplicationWorkspaceID, &run.RuntimeID, &run.RuleID, &run.Status, &run.EventLimit, &run.EventsEvaluated, &run.EventsMatched, &run.Candidates, &run.StartedAt, &finishedAt, &run.Error); err != nil {
 			return nil, fmt.Errorf("scan finding candidate run: %w", err)
 		}
 		if finishedAt.Valid {
@@ -269,13 +281,14 @@ func (s *Store) UpsertFindingCandidate(ctx context.Context, candidate *ports.Fin
 	now := time.Now().UTC()
 	row, err := s.queryFindingCandidate(ctx, `
 INSERT INTO finding_candidates (
-  id, tenant_id, runtime_id, rule_id, fingerprint, status, finding_json, evidence_json,
+  id, tenant_id, application_workspace_id, runtime_id, rule_id, fingerprint, status, finding_json, evidence_json,
   last_run_id, observation_count, first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13)
 ON CONFLICT (id)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
+	application_workspace_id = finding_candidates.application_workspace_id,
   runtime_id = EXCLUDED.runtime_id,
   rule_id = EXCLUDED.rule_id,
   fingerprint = EXCLUDED.fingerprint,
@@ -286,10 +299,12 @@ DO UPDATE SET
   observation_count = finding_candidates.observation_count + EXCLUDED.observation_count,
   first_observed_at = LEAST(finding_candidates.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(finding_candidates.last_observed_at, EXCLUDED.last_observed_at),
-  updated_at = $13
+	updated_at = $14
+WHERE finding_candidates.application_workspace_id = EXCLUDED.application_workspace_id
 RETURNING `+findingCandidateSelectColumns,
 		strings.TrimSpace(candidate.ID),
 		strings.TrimSpace(candidate.TenantID),
+		strings.TrimSpace(candidate.ApplicationWorkspaceID),
 		strings.TrimSpace(candidate.RuntimeID),
 		strings.TrimSpace(candidate.RuleID),
 		strings.TrimSpace(candidate.Fingerprint),
@@ -372,6 +387,7 @@ func (s *Store) ExpireStaleFindingCandidates(ctx context.Context, request ports.
 	if tenantID == "" {
 		return 0, errors.New("finding candidate expiration tenant id is required")
 	}
+	applicationWorkspaceID := strings.TrimSpace(request.ApplicationWorkspaceID)
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
 		return 0, errors.New("finding candidate expiration runtime id is required")
@@ -407,18 +423,20 @@ UPDATE finding_candidates
 SET status = 'expired',
   updated_at = NOW()
 WHERE tenant_id = $1
-  AND runtime_id = $2
-  AND rule_id = $3
+  AND application_workspace_id = $2
+  AND runtime_id = $3
+  AND rule_id = $4
   AND status = 'candidate'
-  AND last_run_id <> $4
-  AND updated_at < $5
+  AND last_run_id <> $5
+  AND updated_at < $6
   AND EXISTS (
     SELECT 1
     FROM jsonb_array_elements_text(COALESCE(finding_json->'EventIDs', '[]'::jsonb)) AS candidate_event_id(value)
-    JOIN jsonb_array_elements_text($6::jsonb) AS evaluated_event_id(value)
+    JOIN jsonb_array_elements_text($7::jsonb) AS evaluated_event_id(value)
       ON candidate_event_id.value = evaluated_event_id.value
   )`,
 		tenantID,
+		applicationWorkspaceID,
 		runtimeID,
 		ruleID,
 		runID,
@@ -544,7 +562,7 @@ RETURNING `+findingCandidateSelectColumns,
 	return candidate, nil
 }
 
-const findingCandidateSelectColumns = `id, tenant_id, runtime_id, rule_id, fingerprint, status,
+const findingCandidateSelectColumns = `id, tenant_id, application_workspace_id, runtime_id, rule_id, fingerprint, status,
   finding_json::text, evidence_json::text, last_run_id, observation_count, first_observed_at,
   last_observed_at, promoted_finding_id, decision_id, promoted_by, promotion_rationale,
   change_ticket, promoted_at, rejected_by, rejection_rationale, rejected_at, created_at, updated_at`
@@ -566,6 +584,7 @@ func scanFindingCandidate(scanner findingCandidateScanner) (*ports.FindingCandid
 	if err := scanner.Scan(
 		&candidate.ID,
 		&candidate.TenantID,
+		&candidate.ApplicationWorkspaceID,
 		&candidate.RuntimeID,
 		&candidate.RuleID,
 		&candidate.Fingerprint,
@@ -594,6 +613,7 @@ func scanFindingCandidate(scanner findingCandidateScanner) (*ports.FindingCandid
 	if err := json.Unmarshal([]byte(findingJSON), finding); err != nil {
 		return nil, fmt.Errorf("decode finding candidate finding %q: %w", candidate.ID, err)
 	}
+	finding.ApplicationWorkspaceID = candidate.ApplicationWorkspaceID
 	var evidence []*cerebrov1.FindingEvidence
 	if err := json.Unmarshal([]byte(evidenceJSON), &evidence); err != nil {
 		return nil, fmt.Errorf("decode finding candidate evidence %q: %w", candidate.ID, err)
@@ -645,11 +665,12 @@ func findingCandidateRunListQuery(request ports.ListFindingCandidatesRequest) (s
 	}
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
+	addFindingCandidateFilter(&clauses, &args, "application_workspace_id", request.ApplicationWorkspaceID)
 	addFindingCandidateFilter(&clauses, &args, "runtime_id", request.RuntimeID)
 	addFindingCandidateFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingCandidateFilter(&clauses, &args, "status", request.Status)
 	query := `
-SELECT id, tenant_id, runtime_id, rule_id, status, event_limit, events_evaluated,
+SELECT id, tenant_id, application_workspace_id, runtime_id, rule_id, status, event_limit, events_evaluated,
   events_matched, candidates, started_at, finished_at, error
 FROM finding_candidate_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
@@ -672,6 +693,7 @@ func findingCandidateListQuery(request ports.ListFindingCandidatesRequest) (stri
 	}
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
+	addFindingCandidateFilter(&clauses, &args, "application_workspace_id", request.ApplicationWorkspaceID)
 	addFindingCandidateFilter(&clauses, &args, "id", candidateID)
 	addFindingCandidateFilter(&clauses, &args, "runtime_id", runtimeID)
 	addFindingCandidateFilter(&clauses, &args, "rule_id", ruleID)

@@ -118,9 +118,10 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 		return nil, nil
 	}
 	listRequest := ports.ListFindingsRequest{
-		TenantID: tenantID,
-		RuleID:   ruleID,
-		Status:   findingStatusOpen,
+		TenantID:               tenantID,
+		ApplicationWorkspaceID: trustedFindingWorkspace(runtime),
+		RuleID:                 ruleID,
+		Status:                 findingStatusOpen,
 	}
 	if counterEventCloseLookupRuntimeScoped(rule) {
 		listRequest.RuntimeID = runtimeID
@@ -137,7 +138,7 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 		if finding.Tombstoned {
 			continue
 		}
-		openAnchor, err := counterRule.OpenAnchorContext(ctx, finding.Attributes)
+		openAnchor, err := counterOpenAnchorContext(ctx, counterRule, rule, finding)
 		if err != nil {
 			return nil, fmt.Errorf("derive counter-event open anchor for finding %q: %w", strings.TrimSpace(finding.ID), err)
 		}
@@ -194,7 +195,7 @@ func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 			if record == nil {
 				continue
 			}
-			openAnchor, err := counterRule.OpenAnchorContext(ctx, record.Attributes)
+			openAnchor, err := counterOpenAnchorContext(ctx, counterRule, rule, record)
 			if err != nil {
 				return nil, fmt.Errorf("derive counter-event chronology open anchor for rule %q event %q: %w", ruleID, strings.TrimSpace(event.GetId()), err)
 			}
@@ -207,7 +208,7 @@ func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 				sequence:   sequence,
 			})
 		}
-		anchor, closes, err := counterRule.CloseOnEventContext(ctx, event)
+		anchor, closes, err := counterCloseOnEventContext(ctx, counterRule, rule, runtime, event)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate counter-event close for rule %q event %q: %w", ruleID, strings.TrimSpace(event.GetId()), err)
 		}
@@ -452,6 +453,20 @@ func durableStateCounterEventRule(rule Rule) (CounterEventRule, bool) {
 
 type legacyCounterEventRuleContextAdapter struct {
 	CounterEventRule
+}
+
+func counterOpenAnchorContext(ctx context.Context, counterRule ContextCounterEventRule, rule Rule, finding *ports.FindingRecord) (string, error) {
+	if trusted, ok := rule.(TrustedContextCounterEventRule); ok {
+		return trusted.OpenAnchorForFindingContext(ctx, finding)
+	}
+	return counterRule.OpenAnchorContext(ctx, finding.Attributes)
+}
+
+func counterCloseOnEventContext(ctx context.Context, counterRule ContextCounterEventRule, rule Rule, runtime *cerebrov1.SourceRuntime, event Event) (string, bool, error) {
+	if trusted, ok := rule.(TrustedContextCounterEventRule); ok {
+		return trusted.CloseOnEventForRuntimeContext(ctx, runtime, event)
+	}
+	return counterRule.CloseOnEventContext(ctx, event)
 }
 
 func (r legacyCounterEventRuleContextAdapter) OpenAnchorContext(_ context.Context, attributes map[string]string) (string, error) {
