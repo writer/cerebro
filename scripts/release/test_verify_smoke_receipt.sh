@@ -145,8 +145,47 @@ jq -e '
   .verified.candidate_runtime_digest_binding == $digest and
   .verified.candidate_web_digest_binding == "not_machine_proven"
 ' --arg digest "${runtime_digest}" "${tmp}/evidence.json" >/dev/null
-grep -Fq -- '--certificate-identity-regexp' "${tmp}/cosign.log"
+cmp "${tmp}/signed/smoke-receipt.json" "${tmp}/smoke-receipt.json"
+cmp "${tmp}/signed/smoke-receipt.json.sig" "${tmp}/smoke-receipt.json.sig"
+cmp "${tmp}/signed/smoke-receipt.json.pem" "${tmp}/smoke-receipt.json.pem"
+grep -Fq -- '--certificate-identity https://' "${tmp}/cosign.log"
+if grep -Fq -- '--certificate-identity-regexp' "${tmp}/cosign.log"; then
+  echo "ERROR: verifier used a regexp instead of the exact workflow identity" >&2
+  exit 1
+fi
 grep -Fq 'ephemeral-cerebro.yml@refs/heads/main' "${tmp}/cosign.log"
+
+GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
+SMOKE_RECEIPT_URL="${receipt_url}" \
+  expect_failure "CANDIDATE_RUNTIME_DIGEST is required" verify
+
+cp -R "${tmp}/signed" "${tmp}/signed-missing-signature"
+rm "${tmp}/signed-missing-signature/smoke-receipt.json.sig"
+GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
+GH_STUB_SIGNED_DIR="${tmp}/signed-missing-signature" \
+CANDIDATE_RUNTIME_DIGEST="${runtime_digest}" \
+SMOKE_RECEIPT_URL="${receipt_url}" \
+  expect_failure "missing its portable receipt, signature, or certificate" verify
+
+cp -R "${tmp}/signed" "${tmp}/signed-wrong-environment"
+jq '.environment_class = "production"' \
+  "${tmp}/signed/smoke-receipt.json" > \
+  "${tmp}/signed-wrong-environment/smoke-receipt.json"
+GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
+GH_STUB_SIGNED_DIR="${tmp}/signed-wrong-environment" \
+CANDIDATE_RUNTIME_DIGEST="${runtime_digest}" \
+SMOKE_RECEIPT_URL="${receipt_url}" \
+  expect_failure "must use environment_class ephemeral" verify
+
+cp -R "${tmp}/signed" "${tmp}/signed-wrong-producer"
+jq '.producer.run_url = "https://github.com/writer/cerebro/actions/runs/99999"' \
+  "${tmp}/signed/smoke-receipt.json" > \
+  "${tmp}/signed-wrong-producer/smoke-receipt.json"
+GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
+GH_STUB_SIGNED_DIR="${tmp}/signed-wrong-producer" \
+CANDIDATE_RUNTIME_DIGEST="${runtime_digest}" \
+SMOKE_RECEIPT_URL="${receipt_url}" \
+  expect_failure "producer run does not match" verify
 
 GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
 CANDIDATE_RUNTIME_DIGEST="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \

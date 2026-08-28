@@ -242,12 +242,14 @@ jobs:
         with:
           cosign-release: v2.6.1
       - name: Sign portable smoke receipt
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
           set -euo pipefail
           test "$(jq -r .schema_version .dist/pr-rust-graph/smoke-receipt.json)" = \
             "cerebro.smoke-receipt/v1"
           test "$(jq -r .candidate_commit .dist/pr-rust-graph/smoke-receipt.json)" = \
-            "${{ inputs.candidate_sha }}"
+            "${CANDIDATE_SHA}"
           cosign sign-blob --yes \
             --output-signature .dist/pr-rust-graph/smoke-receipt.json.sig \
             --output-certificate .dist/pr-rust-graph/smoke-receipt.json.pem \
