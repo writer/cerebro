@@ -156,6 +156,7 @@ fi
 grep -Fq 'ephemeral-cerebro.yml@refs/heads/main' "${tmp}/cosign.log"
 
 GH_STUB_ARTIFACTS_JSON="${tmp}/signed-artifacts.json" \
+CANDIDATE_RUNTIME_DIGEST='' \
 SMOKE_RECEIPT_URL="${receipt_url}" \
   expect_failure "CANDIDATE_RUNTIME_DIGEST is required" verify
 
