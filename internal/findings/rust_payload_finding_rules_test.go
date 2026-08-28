@@ -111,6 +111,7 @@ func TestRustPayloadRuleCloseProjectionEnforcesClosedPayloadBounds(t *testing.T)
 		"truncated":       []byte(`{"state":`),
 		"null":            []byte(`null`),
 		"invalid UTF-8":   invalidUTF8,
+		"lone surrogate":  []byte(`{"state":"fixed","image_digest":"sha256:\ud800"}`),
 		"duplicate":       []byte(`{"state":"fixed","state":"open"}`),
 		"oversized":       []byte(`{"state":"` + strings.Repeat("a", closedJSONMaximumBytes) + `"}`),
 		"too deep":        []byte(`{"state":[[[[[[[["fixed"]]]]]]]]}`),
@@ -126,6 +127,11 @@ func TestRustPayloadRuleCloseProjectionEnforcesClosedPayloadBounds(t *testing.T)
 				t.Fatal("CloseOnEventForRuntimeContext() error = nil, want closed payload rejection")
 			}
 		})
+	}
+	validPair := aureliusPromotedVulnerabilityEvent("close-valid-pair", map[string]string{"state": ""}, time.Now().UTC())
+	validPair.Payload = []byte(`{"state":"fixed","image_digest":"sha256:\ud83d\ude00"}`)
+	if anchor, closes, err := rule.CloseOnEventForRuntimeContext(context.Background(), runtime, validPair); err != nil || !closes || anchor == "" {
+		t.Fatalf("valid surrogate pair close = (%q, %v, %v), want close", anchor, closes, err)
 	}
 }
 

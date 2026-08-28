@@ -247,6 +247,9 @@ func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	if !utf8.Valid(event.GetPayload()) {
 		return nil, fmt.Errorf("project Aurelius close payload: payload is not valid UTF-8")
 	}
+	if err := validateJSONUnicodeEscapes(event.GetPayload()); err != nil {
+		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
+	}
 	preflight := json.NewDecoder(bytes.NewReader(event.GetPayload()))
 	preflight.UseNumber()
 	if err := validateUniqueBoundedJSON(preflight, 1); err != nil {
@@ -319,6 +322,47 @@ func requireJSONEOF(decoder *json.Decoder) error {
 			return fmt.Errorf("unexpected trailing JSON value")
 		}
 		return err
+	}
+	return nil
+}
+
+func validateJSONUnicodeEscapes(raw []byte) error {
+	inString := false
+	for index := 0; index < len(raw); index++ {
+		switch raw[index] {
+		case '"':
+			inString = !inString
+		case '\\':
+			if !inString || index+1 >= len(raw) {
+				continue
+			}
+			if raw[index+1] != 'u' {
+				index++
+				continue
+			}
+			if index+6 > len(raw) {
+				continue
+			}
+			first, err := strconv.ParseUint(string(raw[index+2:index+6]), 16, 16)
+			if err != nil {
+				continue
+			}
+			switch {
+			case first >= 0xd800 && first <= 0xdbff:
+				if index+12 > len(raw) || raw[index+6] != '\\' || raw[index+7] != 'u' {
+					return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+				}
+				second, err := strconv.ParseUint(string(raw[index+8:index+12]), 16, 16)
+				if err != nil || second < 0xdc00 || second > 0xdfff {
+					return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+				}
+				index += 11
+			case first >= 0xdc00 && first <= 0xdfff:
+				return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+			default:
+				index += 5
+			}
+		}
 	}
 	return nil
 }
