@@ -95,6 +95,13 @@ type FindingTombstone struct {
 	TombstoneGeneration int
 }
 
+// FindingPersistenceEnvelope carries host-owned scope and persisted graph evidence.
+// ApplicationWorkspaceID is deliberately excluded from the public finding wire identity.
+type FindingPersistenceEnvelope struct {
+	ApplicationWorkspaceID string `json:"-"`
+	GraphEvidenceRows      []*cerebrov1.GraphEvidenceRow
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
 	ID                string
@@ -114,7 +121,7 @@ type FindingRecord struct {
 	CheckID           string
 	CheckName         string
 	ControlRefs       []FindingControlRef
-	GraphEvidenceRows []*cerebrov1.GraphEvidenceRow
+	FindingPersistenceEnvelope
 	FindingRisk
 	FindingWorkflow
 	FindingTombstone
@@ -123,32 +130,38 @@ type FindingRecord struct {
 	LastObservedAt  time.Time
 }
 
+// FindingAgeRange scopes findings by their age in whole days.
+type FindingAgeRange struct {
+	MinAgeDays uint32
+	MaxAgeDays uint32
+}
+
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
-	TenantID            string
-	RuntimeID           string
-	RuntimeIDs          []string
-	FindingID           string
-	RuleID              string
-	ProfilePredicate    FindingProfilePredicate
-	Severity            string
-	Status              string
-	ResourceURN         string
-	ResourceURNs        []string
-	EventID             string
-	PolicyID            string
-	Framework           string
-	FirstObservedFrom   time.Time
-	FirstObservedBefore time.Time
-	StatusUpdatedFrom   time.Time
-	StatusUpdatedBefore time.Time
-	LastObservedBefore  time.Time
-	MinAgeDays          uint32
-	MaxAgeDays          uint32
-	SLAStatus           string
-	Limit               uint32
-	PriorityOrder       bool
-	Order               FindingOrder
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuntimeIDs             []string
+	FindingID              string
+	RuleID                 string
+	ProfilePredicate       FindingProfilePredicate
+	Severity               string
+	Status                 string
+	ResourceURN            string
+	ResourceURNs           []string
+	EventID                string
+	PolicyID               string
+	Framework              string
+	FirstObservedFrom      time.Time
+	FirstObservedBefore    time.Time
+	StatusUpdatedFrom      time.Time
+	StatusUpdatedBefore    time.Time
+	LastObservedBefore     time.Time
+	FindingAgeRange
+	SLAStatus     string
+	Limit         uint32
+	PriorityOrder bool
+	Order         FindingOrder
 }
 
 // FindingOrder controls persisted finding list sort order.
@@ -421,56 +434,59 @@ type ListFindingEvidenceRequest struct {
 // are intentionally separate from production finding evaluation runs because they
 // do not upsert current-state findings.
 type FindingCandidateRun struct {
-	ID              string
-	TenantID        string
-	RuntimeID       string
-	RuleID          string
-	Status          string
-	EventLimit      uint32
-	EventsEvaluated uint32
-	EventsMatched   uint32
-	Candidates      uint32
-	StartedAt       time.Time
-	FinishedAt      time.Time
-	Error           string
+	ID                     string
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuleID                 string
+	Status                 string
+	EventLimit             uint32
+	EventsEvaluated        uint32
+	EventsMatched          uint32
+	Candidates             uint32
+	StartedAt              time.Time
+	FinishedAt             time.Time
+	Error                  string
 }
 
 // FindingCandidateRecord stores a reviewed-but-not-yet-production finding snapshot.
 type FindingCandidateRecord struct {
-	ID                 string
-	TenantID           string
-	RuntimeID          string
-	RuleID             string
-	Fingerprint        string
-	Status             string
-	Finding            *FindingRecord
-	Evidence           []*cerebrov1.FindingEvidence
-	LastRunID          string
-	ObservationCount   uint32
-	FirstObservedAt    time.Time
-	LastObservedAt     time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	PromotedFindingID  string
-	DecisionID         string
-	PromotedBy         string
-	PromotionRationale string
-	ChangeTicket       string
-	PromotedAt         time.Time
-	RejectedBy         string
-	RejectionRationale string
-	RejectedAt         time.Time
+	ID                     string
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuleID                 string
+	Fingerprint            string
+	Status                 string
+	Finding                *FindingRecord
+	Evidence               []*cerebrov1.FindingEvidence
+	LastRunID              string
+	ObservationCount       uint32
+	FirstObservedAt        time.Time
+	LastObservedAt         time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	PromotedFindingID      string
+	DecisionID             string
+	PromotedBy             string
+	PromotionRationale     string
+	ChangeTicket           string
+	PromotedAt             time.Time
+	RejectedBy             string
+	RejectionRationale     string
+	RejectedAt             time.Time
 }
 
 // ListFindingCandidatesRequest scopes one candidate-finding query.
 type ListFindingCandidatesRequest struct {
-	TenantID    string
-	RuntimeID   string
-	CandidateID string
-	RuleID      string
-	Status      string
-	Fingerprint string
-	Limit       uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	CandidateID            string
+	RuleID                 string
+	Status                 string
+	Fingerprint            string
+	Limit                  uint32
 }
 
 // FindingCandidatePromotion marks one candidate as promoted after the production
@@ -498,12 +514,13 @@ type FindingCandidateRejection struct {
 // FindingCandidateExpiration marks stale candidate rows that were not reproduced
 // by a later successful evaluation covering the same source events.
 type FindingCandidateExpiration struct {
-	TenantID          string
-	RuntimeID         string
-	RuleID            string
-	RunID             string
-	EvaluatedEventIDs []string
-	RunStartedAt      time.Time
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuleID                 string
+	RunID                  string
+	EvaluatedEventIDs      []string
+	RunStartedAt           time.Time
 }
 
 // FindingStore persists normalized findings in the state store.

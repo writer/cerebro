@@ -238,12 +238,13 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 		state.run.Status = "completed"
 		state.run.FinishedAt = time.Now().UTC()
 		if _, err := s.candidateStore.ExpireStaleFindingCandidates(ctx, ports.FindingCandidateExpiration{
-			TenantID:          strings.TrimSpace(runtime.GetTenantId()),
-			RuntimeID:         runtimeID,
-			RuleID:            state.run.RuleID,
-			RunID:             state.run.ID,
-			EvaluatedEventIDs: state.evaluatedEventIDs,
-			RunStartedAt:      state.run.StartedAt,
+			TenantID:               strings.TrimSpace(runtime.GetTenantId()),
+			ApplicationWorkspaceID: trustedFindingWorkspace(runtime),
+			RuntimeID:              runtimeID,
+			RuleID:                 state.run.RuleID,
+			RunID:                  state.run.ID,
+			EvaluatedEventIDs:      state.evaluatedEventIDs,
+			RunStartedAt:           state.run.StartedAt,
 		}); err != nil {
 			finalErr := fmt.Errorf("expire stale finding candidates for run %q: %w", state.run.ID, err)
 			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), errors.Join(evaluationErr, finalErr))
@@ -274,13 +275,14 @@ func (s *Service) ListFindingCandidates(ctx context.Context, request ListCandida
 		return nil, err
 	}
 	candidates, err := s.candidateStore.ListFindingCandidates(ctx, ports.ListFindingCandidatesRequest{
-		TenantID:    strings.TrimSpace(runtime.GetTenantId()),
-		RuntimeID:   runtimeID,
-		CandidateID: strings.TrimSpace(request.CandidateID),
-		RuleID:      strings.TrimSpace(request.RuleID),
-		Status:      strings.TrimSpace(request.Status),
-		Fingerprint: strings.TrimSpace(request.Fingerprint),
-		Limit:       request.Limit,
+		TenantID:               strings.TrimSpace(runtime.GetTenantId()),
+		ApplicationWorkspaceID: trustedFindingWorkspace(runtime),
+		RuntimeID:              runtimeID,
+		CandidateID:            strings.TrimSpace(request.CandidateID),
+		RuleID:                 strings.TrimSpace(request.RuleID),
+		Status:                 strings.TrimSpace(request.Status),
+		Fingerprint:            strings.TrimSpace(request.Fingerprint),
+		Limit:                  request.Limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list finding candidates for runtime %q: %w", runtimeID, err)
@@ -657,6 +659,7 @@ func normalizeCandidateFinding(record *ports.FindingRecord, runtime *cerebrov1.S
 		cloned.Attributes = map[string]string{}
 	}
 	cloned.TenantID = firstNonEmpty(strings.TrimSpace(cloned.TenantID), strings.TrimSpace(runtime.GetTenantId()))
+	cloned.ApplicationWorkspaceID = firstNonEmpty(strings.TrimSpace(cloned.ApplicationWorkspaceID), trustedFindingWorkspace(runtime))
 	cloned.RuntimeID = firstNonEmpty(strings.TrimSpace(cloned.RuntimeID), strings.TrimSpace(runtime.GetId()))
 	if cloned.FirstObservedAt.IsZero() {
 		cloned.FirstObservedAt = observedAt
@@ -673,30 +676,32 @@ func newFindingCandidateRecord(finding *ports.FindingRecord, evidence *cerebrov1
 		evidenceRecords = append(evidenceRecords, proto.Clone(evidence).(*cerebrov1.FindingEvidence))
 	}
 	return &ports.FindingCandidateRecord{
-		ID:               findingCandidateID(finding),
-		TenantID:         strings.TrimSpace(finding.TenantID),
-		RuntimeID:        strings.TrimSpace(finding.RuntimeID),
-		RuleID:           strings.TrimSpace(finding.RuleID),
-		Fingerprint:      strings.TrimSpace(finding.Fingerprint),
-		Status:           findingCandidateStatusCandidate,
-		Finding:          cloneFindingRecord(finding),
-		Evidence:         evidenceRecords,
-		LastRunID:        strings.TrimSpace(runID),
-		ObservationCount: 1,
-		FirstObservedAt:  finding.FirstObservedAt.UTC(),
-		LastObservedAt:   finding.LastObservedAt.UTC(),
+		ID:                     findingCandidateID(finding),
+		TenantID:               strings.TrimSpace(finding.TenantID),
+		ApplicationWorkspaceID: strings.TrimSpace(finding.ApplicationWorkspaceID),
+		RuntimeID:              strings.TrimSpace(finding.RuntimeID),
+		RuleID:                 strings.TrimSpace(finding.RuleID),
+		Fingerprint:            strings.TrimSpace(finding.Fingerprint),
+		Status:                 findingCandidateStatusCandidate,
+		Finding:                cloneFindingRecord(finding),
+		Evidence:               evidenceRecords,
+		LastRunID:              strings.TrimSpace(runID),
+		ObservationCount:       1,
+		FirstObservedAt:        finding.FirstObservedAt.UTC(),
+		LastObservedAt:         finding.LastObservedAt.UTC(),
 	}
 }
 
 func newFindingCandidateRun(runtime *cerebrov1.SourceRuntime, ruleID string, eventLimit uint32, startedAt time.Time) *ports.FindingCandidateRun {
 	return &ports.FindingCandidateRun{
-		ID:         findingCandidateRunID(runtime.GetId(), ruleID, startedAt.UTC()),
-		TenantID:   strings.TrimSpace(runtime.GetTenantId()),
-		RuntimeID:  strings.TrimSpace(runtime.GetId()),
-		RuleID:     strings.TrimSpace(ruleID),
-		Status:     "running",
-		EventLimit: normalizeEventLimit(eventLimit),
-		StartedAt:  startedAt.UTC(),
+		ID:                     findingCandidateRunID(runtime.GetId(), ruleID, startedAt.UTC()),
+		TenantID:               strings.TrimSpace(runtime.GetTenantId()),
+		ApplicationWorkspaceID: trustedFindingWorkspace(runtime),
+		RuntimeID:              strings.TrimSpace(runtime.GetId()),
+		RuleID:                 strings.TrimSpace(ruleID),
+		Status:                 "running",
+		EventLimit:             normalizeEventLimit(eventLimit),
+		StartedAt:              startedAt.UTC(),
 	}
 }
 

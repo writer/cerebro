@@ -2550,7 +2550,7 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 			"actor":                "alice@writer.com",
 			"empty":                "",
 		},
-		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
 			newGraphEvidenceRow("identity_path", map[string]string{"label": "alice"}, newGraphEvidencePath(
 				"urn:cerebro:writer:github_user:alice",
 				"alice",
@@ -2561,7 +2561,7 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 				"github.code.repository",
 				map[string]string{"at": "2026-05-07T18:09:42Z", "event_id": "event-1"},
 			)),
-		},
+		}},
 	}
 	run := &cerebrov1.FindingEvaluationRun{Id: "run-1", RuntimeId: "runtime-okta"}
 
@@ -5608,9 +5608,9 @@ func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T
 		Status:      "open",
 		Summary:     "graph finding",
 		Attributes:  map[string]string{},
-		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
 			newGraphEvidenceRow("identity_path", map[string]string{"label": "path"}),
-		},
+		}},
 	}
 	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
 	if err != nil {
@@ -6394,15 +6394,15 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			RiskFactors:      append([]ports.FindingRiskFactor(nil), finding.RiskFactors...),
 			RiskModelVersion: finding.RiskModelVersion,
 		},
-		ResourceURNs:      resourceURNs,
-		EventIDs:          eventIDs,
-		ObservedPolicyIDs: observedPolicyIDs,
-		PolicyID:          finding.PolicyID,
-		PolicyName:        finding.PolicyName,
-		CheckID:           finding.CheckID,
-		CheckName:         finding.CheckName,
-		ControlRefs:       controlRefs,
-		GraphEvidenceRows: graphEvidenceRows,
+		ResourceURNs:               resourceURNs,
+		EventIDs:                   eventIDs,
+		ObservedPolicyIDs:          observedPolicyIDs,
+		PolicyID:                   finding.PolicyID,
+		PolicyName:                 finding.PolicyName,
+		CheckID:                    finding.CheckID,
+		CheckName:                  finding.CheckName,
+		ControlRefs:                controlRefs,
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{GraphEvidenceRows: graphEvidenceRows},
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,

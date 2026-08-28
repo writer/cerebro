@@ -172,7 +172,7 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 				Status:       findingStatusOpen,
 				Summary:      "graph rule fired",
 				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
-				GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+				FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
 					newGraphEvidenceRow("identity_path", map[string]string{"label": "alice@writer.com"}, newGraphEvidencePath(
 						"urn:cerebro:writer:okta_user:alice",
 						"alice@writer.com",
@@ -183,7 +183,7 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 						"identity.email",
 						map[string]string{"match_type": "exact_email"},
 					)),
-				},
+				}},
 			},
 		},
 	}

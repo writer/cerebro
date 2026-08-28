@@ -23,17 +23,18 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		return nil, err
 	}
 	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		TenantID:    strings.TrimSpace(runtime.GetTenantId()),
-		RuntimeID:   runtimeID,
-		FindingID:   strings.TrimSpace(request.FindingID),
-		RuleID:      strings.TrimSpace(request.RuleID),
-		Severity:    strings.TrimSpace(request.Severity),
-		Status:      strings.TrimSpace(request.Status),
-		ResourceURN: strings.TrimSpace(request.ResourceURN),
-		EventID:     strings.TrimSpace(request.EventID),
-		PolicyID:    strings.TrimSpace(request.PolicyID),
-		Limit:       normalizeListLimit(request.Limit),
-		Order:       request.Order,
+		TenantID:               strings.TrimSpace(runtime.GetTenantId()),
+		ApplicationWorkspaceID: trustedFindingWorkspace(runtime),
+		RuntimeID:              runtimeID,
+		FindingID:              strings.TrimSpace(request.FindingID),
+		RuleID:                 strings.TrimSpace(request.RuleID),
+		Severity:               strings.TrimSpace(request.Severity),
+		Status:                 strings.TrimSpace(request.Status),
+		ResourceURN:            strings.TrimSpace(request.ResourceURN),
+		EventID:                strings.TrimSpace(request.EventID),
+		PolicyID:               strings.TrimSpace(request.PolicyID),
+		Limit:                  normalizeListLimit(request.Limit),
+		Order:                  request.Order,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", strings.TrimSpace(runtime.GetTenantId()), runtimeID, err)

@@ -434,8 +434,7 @@ func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) 
 		FirstObservedBefore: drilldown.FirstObservedBefore,
 		StatusUpdatedFrom:   drilldown.StatusUpdatedFrom,
 		StatusUpdatedBefore: drilldown.StatusUpdatedBefore,
-		MinAgeDays:          drilldown.MinAgeDays,
-		MaxAgeDays:          drilldown.MaxAgeDays,
+		FindingAgeRange:     ports.FindingAgeRange{MinAgeDays: drilldown.MinAgeDays, MaxAgeDays: drilldown.MaxAgeDays},
 		SLAStatus:           drilldown.SLAStatus,
 		Limit:               fetchLimit,
 	}
@@ -932,8 +931,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			FirstObservedBefore: filter.FirstObservedBefore,
 			StatusUpdatedFrom:   filter.StatusUpdatedFrom,
 			StatusUpdatedBefore: filter.StatusUpdatedBefore,
-			MinAgeDays:          filter.MinAgeDays,
-			MaxAgeDays:          filter.MaxAgeDays,
+			FindingAgeRange:     ports.FindingAgeRange{MinAgeDays: filter.MinAgeDays, MaxAgeDays: filter.MaxAgeDays},
 			SLAStatus:           filter.SLAStatus,
 			Limit:               limit,
 			PriorityOrder:       true,
@@ -1011,8 +1009,7 @@ func (a *App) grcFindingSummary(r *http.Request, runtimes []*cerebrov1.SourceRun
 			FirstObservedBefore: filter.FirstObservedBefore,
 			StatusUpdatedFrom:   filter.StatusUpdatedFrom,
 			StatusUpdatedBefore: filter.StatusUpdatedBefore,
-			MinAgeDays:          filter.MinAgeDays,
-			MaxAgeDays:          filter.MaxAgeDays,
+			FindingAgeRange:     ports.FindingAgeRange{MinAgeDays: filter.MinAgeDays, MaxAgeDays: filter.MaxAgeDays},
 			SLAStatus:           filter.SLAStatus,
 		})
 		if err != nil {

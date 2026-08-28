@@ -9,6 +9,16 @@ pub const TAILSCALE_RULE_ID: &str = "tailscale-tailnet-device-approval-disabled"
 /// Generated policy-catalog digest for the exact Tailscale rule definition.
 pub const TAILSCALE_DEFINITION_DIGEST: &str =
     "af1b1d2e11b9cc726ffe44a2d4c46e5e898e45c01da9e1b414fc2b6b56a09f8b";
+/// Aurelius promoted-vulnerability rule identifier.
+pub const AURELIUS_RULE_ID: &str = "aurelius-promoted-vulnerability-active";
+/// Generated catalog digest for the exact Aurelius definition.
+pub const AURELIUS_DEFINITION_DIGEST: &str =
+    "5ec15d147ab34294d8214a19f519a7f52fce6bb2a59dfed9b408c3028695aab9";
+/// Cosmo coordination-risk rule identifier.
+pub const COSMO_RULE_ID: &str = "cosmo-coordination-active-risk";
+/// Generated catalog digest for the exact Cosmo definition.
+pub const COSMO_DEFINITION_DIGEST: &str =
+    "1367f20b5cfe85e3f901760f27d8540d15227712b86e5ca3da41122e296225a4";
 
 /// One supported finding-rule operation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -22,7 +32,7 @@ pub enum Operation {
     Close,
 }
 
-/// Closed finding-rule input. Provider payload bytes and credentials are excluded.
+/// Closed finding-rule input. Credentials and provider-owned scope are excluded.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleRequest {
@@ -46,10 +56,19 @@ pub struct RuleRequest {
     pub event_source_id: String,
     /// Replayed event kind.
     pub event_kind: String,
+    /// Closed event schema reference admitted by the trusted host.
+    #[serde(default)]
+    pub event_schema_ref: String,
     /// Replayed event occurrence time in RFC 3339 form.
     pub occurred_at: String,
+    /// Host-supplied deterministic replay order for equal timestamps.
+    #[serde(default)]
+    pub replay_sequence: u64,
     /// Bounded normalized event or finding attributes.
     pub attributes: BTreeMap<String, String>,
+    /// Original bounded provider payload represented as a JSON byte array.
+    #[serde(default)]
+    pub payload: Vec<u8>,
 }
 
 /// Content-bound request passed across the Wasm authority boundary.
@@ -75,8 +94,8 @@ pub(crate) enum Action {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct ControlRef {
-    pub(crate) framework_name: &'static str,
-    pub(crate) control_id: &'static str,
+    pub(crate) framework_name: String,
+    pub(crate) control_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -90,23 +109,29 @@ pub(crate) struct FindingRecord {
     #[serde(rename = "RuntimeID")]
     pub(crate) runtime_id: String,
     #[serde(rename = "RuleID")]
-    pub(crate) rule_id: &'static str,
+    pub(crate) rule_id: String,
     #[serde(rename = "Title")]
-    pub(crate) title: &'static str,
+    pub(crate) title: String,
     #[serde(rename = "Severity")]
-    pub(crate) severity: &'static str,
+    pub(crate) severity: String,
     #[serde(rename = "Status")]
-    pub(crate) status: &'static str,
+    pub(crate) status: String,
     #[serde(rename = "Summary")]
     pub(crate) summary: String,
     #[serde(rename = "ResourceURNs")]
     pub(crate) resource_urns: Vec<String>,
     #[serde(rename = "EventIDs")]
     pub(crate) event_ids: Vec<String>,
+    #[serde(rename = "ObservedPolicyIDs")]
+    pub(crate) observed_policy_ids: Option<Vec<String>>,
+    #[serde(rename = "PolicyID")]
+    pub(crate) policy_id: String,
+    #[serde(rename = "PolicyName")]
+    pub(crate) policy_name: String,
     #[serde(rename = "CheckID")]
-    pub(crate) check_id: &'static str,
+    pub(crate) check_id: String,
     #[serde(rename = "CheckName")]
-    pub(crate) check_name: &'static str,
+    pub(crate) check_name: String,
     #[serde(rename = "ControlRefs")]
     pub(crate) control_refs: Vec<ControlRef>,
     #[serde(rename = "Attributes")]
@@ -148,6 +173,32 @@ pub enum KernelError {
     InputDigestMismatch,
     /// Runtime and event scope do not identify the same tenant/workspace.
     ScopeMismatch,
+    /// Trusted workspace scope did not match.
+    WorkspaceMismatch,
+    /// Event schema did not match the rule contract.
+    SchemaMismatch,
+    /// Action operations must not carry provider payload bytes.
+    ActionPayloadNotEmpty,
+    /// A required trusted host value was absent.
+    MissingTrustedContext,
+    /// Payload exceeded its byte budget.
+    PayloadTooLarge,
+    /// Payload exceeded its nesting budget.
+    PayloadTooDeep,
+    /// Payload exceeded its array-item budget.
+    PayloadArrayTooLarge,
+    /// Payload exceeded its object-field budget.
+    PayloadObjectTooLarge,
+    /// Payload exceeded its string budget.
+    PayloadStringTooLarge,
+    /// Payload repeated an object key.
+    DuplicatePayloadField,
+    /// Payload was malformed or outside the closed rule schema.
+    MalformedPayload,
+    /// Observation time was absent or malformed.
+    InvalidObservationTime,
+    /// Event attributes exceeded the closed host budget.
+    InvalidAttributes,
     /// A required identity or timestamp is malformed.
     InvalidInput,
 }

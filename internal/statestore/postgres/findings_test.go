@@ -370,8 +370,7 @@ func TestFindingFilterClausesSupportTrendDrilldownFilters(t *testing.T) {
 		FirstObservedBefore: openedBefore,
 		StatusUpdatedFrom:   closedAfter,
 		StatusUpdatedBefore: closedBefore,
-		MinAgeDays:          8,
-		MaxAgeDays:          30,
+		FindingAgeRange:     ports.FindingAgeRange{MinAgeDays: 8, MaxAgeDays: 30},
 		SLAStatus:           "overdue",
 	})
 	if err != nil {
@@ -425,6 +424,34 @@ func TestFindingCandidateListQueryFiltersRuntimeRuleStatusAndFingerprint(t *test
 	}
 	if got := len(args); got != 6 {
 		t.Fatalf("len(args) = %d, want 6", got)
+	}
+}
+
+func TestFindingCandidateQueriesBindApplicationWorkspace(t *testing.T) {
+	request := ports.ListFindingCandidatesRequest{
+		TenantID:               "writer",
+		ApplicationWorkspaceID: "workspace-a",
+		RuntimeID:              "writer-okta-audit",
+		RuleID:                 "rule-a",
+		Status:                 "candidate",
+		Limit:                  5,
+	}
+	for name, build := range map[string]func(ports.ListFindingCandidatesRequest) (string, []any, error){
+		"candidate": findingCandidateListQuery,
+		"run":       findingCandidateRunListQuery,
+	} {
+		t.Run(name, func(t *testing.T) {
+			query, args, err := build(request)
+			if err != nil {
+				t.Fatalf("build query: %v", err)
+			}
+			if !strings.Contains(query, "application_workspace_id = $2") {
+				t.Fatalf("query does not bind application workspace: %s", query)
+			}
+			if len(args) < 2 || args[1] != "workspace-a" {
+				t.Fatalf("workspace argument = %#v", args)
+			}
+		})
 	}
 }
 

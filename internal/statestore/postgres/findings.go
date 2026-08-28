@@ -26,6 +26,7 @@ var ensureFindingStatements = []string{
   id TEXT PRIMARY KEY,
   fingerprint TEXT NOT NULL UNIQUE,
   tenant_id TEXT NOT NULL,
+  application_workspace_id TEXT NOT NULL DEFAULT '',
   runtime_id TEXT NOT NULL,
   rule_id TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -62,6 +63,7 @@ var ensureFindingStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS notes_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tickets_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
@@ -172,13 +174,13 @@ BEGIN
         WHERE schemaname = current_schema()
           AND tablename = 'findings'
           AND indexname = 'findings_active_fingerprint_uidx'
-          AND indexdef NOT ILIKE '%(tenant_id, fingerprint)%'
+          AND indexdef NOT ILIKE '%(tenant_id, application_workspace_id, fingerprint)%'
     ) THEN
         DROP INDEX findings_active_fingerprint_uidx;
     END IF;
 END $$`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS findings_active_fingerprint_uidx
-        ON findings (tenant_id, fingerprint) WHERE tombstoned = FALSE`,
+        ON findings (tenant_id, application_workspace_id, fingerprint) WHERE tombstoned = FALSE`,
 	`CREATE INDEX IF NOT EXISTS findings_tombstoned_run_idx
         ON findings (tombstoned_run_id) WHERE tombstoned = TRUE`,
 	`CREATE INDEX IF NOT EXISTS findings_tombstoned_rule_observed_idx
@@ -238,7 +240,7 @@ END $$`,
         ON closeout_run ((1)) WHERE status = 'running'`,
 }
 
-const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+const findingSelectColumns = `id, fingerprint, tenant_id, application_workspace_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
   notes_json::text, tickets_json::text, external_refs_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
@@ -278,17 +280,18 @@ var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fi
 // workflowevents.FindingStatusReasonVerifiedObservation.
 const upsertFindingStatement = `
 INSERT INTO findings (
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  id, fingerprint, tenant_id, application_workspace_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, external_refs_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at, tombstone_generation
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25::jsonb, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25::jsonb, $26::jsonb, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
   tenant_id = EXCLUDED.tenant_id,
+	application_workspace_id = findings.application_workspace_id,
   runtime_id = findings.runtime_id,
   rule_id = EXCLUDED.rule_id,
   title = EXCLUDED.title,
@@ -296,7 +299,7 @@ DO UPDATE SET
   status = CASE
     WHEN findings.tombstoned THEN findings.status
     WHEN findings.status = 'suppressed' THEN findings.status
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN EXCLUDED.status
+	WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $38::boolean) THEN EXCLUDED.status
     WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
@@ -338,19 +341,20 @@ DO UPDATE SET
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
     WHEN findings.status = 'suppressed' THEN findings.status_reason
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN findings.status_reason
+	WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $38::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
     WHEN findings.status = 'suppressed' THEN findings.status_updated_at
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN findings.status_updated_at
+	WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $38::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
   updated_at = NOW()
 WHERE findings.tombstoned = FALSE
+  AND findings.application_workspace_id = EXCLUDED.application_workspace_id
 RETURNING ` + findingSelectColumns
 
 const linkFindingExternalRefStatement = `
@@ -387,6 +391,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	tenantID := strings.TrimSpace(finding.TenantID)
 	if tenantID == "" {
 		return nil, errors.New("finding tenant id is required")
+	}
+	applicationWorkspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, finding.ApplicationWorkspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("finding application workspace: %w", err)
 	}
 	runtimeID := strings.TrimSpace(finding.RuntimeID)
 	if runtimeID == "" {
@@ -486,7 +494,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 				}
 			}()
 
-			targetID, generation, err := resolveUpsertTargetWithQuerier(ctx, tx, tenantID, fingerprint, id)
+			targetID, generation, err := resolveUpsertTargetWithQuerier(ctx, tx, tenantID, applicationWorkspaceID, fingerprint, id)
 			if err != nil {
 				return nil, err
 			}
@@ -499,6 +507,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 				targetID,
 				fingerprint,
 				tenantID,
+				applicationWorkspaceID,
 				runtimeID,
 				ruleID,
 				title,
@@ -578,11 +587,12 @@ type findingQueryRower interface {
 // path then updates it). Otherwise it mints a fresh id derived from baseID with a
 // "#g<N+1>" generation suffix where N is the max tombstone_generation observed for the
 // tenant/fingerprint, and returns N+1 as the new row's tombstone_generation.
-func resolveUpsertTargetWithQuerier(ctx context.Context, querier findingQueryRower, tenantID, fingerprint, baseID string) (string, int, error) {
+func resolveUpsertTargetWithQuerier(ctx context.Context, querier findingQueryRower, tenantID, applicationWorkspaceID, fingerprint, baseID string) (string, int, error) {
 	var activeID sql.NullString
 	err := querier.QueryRowContext(ctx,
-		`SELECT id FROM findings WHERE tenant_id = $1 AND fingerprint = $2 AND tombstoned = FALSE LIMIT 1 FOR UPDATE`,
+		`SELECT id FROM findings WHERE tenant_id = $1 AND application_workspace_id = $2 AND fingerprint = $3 AND tombstoned = FALSE LIMIT 1 FOR UPDATE`,
 		tenantID,
+		applicationWorkspaceID,
 		fingerprint,
 	).Scan(&activeID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -595,8 +605,9 @@ func resolveUpsertTargetWithQuerier(ctx context.Context, querier findingQueryRow
 	}
 	var maxGen sql.NullInt64
 	if err := querier.QueryRowContext(ctx,
-		`SELECT MAX(tombstone_generation) FROM findings WHERE tenant_id = $1 AND fingerprint = $2`,
+		`SELECT MAX(tombstone_generation) FROM findings WHERE tenant_id = $1 AND application_workspace_id = $2 AND fingerprint = $3`,
 		tenantID,
+		applicationWorkspaceID,
 		fingerprint,
 	).Scan(&maxGen); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", 0, fmt.Errorf("select tombstone generation: %w", err)
@@ -1473,6 +1484,7 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	}
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
+	addFindingFilter(&clauses, &args, "application_workspace_id", request.ApplicationWorkspaceID)
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	if err := appendFindingFilterClauses(&clauses, &args, request); err != nil {
 		return nil, nil, err
@@ -2682,15 +2694,16 @@ type findingTombstoneRow struct {
 }
 
 type findingRow struct {
-	ID          string
-	Fingerprint string
-	TenantID    string
-	RuntimeID   string
-	RuleID      string
-	Title       string
-	Severity    string
-	Status      string
-	Summary     string
+	ID                     string
+	Fingerprint            string
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuleID                 string
+	Title                  string
+	Severity               string
+	Status                 string
+	Summary                string
 	findingRiskRow
 	ResourceURNsJSON      string
 	EventIDsJSON          string
@@ -2733,6 +2746,7 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.ID,
 		&row.Fingerprint,
 		&row.TenantID,
+		&row.ApplicationWorkspaceID,
 		&row.RuntimeID,
 		&row.RuleID,
 		&row.Title,
@@ -2903,12 +2917,15 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		ID:          r.ID,
 		Fingerprint: r.Fingerprint,
 		TenantID:    r.TenantID,
-		RuntimeID:   r.RuntimeID,
-		RuleID:      r.RuleID,
-		Title:       r.Title,
-		Severity:    severity,
-		Status:      r.Status,
-		Summary:     r.Summary,
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{
+			ApplicationWorkspaceID: r.ApplicationWorkspaceID,
+		},
+		RuntimeID: r.RuntimeID,
+		RuleID:    r.RuleID,
+		Title:     r.Title,
+		Severity:  severity,
+		Status:    r.Status,
+		Summary:   r.Summary,
 		FindingRisk: ports.FindingRisk{
 			RiskScore:        r.RiskScore,
 			LikelihoodScore:  r.LikelihoodScore,

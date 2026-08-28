@@ -13,8 +13,6 @@ crate-type = ["cdylib", "rlib"]
 cerebro-wasm-guest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-time.workspace = true
 
 [dev-dependencies]
 cerebro-policy-catalog.workspace = true
