@@ -39,7 +39,6 @@ const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
 const MAX_MODEL_REPAIRS: usize = 10;
-const MAX_CRITIC_REPAIRS: usize = 5;
 const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -2269,7 +2268,7 @@ pub async fn run_session_turn(
     run_session_turn_recorded(model, tools, &NoopSessionJournal, session, input).await
 }
 
-/// Runs the bounded plan–observe–draft–review loop and records every accepted event.
+/// Runs the bounded plan–observe–draft loop and records every accepted event.
 ///
 /// The runtime validates the session and trigger, enforces lane and tool authority,
 /// bounds model repair attempts and tool steps, atomizes receipts, and validates
@@ -2364,25 +2363,11 @@ pub async fn run_session_turn_recorded(
     let mut consumed_approvals = BTreeSet::new();
     let mut repair_feedback = Vec::new();
     let mut repairs = 0;
-    let mut critic_repairs = 0;
-    let mut rejected_reviews = BTreeSet::new();
     let mut rejected_operating_drafts = BTreeSet::new();
     let mut coissued_plan_calls = None;
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
-            return repair_fallback_outcome(
-                &session,
-                &input,
-                &trigger,
-                plan.as_ref(),
-                &observations,
-                events,
-                journal,
-            )
-            .await;
-        }
-        if critic_repairs > MAX_CRITIC_REPAIRS {
             return repair_fallback_outcome(
                 &session,
                 &input,
@@ -2450,14 +2435,6 @@ pub async fn run_session_turn_recorded(
 
         match decision {
             SessionModelDecision::EstablishPlan { plan: proposed } => {
-                if critic_repairs > 0 {
-                    record_operating_repair(
-                        &mut repairs,
-                        &mut repair_feedback,
-                        "Claim review has started. The reviewed plan and evidence are frozen; revise only the final draft from that same evidence envelope.".into(),
-                    );
-                    continue;
-                }
                 if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
@@ -2524,14 +2501,6 @@ pub async fn run_session_turn_recorded(
                 }
             }
             SessionModelDecision::InvokeTools { calls } => {
-                if critic_repairs > 0 {
-                    record_operating_repair(
-                        &mut repairs,
-                        &mut repair_feedback,
-                        "Claim review has started. Tool use is frozen; revise only the final draft from the already observed evidence.".into(),
-                    );
-                    continue;
-                }
                 let Some(mut established) = plan.clone() else {
                     record_operating_repair(
                         &mut repairs,
@@ -2830,7 +2799,7 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
-                let canonical_silent_wake = match canonicalize_routine_silent_wake(
+                if let Err(error) = canonicalize_routine_silent_wake(
                     &session,
                     &trigger,
                     plan.as_ref(),
@@ -2838,18 +2807,15 @@ pub async fn run_session_turn_recorded(
                     assessment_at,
                     &mut draft,
                 ) {
-                    Ok(canonicalized) => canonicalized,
-                    Err(error) => {
-                        record_draft_repair(
-                            &mut rejected_operating_drafts,
-                            &draft,
-                            &mut repairs,
-                            &mut repair_feedback,
-                            error.to_string(),
-                        );
-                        continue;
-                    }
-                };
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
+                    continue;
+                }
                 if let Err(error) = validate_wake_completion(
                     &session,
                     &draft,
@@ -2921,69 +2887,6 @@ pub async fn run_session_turn_recorded(
                         response_contract_issues.join(" "),
                     );
                     continue;
-                }
-                if !canonical_silent_wake && !canonical_premise_conversation {
-                    let review = match model
-                        .review_message(ClaimReviewTurn {
-                            session: session.clone(),
-                            trigger: trigger.clone(),
-                            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                            wake_assessment: build_wake_assessment(
-                                &session,
-                                &trigger,
-                                prior_commitment_checkpoint.as_ref(),
-                                &observations,
-                                assessment_at,
-                            ),
-                            draft: draft.clone(),
-                            observations: observations.clone(),
-                        })
-                        .await
-                    {
-                        Ok(review) => review,
-                        Err(_) => {
-                            return repair_fallback_outcome(
-                                &session,
-                                &input,
-                                &trigger,
-                                plan.as_ref(),
-                                &observations,
-                                events,
-                                journal,
-                            )
-                            .await;
-                        }
-                    };
-                    let issues = match validate_message_review(&draft, &review) {
-                        Ok(issues) => issues,
-                        Err(_) => {
-                            return repair_fallback_outcome(
-                                &session,
-                                &input,
-                                &trigger,
-                                plan.as_ref(),
-                                &observations,
-                                events,
-                                journal,
-                            )
-                            .await;
-                        }
-                    };
-                    if !issues.is_empty() {
-                        let mut issue_signature = issues.clone();
-                        issue_signature.sort();
-                        issue_signature.dedup();
-                        if !rejected_reviews
-                            .insert((message_digest(&draft.message), issue_signature))
-                        {
-                            critic_repairs = MAX_CRITIC_REPAIRS + 1;
-                            repair_feedback = issues;
-                            continue;
-                        }
-                        critic_repairs += 1;
-                        repair_feedback = issues;
-                        continue;
-                    }
                 }
                 let mut final_events = Vec::with_capacity(draft.memory_updates.len() + 1);
                 final_events.push(SessionEvent::DraftProduced {
@@ -16630,7 +16533,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn critic_can_raise_distinct_issues_across_bounded_revisions() {
+    async fn deterministic_validation_does_not_invoke_the_model_claim_reviewer() {
         let model = RefiningSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan { plan: plan() },
@@ -16642,17 +16545,6 @@ mod tests {
                         input: json!({"connector_ref": "connector:alpha"}),
                     }],
                 },
-                SessionModelDecision::Finish { draft: draft() },
-                SessionModelDecision::InvokeTools {
-                    calls: vec![ToolCall {
-                        call_id: "call:review-escape".into(),
-                        tool_id: "connector.read".into(),
-                        purpose: "Try to gather different evidence after review.".into(),
-                        input: json!({"connector_ref": "connector:other"}),
-                    }],
-                },
-                SessionModelDecision::EstablishPlan { plan: plan() },
-                SessionModelDecision::Finish { draft: draft() },
                 SessionModelDecision::Finish { draft: draft() },
             ])),
             reviews: AtomicUsize::new(0),
@@ -16677,7 +16569,7 @@ mod tests {
             outcome,
             SessionTurnOutcome::PendingDelivery { .. }
         ));
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

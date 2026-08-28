@@ -1501,6 +1501,17 @@ async fn route_request_decision(
             future_observation_excerpt: None,
         });
     }
+    if request_is_read_only_status_or_change_question(&request.message) {
+        return Ok(RouteDecision {
+            lane: ExecutionLane::Investigate,
+            confidence: RouteConfidence::High,
+            reason: "The operator asked a read-only question about current or recent state and did not request an external effect."
+                .into(),
+            requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        });
+    }
     let mut repair_feedback = Vec::new();
     for _ in 0..MAX_ROUTER_ATTEMPTS {
         let decision = match model
@@ -1901,6 +1912,64 @@ fn request_is_explicit_no_live_self_capability(message: &str) -> bool {
         && asks_self_capability
         && asks_for_contextual_environment_purpose
         && !request_explicitly_requires_current_evidence(message)
+}
+
+fn request_is_read_only_status_or_change_question(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let asks_for_status_or_change = [
+        " what changed ",
+        " what has changed ",
+        " what happened ",
+        " what is running ",
+        " what s running ",
+        " current status ",
+        " status of ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let requests_external_effect = [
+        " deploy ",
+        " merge ",
+        " land ",
+        " ship ",
+        " roll out ",
+        " create ",
+        " change ",
+        " update ",
+        " edit ",
+        " fix ",
+        " send ",
+        " post ",
+        " schedule ",
+        " restart ",
+        " start ",
+        " stop ",
+        " run ",
+        " execute ",
+        " trigger ",
+        " enable ",
+        " disable ",
+        " turn on ",
+        " turn off ",
+        " approve ",
+        " close ",
+        " reopen ",
+        " delete ",
+        " remove ",
+        " install ",
+        " publish ",
+        " commit ",
+        " push ",
+        " implement ",
+        " apply ",
+        " open a pr ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+
+    asks_for_status_or_change
+        && !request_is_artifact_transformation(message)
+        && !requests_external_effect
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -4165,10 +4234,37 @@ mod grounding_tests {
 
     struct RouteMustNotRun;
 
+    struct ActRouter;
+
     #[async_trait]
     impl AgentModel for RouteMustNotRun {
         async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
             panic!("the model router must not run for unscoped conversation")
+        }
+
+        async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+            panic!("the operating model must not run in this routing test")
+        }
+
+        async fn critique(
+            &self,
+            _turn: CritiqueTurn,
+        ) -> Result<CritiqueDecision, AgentRuntimeError> {
+            panic!("the critic must not run in this routing test")
+        }
+    }
+
+    #[async_trait]
+    impl AgentModel for ActRouter {
+        async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+            Ok(RouteDecision {
+                lane: ExecutionLane::Act,
+                confidence: RouteConfidence::High,
+                reason: "The newest message explicitly requests an external effect.".into(),
+                requires_current_evidence: true,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            })
         }
 
         async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
@@ -4214,6 +4310,39 @@ mod grounding_tests {
                     .unwrap(),
                 ExecutionLane::Converse,
                 "unscoped conversation must not enter evidence routing: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn read_only_change_question_routes_to_investigation_without_the_model() {
+        let message = "What changed in writer/cerebro today that makes the Slack agent more reliable? Give me the three most important changes in plain English, link the evidence you used, and clearly say what you could not verify.";
+        assert_eq!(
+            super::route_request(&RouteMustNotRun, route_request(message))
+                .await
+                .unwrap(),
+            ExecutionLane::Investigate
+        );
+    }
+
+    #[test]
+    fn change_wording_does_not_turn_artifact_review_into_live_investigation() {
+        assert!(!request_is_read_only_status_or_change_question(
+            "What changed in this draft?"
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_status_question_with_an_explicit_effect_still_reaches_the_model_router() {
+        for message in [
+            "What changed in the Slack agent? Deploy the fix now.",
+            "What changed in the Slack agent? Roll it out now.",
+        ] {
+            assert_eq!(
+                super::route_request(&ActRouter, route_request(message))
+                    .await
+                    .unwrap(),
+                ExecutionLane::Act
             );
         }
     }
