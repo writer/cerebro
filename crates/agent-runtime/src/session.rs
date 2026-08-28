@@ -2612,14 +2612,13 @@ async fn run_session_turn_recorded_at(
         if repairs > MAX_MODEL_REPAIRS {
             let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
             return repair_fallback_outcome(
-                model,
+                RepairFallbackRuntime { model, journal },
                 &session,
                 &input,
                 plan.as_ref(),
                 &observations,
                 accepted_at,
                 events,
-                journal,
             )
             .await;
         }
@@ -2659,14 +2658,13 @@ async fn run_session_turn_recorded_at(
                     let accepted_at =
                         elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
-                        model,
+                        RepairFallbackRuntime { model, journal },
                         &session,
                         &input,
                         plan.as_ref(),
                         &observations,
                         accepted_at,
                         events,
-                        journal,
                     )
                     .await;
                 }
@@ -3145,14 +3143,13 @@ async fn run_session_turn_recorded_at(
                     }
                     Err(_) => {
                         return repair_fallback_outcome(
-                            model,
+                            RepairFallbackRuntime { model, journal },
                             &session,
                             &input,
                             plan.as_ref(),
                             &observations,
                             accepted_at,
                             events,
-                            journal,
                         )
                         .await;
                     }
@@ -3227,14 +3224,13 @@ async fn run_session_turn_recorded_at(
     }
     let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
     repair_fallback_outcome(
-        model,
+        RepairFallbackRuntime { model, journal },
         &session,
         &input,
         plan.as_ref(),
         &observations,
         accepted_at,
         events,
-        journal,
     )
     .await
 }
@@ -3243,15 +3239,19 @@ fn turn_outcome_lane(_input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> 
     plan.map_or(ExecutionLane::Converse, |plan| plan.lane)
 }
 
+struct RepairFallbackRuntime<'a> {
+    model: &'a dyn SessionAgentModel,
+    journal: &'a dyn SessionJournal,
+}
+
 async fn repair_fallback_outcome(
-    model: &dyn SessionAgentModel,
+    runtime: RepairFallbackRuntime<'_>,
     session: &AgentSession,
     input: &SessionTurnInput,
     plan: Option<&ResearchPlan>,
     observations: &[ToolObservation],
     accepted_at: OffsetDateTime,
     mut events: Vec<SessionEventRecord>,
-    journal: &dyn SessionJournal,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
     let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
         .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
@@ -3481,7 +3481,7 @@ async fn repair_fallback_outcome(
                 request_id: input.request_id.clone(),
                 draft: routine_silent_draft.clone(),
             }],
-            journal,
+            runtime.journal,
         )
         .await?;
         return Ok(SessionTurnOutcome::PendingDelivery {
@@ -3698,7 +3698,8 @@ async fn repair_fallback_outcome(
     let validated =
         validate_grounded_draft_at(session, &draft, observations, assessment_at, accepted_at)?;
     let prior_commitment_checkpoint = prior_commitment_checkpoint(session, trigger);
-    let review = model
+    let review = runtime
+        .model
         .review_message(ClaimReviewTurn {
             session: session.clone(),
             trigger: trigger.clone(),
@@ -3725,7 +3726,7 @@ async fn repair_fallback_outcome(
             request_id: input.request_id.clone(),
             draft: draft.clone(),
         }],
-        journal,
+        runtime.journal,
     )
     .await?;
     Ok(SessionTurnOutcome::PendingDelivery {
@@ -8824,9 +8825,13 @@ mod tests {
         events: Vec<SessionEventRecord>,
         journal: &dyn SessionJournal,
     ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+        let model = FallbackReviewModel {
+            mode: FallbackReviewMode::Supported,
+        };
         repair_fallback_outcome(
-            &FallbackReviewModel {
-                mode: FallbackReviewMode::Supported,
+            RepairFallbackRuntime {
+                model: &model,
+                journal,
             },
             session,
             input,
@@ -8834,7 +8839,6 @@ mod tests {
             observations,
             accepted_at,
             events,
-            journal,
         )
         .await
     }
@@ -11933,9 +11937,13 @@ mod tests {
         };
         let plan = wake_research_plan(&awakened, &trigger).unwrap();
         let observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        let model = FallbackReviewModel {
+            mode: FallbackReviewMode::Unavailable,
+        };
         let outcome = repair_fallback_outcome(
-            &FallbackReviewModel {
-                mode: FallbackReviewMode::Unavailable,
+            RepairFallbackRuntime {
+                model: &model,
+                journal: &NoopSessionJournal,
             },
             &awakened,
             &SessionTurnInput {
@@ -11949,7 +11957,6 @@ mod tests {
             std::slice::from_ref(&observation),
             test_turn_time(),
             Vec::new(),
-            &NoopSessionJournal,
         )
         .await
         .expect("healthy routine repair exhaustion should remain a silent durable check");
@@ -13428,16 +13435,19 @@ mod tests {
             FallbackReviewMode::Malformed,
             FallbackReviewMode::Unavailable,
         ] {
+            let model = FallbackReviewModel { mode };
             assert_eq!(
                 repair_fallback_outcome(
-                    &FallbackReviewModel { mode },
+                    RepairFallbackRuntime {
+                        model: &model,
+                        journal: &NoopSessionJournal,
+                    },
                     &exact,
                     &input,
                     None,
                     std::slice::from_ref(&supported),
                     test_turn_time(),
                     Vec::new(),
-                    &NoopSessionJournal,
                 )
                 .await
                 .expect_err("visible fallback must fail closed when review is not accepted"),
