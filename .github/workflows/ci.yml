@@ -262,6 +262,9 @@ jobs:
           - name: graph-actions
             command: make rust-deny graph-action-check rust-wasm-check
             setup_rust: true
+          - name: slack-agent-rust-eval
+            command: make slack-agent-rust-eval
+            setup_rust: true
           - name: codegen
             command: make codegen-check
             checkout_fetch_depth: '0'
