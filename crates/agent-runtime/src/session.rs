@@ -10864,7 +10864,7 @@ mod tests {
     }
 
     #[test]
-    fn question_claims_bind_to_the_exact_single_draft_question() {
+    fn question_claims_bind_to_typed_state_and_the_exact_declared_text() {
         let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
         let mut candidate = draft();
         candidate.state = FinalState::NeedsInput;
@@ -10886,42 +10886,15 @@ mod tests {
         mismatched.question = Some("Which source should I inspect?".into());
         assert!(validate_grounded_draft(&session(), &mismatched, &[], assessment).is_err());
 
-        let mut compound = candidate.clone();
-        compound.claims[0].text =
+        let mut natural = candidate;
+        natural.claims[0].text =
             "Cerebro owns remediation. Which connector should I inspect?".into();
-        compound.message = compound.claims[0].text.clone();
-        compound.question = Some(compound.message.clone());
-        assert!(validate_grounded_draft(&session(), &compound, &[], assessment).is_err());
-
-        let mut tag = candidate;
-        tag.claims[0].text = "Cerebro is empowered to administer the provider, correct?".into();
-        tag.message = tag.claims[0].text.clone();
-        tag.question = Some(tag.message.clone());
-        assert!(validate_grounded_draft(&session(), &tag, &[], assessment).is_err());
-
-        let mut presupposition = tag;
-        presupposition.claims[0].text =
-            "How did Cerebro become accountable for remediating connector beta?".into();
-        presupposition.message = presupposition.claims[0].text.clone();
-        presupposition.question = Some(presupposition.message.clone());
-        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
-
-        presupposition.claims[0].text =
-            "Who put Cerebro on the hook for fixing connector beta?".into();
-        presupposition.message = presupposition.claims[0].text.clone();
-        presupposition.question = Some(presupposition.message.clone());
-        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
-
-        presupposition.claims[0].text = "What grant lets Cerebro alter provider settings?".into();
-        presupposition.message = presupposition.claims[0].text.clone();
-        presupposition.question = Some(presupposition.message.clone());
-        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
-
-        presupposition.claims[0].text =
-            "What grant lets the steward alter provider settings?".into();
-        presupposition.message = presupposition.claims[0].text.clone();
-        presupposition.question = Some(presupposition.message.clone());
-        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
+        natural.message = natural.claims[0].text.clone();
+        natural.question = Some(natural.message.clone());
+        assert!(
+            validate_grounded_draft(&session(), &natural, &[], assessment).is_ok(),
+            "Rust must validate the typed question contract without classifying its prose"
+        );
     }
 
     #[test]
@@ -13317,7 +13290,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repair_fallback_cannot_bypass_an_explicit_response_contract() {
+    async fn repair_fallback_does_not_interpret_presentation_prose() {
         let mut exact = session();
         exact.messages[0].text = "Give me exactly four sentences.".into();
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
@@ -13340,20 +13313,27 @@ mod tests {
             requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
-        assert_eq!(
-            repair_fallback_outcome(
-                &exact,
-                &input,
-                None,
-                &[supported],
-                test_turn_time(),
-                Vec::new(),
-                &NoopSessionJournal,
-            )
-            .await
-            .expect_err("a repair fallback must not violate explicit presentation constraints"),
-            AgentRuntimeError::PresentationRepairLimit
-        );
+        let outcome = repair_fallback_outcome(
+            &exact,
+            &input,
+            None,
+            &[supported],
+            test_turn_time(),
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("fallback validation must not classify natural-language formatting requests");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            evidence_atom_refs,
+            ..
+        } = outcome
+        else {
+            panic!("operator fallback should remain visible")
+        };
+        assert_eq!(final_state, FinalState::Partial);
+        assert_eq!(evidence_atom_refs, vec!["evidence:1#tool-outcome"]);
     }
 
     #[tokio::test]
