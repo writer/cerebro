@@ -77,3 +77,48 @@ pub(crate) fn validate_exact_file_path(path: &str) -> Result<(), MigratorError> 
 fn is_lower_hex(byte: u8) -> bool {
     byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        validate_digest, validate_exact_file_path, validate_git_sha, validate_identifier,
+        validate_nonempty,
+    };
+
+    #[test]
+    fn closed_scalar_validators_accept_canonical_values() {
+        validate_identifier("source/example.items:v1", "unit id").unwrap();
+        validate_nonempty("value", "field").unwrap();
+        validate_git_sha(&"a".repeat(40), "base SHA").unwrap();
+        validate_digest(&format!("sha256:{}", "b".repeat(64)), "digest").unwrap();
+        validate_exact_file_path("internal/source/file.go").unwrap();
+    }
+
+    #[test]
+    fn closed_scalar_validators_reject_noncanonical_values() {
+        assert!(validate_identifier("source item", "unit id").is_err());
+        assert!(validate_identifier(&"a".repeat(257), "unit id").is_err());
+        assert!(validate_nonempty(" \t", "field").is_err());
+        assert!(validate_git_sha(&"A".repeat(40), "base SHA").is_err());
+        assert!(validate_git_sha("abc", "base SHA").is_err());
+        assert!(validate_digest(&"a".repeat(64), "digest").is_err());
+        assert!(validate_digest(&format!("sha256:{}", "A".repeat(64)), "digest").is_err());
+
+        for path in [
+            "",
+            "/absolute.go",
+            "directory/",
+            "directory\\file.go",
+            "directory//file.go",
+            "directory/./file.go",
+            "directory/../file.go",
+            ".git/config",
+            "*.go",
+            "file?.go",
+            "file[0].go",
+            "file{old}.go",
+        ] {
+            assert!(validate_exact_file_path(path).is_err(), "accepted {path:?}");
+        }
+    }
+}
