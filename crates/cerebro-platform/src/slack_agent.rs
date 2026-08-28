@@ -63,7 +63,7 @@ mod prompts;
 
 use prompts::{
     claim_review_instructions, critic_instructions, model_instructions, presentation_instructions,
-    route_instructions, session_instructions,
+    route_instructions, session_instructions, session_presentation_instructions,
 };
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
@@ -79,7 +79,9 @@ const OPERATING_DECISION_TOOL: &str = "submit_operating_decision";
 const PRESENTATION_DECISION_TOOL: &str = "submit_slack_presentation";
 const CRITIQUE_DECISION_TOOL: &str = "submit_critique_decision";
 const SESSION_DECISION_TOOL: &str = "submit_session_decision";
+const SESSION_PRESENTATION_TOOL: &str = "submit_session_presentation";
 const CLAIM_REVIEW_TOOL: &str = "submit_claim_reviews";
+const SESSION_MODEL_ATTEMPTS: usize = 2;
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
@@ -1990,20 +1992,37 @@ impl ConfiguredModel {
         decision_tool: &str,
         decision_schema: Value,
     ) -> Result<Value, AgentRuntimeError> {
-        match self {
-            Self::AmazonBedrock(model) => {
-                model
-                    .complete_structured(
-                        instructions,
-                        payload,
-                        max_tokens,
-                        decision_tool,
-                        decision_schema,
-                    )
-                    .await
+        retry_session_model_call(|| async {
+            match self {
+                Self::AmazonBedrock(model) => {
+                    model
+                        .complete_structured(
+                            instructions,
+                            payload.clone(),
+                            max_tokens,
+                            decision_tool,
+                            decision_schema.clone(),
+                        )
+                        .await
+                }
             }
+        })
+        .await
+    }
+}
+
+async fn retry_session_model_call<T, F, Fut>(mut operation: F) -> Result<T, AgentRuntimeError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, AgentRuntimeError>>,
+{
+    for attempt in 1..=SESSION_MODEL_ATTEMPTS {
+        match operation().await {
+            Err(AgentRuntimeError::ModelUnavailable(_)) if attempt < SESSION_MODEL_ATTEMPTS => {}
+            result => return result,
         }
     }
+    unreachable!("the bounded model-attempt loop must return")
 }
 
 fn model_config_sha256(provider: &str, model_id: &str) -> String {
@@ -2062,11 +2081,21 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
                 "stage": "critique",
             },
             {
-                "decision_schema": session_decision_schema(),
+                "decision_schemas": {
+                    "continue": session_continue_decision_schema(),
+                    "plan": session_plan_decision_schema(),
+                },
                 "decision_tool": SESSION_DECISION_TOOL,
                 "instructions": session_instructions(),
                 "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
-                "stage": "session",
+                "stage": "session_research",
+            },
+            {
+                "decision_schema": session_presentation_schema(),
+                "decision_tool": SESSION_PRESENTATION_TOOL,
+                "instructions": session_presentation_instructions(),
+                "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
+                "stage": "session_presentation",
             },
             {
                 "decision_schema": claim_review_schema(),
@@ -2080,22 +2109,47 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
     sha256_digest(&public_config.to_string())
 }
 
+impl ConfiguredModel {
+    async fn present_session_turn(
+        &self,
+        turn: &SessionModelTurn,
+    ) -> Result<SessionModelDecision, AgentRuntimeError> {
+        let value = self
+            .complete_session_structured(
+                session_presentation_instructions(),
+                session_turn_payload(turn),
+                SLACK_SESSION_DECISION_MAX_TOKENS,
+                SESSION_PRESENTATION_TOOL,
+                session_presentation_schema(),
+            )
+            .await?;
+        parse_session_presentation_value(value)
+    }
+}
+
 #[async_trait]
 impl SessionAgentModel for ConfiguredModel {
     async fn advance(
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError> {
+        if turn.requested_lane == Some(ExecutionLane::Converse) {
+            return self.present_session_turn(&turn).await;
+        }
+        let decision_schema = session_decision_schema_for_turn(&turn);
         let value = self
             .complete_session_structured(
                 session_instructions(),
                 session_turn_payload(&turn),
                 SLACK_SESSION_DECISION_MAX_TOKENS,
                 SESSION_DECISION_TOOL,
-                session_decision_schema(),
+                decision_schema,
             )
             .await?;
-        parse_session_decision_value(value)
+        match parse_session_research_decision_value(value)? {
+            SessionResearchDecision::Continue(decision) => Ok(*decision),
+            SessionResearchDecision::Present => self.present_session_turn(&turn).await,
+        }
     }
 
     async fn review_message(
@@ -2990,6 +3044,66 @@ fn session_decision_schema() -> Value {
     })
 }
 
+fn required_session_decision_property(schema: &Value, property: &str) -> Value {
+    schema
+        .get("properties")
+        .and_then(|properties| properties.get(property))
+        .and_then(|property| property.get("oneOf"))
+        .and_then(Value::as_array)
+        .and_then(|variants| variants.first())
+        .cloned()
+        .expect("the complete session schema carries the requested non-null property")
+}
+
+fn session_plan_decision_schema() -> Value {
+    let complete = session_decision_schema();
+    let mut calls = complete["properties"]["calls"].clone();
+    calls["minItems"] = json!(1);
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "decision": {"type": "string", "enum": ["establish_plan"]},
+            "plan": required_session_decision_property(&complete, "plan"),
+            "calls": calls,
+        },
+        "required": ["decision", "plan", "calls"]
+    })
+}
+
+fn session_continue_decision_schema() -> Value {
+    let complete = session_decision_schema();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "decision": {"type": "string", "enum": ["invoke_tools", "finish_research"]},
+            "calls": complete["properties"]["calls"].clone(),
+        },
+        "required": ["decision", "calls"]
+    })
+}
+
+fn session_presentation_schema() -> Value {
+    let complete = session_decision_schema();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "draft": required_session_decision_property(&complete, "draft"),
+        },
+        "required": ["draft"]
+    })
+}
+
+fn session_decision_schema_for_turn(turn: &SessionModelTurn) -> Value {
+    if turn.plan.is_none() {
+        session_plan_decision_schema()
+    } else {
+        session_continue_decision_schema()
+    }
+}
+
 fn claim_review_schema() -> Value {
     json!({
         "type": "object",
@@ -3144,6 +3258,77 @@ fn parse_session_decision_value(
     };
     serde_json::from_value(normalized)
         .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
+}
+
+#[derive(Debug)]
+enum SessionResearchDecision {
+    Continue(Box<SessionModelDecision>),
+    Present,
+}
+
+fn parse_session_research_decision_value(
+    mut value: Value,
+) -> Result<SessionResearchDecision, AgentRuntimeError> {
+    normalize_embedded_session_object(&mut value, "plan");
+    let decision = value
+        .get("decision")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AgentRuntimeError::InvalidFinal("session decision is missing".into()))?;
+    let calls = value
+        .get("calls")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(Vec::new()));
+    let calls_empty = calls.as_array().is_some_and(Vec::is_empty);
+    match decision {
+        "establish_plan" => {
+            if calls_empty {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "the first research decision must include at least one read".into(),
+                ));
+            }
+            let plan = serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
+                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            let calls = serde_json::from_value(calls)
+                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            Ok(SessionResearchDecision::Continue(Box::new(
+                SessionModelDecision::EstablishPlanAndInvoke { plan, calls },
+            )))
+        }
+        "invoke_tools" => {
+            if calls_empty {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "invoke_tools must include at least one missing read".into(),
+                ));
+            }
+            let calls = serde_json::from_value(calls)
+                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            Ok(SessionResearchDecision::Continue(Box::new(
+                SessionModelDecision::InvokeTools { calls },
+            )))
+        }
+        "finish_research" => {
+            if !calls_empty {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "finish_research cannot include tool calls".into(),
+                ));
+            }
+            Ok(SessionResearchDecision::Present)
+        }
+        _ => Err(AgentRuntimeError::InvalidFinal(
+            "session research decision is unsupported".into(),
+        )),
+    }
+}
+
+fn parse_session_presentation_value(
+    mut value: Value,
+) -> Result<SessionModelDecision, AgentRuntimeError> {
+    normalize_embedded_session_object(&mut value, "draft");
+    normalize_grounded_claim_aliases(&mut value);
+    parse_session_decision_value(json!({
+        "decision": "finish",
+        "draft": value.get("draft").cloned().unwrap_or(Value::Null),
+    }))
 }
 
 fn normalize_embedded_session_object(value: &mut Value, field: &str) {
@@ -7129,6 +7314,52 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn session_model_retry_repeats_only_one_unavailable_adapter_call() {
+        let attempts = AtomicUsize::new(0);
+        let value = retry_session_model_call(|| {
+            let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+            async move {
+                if attempt == 1 {
+                    Err(AgentRuntimeError::ModelUnavailable(
+                        "transient adapter failure".into(),
+                    ))
+                } else {
+                    Ok(json!({"decision": "finish_research", "calls": []}))
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(value["decision"], "finish_research");
+        assert_eq!(attempts.load(Ordering::Relaxed), SESSION_MODEL_ATTEMPTS);
+
+        let attempts = AtomicUsize::new(0);
+        let error = retry_session_model_call(|| {
+            attempts.fetch_add(1, Ordering::Relaxed);
+            async {
+                Err::<Value, _>(AgentRuntimeError::ModelUnavailable(
+                    "persistent adapter failure".into(),
+                ))
+            }
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AgentRuntimeError::ModelUnavailable(_)));
+        assert_eq!(attempts.load(Ordering::Relaxed), SESSION_MODEL_ATTEMPTS);
+
+        let attempts = AtomicUsize::new(0);
+        let error = retry_session_model_call(|| {
+            attempts.fetch_add(1, Ordering::Relaxed);
+            async { Err::<Value, _>(AgentRuntimeError::InvalidFinal("schema mismatch".into())) }
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AgentRuntimeError::InvalidFinal(_)));
+        assert_eq!(attempts.load(Ordering::Relaxed), 1);
+    }
+
     #[test]
     fn startup_backoff_is_exponential_and_capped() {
         let mut delay = STARTUP_INITIAL_RETRY_DELAY;
@@ -7191,6 +7422,34 @@ mod tests {
         assert!(decision_schema.contains("conversational_synthesis"));
         assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
+
+        let plan_schema = session_plan_decision_schema();
+        let continue_schema = session_continue_decision_schema();
+        let presentation_schema = session_presentation_schema();
+        assert_eq!(
+            plan_schema["properties"]["decision"]["enum"],
+            json!(["establish_plan"])
+        );
+        assert_eq!(plan_schema["properties"]["calls"]["minItems"], 1);
+        assert!(plan_schema["properties"].get("draft").is_none());
+        assert_eq!(
+            continue_schema["properties"]["decision"]["enum"],
+            json!(["invoke_tools", "finish_research"])
+        );
+        assert!(continue_schema["properties"].get("plan").is_none());
+        assert!(continue_schema["properties"].get("draft").is_none());
+        assert_eq!(
+            presentation_schema["properties"]
+                .as_object()
+                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
+            Some(vec!["draft".into()])
+        );
+        for explanation_id in ALL_STABLE_EXPLANATION_IDS {
+            assert!(presentation_schema.to_string().contains(explanation_id));
+        }
+        assert!(plan_schema.to_string().len() < decision_schema.len());
+        assert!(continue_schema.to_string().len() < decision_schema.len());
+        assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
             !built_in_capability_catalog()
                 .iter()
@@ -7220,7 +7479,7 @@ mod tests {
     }
 
     #[test]
-    fn session_decision_recovers_a_string_encoded_draft_and_claim_alias() {
+    fn session_presentation_recovers_a_string_encoded_draft_and_claim_alias() {
         let encoded_draft = json!({
             "state": "answered",
             "delivery": "visible",
@@ -7250,10 +7509,7 @@ mod tests {
         })
         .to_string();
 
-        let decision = parse_session_decision_value(json!({
-            "decision": "finish",
-            "plan": null,
-            "calls": [],
+        let decision = parse_session_presentation_value(json!({
             "draft": encoded_draft
         }))
         .unwrap();
@@ -7263,6 +7519,29 @@ mod tests {
         };
         assert!(draft.claims[0].required_for_answer);
         assert_eq!(draft.message, "The current read is complete.");
+    }
+
+    #[test]
+    fn session_research_hands_completed_evidence_to_the_presenter() {
+        let decision = parse_session_research_decision_value(json!({
+            "decision": "finish_research",
+            "calls": []
+        }))
+        .unwrap();
+
+        assert!(matches!(decision, SessionResearchDecision::Present));
+        assert!(
+            parse_session_research_decision_value(json!({
+                "decision": "finish_research",
+                "calls": [{
+                    "call_id": "call:late",
+                    "tool_id": "source_runtime.inspect",
+                    "purpose": "This call must be made before presenting.",
+                    "input": {}
+                }]
+            }))
+            .is_err()
+        );
     }
 
     #[test]
