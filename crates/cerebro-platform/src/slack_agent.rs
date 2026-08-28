@@ -7707,7 +7707,8 @@ mod tests {
     #[test]
     fn source_catalog_view_reports_declared_vanta_access_without_credentials() {
         let catalog = super::super::load_catalog().unwrap();
-        let (sources, truncated) = source_catalog_views(&catalog, 100);
+        let source_count = catalog.sources().count();
+        let (sources, truncated) = source_catalog_views(&catalog, source_count);
 
         assert!(!truncated);
         let vanta = sources
