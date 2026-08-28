@@ -22,6 +22,18 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertNotIn("group: release-${{ inputs.release_tag }}", workflow)
 
+    def test_stable_release_verifies_and_publishes_smoke_evidence(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("scripts/release/verify_smoke_receipt.sh", workflow)
+        self.assertIn(
+            'grep -Fq "${SMOKE_RECEIPT_URL}" release-notes.md',
+            workflow,
+        )
+        self.assertIn("SMOKE_RECEIPT_ALLOWED_ORIGINS", workflow)
+        self.assertIn("stable-release-smoke-evidence-", workflow)
+        self.assertIn("-o -name 'smoke-evidence.json'", workflow)
+
     def test_candidate_build_does_not_claim_stable_release_reservation(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
 

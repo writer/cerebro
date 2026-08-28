@@ -24,6 +24,8 @@ The Candidate Build workflow resolves the commit, starts its binary and image bu
 
 Stable releases are promoted from a successful Candidate Build run through the `stable-release` GitHub environment. The operator supplies the candidate run ID, stable tag, completed release notes, and a successful smoke receipt URL. The workflow verifies the candidate bundle checksums, commit, run ID, image digest, and image signature before it assigns stable tags.
 
+The smoke receipt gate accepts a same-repository Ephemeral Cerebro Actions run and machine-verifies its terminal result, workflow identity, main-branch dispatch event, candidate-bound artifact, and published Rust candidate image. External HTTPS receipts are disabled by default. Repository operators may enable specific public receipt origins with the comma-separated `SMOKE_RECEIPT_ALLOWED_ORIGINS` Actions variable. Each value must be an origin only (`https://host` or `https://host:port`), with no path, query, or fragment. That mode is recorded as `operator_attested_external` because receipt existence, success, candidate binding, digest binding, and immutability are not machine-proven. The evidence mode is shown in the workflow summary, required in the release notes, and attached to the GitHub release as `smoke-evidence.json`.
+
 Stable release tags use:
 
 ```text

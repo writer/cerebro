@@ -40,6 +40,7 @@ jobs:
       web_image: ${{ steps.receipt.outputs.web_image }}
       web_digest: ${{ steps.receipt.outputs.web_digest }}
       product_manifest_sha256: ${{ steps.receipt.outputs.product_manifest_sha256 }}
+      smoke_evidence_mode: ${{ steps.smoke.outputs.mode }}
     steps:
       - name: Validate release tag and candidate run
         id: run
@@ -146,12 +147,17 @@ jobs:
           cosign-release: v2.6.1
 
       - name: Validate release notes and stable checks
+        id: smoke
         shell: bash
         env:
           RELEASE_NOTES: ${{ inputs.release_notes }}
           SMOKE_RECEIPT_URL: ${{ inputs.smoke_receipt_url }}
+          SMOKE_RECEIPT_ALLOWED_ORIGINS: ${{ vars.SMOKE_RECEIPT_ALLOWED_ORIGINS }}
+          SMOKE_EVIDENCE_OUT: ${{ runner.temp }}/smoke-evidence.json
+          CANDIDATE_SHA: ${{ steps.run.outputs.sha }}
           CANDIDATE_IMAGE: ${{ steps.receipt.outputs.image }}
           CANDIDATE_DIGEST: ${{ steps.receipt.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
           scripts/release/validate_release_notes.sh release-notes.md
@@ -159,6 +165,13 @@ jobs:
             echo "ERROR: release notes do not contain smoke_receipt_url" >&2
             exit 1
           }
+          SMOKE_NOTES_BOUND=true scripts/release/verify_smoke_receipt.sh
+          smoke_evidence_mode="$(jq -r .evidence_mode "${SMOKE_EVIDENCE_OUT}")"
+          grep -Fq "Evidence mode: \`${smoke_evidence_mode}\`" release-notes.md || {
+            echo "ERROR: release notes do not record smoke evidence mode ${smoke_evidence_mode}" >&2
+            exit 1
+          }
+          echo "mode=${smoke_evidence_mode}" >> "${GITHUB_OUTPUT}"
           python3 scripts/release/product_release.py validate candidate/cerebro-product-release.json --bundle-root candidate
           cosign verify-blob candidate/cerebro-product-release.json \
             --signature candidate/cerebro-product-release.json.sig \
@@ -171,6 +184,14 @@ jobs:
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$" \
             "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}" >/dev/null
           make release-smoke docs-drift-check readme-check oss-audit
+
+      - name: Upload verified smoke evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stable-release-smoke-evidence-${{ steps.run.outputs.sha }}
+          path: ${{ runner.temp }}/smoke-evidence.json
+          if-no-files-found: error
+          overwrite: true
 
   promote:
     runs-on: ubuntu-latest
@@ -197,6 +218,10 @@ jobs:
           path: candidate
           run-id: ${{ inputs.candidate_run_id }}
           github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: stable-release-smoke-evidence-${{ needs.verify-candidate.outputs.sha }}
+          path: candidate
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -288,6 +313,7 @@ jobs:
           mapfile -t files < <(find candidate -type f \( -name '*.tar.gz' -o -name 'checksums.txt' \
             -o -name 'candidate-receipt.json' -o -name 'go-module-inventory.ndjson' \
             -o -name 'rust-organizational-e2e-receipt.json' \
+            -o -name 'smoke-evidence.json' \
             -o -name '*.tgz' -o -name 'cerebro-product-release.json*' \
             -o -name 'cerebro-openapi.yaml' -o -name 'agent-service-lifecycle.schema.json' \
             -o -name 'product-release.schema.json' -o -name 'product-release-published.schema.json' \) | sort)
