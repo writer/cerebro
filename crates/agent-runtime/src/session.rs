@@ -4710,10 +4710,16 @@ fn observation_is_complete_and_fresh(
 ) -> bool {
     observation.result.state == ToolResultState::Succeeded
         && observation.result.evidence.iter().any(|evidence| {
+            let observed_at = OffsetDateTime::parse(&evidence.observed_at, &Rfc3339).ok();
+            let fresh_until = evidence
+                .fresh_until
+                .as_deref()
+                .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
             evidence.complete
-                && evidence.fresh_until.as_deref().is_some_and(|fresh_until| {
-                    OffsetDateTime::parse(fresh_until, &Rfc3339)
-                        .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+                && observed_at.is_some_and(|observed_at| observed_at <= assessment_at)
+                && fresh_until.is_some_and(|fresh_until| {
+                    fresh_until >= assessment_at
+                        && observed_at.is_some_and(|observed_at| fresh_until >= observed_at)
                 })
         })
 }
@@ -6346,7 +6352,7 @@ pub fn validate_grounded_draft(
         ));
     }
 
-    let atoms = evidence_atoms(observations)?;
+    let atoms = evidence_atoms(observations, assessment_at)?;
     let open_loops = draft
         .mission
         .open_loops
@@ -9661,14 +9667,36 @@ struct AtomContext<'a> {
 
 fn evidence_atoms(
     observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
 ) -> Result<BTreeMap<String, AtomContext<'_>>, AgentRuntimeError> {
     let mut atoms = BTreeMap::new();
     for observation in observations {
         for evidence in &observation.result.evidence {
-            for atom in &evidence.atoms {
-                OffsetDateTime::parse(&atom.observed_at, &Rfc3339).map_err(|_| {
+            let evidence_observed_at = OffsetDateTime::parse(&evidence.observed_at, &Rfc3339)
+                .map_err(|_| {
                     AgentRuntimeError::InvalidFinal("invalid evidence observation time".into())
                 })?;
+            let evidence_fresh_until = evidence
+                .fresh_until
+                .as_deref()
+                .map(|value| OffsetDateTime::parse(value, &Rfc3339))
+                .transpose()
+                .map_err(|_| {
+                    AgentRuntimeError::InvalidFinal("invalid evidence freshness".into())
+                })?;
+            if evidence_observed_at > assessment_at
+                || evidence_fresh_until
+                    .is_some_and(|fresh_until| fresh_until < evidence_observed_at)
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "evidence timestamps exceed the authoritative turn clock".into(),
+                ));
+            }
+            for atom in &evidence.atoms {
+                let atom_observed_at =
+                    OffsetDateTime::parse(&atom.observed_at, &Rfc3339).map_err(|_| {
+                        AgentRuntimeError::InvalidFinal("invalid evidence observation time".into())
+                    })?;
                 let fresh_until = atom
                     .fresh_until
                     .as_deref()
@@ -9677,6 +9705,13 @@ fn evidence_atoms(
                     .map_err(|_| {
                         AgentRuntimeError::InvalidFinal("invalid evidence freshness".into())
                     })?;
+                if atom_observed_at > assessment_at
+                    || fresh_until.is_some_and(|fresh_until| fresh_until < atom_observed_at)
+                {
+                    return Err(AgentRuntimeError::InvalidFinal(
+                        "evidence timestamps exceed the authoritative turn clock".into(),
+                    ));
+                }
                 if !bounded(&atom.atom_ref, MAX_TEXT_BYTES)
                     || atoms
                         .insert(
@@ -10753,6 +10788,33 @@ mod tests {
                 blocker: None,
             },
         }
+    }
+
+    #[test]
+    fn future_dated_evidence_cannot_become_authoritative() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut future_record = observation(true, Some("2026-08-01T00:05:00Z"));
+        future_record.result.evidence[0].observed_at = "2026-08-01T00:00:00Z".into();
+
+        assert!(!observation_is_complete_and_fresh(
+            &future_record,
+            assessment
+        ));
+        let error = evidence_atoms(&[future_record], assessment).err().unwrap();
+        assert!(matches!(
+            error,
+            AgentRuntimeError::InvalidFinal(message)
+                if message == "evidence timestamps exceed the authoritative turn clock"
+        ));
+
+        let mut future_atom = observation(true, Some("2026-08-01T00:05:00Z"));
+        future_atom.result.evidence[0].atoms[0].observed_at = "2026-08-01T00:00:00Z".into();
+        let error = evidence_atoms(&[future_atom], assessment).err().unwrap();
+        assert!(matches!(
+            error,
+            AgentRuntimeError::InvalidFinal(message)
+                if message == "evidence timestamps exceed the authoritative turn clock"
+        ));
     }
 
     fn recovering_observation_with_tool_outcome(fresh_until: &str) -> ToolObservation {
