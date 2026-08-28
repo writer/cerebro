@@ -38,7 +38,9 @@ const MAX_COMMITMENTS: usize = 16;
 const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
-const MAX_MODEL_REPAIRS: usize = 10;
+const MAX_MODEL_REPAIRS: usize = 3;
+const MAX_IN_TURN_EVIDENCE_DELAY_SECONDS: i64 = 15 * 60;
+const MAX_EVIDENCE_CLOCK_SKEW_SECONDS: i64 = 60;
 const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -2636,13 +2638,12 @@ pub async fn run_session_turn_recorded(
                     )
                     .await?;
                 }
-                let results = join_all(
-                    calls
-                        .iter()
-                        .map(|call| tools.invoke(&session, &input, call)),
-                )
+                let results = join_all(calls.iter().map(|call| async {
+                    let result = tools.invoke(&session, &input, call).await;
+                    (result, OffsetDateTime::now_utc())
+                }))
                 .await;
-                for (call, result) in calls.into_iter().zip(results) {
+                for (call, (result, recorded_at)) in calls.into_iter().zip(results) {
                     let descriptor = descriptors
                         .get(&call.tool_id)
                         .expect("tool descriptor was validated")
@@ -2659,15 +2660,21 @@ pub async fn run_session_turn_recorded(
                         }
                         Err(_) => failed_tool_result(&session, &input, &call, assessment_at)?,
                     };
+                    let recorded_at = recorded_at.format(&Rfc3339).map_err(|_| {
+                        AgentRuntimeError::InvalidToolResult(
+                            "tool observation time could not be formatted".into(),
+                        )
+                    })?;
                     let observation = ToolObservation {
                         sequence: observations.len() + 1,
+                        recorded_at: Some(recorded_at.clone()),
                         call,
                         descriptor,
                         result,
                     };
                     emit_event(
                         &session,
-                        &input.assessment_at,
+                        &recorded_at,
                         &mut events,
                         SessionEvent::ToolInvoked {
                             observation: observation.clone(),
@@ -4630,6 +4637,10 @@ fn observation_is_complete_and_fresh(
     observation: &ToolObservation,
     assessment_at: OffsetDateTime,
 ) -> bool {
+    let Ok(turn_clock) = authoritative_turn_clock(std::slice::from_ref(observation), assessment_at)
+    else {
+        return false;
+    };
     observation.result.state == ToolResultState::Succeeded
         && observation.result.evidence.iter().any(|evidence| {
             let observed_at = OffsetDateTime::parse(&evidence.observed_at, &Rfc3339).ok();
@@ -4638,9 +4649,9 @@ fn observation_is_complete_and_fresh(
                 .as_deref()
                 .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
             evidence.complete
-                && observed_at.is_some_and(|observed_at| observed_at <= assessment_at)
+                && observed_at.is_some_and(|observed_at| observed_at <= turn_clock)
                 && fresh_until.is_some_and(|fresh_until| {
-                    fresh_until >= assessment_at
+                    fresh_until >= turn_clock
                         && observed_at.is_some_and(|observed_at| fresh_until >= observed_at)
                 })
         })
@@ -4691,6 +4702,9 @@ fn current_required_claims_have_same_turn_evidence_for_state(
     assessment_at: OffsetDateTime,
     final_state: FinalState,
 ) -> bool {
+    let Ok(assessment_at) = authoritative_turn_clock(observations, assessment_at) else {
+        return false;
+    };
     let required = plan
         .claims
         .iter()
@@ -4852,6 +4866,7 @@ fn resume_turn_state(
     for (_, (call, descriptor, occurred_at)) in pending_effects {
         observations.push(ToolObservation {
             sequence: observations.len() + 1,
+            recorded_at: Some(occurred_at.clone()),
             result: uncertain_effect_result(&session.session_ref, request_id, &call, &occurred_at),
             call,
             descriptor,
@@ -6183,6 +6198,7 @@ pub fn validate_grounded_draft(
     validate_session(session)?;
     validate_mission(&draft.mission)?;
     validate_explicit_streak_reset_language(draft, observations)?;
+    let assessment_at = authoritative_turn_clock(observations, assessment_at)?;
     if !bounded(&draft.message, MAX_DELIVERY_MESSAGE_BYTES)
         || draft.claims.len() > MAX_VISIBLE_CLAIMS
         || !draft.presentation_ready
@@ -9523,6 +9539,7 @@ fn evidence_atoms(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
 ) -> Result<BTreeMap<String, AtomContext<'_>>, AgentRuntimeError> {
+    authoritative_turn_clock(observations, assessment_at)?;
     let mut atoms = BTreeMap::new();
     for observation in observations {
         for evidence in &observation.result.evidence {
@@ -9538,10 +9555,7 @@ fn evidence_atoms(
                 .map_err(|_| {
                     AgentRuntimeError::InvalidFinal("invalid evidence freshness".into())
                 })?;
-            if evidence_observed_at > assessment_at
-                || evidence_fresh_until
-                    .is_some_and(|fresh_until| fresh_until < evidence_observed_at)
-            {
+            if evidence_fresh_until.is_some_and(|fresh_until| fresh_until < evidence_observed_at) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "evidence timestamps exceed the authoritative turn clock".into(),
                 ));
@@ -9559,9 +9573,7 @@ fn evidence_atoms(
                     .map_err(|_| {
                         AgentRuntimeError::InvalidFinal("invalid evidence freshness".into())
                     })?;
-                if atom_observed_at > assessment_at
-                    || fresh_until.is_some_and(|fresh_until| fresh_until < atom_observed_at)
-                {
+                if fresh_until.is_some_and(|fresh_until| fresh_until < atom_observed_at) {
                     return Err(AgentRuntimeError::InvalidFinal(
                         "evidence timestamps exceed the authoritative turn clock".into(),
                     ));
@@ -9588,6 +9600,56 @@ fn evidence_atoms(
         }
     }
     Ok(atoms)
+}
+
+fn authoritative_turn_clock(
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+) -> Result<OffsetDateTime, AgentRuntimeError> {
+    let deadline = assessment_at
+        .checked_add(Duration::seconds(MAX_IN_TURN_EVIDENCE_DELAY_SECONDS))
+        .ok_or_else(|| AgentRuntimeError::InvalidFinal("turn clock overflowed".into()))?;
+    let mut turn_clock = assessment_at;
+    for observation in observations {
+        let evidence_times = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| {
+                std::iter::once(evidence.observed_at.as_str())
+                    .chain(evidence.atoms.iter().map(|atom| atom.observed_at.as_str()))
+            })
+            .map(|value| {
+                OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+                    AgentRuntimeError::InvalidFinal("invalid evidence observation time".into())
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let recorded_at = match observation.recorded_at.as_deref() {
+            Some(value) => OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+                AgentRuntimeError::InvalidFinal("invalid host tool observation time".into())
+            })?,
+            None => assessment_at,
+        };
+        if recorded_at > deadline {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "host tool observation time exceeds the bounded turn window".into(),
+            ));
+        }
+        let evidence_deadline = recorded_at
+            .checked_add(Duration::seconds(MAX_EVIDENCE_CLOCK_SKEW_SECONDS))
+            .ok_or_else(|| AgentRuntimeError::InvalidFinal("evidence clock overflowed".into()))?;
+        if evidence_times
+            .iter()
+            .any(|observed_at| *observed_at > evidence_deadline)
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "evidence timestamps exceed the host-recorded tool clock".into(),
+            ));
+        }
+        turn_clock = turn_clock.max(recorded_at);
+    }
+    Ok(turn_clock)
 }
 
 /// Validates a complete materialized session and its cross-record invariants.
@@ -10602,6 +10664,7 @@ mod tests {
     fn observation(complete: bool, fresh_until: Option<&str>) -> ToolObservation {
         ToolObservation {
             sequence: 1,
+            recorded_at: Some("2026-07-31T00:00:01Z".into()),
             call: ToolCall {
                 call_id: "call:1".into(),
                 tool_id: "connector.read".into(),
@@ -10658,7 +10721,7 @@ mod tests {
         assert!(matches!(
             error,
             AgentRuntimeError::InvalidFinal(message)
-                if message == "evidence timestamps exceed the authoritative turn clock"
+                if message == "evidence timestamps exceed the host-recorded tool clock"
         ));
 
         let mut future_atom = observation(true, Some("2026-08-01T00:05:00Z"));
@@ -10667,7 +10730,43 @@ mod tests {
         assert!(matches!(
             error,
             AgentRuntimeError::InvalidFinal(message)
-                if message == "evidence timestamps exceed the authoritative turn clock"
+                if message == "evidence timestamps exceed the host-recorded tool clock"
+        ));
+    }
+
+    #[test]
+    fn live_in_turn_evidence_after_message_arrival_is_authoritative() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut live = observation(true, Some("2026-07-31T00:02:45Z"));
+        live.recorded_at = Some("2026-07-31T00:01:45Z".into());
+        live.result.evidence[0].observed_at = "2026-07-31T00:01:45Z".into();
+        live.result.evidence[0].atoms[0].observed_at = "2026-07-31T00:01:45Z".into();
+
+        assert!(observation_is_complete_and_fresh(&live, assessment));
+        assert!(evidence_atoms(std::slice::from_ref(&live), assessment).is_ok());
+        assert!(validate_grounded_draft(&session(), &draft(), &[live], assessment).is_ok());
+    }
+
+    #[test]
+    fn provider_timestamp_cannot_advance_the_host_owned_turn_clock() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut honest = observation(true, Some("2026-07-31T00:02:40Z"));
+        honest.recorded_at = Some("2026-07-31T00:01:40Z".into());
+        honest.result.evidence[0].observed_at = "2026-07-31T00:01:40Z".into();
+        honest.result.evidence[0].atoms[0].observed_at = "2026-07-31T00:01:40Z".into();
+        assert_eq!(
+            authoritative_turn_clock(std::slice::from_ref(&honest), assessment).unwrap(),
+            OffsetDateTime::parse("2026-07-31T00:01:40Z", &Rfc3339).unwrap()
+        );
+
+        let mut adversarial = honest;
+        adversarial.recorded_at = Some("2026-07-31T00:01:50Z".into());
+        adversarial.result.evidence[0].observed_at = "2026-07-31T00:11:00Z".into();
+        adversarial.result.evidence[0].atoms[0].observed_at = "2026-07-31T00:11:00Z".into();
+        assert!(matches!(
+            authoritative_turn_clock(std::slice::from_ref(&adversarial), assessment),
+            Err(AgentRuntimeError::InvalidFinal(message))
+                if message == "evidence timestamps exceed the host-recorded tool clock"
         ));
     }
 

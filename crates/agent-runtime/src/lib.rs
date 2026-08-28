@@ -434,6 +434,9 @@ pub struct ToolResult {
 pub struct ToolObservation {
     /// Zero-based execution order within the turn.
     pub sequence: usize,
+    /// Host-captured time when tool execution returned to the runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_at: Option<String>,
     /// Exact call requested by the model.
     pub call: ToolCall,
     /// Descriptor that governed execution of the call.
@@ -1192,6 +1195,13 @@ pub async fn run_turn(
                 validate_tool_result(&result)?;
                 observations.push(ToolObservation {
                     sequence: observations.len() + 1,
+                    recorded_at: Some(OffsetDateTime::now_utc().format(&Rfc3339).map_err(
+                        |_| {
+                            AgentRuntimeError::InvalidToolResult(
+                                "tool observation time could not be formatted".into(),
+                            )
+                        },
+                    )?),
                     call,
                     descriptor,
                     result,
@@ -4989,6 +4999,7 @@ mod grounding_tests {
             draft,
             observations: vec![ToolObservation {
                 sequence: 1,
+                recorded_at: Some("2026-07-31T12:00:01Z".into()),
                 call: ToolCall {
                     call_id: "owner-read".into(),
                     tool_id: "owner_status".into(),
