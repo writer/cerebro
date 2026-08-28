@@ -165,6 +165,8 @@ struct AuthorityRuntime {
 
 #[derive(Serialize)]
 struct AuthorityStatus {
+    actuate_dispatch_total: u64,
+    actuate_outcome_unknown_total: u64,
     agent_ready: bool,
     agent_tool_calls_total: u64,
     agent_turn_failures_total: u64,
@@ -211,6 +213,10 @@ impl AuthorityRuntime {
     }
 
     fn status(&self) -> AuthorityStatus {
+        let (actuate_dispatch_total, actuate_outcome_unknown_total) = self
+            .agent
+            .as_ref()
+            .map_or((0, 0), SlackAgentService::actuation_metrics);
         let grounded_total = self.grounded_total.load(Ordering::Relaxed);
         let rejected_total = self.rejected_total.load(Ordering::Relaxed);
         let safe_refusal_total = self.safe_refusal_total.load(Ordering::Relaxed);
@@ -219,6 +225,8 @@ impl AuthorityRuntime {
         let agent_turns_total = self.agent_turns_total.load(Ordering::Relaxed);
         let agent_turn_failures_total = self.agent_turn_failures_total.load(Ordering::Relaxed);
         AuthorityStatus {
+            actuate_dispatch_total,
+            actuate_outcome_unknown_total,
             agent_ready: self.agent.is_some(),
             agent_tool_calls_total: self.agent_tool_calls_total.load(Ordering::Relaxed),
             agent_turn_failures_total,
@@ -252,7 +260,7 @@ impl AuthorityRuntime {
                 .saturating_add(agent_turn_failures_total),
             safe_refusal_total,
             runtime_instance_ref: self.runtime_instance_ref,
-            schema_version: "slack-answer-authority-status/v2",
+            schema_version: "slack-answer-authority-status/v3",
             session_schema_version: cerebro_agent_runtime::session::AGENT_SESSION_V2,
             status: "ready",
             uptime_ms: self
@@ -710,7 +718,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(first["schema_version"], "slack-answer-authority-status/v2");
+        assert_eq!(first["schema_version"], "slack-answer-authority-status/v3");
+        assert_eq!(first["actuate_dispatch_total"], 0);
+        assert_eq!(first["actuate_outcome_unknown_total"], 0);
         assert_eq!(first["build_commit_sha"], env!("CEREBRO_GIT_COMMIT_SHA"));
         assert_eq!(
             first["build_tree_clean"],

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use cerebro_agent_runtime::{
@@ -39,7 +40,14 @@ pub struct McpAgentTools {
     selection_signing_key: String,
     toolsets: String,
     descriptors: Vec<ToolDescriptor>,
+    metrics: McpActuationMetrics,
     tools: BTreeMap<String, BoundMcpTool>,
+}
+
+#[derive(Default)]
+struct McpActuationMetrics {
+    dispatch_total: AtomicU64,
+    outcome_unknown_total: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -207,6 +215,7 @@ impl McpAgentTools {
             selection_signing_key,
             toolsets,
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         }))
     }
@@ -217,6 +226,13 @@ impl McpAgentTools {
 
     pub fn descriptor(&self, tool_id: &str) -> Option<&ToolDescriptor> {
         self.tools.get(tool_id).map(|tool| &tool.descriptor)
+    }
+
+    pub fn actuation_metrics(&self) -> (u64, u64) {
+        (
+            self.metrics.dispatch_total.load(Ordering::Relaxed),
+            self.metrics.outcome_unknown_total.load(Ordering::Relaxed),
+        )
     }
 
     pub fn issue_selection_ref(
@@ -340,6 +356,10 @@ impl McpAgentTools {
             .ok_or_else(|| AgentRuntimeError::ToolUnavailable(call.tool_id.clone()))?;
         validate_provider_input(&tool.input_schema, &call.input)
             .map_err(AgentRuntimeError::InvalidToolCall)?;
+        let is_actuation = tool.descriptor.authority_class == ToolAuthorityClass::Actuate;
+        if is_actuation {
+            self.metrics.dispatch_total.fetch_add(1, Ordering::Relaxed);
+        }
         let response = match self
             .post(
                 request,
@@ -356,8 +376,11 @@ impl McpAgentTools {
             .await
         {
             Ok(response) => response,
-            Err(error) if tool.descriptor.authority_class == ToolAuthorityClass::Actuate => {
+            Err(error) if is_actuation => {
                 let guidance = error.kind.guidance();
+                self.metrics
+                    .outcome_unknown_total
+                    .fetch_add(1, Ordering::Relaxed);
                 return Ok(actuation_outcome_unknown(
                     tool,
                     json!({"dispatch_error_kind": guidance.error_kind}),
@@ -379,8 +402,11 @@ impl McpAgentTools {
             }
         };
         if let Some(error) = response.error {
-            if tool.descriptor.authority_class == ToolAuthorityClass::Actuate {
+            if is_actuation {
                 let guidance = json_rpc_error_guidance(error.code);
+                self.metrics
+                    .outcome_unknown_total
+                    .fetch_add(1, Ordering::Relaxed);
                 return Ok(actuation_outcome_unknown(
                     tool,
                     json!({
@@ -417,12 +443,13 @@ impl McpAgentTools {
             .get("structuredContent")
             .cloned()
             .unwrap_or_else(|| result.clone());
-        let normalized = normalize_tool_result_for_authority(
-            data,
-            is_error,
-            invalid_is_error,
-            tool.descriptor.authority_class == ToolAuthorityClass::Actuate,
-        );
+        let normalized =
+            normalize_tool_result_for_authority(data, is_error, invalid_is_error, is_actuation);
+        if is_actuation && normalized.state == ToolResultState::OutcomeUnknown {
+            self.metrics
+                .outcome_unknown_total
+                .fetch_add(1, Ordering::Relaxed);
+        }
         let state = normalized.state;
         let data = normalized.data;
         let complete = state == ToolResultState::Succeeded;
@@ -1947,6 +1974,7 @@ mod tests {
             selection_signing_key: "host-only-selection-signing-secret".into(),
             toolsets: "task".into(),
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         };
         let request = turn_request();
@@ -2109,6 +2137,7 @@ mod tests {
             selection_signing_key: "host-only-selection-signing-secret".into(),
             toolsets: "task".into(),
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         };
         let call = ToolCall {
@@ -2130,6 +2159,7 @@ mod tests {
         );
         assert!(result.evidence.is_empty());
         assert!(result.blocker.is_some());
+        assert_eq!(mcp.actuation_metrics(), (1, 1));
     }
 
     #[tokio::test]
@@ -2171,6 +2201,7 @@ mod tests {
             selection_signing_key: "host-only-selection-signing-secret".into(),
             toolsets: "task".into(),
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         };
         let call = ToolCall {
@@ -2194,6 +2225,7 @@ mod tests {
         assert!(result.data.get("error_message").is_none());
         assert!(result.evidence.is_empty());
         assert!(result.blocker.is_some());
+        assert_eq!(mcp.actuation_metrics(), (1, 1));
     }
 
     #[tokio::test]
@@ -2223,6 +2255,7 @@ mod tests {
             selection_signing_key: "host-only-selection-signing-secret".into(),
             toolsets: "task".into(),
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         };
         let call = ToolCall {
@@ -2243,6 +2276,7 @@ mod tests {
             "Retry after the capability gateway rate limit resets."
         );
         assert!(result.evidence.is_empty());
+        assert_eq!(mcp.actuation_metrics(), (0, 0));
     }
 
     #[tokio::test]
@@ -2284,6 +2318,7 @@ mod tests {
             selection_signing_key: "host-only-selection-signing-secret".into(),
             toolsets: "task".into(),
             descriptors,
+            metrics: McpActuationMetrics::default(),
             tools,
         };
         let call = ToolCall {

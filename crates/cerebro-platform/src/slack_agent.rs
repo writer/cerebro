@@ -138,6 +138,13 @@ pub struct AgentWakeDeliveryReceipt {
 }
 
 impl SlackAgentService {
+    pub(super) fn actuation_metrics(&self) -> (u64, u64) {
+        self.tools
+            .mcp
+            .as_deref()
+            .map_or((0, 0), McpAgentTools::actuation_metrics)
+    }
+
     pub async fn from_env(tenant_id: String) -> Result<Option<Self>, Box<dyn Error>> {
         if !enabled(&env::var("CEREBRO_SLACK_AGENT_ENABLED").unwrap_or_default()) {
             if enabled(&env::var("CEREBRO_SLACK_PRODUCTION").unwrap_or_default()) {
