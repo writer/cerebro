@@ -1,4 +1,5 @@
 export type AssistantTurnSourceGapState =
+  | "busy"
   | "not_configured"
   | "not_found"
   | "timed_out"
@@ -223,7 +224,7 @@ export class CerebroAskClient {
     }
     if (!response.ok) {
       throw new CerebroAskError(
-        sourceState(response.status),
+        response.status === 409 ? "busy" : sourceState(response.status),
         `The Rust agent failed with status ${response.status}.`,
       );
     }

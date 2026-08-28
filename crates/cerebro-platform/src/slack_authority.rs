@@ -481,6 +481,19 @@ fn outcome_tool_call_count(outcome: &AgentTurnOutcome) -> u64 {
 }
 
 fn agent_error(error: AgentRuntimeError) -> (StatusCode, Json<ErrorResponse>) {
+    if matches!(
+        &error,
+        AgentRuntimeError::InvalidRequest(message)
+            if message == "another turn currently owns this Slack session"
+    ) {
+        return (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "agent_turn_busy",
+                message: "The Slack thread already has an active agent turn.".to_owned(),
+            }),
+        );
+    }
     let status = match &error {
         AgentRuntimeError::ModelUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::UNPROCESSABLE_ENTITY,
@@ -688,6 +701,20 @@ mod tests {
             QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap(),
             None,
         )
+    }
+
+    #[test]
+    fn busy_agent_turn_has_a_safe_retryable_http_state() {
+        let (status, Json(response)) = agent_error(AgentRuntimeError::InvalidRequest(
+            "another turn currently owns this Slack session".to_owned(),
+        ));
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(response.code, "agent_turn_busy");
+        assert_eq!(
+            response.message,
+            "The Slack thread already has an active agent turn."
+        );
     }
 
     #[tokio::test]
