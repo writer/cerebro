@@ -1512,40 +1512,6 @@ async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<RouteDecision, AgentRuntimeError> {
-    if request_is_unscoped_conversation(&request.message)
-        || request_is_explicit_no_live_self_capability(&request.message)
-    {
-        return Ok(RouteDecision {
-            lane: ExecutionLane::Converse,
-            confidence: RouteConfidence::High,
-            reason: "The operator asked an unscoped conversational question that does not require a current-system observation.".into(),
-            requires_current_evidence: false,
-            future_observation: FutureObservationDisposition::None,
-            future_observation_excerpt: None,
-        });
-    }
-    if request_reasons_from_supplied_operational_premises(&request.message) {
-        return Ok(RouteDecision {
-            lane: ExecutionLane::Converse,
-            confidence: RouteConfidence::High,
-            reason: "The operator asked for reasoning from attributed thread premises, not a current-system observation."
-                .into(),
-            requires_current_evidence: false,
-            future_observation: FutureObservationDisposition::None,
-            future_observation_excerpt: None,
-        });
-    }
-    if request_is_read_only_status_or_change_question(&request.message) {
-        return Ok(RouteDecision {
-            lane: ExecutionLane::Investigate,
-            confidence: RouteConfidence::High,
-            reason: "The operator asked a read-only question about current or recent state and did not request an external effect."
-                .into(),
-            requires_current_evidence: true,
-            future_observation: FutureObservationDisposition::None,
-            future_observation_excerpt: None,
-        });
-    }
     let mut repair_feedback = Vec::new();
     for _ in 0..MAX_ROUTER_ATTEMPTS {
         let decision = match model
@@ -1707,28 +1673,13 @@ fn validate_route(
             "delegated future observation requires a current-evidence operating lane".into(),
         ));
     }
-    if request_explicitly_requires_investigation(&request.message)
-        && matches!(
-            decision.lane,
-            ExecutionLane::Converse | ExecutionLane::Lookup
-        )
-    {
-        return Err(AgentRuntimeError::InvalidRoute(
-            "the newest request requires current multi-claim synthesis and cannot use a conversation or single-record lookup lane"
-                .into(),
-        ));
-    }
     match decision.lane {
         ExecutionLane::Ignore => Err(AgentRuntimeError::InvalidRoute(
             "transport events are ignored before semantic routing".into(),
         )),
-        ExecutionLane::Converse
-            if decision.requires_current_evidence
-                || request_explicitly_requires_current_evidence(&request.message) =>
-        {
+        ExecutionLane::Converse if decision.requires_current_evidence => {
             Err(AgentRuntimeError::InvalidRoute(
-                "the newest request explicitly requires current evidence and cannot use conversation"
-                    .into(),
+                "a conversation route cannot require current evidence".into(),
             ))
         }
         ExecutionLane::Converse => Ok(()),
@@ -1889,146 +1840,6 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
     .iter()
     .any(|marker| normalized.contains(marker));
     supplies_a_premise && asks_for_reasoning && !asks_for_live_read && !delegates_future_observation
-}
-
-fn request_is_unscoped_conversation(message: &str) -> bool {
-    let normalized = normalized_phrase_text(message);
-    let exact_social_request = matches!(
-        normalized.trim(),
-        "how are you"
-            | "how are you doing"
-            | "how is it going"
-            | "how s it going"
-            | "how we doing"
-            | "how we doin"
-            | "what s up"
-            | "who are you"
-            | "what are you"
-            | "tell me about you"
-            | "tell me about yourself"
-            | "what can you do"
-            | "how can you help"
-            | "can you help"
-            | "how do you work"
-            | "what is your role"
-            | "what s your role"
-    );
-    if exact_social_request {
-        return true;
-    }
-
-    let asks_for_personal_reaction = [
-        " how are you feeling ",
-        " how re you feeling ",
-        " how ya feeling ",
-        " how do you feel ",
-        " how are you liking ",
-        " how re you liking ",
-        " how ya liking ",
-    ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase));
-
-    asks_for_personal_reaction
-        && !request_explicitly_requires_current_evidence(message)
-        && !request_requests_external_effect(message)
-}
-
-fn request_is_explicit_no_live_self_capability(message: &str) -> bool {
-    let normalized = normalized_phrase_text(message);
-    let explicitly_disallows_live_lookup = [
-        " no live lookup ",
-        " without a live lookup ",
-        " without tools ",
-        " do not call tools ",
-        " don t call tools ",
-        " no tools ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    let asks_self_capability = [
-        " one thing you can help ",
-        " what you can help ",
-        " what can you help ",
-        " how can you help ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    let asks_for_contextual_environment_purpose = [
-        " this environment is for ",
-        " this slack environment is for ",
-        " this sec dev slack environment is for ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-
-    explicitly_disallows_live_lookup
-        && asks_self_capability
-        && asks_for_contextual_environment_purpose
-        && !request_explicitly_requires_current_evidence(message)
-}
-
-fn request_is_read_only_status_or_change_question(message: &str) -> bool {
-    let normalized = normalized_phrase_text(message);
-    let asks_for_status_or_change = [
-        " what changed ",
-        " what has changed ",
-        " what happened ",
-        " what is running ",
-        " what s running ",
-        " current status ",
-        " status of ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    asks_for_status_or_change
-        && !request_is_artifact_transformation(message)
-        && !request_requests_external_effect(message)
-}
-
-fn request_requests_external_effect(message: &str) -> bool {
-    let normalized = normalized_phrase_text(message);
-    [
-        " deploy ",
-        " merge ",
-        " land ",
-        " ship ",
-        " roll out ",
-        " roll it out ",
-        " roll this out ",
-        " create ",
-        " change ",
-        " update ",
-        " edit ",
-        " fix ",
-        " send ",
-        " post ",
-        " schedule ",
-        " restart ",
-        " start ",
-        " stop ",
-        " run ",
-        " execute ",
-        " trigger ",
-        " enable ",
-        " disable ",
-        " turn on ",
-        " turn off ",
-        " approve ",
-        " close ",
-        " reopen ",
-        " delete ",
-        " remove ",
-        " install ",
-        " publish ",
-        " commit ",
-        " push ",
-        " implement ",
-        " apply ",
-        " open a pr ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -2490,15 +2301,6 @@ fn normalized_phrase_text(value: &str) -> String {
         .map(str::to_ascii_lowercase)
         .collect::<Vec<_>>();
     format!(" {} ", words.join(" "))
-}
-
-fn request_explicitly_requires_investigation(message: &str) -> bool {
-    let normalized = message.to_ascii_lowercase();
-    let asks_reconciliation = normalized.contains("reconcile");
-    let asks_ownership = normalized.contains("owner") || normalized.contains("who owns");
-    let asks_trigger = normalized.contains("trigger") || normalized.contains("next check");
-    let asks_closure = normalized.contains("closure") || normalized.contains("closes it");
-    asks_reconciliation && asks_ownership && asks_trigger && asks_closure
 }
 
 fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> {
@@ -4317,14 +4119,23 @@ mod grounding_tests {
     use async_trait::async_trait;
     use serde_json::json;
 
-    struct RouteMustNotRun;
+    struct ConverseRouter;
 
     struct ActRouter;
 
+    struct InvestigateRouter;
+
     #[async_trait]
-    impl AgentModel for RouteMustNotRun {
+    impl AgentModel for ConverseRouter {
         async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
-            panic!("the model router must not run for unscoped conversation")
+            Ok(RouteDecision {
+                lane: ExecutionLane::Converse,
+                confidence: RouteConfidence::High,
+                reason: "The newest message can be answered directly without tools.".into(),
+                requires_current_evidence: false,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            })
         }
 
         async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
@@ -4364,6 +4175,31 @@ mod grounding_tests {
         }
     }
 
+    #[async_trait]
+    impl AgentModel for InvestigateRouter {
+        async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+            Ok(RouteDecision {
+                lane: ExecutionLane::Investigate,
+                confidence: RouteConfidence::High,
+                reason: "The newest message asks for a current operational assessment.".into(),
+                requires_current_evidence: true,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            })
+        }
+
+        async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+            panic!("the operating model must not run in this routing test")
+        }
+
+        async fn critique(
+            &self,
+            _turn: CritiqueTurn,
+        ) -> Result<CritiqueDecision, AgentRuntimeError> {
+            panic!("the critic must not run in this routing test")
+        }
+    }
+
     fn route_request(message: &str) -> AgentTurnRequest {
         AgentTurnRequest {
             schema_version: "agent-turn/v1".into(),
@@ -4384,7 +4220,7 @@ mod grounding_tests {
     }
 
     #[tokio::test]
-    async fn unscoped_conversation_routes_before_model_routing() {
+    async fn the_model_router_can_select_conversation_without_a_phrase_list() {
         for message in [
             "how we doin?",
             "How's it going?",
@@ -4395,31 +4231,24 @@ mod grounding_tests {
             "No live lookup this time: in one conversational sentence, tell me what this sec-dev Slack environment is for and one thing you can help an Infosec operator do. Do not call tools.",
         ] {
             assert_eq!(
-                super::route_request(&RouteMustNotRun, route_request(message))
+                super::route_request(&ConverseRouter, route_request(message))
                     .await
                     .unwrap(),
                 ExecutionLane::Converse,
-                "unscoped conversation must not enter evidence routing: {message}"
+                "the semantic router should admit direct conversation: {message}"
             );
         }
     }
 
     #[tokio::test]
-    async fn read_only_change_question_routes_to_investigation_without_the_model() {
+    async fn the_model_router_can_select_read_only_investigation() {
         let message = "What changed in writer/cerebro today that makes the Slack agent more reliable? Give me the three most important changes in plain English, link the evidence you used, and clearly say what you could not verify.";
         assert_eq!(
-            super::route_request(&RouteMustNotRun, route_request(message))
+            super::route_request(&InvestigateRouter, route_request(message))
                 .await
                 .unwrap(),
             ExecutionLane::Investigate
         );
-    }
-
-    #[test]
-    fn change_wording_does_not_turn_artifact_review_into_live_investigation() {
-        assert!(!request_is_read_only_status_or_change_question(
-            "What changed in this draft?"
-        ));
     }
 
     #[tokio::test]
@@ -4427,6 +4256,7 @@ mod grounding_tests {
         for message in [
             "What changed in the Slack agent? Deploy the fix now.",
             "What changed in the Slack agent? Roll it out now.",
+            "What changed in the Slack agent? Roll it back now.",
         ] {
             assert_eq!(
                 super::route_request(&ActRouter, route_request(message))
@@ -4435,6 +4265,28 @@ mod grounding_tests {
                 ExecutionLane::Act
             );
         }
+    }
+
+    #[tokio::test]
+    async fn operational_personal_reactions_still_reach_the_model_router() {
+        assert_eq!(
+            super::route_request(
+                &InvestigateRouter,
+                route_request("How do you feel about today's incidents?"),
+            )
+            .await
+            .unwrap(),
+            ExecutionLane::Investigate
+        );
+        assert_eq!(
+            super::route_request(
+                &ActRouter,
+                route_request("How do you feel about the deployment? Roll it back."),
+            )
+            .await
+            .unwrap(),
+            ExecutionLane::Act
+        );
     }
 
     fn validation_result(state: ToolResultState, blocker: Option<&str>) -> ToolResult {
@@ -4485,40 +4337,16 @@ mod grounding_tests {
     }
 
     #[test]
-    fn scoped_questions_do_not_match_unscoped_conversation_guard() {
-        for message in [
-            "How's Atlas now?",
-            "How are you feeling about the current runtime health?",
-            "How ya feeling? Deploy the current build now.",
-            "Can you inspect the current runtime?",
-            "What is the current state of the runtime?",
-        ] {
-            assert!(
-                !request_is_unscoped_conversation(message)
-                    && !request_is_explicit_no_live_self_capability(message),
-                "scoped question was treated as unscoped conversation: {message}"
-            );
-        }
-    }
-
-    #[test]
-    fn explicit_no_live_self_capability_does_not_downgrade_current_questions() {
-        for message in [
-            "No live lookup this time: is Atlas healthy, and what can you help an Infosec operator do?",
-            "No live lookup this time: tell me what the current Slack runtime status is and one thing you can help an Infosec operator do. Do not call tools.",
-        ] {
-            assert!(request_explicitly_requires_current_evidence(message));
-            assert!(!request_is_explicit_no_live_self_capability(message));
-            let decision = RouteDecision {
-                lane: ExecutionLane::Converse,
-                confidence: RouteConfidence::High,
-                reason: "This is only explanatory.".into(),
-                requires_current_evidence: false,
-                future_observation: FutureObservationDisposition::None,
-                future_observation_excerpt: None,
-            };
-            assert!(validate_route(&route_request(message), &decision).is_err());
-        }
+    fn route_evidence_flag_must_match_the_structured_lane() {
+        let decision = RouteDecision {
+            lane: ExecutionLane::Converse,
+            confidence: RouteConfidence::High,
+            reason: "This route incorrectly asks conversation to collect evidence.".into(),
+            requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        };
+        assert!(validate_route(&route_request("Any message."), &decision).is_err());
     }
 
     #[test]
@@ -4675,7 +4503,7 @@ mod grounding_tests {
     }
 
     #[test]
-    fn explicit_current_field_reconciliation_cannot_route_to_conversation() {
+    fn semantic_route_validation_uses_structured_fields() {
         for message in [
             "Reconcile that provider field with a current Source A receipt.",
             "What visibility or access do we actually have for Source A?",
@@ -4688,7 +4516,7 @@ mod grounding_tests {
                 future_observation: FutureObservationDisposition::None,
                 future_observation_excerpt: None,
             };
-            assert!(validate_route(&route_request(message), &decision).is_err());
+            assert!(validate_route(&route_request(message), &decision).is_ok());
         }
 
         assert!(!request_explicitly_requires_current_evidence(
@@ -4829,7 +4657,7 @@ mod grounding_tests {
             future_observation: FutureObservationDisposition::None,
             future_observation_excerpt: None,
         };
-        assert!(validate_route(&synthesis, &lookup).is_err());
+        assert!(validate_route(&synthesis, &lookup).is_ok());
 
         let mut continuation = synthesis.clone();
         continuation.working_state = Some(WorkingState {

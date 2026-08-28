@@ -2549,15 +2549,6 @@ async fn run_session_turn_recorded_at(
     } else {
         0
     };
-    if matches!(trigger, SessionTurnTrigger::Operator)
-        && plan
-            .as_ref()
-            .is_some_and(|plan| Some(plan.lane) != input.requested_lane)
-    {
-        return Err(AgentRuntimeError::InvalidRequest(
-            "resumed plan lane does not match the durable accepted route".into(),
-        ));
-    }
     let mut observations = if resumed {
         turn_observations.clone()
     } else {
@@ -2689,17 +2680,6 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::EstablishPlan { plan: proposed } => {
                 if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
-                    continue;
-                }
-                if matches!(trigger, SessionTurnTrigger::Operator)
-                    && input.requested_lane != Some(proposed.lane)
-                {
-                    record_operating_repair(
-                        &mut repairs,
-                        &mut repair_feedback,
-                        "The research plan lane must exactly match the accepted semantic route for this operator turn."
-                            .into(),
-                    );
                     continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
@@ -2944,8 +2924,14 @@ async fn run_session_turn_recorded_at(
                 let accepted_at =
                     elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                 normalize_message_from_grounded_claims(&mut draft);
-                let canonical_premise_conversation =
-                    normalize_supplied_premise_conversation(&session, &input, &trigger, &mut draft);
+                let effective_lane = turn_outcome_lane(&input, plan.as_ref());
+                let canonical_premise_conversation = normalize_supplied_premise_conversation(
+                    &session,
+                    &input,
+                    &trigger,
+                    effective_lane,
+                    &mut draft,
+                );
                 if canonical_premise_conversation
                     && (draft.message.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
                         || draft.message.lines().count() > 6)
@@ -2960,28 +2946,28 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
-                let requested_operating_lane = matches!(
-                    input.requested_lane,
-                    Some(ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act)
-                );
+                let planned_operating_lane = plan.is_some()
+                    && matches!(
+                        effective_lane,
+                        ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
+                    );
                 if matches!(trigger, SessionTurnTrigger::Operator)
-                    && ((input.requested_lane == Some(ExecutionLane::Converse)
-                        && (plan.is_some() || observations.len() > current_turn_observation_start))
-                        || (requested_operating_lane && plan.is_none()))
+                    && plan.is_none()
+                    && observations.len() > current_turn_observation_start
                 {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
                         &draft,
                         &mut repairs,
                         &mut repair_feedback,
-                        "The accepted semantic route is authoritative: converse turns cannot establish or use an evidence plan, and operating turns cannot finish without one."
+                        "A tool observation cannot be presented without the typed plan that authorized it. Establish the plan before using tools."
                             .into(),
                     );
                     continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && draft.state == FinalState::Answered
-                    && requested_operating_lane
+                    && planned_operating_lane
                     && plan.as_ref().is_some_and(|plan| {
                         !current_required_claims_have_same_turn_evidence(
                             plan,
@@ -3228,12 +3214,8 @@ async fn run_session_turn_recorded_at(
     .await
 }
 
-fn turn_outcome_lane(input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> ExecutionLane {
-    if matches!(input.trigger, SessionTurnTrigger::Operator) {
-        input.requested_lane.unwrap_or(ExecutionLane::Converse)
-    } else {
-        plan.map_or(ExecutionLane::Converse, |plan| plan.lane)
-    }
+fn turn_outcome_lane(_input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> ExecutionLane {
+    plan.map_or(ExecutionLane::Converse, |plan| plan.lane)
 }
 
 async fn repair_fallback_outcome(
@@ -4632,10 +4614,11 @@ fn normalize_supplied_premise_conversation(
     session: &AgentSession,
     input: &SessionTurnInput,
     trigger: &SessionTurnTrigger,
+    effective_lane: ExecutionLane,
     draft: &mut GroundedDraft,
 ) -> bool {
     if !matches!(trigger, SessionTurnTrigger::Operator)
-        || input.requested_lane != Some(ExecutionLane::Converse)
+        || effective_lane != ExecutionLane::Converse
         || draft.state != FinalState::Answered
     {
         return false;
@@ -17871,6 +17854,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn research_loop_can_finish_social_conversation_after_an_overeager_route() {
+        let mut conversational =
+            session_for_request("request:social-route-recovery", ExecutionLane::Investigate);
+        conversational.messages[0].text = "@Cerebro how ya feeling about your new digs".into();
+        let message = "Honestly? Pretty good — I have more room to think, use the right tools when they help, and still just talk with you when they don't.".to_string();
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: message.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:social-answer".into(),
+                planned_claim_ref: None,
+                text: message.clone(),
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::Finish { draft }])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            conversational,
+            SessionTurnInput {
+                request_id: "request:social-route-recovery".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the research loop should hand a social answer to presentation without tools");
+        let SessionTurnOutcome::PendingDelivery {
+            lane,
+            final_state,
+            markdown,
+            evidence_atom_refs,
+            ..
+        } = outcome
+        else {
+            panic!("the social answer should be ready for delivery");
+        };
+        assert_eq!(lane, ExecutionLane::Converse);
+        assert_eq!(final_state, FinalState::Answered);
+        assert_eq!(markdown, message);
+        assert!(evidence_atom_refs.is_empty());
+    }
+
+    #[tokio::test]
     async fn accepted_converse_lane_can_finish_with_named_conceptual_reasoning() {
         let mut conversational =
             session_for_request("request:conceptual-converse", ExecutionLane::Converse);
@@ -18131,20 +18177,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn current_state_question_cannot_finish_without_a_plan_or_observation() {
+    async fn a_current_claim_cannot_finish_without_a_structural_evidence_reference() {
         let mut current =
             session_for_request("request:current-without-plan", ExecutionLane::Lookup);
         current.messages[0].text = "Is Atlas green?".into();
         let mut unsupported = draft();
-        unsupported.message =
-            render_stable_explanation(StableExplanationId::EvidenceFreshnessDefinition).into();
+        unsupported.message = "Atlas is currently green.".into();
         unsupported.claims = vec![GroundedClaim {
             claim_ref: "claim:unsupported-current-state".into(),
             planned_claim_ref: None,
             text: unsupported.message.clone(),
             required_for_answer: true,
-            content: ClaimContent::StableExplanation {
-                explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
+            content: ClaimContent::Observation {
+                atom_refs: vec!["evidence://missing#current-state".into()],
             },
         }];
         let model = ScriptedSessionModel {
