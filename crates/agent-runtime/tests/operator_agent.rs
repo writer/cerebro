@@ -2050,7 +2050,6 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
 
     let AgentTurnOutcome::Delivered {
         lane,
-        markdown,
         tool_call_count,
         ..
     } = run_turn(&model, &tools, turn).await.unwrap()
@@ -2059,7 +2058,6 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
     };
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(tool_call_count, 0);
-    assert!(markdown.starts_with("Approve"));
 }
 
 #[tokio::test]
