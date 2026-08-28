@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,10 @@ const (
 	cosmoCoordinationActiveRiskRuleID         = "cosmo-coordination-active-risk"
 	cosmoRustDefinitionDigest                 = "1367f20b5cfe85e3f901760f27d8540d15227712b86e5ca3da41122e296225a4"
 	trustedTenantWorkspacePrefix              = "tenant-only:"
+	closedJSONMaximumBytes                    = 64 << 10
+	closedJSONMaximumDepth                    = 8
+	closedJSONMaximumCollectionItems          = 64
+	closedJSONMaximumStringBytes              = 8 << 10
 )
 
 var aureliusPromotedVulnerabilityActiveDefinition = RuleDefinition{
@@ -229,17 +234,18 @@ func payloadBytes(raw []byte) []int {
 
 func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	attributes := cloneStringMap(event.GetAttributes())
-	if len(event.GetPayload()) == 0 {
+	// Legacy Go close parity consumes the trusted promoted attributes only when
+	// they already contain a complete remediation decision. Payload admission is
+	// required only when projection must fill one of those decision attributes.
+	if len(event.GetPayload()) == 0 || aureliusCloseAttributesComplete(attributes) {
 		return attributes, nil
+	}
+	if len(event.GetPayload()) > closedJSONMaximumBytes {
+		return nil, fmt.Errorf("project Aurelius close payload: payload exceeds the closed byte limit")
 	}
 	preflight := json.NewDecoder(bytes.NewReader(event.GetPayload()))
 	preflight.UseNumber()
 	if err := validateUniqueBoundedJSON(preflight, 1); err != nil {
-		// Go parity permits a malformed payload when the complete remediation
-		// decision is already present in trusted promoted attributes.
-		if aureliusCloseAttributesComplete(attributes) {
-			return attributes, nil
-		}
 		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
 	}
 	if err := requireJSONEOF(preflight); err != nil {
@@ -353,11 +359,20 @@ func validateRustFindingResponse(request rustFindingRequest, response rustFindin
 	if finding.FirstObservedAt.IsZero() || finding.LastObservedAt.IsZero() || finding.LastObservedAt.Before(finding.FirstObservedAt) {
 		return fmt.Errorf("rust finding-rule authority returned invalid chronology")
 	}
+	if finding.Status != findingStatusOpen {
+		return fmt.Errorf("rust finding-rule authority returned non-open rule state")
+	}
+	if !reflect.DeepEqual(finding.FindingPersistenceEnvelope, ports.FindingPersistenceEnvelope{}) ||
+		!reflect.DeepEqual(finding.FindingRisk, ports.FindingRisk{}) ||
+		!reflect.DeepEqual(finding.FindingWorkflow, ports.FindingWorkflow{}) ||
+		!reflect.DeepEqual(finding.FindingTombstone, ports.FindingTombstone{}) {
+		return fmt.Errorf("rust finding-rule authority returned host-owned finding state")
+	}
 	return nil
 }
 
 func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
-	if depth > 16 {
+	if depth > closedJSONMaximumDepth {
 		return fmt.Errorf("response nesting exceeds the closed limit")
 	}
 	token, err := decoder.Token()
@@ -366,6 +381,9 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 	}
 	delimiter, ok := token.(json.Delim)
 	if !ok {
+		if value, isString := token.(string); isString && len(value) > closedJSONMaximumStringBytes {
+			return fmt.Errorf("response string exceeds the closed byte limit")
+		}
 		return nil
 	}
 	switch delimiter {
@@ -381,12 +399,15 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 			if !ok {
 				return fmt.Errorf("response object key is not a string")
 			}
+			if len(key) > closedJSONMaximumStringBytes {
+				return fmt.Errorf("response object key exceeds the closed byte limit")
+			}
 			if _, exists := seen[key]; exists {
 				return fmt.Errorf("response contains duplicate field %q", key)
 			}
 			seen[key] = struct{}{}
 			fields++
-			if fields > 128 {
+			if fields > closedJSONMaximumCollectionItems {
 				return fmt.Errorf("response object exceeds the closed field limit")
 			}
 			if err := validateUniqueBoundedJSON(decoder, depth+1); err != nil {
@@ -401,7 +422,7 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 		items := 0
 		for decoder.More() {
 			items++
-			if items > 256 {
+			if items > closedJSONMaximumCollectionItems {
 				return fmt.Errorf("response array exceeds the closed item limit")
 			}
 			if err := validateUniqueBoundedJSON(decoder, depth+1); err != nil {
