@@ -26,6 +26,8 @@ Stable releases are promoted from a successful Candidate Build run through the `
 
 The smoke receipt gate accepts a same-repository Ephemeral Cerebro Actions run and machine-verifies its terminal result, workflow identity, main-branch dispatch event, candidate-bound artifact, and published Rust candidate image. External HTTPS receipts are disabled by default. Repository operators may enable specific public receipt origins with the comma-separated `SMOKE_RECEIPT_ALLOWED_ORIGINS` Actions variable. Each value must be an origin only (`https://host` or `https://host:port`), with no path, query, or fragment. That mode is recorded as `operator_attested_external` because receipt existence, success, candidate binding, digest binding, and immutability are not machine-proven. The evidence mode is shown in the workflow summary, required in the release notes, and attached to the GitHub release as `smoke-evidence.json`.
 
+Published-image Ephemeral Cerebro runs also emit a `cerebro.smoke-receipt/v1` document signed with the workflow's GitHub OIDC identity. It binds the candidate commit, runtime image manifest digest, bounded environment class, soak duration, passed checks, completion time, and producing workflow run without recording tenant, hostname, endpoint, or private topology. Stable Release verifies the signature against the main-branch Ephemeral Cerebro workflow identity and requires the runtime digest to match the Candidate Build receipt. This produces `machine_verified_portable` evidence. The web image fields remain null because Ephemeral Cerebro does not exercise the web image.
+
 Stable release tags use:
 
 ```text

@@ -11,6 +11,9 @@ CUT_RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "cut-release.yml"
 RUST_ONLY_CANDIDATE_WORKFLOW = (
     ROOT / ".github" / "workflows" / "rust-only-candidate.yml"
 )
+EPHEMERAL_CEREBRO_WORKFLOW = ROOT / ".github" / "workflows" / "ephemeral-cerebro.yml"
+RUST_GRAPH_QUALIFICATION = ROOT / "scripts" / "qualify-rust-graph.sh"
+SMOKE_RECEIPT_RENDERER = ROOT / "scripts" / "release" / "render_smoke_receipt.sh"
 MINIMUM_CANDIDATE_CI_GATE_SECONDS = 90 * 60
 
 
@@ -33,6 +36,28 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("SMOKE_RECEIPT_ALLOWED_ORIGINS", workflow)
         self.assertIn("stable-release-smoke-evidence-", workflow)
         self.assertIn("-o -name 'smoke-evidence.json'", workflow)
+        self.assertIn("CANDIDATE_RUNTIME_DIGEST", workflow)
+
+    def test_portable_smoke_receipt_signing_is_isolated_from_pr_job(self) -> None:
+        workflow = EPHEMERAL_CEREBRO_WORKFLOW.read_text(encoding="utf-8")
+        topology = workflow.split("  topology:\n", 1)[1].split(
+            "\n  sign-receipt:\n", 1
+        )[0]
+        signer = workflow.split("  sign-receipt:\n", 1)[1]
+        qualification = RUST_GRAPH_QUALIFICATION.read_text(encoding="utf-8")
+        renderer = SMOKE_RECEIPT_RENDERER.read_text(encoding="utf-8")
+
+        self.assertNotIn("id-token: write", topology)
+        self.assertIn("id-token: write", signer)
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && inputs.image_source == 'published'",
+            signer,
+        )
+        self.assertIn("signed-pr-rust-graph-", signer)
+        self.assertIn("cosign sign-blob --yes", signer)
+        self.assertIn("scripts/release/render_smoke_receipt.sh", qualification)
+        self.assertIn('"cerebro.smoke-receipt/v1"', renderer)
+        self.assertIn("runtime_image_digest", renderer)
 
     def test_candidate_build_does_not_claim_stable_release_reservation(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")

@@ -21,6 +21,7 @@ readonly auth_scheme="Bearer"
 readonly checkpoint="${output_dir}/checkpoint.json"
 readonly organizational_receipt="${output_dir}/organizational-receipt.json"
 readonly qualification_receipt="${output_dir}/receipt.json"
+readonly portable_smoke_receipt="${output_dir}/smoke-receipt.json"
 readonly service_logs="${output_dir}/service-logs.txt"
 readonly compose_files=(-f "${repository_root}/docker-compose.yml" -f "${repository_root}/docker-compose.rust.yml")
 
@@ -262,4 +263,12 @@ jq \
 test "$(jq -r .schema_version "${qualification_receipt}")" = "cerebro.pr-rust-graph/v1"
 test "$(jq -r .status "${qualification_receipt}")" = passed
 test "$(jq '[.checks[] | select(.status == "passed")] | length' "${qualification_receipt}")" -eq 17
+
+if [ -n "${CEREBRO_SMOKE_RUNTIME_IMAGE:-}" ]; then
+  CEREBRO_SMOKE_SOURCE_RECEIPT="${qualification_receipt}" \
+  CEREBRO_SMOKE_OUTPUT="${portable_smoke_receipt}" \
+  CEREBRO_SMOKE_CANDIDATE_COMMIT="${CEREBRO_QUALIFICATION_SHA}" \
+  CEREBRO_SMOKE_SOAK_SECONDS="${soak_seconds}" \
+    "${repository_root}/scripts/release/render_smoke_receipt.sh"
+fi
 echo "Rust PR graph qualification passed with ${request_count} authority reads"

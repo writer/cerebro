@@ -155,6 +155,7 @@ jobs:
           SMOKE_RECEIPT_ALLOWED_ORIGINS: ${{ vars.SMOKE_RECEIPT_ALLOWED_ORIGINS }}
           SMOKE_EVIDENCE_OUT: ${{ runner.temp }}/smoke-evidence.json
           CANDIDATE_SHA: ${{ steps.run.outputs.sha }}
+          CANDIDATE_RUNTIME_DIGEST: ${{ steps.receipt.outputs.digest }}
           CANDIDATE_IMAGE: ${{ steps.receipt.outputs.image }}
           CANDIDATE_DIGEST: ${{ steps.receipt.outputs.digest }}
           GH_TOKEN: ${{ github.token }}

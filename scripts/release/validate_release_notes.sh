@@ -31,7 +31,7 @@ if grep -Eq '\{\{[^}]+\}\}|\bTBD\b|\bTODO\b|\bREPLACE_ME\b' "${notes}"; then
   failed=1
 fi
 
-if ! grep -Eq '^Evidence mode: `(machine_verified_github_actions|operator_attested_external)`[[:space:]]*$' "${notes}"; then
+if ! grep -Eq '^Evidence mode: `(machine_verified_portable|machine_verified_github_actions|operator_attested_external)`[[:space:]]*$' "${notes}"; then
   echo "ERROR: release notes must record the supported smoke evidence mode" >&2
   failed=1
 fi
