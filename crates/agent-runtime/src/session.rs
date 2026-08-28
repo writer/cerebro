@@ -2612,6 +2612,7 @@ async fn run_session_turn_recorded_at(
         if repairs > MAX_MODEL_REPAIRS {
             let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
             return repair_fallback_outcome(
+                model,
                 &session,
                 &input,
                 plan.as_ref(),
@@ -2658,6 +2659,7 @@ async fn run_session_turn_recorded_at(
                     let accepted_at =
                         elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
+                        model,
                         &session,
                         &input,
                         plan.as_ref(),
@@ -3143,6 +3145,7 @@ async fn run_session_turn_recorded_at(
                     }
                     Err(_) => {
                         return repair_fallback_outcome(
+                            model,
                             &session,
                             &input,
                             plan.as_ref(),
@@ -3224,6 +3227,7 @@ async fn run_session_turn_recorded_at(
     }
     let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
     repair_fallback_outcome(
+        model,
         &session,
         &input,
         plan.as_ref(),
@@ -3240,6 +3244,7 @@ fn turn_outcome_lane(_input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> 
 }
 
 async fn repair_fallback_outcome(
+    model: &dyn SessionAgentModel,
     session: &AgentSession,
     input: &SessionTurnInput,
     plan: Option<&ResearchPlan>,
@@ -3692,6 +3697,26 @@ async fn repair_fallback_outcome(
     };
     let validated =
         validate_grounded_draft_at(session, &draft, observations, assessment_at, accepted_at)?;
+    let prior_commitment_checkpoint = prior_commitment_checkpoint(session, trigger);
+    let review = model
+        .review_message(ClaimReviewTurn {
+            session: session.clone(),
+            trigger: trigger.clone(),
+            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+            wake_assessment: build_wake_assessment(
+                session,
+                trigger,
+                prior_commitment_checkpoint.as_ref(),
+                observations,
+                assessment_at,
+            ),
+            draft: draft.clone(),
+            observations: observations.to_vec(),
+        })
+        .await
+        .map_err(|_| AgentRuntimeError::PresentationRepairLimit)?;
+    validate_message_review(&draft, &review)
+        .map_err(|_| AgentRuntimeError::PresentationRepairLimit)?;
     emit_final_events(
         session,
         &input.assessment_at,
@@ -8746,6 +8771,74 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    enum FallbackReviewMode {
+        Supported,
+        Rejected,
+        Malformed,
+        Unavailable,
+    }
+
+    struct FallbackReviewModel {
+        mode: FallbackReviewMode,
+    }
+
+    #[async_trait]
+    impl SessionAgentModel for FallbackReviewModel {
+        async fn advance(
+            &self,
+            _turn: SessionModelTurn,
+        ) -> Result<SessionModelDecision, AgentRuntimeError> {
+            Err(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn review_message(
+            &self,
+            turn: ClaimReviewTurn,
+        ) -> Result<MessageReview, AgentRuntimeError> {
+            match self.mode {
+                FallbackReviewMode::Supported => Ok(supported_message_review(turn)),
+                FallbackReviewMode::Rejected => {
+                    let mut review = supported_message_review(turn);
+                    review.behavioral.right_sized = false;
+                    Ok(review)
+                }
+                FallbackReviewMode::Malformed => {
+                    let mut review = supported_message_review(turn);
+                    review.draft_digest = "sha256:wrong-draft".into();
+                    Ok(review)
+                }
+                FallbackReviewMode::Unavailable => Err(AgentRuntimeError::ModelUnavailable(
+                    "presentation review unavailable".into(),
+                )),
+            }
+        }
+    }
+
+    async fn accepted_repair_fallback_outcome(
+        session: &AgentSession,
+        input: &SessionTurnInput,
+        plan: Option<&ResearchPlan>,
+        observations: &[ToolObservation],
+        accepted_at: OffsetDateTime,
+        events: Vec<SessionEventRecord>,
+        journal: &dyn SessionJournal,
+    ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+        repair_fallback_outcome(
+            &FallbackReviewModel {
+                mode: FallbackReviewMode::Supported,
+            },
+            session,
+            input,
+            plan,
+            observations,
+            accepted_at,
+            events,
+            journal,
+        )
+        .await
+    }
+
     #[async_trait]
     impl SessionAgentModel for ScriptedSessionModel {
         async fn advance(
@@ -10895,6 +10988,20 @@ mod tests {
             validate_grounded_draft(&session(), &natural, &[], assessment).is_ok(),
             "Rust must validate the typed question contract without classifying its prose"
         );
+        let mut review = supported_message_review(ClaimReviewTurn {
+            session: session(),
+            trigger: SessionTurnTrigger::Operator,
+            prior_commitment_checkpoint: None,
+            wake_assessment: None,
+            draft: natural.clone(),
+            observations: Vec::new(),
+        });
+        review.claim_reviews[0].verdict = ClaimReviewVerdict::Unsupported;
+        review.claim_reviews[0].issue = Some(
+            "The question contains material that is not supported by the declared question basis."
+                .into(),
+        );
+        assert!(validate_message_review(&natural, &review).is_err());
     }
 
     #[test]
@@ -11827,6 +11934,9 @@ mod tests {
         let plan = wake_research_plan(&awakened, &trigger).unwrap();
         let observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
         let outcome = repair_fallback_outcome(
+            &FallbackReviewModel {
+                mode: FallbackReviewMode::Unavailable,
+            },
             &awakened,
             &SessionTurnInput {
                 request_id: "wake-request:routine-fallback".into(),
@@ -12952,7 +13062,7 @@ mod tests {
             trigger: SessionTurnTrigger::Operator,
         };
 
-        let outcome = repair_fallback_outcome(
+        let outcome = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -12996,7 +13106,7 @@ mod tests {
             fresh_until: Some("2026-08-01T00:00:00Z".into()),
             complete: true,
         });
-        let mixed = repair_fallback_outcome(
+        let mixed = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13027,7 +13137,7 @@ mod tests {
                 *summary = same_subject.result.summary.clone();
             }
         }
-        let mixed_same_subject = repair_fallback_outcome(
+        let mixed_same_subject = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13074,7 +13184,7 @@ mod tests {
             let observations = std::iter::once(supported.clone())
                 .chain(ordered)
                 .collect::<Vec<_>>();
-            let outcome = repair_fallback_outcome(
+            let outcome = accepted_repair_fallback_outcome(
                 &session(),
                 &input,
                 None,
@@ -13109,7 +13219,7 @@ mod tests {
             panic!("the failed fixture should carry a tool outcome atom")
         };
         *summary = failed_effect.result.summary.clone();
-        let effect = repair_fallback_outcome(
+        let effect = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13148,7 +13258,7 @@ mod tests {
         };
         let accepted_at = OffsetDateTime::parse("2026-07-31T00:02:01Z", &Rfc3339).unwrap();
 
-        let outcome = repair_fallback_outcome(
+        let outcome = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13202,7 +13312,7 @@ mod tests {
             trigger: SessionTurnTrigger::Operator,
         };
 
-        let outcome = repair_fallback_outcome(
+        let outcome = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13267,7 +13377,7 @@ mod tests {
             requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
-        let outcome = repair_fallback_outcome(
+        let outcome = accepted_repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -13290,7 +13400,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repair_fallback_does_not_interpret_presentation_prose() {
+    async fn visible_repair_fallback_requires_digest_bound_presentation_review() {
         let mut exact = session();
         exact.messages[0].text = "Give me exactly four sentences.".into();
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
@@ -13313,7 +13423,29 @@ mod tests {
             requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
-        let outcome = repair_fallback_outcome(
+        for mode in [
+            FallbackReviewMode::Rejected,
+            FallbackReviewMode::Malformed,
+            FallbackReviewMode::Unavailable,
+        ] {
+            assert_eq!(
+                repair_fallback_outcome(
+                    &FallbackReviewModel { mode },
+                    &exact,
+                    &input,
+                    None,
+                    std::slice::from_ref(&supported),
+                    test_turn_time(),
+                    Vec::new(),
+                    &NoopSessionJournal,
+                )
+                .await
+                .expect_err("visible fallback must fail closed when review is not accepted"),
+                AgentRuntimeError::PresentationRepairLimit
+            );
+        }
+
+        let outcome = accepted_repair_fallback_outcome(
             &exact,
             &input,
             None,
@@ -13323,7 +13455,7 @@ mod tests {
             &NoopSessionJournal,
         )
         .await
-        .expect("fallback validation must not classify natural-language formatting requests");
+        .expect("a conforming digest-bound fallback review should remain deliverable");
         let SessionTurnOutcome::PendingDelivery {
             final_state,
             evidence_atom_refs,
@@ -13420,7 +13552,7 @@ mod tests {
         baseline.result.summary =
             "Connector alpha is recovering and is not ready at this check.".into();
         baseline.result.data = json!({"status": "recovering"});
-        let outcome = repair_fallback_outcome(
+        let outcome = accepted_repair_fallback_outcome(
             &current,
             &SessionTurnInput {
                 request_id: "request:operator-fallback".into(),
