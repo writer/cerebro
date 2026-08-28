@@ -1,0 +1,295 @@
+name: Automatic Stable Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Candidate Build run ID dispatched by Candidate Build
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact main commit bound to the candidate receipt
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: automatic-stable-release-main
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Qualify and publish exact main
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: write # Dispatch and observe exact-head smoke and publication workflows.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Admit exact current main candidate
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${CANDIDATE_RUN_ID}" =~ ^[0-9]+$ ]]
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          deadline=$((SECONDS + 300))
+          while (( SECONDS < deadline )); do
+            candidate_run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")"
+            test "$(jq -r .path <<< "${candidate_run}")" = .github/workflows/cut-release.yml
+            test "$(jq -r .event <<< "${candidate_run}")" = push
+            test "$(jq -r .head_branch <<< "${candidate_run}")" = main
+            test "$(jq -r .head_sha <<< "${candidate_run}")" = "${CANDIDATE_SHA}"
+            status="$(jq -r .status <<< "${candidate_run}")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "${candidate_run}")"
+            if [[ "${status}" == completed ]]; then
+              test "${conclusion}" = success
+              break
+            fi
+            sleep 5
+          done
+          [[ "${status:-}" == completed ]] || { echo "ERROR: Candidate Build did not become terminal" >&2; exit 1; }
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [[ "${CANDIDATE_SHA}" != "${current_main}" ]]; then
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Candidate ${CANDIDATE_SHA} is superseded by main ${current_main}."
+            exit 0
+          fi
+          existing_tag="$({
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.target_commitish == \"${CANDIDATE_SHA}\" and (.draft | not) and (.prerelease | not)) | .tag_name"
+          } | head -n 1)"
+          if [[ -n "${existing_tag}" ]]; then
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Candidate ${CANDIDATE_SHA} is already published as ${existing_tag}."
+            exit 0
+          fi
+          artifact_count="$(
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100" \
+              --jq "[.artifacts[] | select(.expired == false and .name == \"cerebro-candidate-${CANDIDATE_SHA}\")] | length"
+          )"
+          test "${artifact_count}" -eq 1
+          {
+            echo "eligible=true"
+            echo "sha=${CANDIDATE_SHA}"
+            echo "run_id=${CANDIDATE_RUN_ID}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Require exact-head main proofs
+        if: steps.candidate.outputs.eligible == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          PROOF_DEADLINE_SECONDS: "7200"
+        run: |
+          set -euo pipefail
+          for workflow in ci.yml rust-graph-replacement.yml rust-only-candidate.yml; do
+            deadline=$((SECONDS + PROOF_DEADLINE_SECONDS))
+            while (( SECONDS < deadline )); do
+              run="$({
+                gh api --method GET \
+                  "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+                  -f head_sha="${CANDIDATE_SHA}" -f per_page=20 \
+                  --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | sort_by(.created_at) | last | [.status, (.conclusion // ""), .html_url] | @tsv'
+              } || true)"
+              if [[ -n "${run}" ]]; then
+                IFS=$'\t' read -r status conclusion url <<< "${run}"
+                if [[ "${status}" == completed && "${conclusion}" == success ]]; then
+                  echo "${workflow} passed for ${CANDIDATE_SHA}: ${url}"
+                  break
+                fi
+                if [[ "${status}" == completed ]]; then
+                  echo "ERROR: ${workflow} completed with ${conclusion}: ${url}" >&2
+                  exit 1
+                fi
+              fi
+              sleep 20
+            done
+            if (( SECONDS >= deadline )); then
+              echo "ERROR: timed out waiting for ${workflow} on ${CANDIDATE_SHA}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Resolve or dispatch published-image smoke
+        if: steps.candidate.outputs.eligible == 'true'
+        id: smoke
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          SMOKE_DEADLINE_SECONDS: "7200"
+        run: |
+          set -euo pipefail
+          signed_artifact="signed-pr-rust-graph-${CANDIDATE_SHA}"
+          find_usable_run() {
+            local mode="$1"
+            while IFS=$'\t' read -r run_id status conclusion url; do
+              [[ -n "${run_id}" ]] || continue
+              if [[ "${mode}" == success && ( "${status}" != completed || "${conclusion}" != success ) ]]; then
+                continue
+              fi
+              if [[ "${mode}" == active && "${status}" == completed ]]; then
+                continue
+              fi
+              if [[ "${mode}" == success ]]; then
+                count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100" \
+                  --jq "[.artifacts[] | select(.expired == false and .name == \"${signed_artifact}\")] | length")"
+                [[ "${count}" -eq 1 ]] || continue
+              fi
+              printf '%s\t%s\n' "${run_id}" "${url}"
+              return 0
+            done < <(
+              gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Ephemeral Cerebro" \
+                --event workflow_dispatch --branch main --limit 30 \
+                --json databaseId,headSha,status,conclusion,url,createdAt \
+                --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\") | [.databaseId,.status,(.conclusion // \"\"),.url] | @tsv"
+            )
+            return 1
+          }
+
+          run_id=""
+          smoke_url=""
+          if usable="$(find_usable_run success)"; then
+            IFS=$'\t' read -r run_id smoke_url <<< "${usable}"
+          else
+            requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            gh workflow run ephemeral-cerebro.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+              -f candidate_sha="${CANDIDATE_SHA}" -f image_source=published -f soak_seconds=60
+            deadline=$((SECONDS + 300))
+            while (( SECONDS < deadline )); do
+              discovered="$({
+                gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Ephemeral Cerebro" \
+                  --event workflow_dispatch --branch main --limit 30 \
+                  --json databaseId,headSha,status,url,createdAt \
+                  --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\" and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
+              } | head -n 1)"
+              if [[ -n "${discovered}" ]]; then
+                IFS=$'\t' read -r run_id smoke_url <<< "${discovered}"
+                break
+              fi
+              sleep 5
+            done
+            [[ -n "${run_id}" ]] || { echo "ERROR: dispatched smoke run was not observable" >&2; exit 1; }
+
+            deadline=$((SECONDS + SMOKE_DEADLINE_SECONDS))
+            while (( SECONDS < deadline )); do
+              state="$(gh run view "${run_id}" --repo "${GITHUB_REPOSITORY}" --json status,conclusion --jq '[.status,(.conclusion // "")] | @tsv')"
+              IFS=$'\t' read -r status conclusion <<< "${state}"
+              if [[ "${status}" == completed ]]; then
+                [[ "${conclusion}" == success ]] || { echo "ERROR: smoke ${smoke_url} concluded ${conclusion}" >&2; exit 1; }
+                break
+              fi
+              sleep 20
+            done
+            [[ "${status:-}" == completed ]] || { echo "ERROR: timed out waiting for smoke ${smoke_url}" >&2; exit 1; }
+            count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100" \
+              --jq "[.artifacts[] | select(.expired == false and .name == \"${signed_artifact}\")] | length")"
+            test "${count}" -eq 1
+          fi
+          {
+            echo "run_id=${run_id}"
+            echo "url=${smoke_url}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Reserve next stable tag and render notes
+        if: steps.candidate.outputs.eligible == 'true'
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+          SMOKE_URL: ${{ steps.smoke.outputs.url }}
+        run: |
+          set -euo pipefail
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [[ "${CANDIDATE_SHA}" != "${current_main}" ]]; then
+            echo "dispatch=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Main advanced to ${current_main} during qualification; ${CANDIDATE_SHA} will not publish."
+            exit 0
+          fi
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" | jq 'add' > releases.json
+          python3 scripts/release/auto_stable_release.py next-tag \
+            --releases-json releases.json --github-output "${GITHUB_OUTPUT}"
+          release_tag="$(tail -n 2 "${GITHUB_OUTPUT}" | sed -n 's/^release_tag=//p')"
+          previous_tag="$(tail -n 2 "${GITHUB_OUTPUT}" | sed -n 's/^previous_tag=//p')"
+          notes_args=(
+            --release-tag "${release_tag}"
+            --candidate-sha "${CANDIDATE_SHA}"
+            --candidate-run-id "${CANDIDATE_RUN_ID}"
+            --smoke-url "${SMOKE_URL}"
+            --out release-notes.md
+          )
+          if [[ -n "${previous_tag}" ]]; then
+            notes_args+=(--previous-tag "${previous_tag}")
+          fi
+          python3 scripts/release/auto_stable_release.py notes "${notes_args[@]}"
+          scripts/release/validate_release_notes.sh release-notes.md
+          echo "dispatch=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch stable publication
+        if: steps.candidate.outputs.eligible == 'true' && steps.release.outputs.dispatch == 'true'
+        id: publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          SMOKE_URL: ${{ steps.smoke.outputs.url }}
+          PUBLICATION_DEADLINE_SECONDS: "7200"
+        run: |
+          set -euo pipefail
+          requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+            -f candidate_run_id="${CANDIDATE_RUN_ID}" -f release_tag="${RELEASE_TAG}" \
+            -f release_notes="$(cat release-notes.md)" -f smoke_receipt_url="${SMOKE_URL}" \
+            -f require_current_main=true
+          run_id=""
+          run_url=""
+          deadline=$((SECONDS + 300))
+          while (( SECONDS < deadline )); do
+            discovered="$({
+              gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Stable Release" \
+                --event workflow_dispatch --branch main --limit 20 \
+                --json databaseId,headSha,url,createdAt \
+                --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\" and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
+            } | head -n 1)"
+            if [[ -n "${discovered}" ]]; then
+              IFS=$'\t' read -r run_id run_url <<< "${discovered}"
+              break
+            fi
+            sleep 5
+          done
+          [[ -n "${run_id}" ]] || { echo "ERROR: stable publication run was not observable" >&2; exit 1; }
+          deadline=$((SECONDS + PUBLICATION_DEADLINE_SECONDS))
+          while (( SECONDS < deadline )); do
+            state="$(gh run view "${run_id}" --repo "${GITHUB_REPOSITORY}" --json status,conclusion --jq '[.status,(.conclusion // "")] | @tsv')"
+            IFS=$'\t' read -r status conclusion <<< "${state}"
+            if [[ "${status}" == completed ]]; then
+              [[ "${conclusion}" == success ]] || { echo "ERROR: stable publication ${run_url} concluded ${conclusion}" >&2; exit 1; }
+              break
+            fi
+            sleep 20
+          done
+          [[ "${status:-}" == completed ]] || { echo "ERROR: timed out waiting for ${run_url}" >&2; exit 1; }
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq .target_commitish)" = "${CANDIDATE_SHA}"
+          {
+            echo "## Automatic stable publication"
+            echo
+            echo "Published ${RELEASE_TAG} from exact main ${CANDIDATE_SHA}: ${run_url}"
+            echo "Qualified by signed smoke: ${SMOKE_URL}"
+          } >> "${GITHUB_STEP_SUMMARY}"

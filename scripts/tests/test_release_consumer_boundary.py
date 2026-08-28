@@ -57,12 +57,21 @@ class ReleaseConsumerBoundaryTest(unittest.TestCase):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn('event_type:"product-release-published"', workflow)
-        self.assertIn("python3 scripts/release/product_release.py validate-event", workflow)
+        self.assertIn(
+            "python3 scripts/release/product_release.py validate-event", workflow
+        )
         self.assertIn("RELEASE_CONSUMER_TOKEN", workflow)
         self.assertIn("RELEASE_CONSUMER_REPOSITORY", workflow)
-        self.assertIn("configure both RELEASE_CONSUMER_TOKEN and RELEASE_CONSUMER_REPOSITORY", workflow)
+        self.assertIn("secrets.CEREBRO_INFRA_PROMOTION_TOKEN", workflow)
+        self.assertIn("secrets.CEREBRO_INFRA_REPOSITORY", workflow)
+        self.assertIn(
+            "configure both RELEASE_CONSUMER_TOKEN and RELEASE_CONSUMER_REPOSITORY",
+            workflow,
+        )
         self.assertIn(".client_payload | length' dispatch.json)\" -eq 6", workflow)
-        self.assertNotIn("gh run list --repo \"${RELEASE_CONSUMER_REPOSITORY}\"", workflow)
+        self.assertNotIn(
+            'gh run list --repo "${RELEASE_CONSUMER_REPOSITORY}"', workflow
+        )
 
     def test_candidate_scans_every_published_image_platform(self) -> None:
         workflow = CANDIDATE_WORKFLOW.read_text(encoding="utf-8")
