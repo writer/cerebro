@@ -157,6 +157,7 @@ export interface SlackMentionEvent {
   botUserId?: string;
   channel: string;
   eventTs: string;
+  followupOfferRef?: string;
   hasThreadContext: boolean;
   teamId: string;
   text: string;
@@ -781,6 +782,11 @@ export class SlackCompanionRuntime {
       await ack();
     });
 
+    this.app.action(/^cerebro\.followup\.[a-f0-9]{32}$/u, async ({ ack }) => {
+      await ack();
+      await this.flushSlackIngress();
+    });
+
     this.app.action(/^archetype_start_work_[0-9a-f]+$/u, async ({
       ack,
       action,
@@ -995,6 +1001,24 @@ export class SlackCompanionRuntime {
     const route = await this.threadRoutes.read(threadRef);
     const botUserId = event.botUserId ?? route?.botUserId;
     if (!botUserId) return;
+    if (event.kind === "followup_acceptance") {
+      await handleSlackMention({
+        agentDeliveries: this.agentDeliveries,
+        client,
+        config: this.config,
+        event: { ...event, botUserId },
+        host: this.host,
+        ingressQueue: this.ingressQueue,
+        leaseGuard,
+        outcomes: this.outcomes,
+        priorDeliveryAttempt: claim.attempt > 1,
+        questions: this.questions,
+        scratchpads: this.scratchpads,
+        followups: this.followups,
+        threadRoutes: this.threadRoutes,
+      });
+      return;
+    }
     await handleSlackThreadReply({
       agentDeliveries: this.agentDeliveries,
       botUserId,
@@ -1041,8 +1065,10 @@ export class SlackCompanionRuntime {
       try {
         let current = record;
         if (current.state === "prepared") {
+          const proactiveFollowup = await this.followups.offerForTurn(current.requestId);
           await replayPreparedAgentDelivery(this.app.client, current, {
             bindings: this.ingressQueue,
+            ...(proactiveFollowup === undefined ? {} : { proactiveFollowup }),
           });
           current = await this.agentDeliveries.markSlackDelivered(current.recordRef);
         }
@@ -1387,14 +1413,20 @@ export async function handleSlackMention(input: {
     const scratchpadContext = scratchpad
       ? formatSlackThreadScratchpadContext(scratchpad)
       : undefined;
-    if (input.followups) {
+    if (input.event.followupOfferRef && !input.followups) {
+      throw new Error("The proactive follow-up store is unavailable.");
+    }
+    if (input.followups && input.event.followupOfferRef) {
       await fenceMutation();
       followupAcceptance = await input.followups.beginAcceptance({
         actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
         ingressRequestKey: requestKey,
-        operatorText: input.event.text,
+        offerRef: input.event.followupOfferRef,
         threadRef: scratchpadRef,
       });
+      if (!followupAcceptance) {
+        throw new Error("The proactive follow-up offer is not current for this thread.");
+      }
     }
     await fenceMutation();
     await input.host.recordProgress(runId, {
@@ -1434,7 +1466,7 @@ export async function handleSlackMention(input: {
         requestKey,
         scratchpadContext,
         threadContext,
-        text: input.event.text,
+        text: followupAcceptance?.offer.action ?? input.event.text,
         threadRef: scratchpadRef,
         ...(input.priorDeliveryAttempt
           ? {}
@@ -1533,6 +1565,9 @@ export async function handleSlackMention(input: {
       teamId: input.event.teamId,
       text: deliveredText,
       threadTs: input.event.threadTs,
+      ...(result.proactiveFollowup === undefined
+        ? {}
+        : { proactiveFollowup: result.proactiveFollowup }),
     });
     const feedbackPart = deliveredParts[deliveredParts.length - 1]!;
     if (outboxRecord) {
@@ -1762,6 +1797,7 @@ export async function deliverSlackAnswerParts(
     feedbackKey: string;
     leaseGuard?: () => Promise<void>;
     priorDeliveryAttempt?: boolean;
+    proactiveFollowup?: RustProactiveFollowupOffer;
     progressMessageTs: string;
     reconciliationOldestTs: string;
     requestId: string;
@@ -1812,6 +1848,9 @@ export async function deliverSlackAnswerParts(
               deliveredAt: input.deliveredAt,
               deliveredText: part.text,
               feedbackKey: input.feedbackKey,
+              ...(input.proactiveFollowup === undefined
+                ? {}
+                : { proactiveFollowup: input.proactiveFollowup }),
             }),
           }
         : {}),
@@ -1833,7 +1872,10 @@ export async function deliverSlackAnswerParts(
 export async function replayPreparedAgentDelivery(
   client: SlackMentionClient,
   record: AgentDeliveryOutboxRecord,
-  options: { bindings?: FileSlackIngressQueue },
+  options: {
+    bindings?: FileSlackIngressQueue;
+    proactiveFollowup?: RustProactiveFollowupOffer;
+  },
 ): Promise<void> {
   if (
     record.teamId !== undefined
@@ -1855,6 +1897,9 @@ export async function replayPreparedAgentDelivery(
       teamId: record.teamId,
       text: record.text,
       threadTs: record.threadTs,
+      ...(options.proactiveFollowup === undefined
+        ? {}
+        : { proactiveFollowup: options.proactiveFollowup }),
     });
     return;
   }
@@ -1999,6 +2044,7 @@ function answerFeedbackBlocks(input: {
   deliveredAt: string;
   deliveredText: string;
   feedbackKey: string;
+  proactiveFollowup?: RustProactiveFollowupOffer;
 }): HomeView["blocks"] {
   const actions = projectSlackAnswerFeedbackActions({
     feedback_key: input.feedbackKey,
@@ -2016,8 +2062,25 @@ function answerFeedbackBlocks(input: {
     type: "section" as const,
     text: { type: "mrkdwn" as const, text },
   }));
+  const followupBlocks: HomeView["blocks"] = input.proactiveFollowup === undefined
+    ? []
+    : [{
+        type: "actions",
+        elements: [{
+          action_id: `cerebro.followup.${digest(input.proactiveFollowup.offer_ref).slice(0, 32)}`,
+          style: "primary",
+          text: {
+            emoji: true,
+            text: Array.from(input.proactiveFollowup.title).slice(0, 75).join(""),
+            type: "plain_text",
+          },
+          type: "button",
+          value: input.proactiveFollowup.offer_ref,
+        }],
+      }];
   return [
     ...answerBlocks,
+    ...followupBlocks,
     {
       type: "context" as const,
       elements: [{

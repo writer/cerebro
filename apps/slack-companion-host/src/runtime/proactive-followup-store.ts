@@ -115,21 +115,20 @@ export class FileProactiveFollowupStore {
     actorRef: string;
     attemptedAt: string;
     ingressRequestKey: string;
-    operatorText: string;
+    offerRef: string;
     threadRef: string;
   }): Promise<ProactiveFollowupAcceptance | undefined> {
     return this.serialize(async () => {
       requireText(input.actorRef, "accepting actor");
       requireText(input.ingressRequestKey, "acceptance request identity");
+      requireText(input.offerRef, "acceptance offer identity");
       requireText(input.threadRef, "acceptance thread identity");
       requireCanonicalTimestamp(input.attemptedAt, "acceptance time");
       const attemptedAt = Date.parse(input.attemptedAt);
-      const normalizedAction = normalizeAction(input.operatorText);
-      if (!normalizedAction) return undefined;
       const records = await this.list();
       const matchingClaim = records.filter((record) =>
         record.offer.thread_ref === input.threadRef
-        && normalizeAction(record.offer.action) === normalizedAction
+        && record.offer.offer_ref === input.offerRef
         && (record.state === "accepting" || record.state === "accepted")
         && record.acceptance?.actorRef === input.actorRef
         && record.acceptance.ingressRequestKey === input.ingressRequestKey
@@ -154,7 +153,7 @@ export class FileProactiveFollowupStore {
       const current = records
         .filter((record) =>
           record.offer.thread_ref === input.threadRef
-          && normalizeAction(record.offer.action) === normalizedAction
+          && record.offer.offer_ref === input.offerRef
           && record.state === "delivered"
           && attemptedAt >= Date.parse(record.offer.created_at)
           && attemptedAt <= Date.parse(record.offer.expires_at)
@@ -374,10 +373,6 @@ function recordIdentity(offer: RustProactiveFollowupOffer): string {
   return `slack-proactive-followup://sha256/${digest([
     offer.tenant_id, offer.thread_ref, offer.offer_ref,
   ].join("\n"))}`;
-}
-
-function normalizeAction(value: string): string {
-  return value.replace(/\s+/gu, " ").trim().toLowerCase();
 }
 
 function boundedText(value: unknown, limit: number): value is string {
