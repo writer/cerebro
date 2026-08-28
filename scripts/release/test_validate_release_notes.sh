@@ -26,4 +26,11 @@ grep -Fq "unfinished placeholder" "${tmp}/error"
 sed 's/No configuration keys changed./The TODOS integration remains supported./' "${tmp}/valid.md" > "${tmp}/placeholder-substring.md"
 "${validator}" "${tmp}/placeholder-substring.md"
 
+sed '/^Evidence mode:/d' "${tmp}/valid.md" > "${tmp}/missing-evidence-mode.md"
+if "${validator}" "${tmp}/missing-evidence-mode.md" 2> "${tmp}/error"; then
+  echo "ERROR: validator accepted notes without a smoke evidence mode" >&2
+  exit 1
+fi
+grep -Fq "must record the supported smoke evidence mode" "${tmp}/error"
+
 echo "release notes validator tests passed"

@@ -29,6 +29,9 @@ Record the runtime contract schema version and any consumer action.
 ## Smoke evidence
 
 Link the successful canary or production smoke receipt used by the stable workflow.
+Record exactly one evidence mode: `machine_verified_github_actions` for a same-repository Ephemeral Cerebro run, or `operator_attested_external` for an explicitly allowlisted external origin. The latter does not machine-prove receipt success, candidate binding, digest binding, or immutability.
+
+Evidence mode: `machine_verified_github_actions`
 
 ## Supported versions
 

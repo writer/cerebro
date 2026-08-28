@@ -946,6 +946,7 @@ web-docker-smoke: ## Build and smoke-test the standalone web image.
 
 release-train-test: ## Validate release notes and release-train workflow contracts.
 	bash scripts/release/test_validate_release_notes.sh
+	bash scripts/release/test_verify_smoke_receipt.sh
 	python3 -m unittest scripts.release.test_product_release
 
 release-smoke: release-train-test ## Validate release-train configuration.

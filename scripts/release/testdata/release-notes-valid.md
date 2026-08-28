@@ -20,6 +20,7 @@ The runtime deploy contract remains at cerebro.runtime-deploy-contract/v1.
 
 ## Smoke evidence
 The canary passed readiness, graph health, source health, and version checks: https://example.invalid/smoke/123
+Evidence mode: `operator_attested_external`
 
 ## Supported versions
 This release supports the documented Postgres, NATS, and Neo4j versions in the hosting guide.
