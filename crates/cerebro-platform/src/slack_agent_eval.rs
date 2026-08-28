@@ -24,7 +24,7 @@ use cerebro_agent_runtime::{
         SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
         WorkOwner, apply_session_events, evidence_atoms_from_json, message_digest,
-        run_session_turn, session_turn_request_text,
+        run_session_turn_at, session_turn_request_text,
     },
 };
 use hmac::{Hmac, Mac, digest::KeyInit};
@@ -3185,7 +3185,10 @@ async fn run_evaluation_session_input(
     session: &mut AgentSession,
     input: SessionTurnInput,
 ) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
-    let outcome = run_session_turn(model, tools, session.clone(), input.clone()).await?;
+    let host_entry_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
+        .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+    let outcome =
+        run_session_turn_at(model, tools, session.clone(), input.clone(), host_entry_at).await?;
     let events = match &outcome {
         SessionTurnOutcome::PendingDelivery { events, .. }
         | SessionTurnOutcome::ApprovalRequired { events, .. } => events,

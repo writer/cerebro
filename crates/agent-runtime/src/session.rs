@@ -2271,6 +2271,30 @@ pub async fn run_session_turn(
     run_session_turn_recorded(model, tools, &NoopSessionJournal, session, input).await
 }
 
+/// Runs one deterministic session turn from an explicit host-entry time.
+///
+/// This entry point is intended for replay and evaluation harnesses that use a
+/// recorded request clock. Live transports must use [`run_session_turn`] or
+/// [`run_session_turn_recorded`] so host time remains authoritative.
+pub async fn run_session_turn_at(
+    model: &dyn SessionAgentModel,
+    tools: &dyn SessionTools,
+    session: AgentSession,
+    input: SessionTurnInput,
+    host_entry_at: OffsetDateTime,
+) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    run_session_turn_recorded_at(
+        model,
+        tools,
+        &NoopSessionJournal,
+        session,
+        input,
+        host_entry_at,
+        Instant::now(),
+    )
+    .await
+}
+
 /// Runs the bounded plan–observe–draft loop and records every accepted event.
 ///
 /// The runtime validates the session and trigger, enforces lane and tool authority,
@@ -2285,12 +2309,34 @@ pub async fn run_session_turn_recorded(
     session: AgentSession,
     input: SessionTurnInput,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    let host_entry_at = OffsetDateTime::now_utc();
+    let host_turn_started_at = Instant::now();
+    run_session_turn_recorded_at(
+        model,
+        tools,
+        journal,
+        session,
+        input,
+        host_entry_at,
+        host_turn_started_at,
+    )
+    .await
+}
+
+async fn run_session_turn_recorded_at(
+    model: &dyn SessionAgentModel,
+    tools: &dyn SessionTools,
+    journal: &dyn SessionJournal,
+    session: AgentSession,
+    input: SessionTurnInput,
+    host_entry_at: OffsetDateTime,
+    host_turn_started_at: Instant,
+) -> Result<SessionTurnOutcome, AgentRuntimeError> {
     validate_session(&session)?;
     validate_turn_input(&session, &input)?;
     let trigger = input.trigger.clone();
     let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
         .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
-    let host_turn_started_at = Instant::now();
     let available_tools = tools.catalog();
     let available_tool_ids = available_tools
         .iter()
@@ -2321,7 +2367,9 @@ pub async fn run_session_turn_recorded(
     } else {
         recalled_observations_for_trigger(&session, &trigger, assessment_at)
     };
-    let host_turn_clock_base = authoritative_turn_clock(&turn_observations, assessment_at)?;
+    let resumed_turn_clock = authoritative_turn_clock(&turn_observations, assessment_at)?;
+    let host_turn_clock_base =
+        validate_host_entry_time(assessment_at, host_entry_at, resumed_turn_clock)?;
     let current_turn_observation_start = if resumed { 0 } else { observations.len() };
     let mut events = Vec::new();
     if !resumed {
@@ -9669,6 +9717,27 @@ fn elapsed_host_turn_time(
         .ok_or_else(|| AgentRuntimeError::InvalidFinal("host turn clock overflowed".into()))
 }
 
+fn validate_host_entry_time(
+    assessment_at: OffsetDateTime,
+    host_entry_at: OffsetDateTime,
+    resumed_turn_clock: OffsetDateTime,
+) -> Result<OffsetDateTime, AgentRuntimeError> {
+    let deadline = assessment_at
+        .checked_add(Duration::seconds(MAX_IN_TURN_EVIDENCE_DELAY_SECONDS))
+        .ok_or_else(|| AgentRuntimeError::InvalidFinal("turn clock overflowed".into()))?;
+    if host_entry_at < assessment_at || host_entry_at > deadline {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "host session entry time exceeds the bounded turn window".into(),
+        ));
+    }
+    if resumed_turn_clock < assessment_at || resumed_turn_clock > deadline {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "resumed host turn clock exceeds the bounded turn window".into(),
+        ));
+    }
+    Ok(host_entry_at.max(resumed_turn_clock))
+}
+
 fn authoritative_turn_clock_at(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
@@ -10206,6 +10275,36 @@ mod tests {
     use super::*;
     use crate::{ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult};
     use serde_json::json;
+
+    async fn run_session_turn(
+        model: &dyn SessionAgentModel,
+        tools: &dyn SessionTools,
+        session: AgentSession,
+        input: SessionTurnInput,
+    ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+        run_session_turn_recorded(model, tools, &NoopSessionJournal, session, input).await
+    }
+
+    async fn run_session_turn_recorded(
+        model: &dyn SessionAgentModel,
+        tools: &dyn SessionTools,
+        journal: &dyn SessionJournal,
+        session: AgentSession,
+        input: SessionTurnInput,
+    ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+        let host_entry_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
+            .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+        super::run_session_turn_recorded_at(
+            model,
+            tools,
+            journal,
+            session,
+            input,
+            host_entry_at,
+            Instant::now(),
+        )
+        .await
+    }
 
     #[derive(Default)]
     struct BatchOnlyJournal {
@@ -10870,6 +10969,35 @@ mod tests {
             authoritative_turn_clock_at(&[], assessment, beyond),
             Err(AgentRuntimeError::InvalidFinal(message))
                 if message == "host acceptance time exceeds the bounded turn window"
+        ));
+    }
+
+    #[test]
+    fn host_entry_after_route_delay_advances_the_freshness_clock() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let host_entry = OffsetDateTime::parse("2026-07-31T00:02:20Z", &Rfc3339).unwrap();
+        let clock_base = validate_host_entry_time(assessment, host_entry, assessment).unwrap();
+        assert_eq!(clock_base, host_entry);
+
+        let mut live = observation(true, Some("2026-07-31T00:02:30Z"));
+        live.recorded_at = Some("2026-07-31T00:02:25Z".into());
+        live.result.evidence[0].observed_at = "2026-07-31T00:02:25Z".into();
+        live.result.evidence[0].atoms[0].observed_at = "2026-07-31T00:02:25Z".into();
+        let accepted_at = OffsetDateTime::parse("2026-07-31T00:02:26Z", &Rfc3339).unwrap();
+        assert!(
+            validate_grounded_draft_at(&session(), &draft(), &[live], assessment, accepted_at,)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn host_entry_beyond_the_turn_window_is_rejected() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let stale_entry = OffsetDateTime::parse("2026-07-31T00:16:01Z", &Rfc3339).unwrap();
+        assert!(matches!(
+            validate_host_entry_time(assessment, stale_entry, assessment),
+            Err(AgentRuntimeError::InvalidRequest(message))
+                if message == "host session entry time exceeds the bounded turn window"
         ));
     }
 
