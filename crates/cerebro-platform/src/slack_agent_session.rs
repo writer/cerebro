@@ -20,6 +20,8 @@ use tokio_postgres::{Client, GenericClient};
 use super::slack_mrkdwn::render_slack_mrkdwn;
 
 const POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY: i64 = 0x4342_524f_5345_5353;
+const CLAIM_DUE_WAKE_SQL: &str = "SELECT w.session_ref, w.commitment_ref, to_char(w.wake_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), w.schedule_generation, w.occurrence_ref, w.request_id, w.fence FROM cerebro_agent_wakes w JOIN cerebro_agent_sessions s ON s.session_ref = w.session_ref WHERE s.tenant_id = $1 AND (w.state = 'scheduled' OR (w.state = 'leased' AND w.lease_expires_at <= NOW())) AND w.wake_at <= NOW() AND w.occurrence_ref IS NOT NULL AND w.request_id IS NOT NULL AND (s.lease_expires_at IS NULL OR s.lease_expires_at <= NOW()) AND ((s.snapshot_json->'pending_delivery' IS NULL OR s.snapshot_json->'pending_delivery' = 'null'::jsonb) OR s.snapshot_json#>>'{pending_delivery,request_id}' = w.request_id) ORDER BY w.wake_at, w.session_ref, w.commitment_ref FOR UPDATE OF w, s SKIP LOCKED LIMIT 1";
+const CLAIM_PENDING_WAKE_DELIVERY_SQL: &str = "SELECT w.session_ref, w.commitment_ref, w.schedule_generation, w.request_id, w.pending_payload_digest, w.fence, COALESCE(w.lease_owner = $2 AND w.lease_expires_at > NOW(), FALSE), w.lease_owner, w.lease_token, to_char(w.lease_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), w.delivery_ref, w.delivery_attempt_ref, s.snapshot_json FROM cerebro_agent_wakes w JOIN cerebro_agent_sessions s ON s.session_ref = w.session_ref WHERE s.tenant_id = $1 AND w.state = 'awaiting_delivery' AND w.request_id IS NOT NULL AND w.pending_payload_digest IS NOT NULL AND s.snapshot_json#>>'{pending_delivery,request_id}' = w.request_id AND (w.lease_expires_at IS NULL OR w.lease_expires_at <= NOW() OR w.lease_owner = $2) ORDER BY w.updated_at, w.session_ref, w.commitment_ref FOR UPDATE OF w, s SKIP LOCKED LIMIT 1";
 
 pub const POSTGRES_AGENT_SESSION_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS cerebro_agent_sessions (
@@ -516,21 +518,23 @@ impl PostgresAgentSessionStore {
 
     pub async fn claim_due_wake(
         &self,
+        tenant_id: &str,
         lease_owner: &str,
         lease_seconds: i64,
     ) -> Result<Option<AgentWakeClaim>, AgentRuntimeError> {
-        if lease_owner.trim().is_empty() || lease_seconds <= 0 || lease_seconds > 3_600 {
+        if tenant_id.trim().is_empty()
+            || lease_owner.trim().is_empty()
+            || lease_seconds <= 0
+            || lease_seconds > 3_600
+        {
             return Err(AgentRuntimeError::InvalidRequest(
-                "wake lease identity or duration is invalid".into(),
+                "wake tenant, lease identity, or duration is invalid".into(),
             ));
         }
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await.map_err(store_unavailable)?;
         let Some(row) = transaction
-            .query_opt(
-                "SELECT w.session_ref, w.commitment_ref, to_char(w.wake_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), w.schedule_generation, w.occurrence_ref, w.request_id, w.fence FROM cerebro_agent_wakes w JOIN cerebro_agent_sessions s ON s.session_ref = w.session_ref WHERE (w.state = 'scheduled' OR (w.state = 'leased' AND w.lease_expires_at <= NOW())) AND w.wake_at <= NOW() AND w.occurrence_ref IS NOT NULL AND w.request_id IS NOT NULL AND (s.lease_expires_at IS NULL OR s.lease_expires_at <= NOW()) AND ((s.snapshot_json->'pending_delivery' IS NULL OR s.snapshot_json->'pending_delivery' = 'null'::jsonb) OR s.snapshot_json#>>'{pending_delivery,request_id}' = w.request_id) ORDER BY w.wake_at, w.session_ref, w.commitment_ref FOR UPDATE OF w, s SKIP LOCKED LIMIT 1",
-                &[],
-            )
+            .query_opt(CLAIM_DUE_WAKE_SQL, &[&tenant_id])
             .await
             .map_err(store_unavailable)?
         else {
@@ -690,21 +694,23 @@ impl PostgresAgentSessionStore {
 
     pub async fn claim_pending_wake_delivery(
         &self,
+        tenant_id: &str,
         lease_owner: &str,
         lease_seconds: i64,
     ) -> Result<Option<AgentPendingWakeDelivery>, AgentRuntimeError> {
-        if lease_owner.trim().is_empty() || lease_seconds <= 0 || lease_seconds > 3_600 {
+        if tenant_id.trim().is_empty()
+            || lease_owner.trim().is_empty()
+            || lease_seconds <= 0
+            || lease_seconds > 3_600
+        {
             return Err(AgentRuntimeError::InvalidRequest(
-                "delivery lease identity or duration is invalid".into(),
+                "delivery tenant, lease identity, or duration is invalid".into(),
             ));
         }
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await.map_err(store_unavailable)?;
         let Some(row) = transaction
-            .query_opt(
-                "SELECT w.session_ref, w.commitment_ref, w.schedule_generation, w.request_id, w.pending_payload_digest, w.fence, COALESCE(w.lease_owner = $1 AND w.lease_expires_at > NOW(), FALSE), w.lease_owner, w.lease_token, to_char(w.lease_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), w.delivery_ref, w.delivery_attempt_ref, s.snapshot_json FROM cerebro_agent_wakes w JOIN cerebro_agent_sessions s ON s.session_ref = w.session_ref WHERE w.state = 'awaiting_delivery' AND w.request_id IS NOT NULL AND w.pending_payload_digest IS NOT NULL AND s.snapshot_json#>>'{pending_delivery,request_id}' = w.request_id AND (w.lease_expires_at IS NULL OR w.lease_expires_at <= NOW() OR w.lease_owner = $1) ORDER BY w.updated_at, w.session_ref, w.commitment_ref FOR UPDATE OF w, s SKIP LOCKED LIMIT 1",
-                &[&lease_owner],
-            )
+            .query_opt(CLAIM_PENDING_WAKE_DELIVERY_SQL, &[&tenant_id, &lease_owner])
             .await
             .map_err(store_unavailable)?
         else {
@@ -721,6 +727,11 @@ impl PostgresAgentSessionStore {
         let existing_delivery_ref: Option<String> = row.get(10);
         let existing_attempt_ref: Option<String> = row.get(11);
         let session = decode_session(row.get(12))?;
+        if session.tenant_id != tenant_id {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "wake delivery snapshot tenant does not match the claimed tenant".into(),
+            ));
+        }
         let pending = session.pending_delivery.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("wake has no pending delivery payload".into())
         })?;
@@ -2010,6 +2021,16 @@ mod tests {
     }
 
     #[test]
+    fn wake_claim_queries_require_the_authenticated_tenant() {
+        for query in [CLAIM_DUE_WAKE_SQL, CLAIM_PENDING_WAKE_DELIVERY_SQL] {
+            assert!(query.contains("JOIN cerebro_agent_sessions s"));
+            assert!(query.contains("WHERE s.tenant_id = $1"));
+            assert!(query.contains("FOR UPDATE OF w, s SKIP LOCKED LIMIT 1"));
+        }
+        assert!(CLAIM_PENDING_WAKE_DELIVERY_SQL.contains("w.lease_owner = $2"));
+    }
+
+    #[test]
     fn prior_thread_context_text_is_utf8_safe_and_bounded() {
         let value = "é".repeat(20);
         let bounded = bounded_context_text(&value, 13);
@@ -2696,14 +2717,21 @@ mod tests {
         };
         store.create(&session).await.unwrap();
 
+        assert!(
+            store
+                .claim_due_wake("tenant:other", "worker:wrong-tenant", 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let claim = store
-            .claim_due_wake("worker:postgres-wake", 60)
+            .claim_due_wake("tenant:postgres-wake", "worker:postgres-wake", 60)
             .await
             .unwrap()
             .expect("the due wake should be claimed");
         assert!(
             store
-                .claim_due_wake("worker:competing", 60)
+                .claim_due_wake("tenant:postgres-wake", "worker:competing", 60)
                 .await
                 .unwrap()
                 .is_none()
@@ -2771,8 +2799,19 @@ mod tests {
             .unwrap();
         drop(store);
         let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        assert!(
+            store
+                .claim_pending_wake_delivery("tenant:other", "delivery-worker:wrong-tenant", 60,)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let pending_delivery = store
-            .claim_pending_wake_delivery("delivery-worker:postgres-wake", 60)
+            .claim_pending_wake_delivery(
+                "tenant:postgres-wake",
+                "delivery-worker:postgres-wake",
+                60,
+            )
             .await
             .unwrap()
             .expect("the pending wake payload should be claimable without rerunning the turn");
@@ -2781,7 +2820,11 @@ mod tests {
         assert_eq!(pending_delivery.lease.payload_digest, payload_digest);
         assert_eq!(pending_delivery.mode, AgentWakeDeliveryMode::Send);
         let replayed_delivery = store
-            .claim_pending_wake_delivery("delivery-worker:postgres-wake", 60)
+            .claim_pending_wake_delivery(
+                "tenant:postgres-wake",
+                "delivery-worker:postgres-wake",
+                60,
+            )
             .await
             .unwrap()
             .expect("the same delivery worker should recover its exact lease");
@@ -2789,7 +2832,11 @@ mod tests {
         assert_eq!(replayed_delivery.mode, AgentWakeDeliveryMode::Reconcile);
         assert!(
             store
-                .claim_pending_wake_delivery("delivery-worker:competing", 60)
+                .claim_pending_wake_delivery(
+                    "tenant:postgres-wake",
+                    "delivery-worker:competing",
+                    60,
+                )
                 .await
                 .unwrap()
                 .is_none()
@@ -2807,7 +2854,7 @@ mod tests {
         drop(store);
         let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let recovered_delivery = store
-            .claim_pending_wake_delivery("delivery-worker:competing", 60)
+            .claim_pending_wake_delivery("tenant:postgres-wake", "delivery-worker:competing", 60)
             .await
             .unwrap()
             .expect("an expired possible send must remain available for reconciliation");
@@ -2927,14 +2974,18 @@ mod tests {
         );
         assert!(
             store
-                .claim_pending_wake_delivery("delivery-worker:after-completion", 60)
+                .claim_pending_wake_delivery(
+                    "tenant:postgres-wake",
+                    "delivery-worker:after-completion",
+                    60,
+                )
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(
             store
-                .claim_due_wake("worker:after-completion", 60)
+                .claim_due_wake("tenant:postgres-wake", "worker:after-completion", 60)
                 .await
                 .unwrap()
                 .is_none()
@@ -3013,7 +3064,11 @@ mod tests {
         };
         store.create(&session).await.unwrap();
         let claim = store
-            .claim_due_wake("worker:postgres-wake-exhaustion", 60)
+            .claim_due_wake(
+                "tenant:postgres-wake-exhaustion",
+                "worker:postgres-wake-exhaustion",
+                60,
+            )
             .await
             .unwrap()
             .expect("the exhausted wake fixture should be claimable");
@@ -3058,13 +3113,21 @@ mod tests {
         assert_eq!(pending.draft.state, FinalState::Blocked);
         assert!(
             store
-                .claim_due_wake("worker:must-not-run-sixth-attempt", 60)
+                .claim_due_wake(
+                    "tenant:postgres-wake-exhaustion",
+                    "worker:must-not-run-sixth-attempt",
+                    60,
+                )
                 .await
                 .unwrap()
                 .is_none()
         );
         let delivery = store
-            .claim_pending_wake_delivery("delivery-worker:exhaustion", 60)
+            .claim_pending_wake_delivery(
+                "tenant:postgres-wake-exhaustion",
+                "delivery-worker:exhaustion",
+                60,
+            )
             .await
             .unwrap()
             .expect("the exhausted wake update must survive reload and remain deliverable");

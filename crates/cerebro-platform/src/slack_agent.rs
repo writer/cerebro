@@ -287,7 +287,10 @@ impl SlackAgentService {
         let store = self.sessions.as_ref().ok_or_else(|| {
             AgentRuntimeError::ModelUnavailable("durable session store is not configured".into())
         })?;
-        let Some(claim) = store.claim_due_wake(worker_ref, 1_000).await? else {
+        let Some(claim) = store
+            .claim_due_wake(&self.tenant_id, worker_ref, 1_000)
+            .await?
+        else {
             return Ok(None);
         };
         let result = self.run_claimed_wake(store, &claim).await;
@@ -343,7 +346,9 @@ impl SlackAgentService {
         let store = self.sessions.as_ref().ok_or_else(|| {
             AgentRuntimeError::ModelUnavailable("durable session store is not configured".into())
         })?;
-        store.claim_pending_wake_delivery(worker_ref, 300).await
+        store
+            .claim_pending_wake_delivery(&self.tenant_id, worker_ref, 300)
+            .await
     }
 
     async fn run_claimed_wake(
@@ -354,6 +359,11 @@ impl SlackAgentService {
         let mut session = store.load(&claim.session_ref).await?.ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("wake session does not exist".into())
         })?;
+        if session.tenant_id != self.tenant_id {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "wake session tenant does not match the Slack runtime".into(),
+            ));
+        }
         if let Some(pending) = &session.pending_delivery {
             if pending.request_id != claim.request_id {
                 return Err(AgentRuntimeError::InvalidRequest(
