@@ -1892,8 +1892,9 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
 }
 
 fn request_is_unscoped_conversation(message: &str) -> bool {
-    matches!(
-        normalized_phrase_text(message).trim(),
+    let normalized = normalized_phrase_text(message);
+    let exact_social_request = matches!(
+        normalized.trim(),
         "how are you"
             | "how are you doing"
             | "how is it going"
@@ -1911,7 +1912,26 @@ fn request_is_unscoped_conversation(message: &str) -> bool {
             | "how do you work"
             | "what is your role"
             | "what s your role"
-    )
+    );
+    if exact_social_request {
+        return true;
+    }
+
+    let asks_for_personal_reaction = [
+        " how are you feeling ",
+        " how re you feeling ",
+        " how ya feeling ",
+        " how do you feel ",
+        " how are you liking ",
+        " how re you liking ",
+        " how ya liking ",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+
+    asks_for_personal_reaction
+        && !request_explicitly_requires_current_evidence(message)
+        && !request_requests_external_effect(message)
 }
 
 fn request_is_explicit_no_live_self_capability(message: &str) -> bool {
@@ -1961,7 +1981,14 @@ fn request_is_read_only_status_or_change_question(message: &str) -> bool {
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
-    let requests_external_effect = [
+    asks_for_status_or_change
+        && !request_is_artifact_transformation(message)
+        && !request_requests_external_effect(message)
+}
+
+fn request_requests_external_effect(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    [
         " deploy ",
         " merge ",
         " land ",
@@ -2001,11 +2028,7 @@ fn request_is_read_only_status_or_change_question(message: &str) -> bool {
         " open a pr ",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
-
-    asks_for_status_or_change
-        && !request_is_artifact_transformation(message)
-        && !requests_external_effect
+    .any(|marker| normalized.contains(marker))
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -4365,6 +4388,9 @@ mod grounding_tests {
         for message in [
             "how we doin?",
             "How's it going?",
+            "@Cerebro how ya feeling about your new digs",
+            "How are you liking the new setup?",
+            "How do you feel about working with us?",
             "what can you do?",
             "No live lookup this time: in one conversational sentence, tell me what this sec-dev Slack environment is for and one thing you can help an Infosec operator do. Do not call tools.",
         ] {
@@ -4462,6 +4488,8 @@ mod grounding_tests {
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
             "How's Atlas now?",
+            "How are you feeling about the current runtime health?",
+            "How ya feeling? Deploy the current build now.",
             "Can you inspect the current runtime?",
             "What is the current state of the runtime?",
         ] {
