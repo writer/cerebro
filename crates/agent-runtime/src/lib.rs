@@ -1197,7 +1197,7 @@ pub async fn run_turn(
                     sequence: observations.len() + 1,
                     recorded_at: Some(OffsetDateTime::now_utc().format(&Rfc3339).map_err(
                         |_| {
-                            AgentRuntimeError::InvalidToolResult(
+                            AgentRuntimeError::InvalidToolCall(
                                 "tool observation time could not be formatted".into(),
                             )
                         },

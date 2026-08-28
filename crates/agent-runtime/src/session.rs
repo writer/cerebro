@@ -2715,7 +2715,7 @@ async fn run_session_turn_recorded_at(
                         Err(_) => failed_tool_result(&session, &input, &call, assessment_at)?,
                     };
                     let recorded_at = recorded_at?.format(&Rfc3339).map_err(|_| {
-                        AgentRuntimeError::InvalidToolResult(
+                        AgentRuntimeError::InvalidToolCall(
                             "tool observation time could not be formatted".into(),
                         )
                     })?;
