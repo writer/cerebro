@@ -2684,7 +2684,7 @@ async fn run_session_turn_recorded_at(
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && let Err(error) =
-                        validate_explicit_follow_through(&session, &input, &proposed)
+                        validate_explicit_follow_through(&session, &input, Some(&proposed))
                 {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
@@ -2923,29 +2923,21 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::Finish { mut draft } => {
                 let accepted_at =
                     elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
-                normalize_message_from_grounded_claims(&mut draft);
-                let effective_lane = turn_outcome_lane(&input, plan.as_ref());
-                let canonical_premise_conversation = normalize_supplied_premise_conversation(
-                    &session,
-                    &input,
-                    &trigger,
-                    effective_lane,
-                    &mut draft,
-                );
-                if canonical_premise_conversation
-                    && (draft.message.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
-                        || draft.message.lines().count() > 6)
+                if matches!(trigger, SessionTurnTrigger::Operator)
+                    && let Err(error) =
+                        validate_explicit_follow_through(&session, &input, plan.as_ref())
                 {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
                         &draft,
                         &mut repairs,
                         &mut repair_feedback,
-                        "A premise-based converse answer must be one conversational_synthesis claim containing the complete natural answer, no other visible claim types, at most 1,200 bytes, and at most six lines. Preserve attribution, the independent-verification boundary, one useful implication, and one prospective next check without report scaffolding."
-                            .into(),
+                        error.to_string(),
                     );
                     continue;
                 }
+                normalize_message_from_grounded_claims(&mut draft);
+                let effective_lane = turn_outcome_lane(&input, plan.as_ref());
                 let planned_operating_lane = plan.is_some()
                     && matches!(
                         effective_lane,
@@ -4610,82 +4602,6 @@ fn normalize_message_from_grounded_claims(draft: &mut GroundedDraft) {
         .collect();
 }
 
-fn normalize_supplied_premise_conversation(
-    session: &AgentSession,
-    input: &SessionTurnInput,
-    trigger: &SessionTurnTrigger,
-    effective_lane: ExecutionLane,
-    draft: &mut GroundedDraft,
-) -> bool {
-    if !matches!(trigger, SessionTurnTrigger::Operator)
-        || effective_lane != ExecutionLane::Converse
-        || draft.state != FinalState::Answered
-    {
-        return false;
-    }
-    let Some((index, newest_operator_message)) =
-        session
-            .messages
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, message)| {
-                message.role == SessionMessageRole::User && message.actor_ref == input.actor_ref
-            })
-    else {
-        return false;
-    };
-    if !crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.text) {
-        return false;
-    }
-    trim_passive_premise_handback(&mut draft.message);
-    let first_source_index = (index + 1).saturating_sub(MAX_CONVERSATIONAL_SYNTHESIS_SOURCES);
-    draft.claims = vec![GroundedClaim {
-        claim_ref: "claim:premise-conversation".into(),
-        planned_claim_ref: None,
-        text: draft.message.clone(),
-        required_for_answer: true,
-        content: ClaimContent::ConversationalSynthesis {
-            source_message_sequences: (first_source_index..=index)
-                .map(|source_index| (source_index + 1) as u64)
-                .collect(),
-            source_atom_refs: Vec::new(),
-        },
-    }];
-    true
-}
-
-fn trim_passive_premise_handback(message: &mut String) {
-    let normalized = message.to_ascii_lowercase();
-    let handback_start = [
-        " if you point me",
-        " if you want",
-        " let me know",
-        " want me to",
-        " would you like me",
-        " do you want me",
-        " say the word",
-        " tell me if you want",
-    ]
-    .iter()
-    .filter_map(|marker| normalized.find(marker))
-    .filter(|index| *index >= 120)
-    .min();
-    let Some(handback_start) = handback_start else {
-        return;
-    };
-    message.truncate(handback_start);
-    let trimmed_len = message
-        .trim_end_matches(|character: char| {
-            character.is_whitespace() || matches!(character, '-' | '–' | '—' | ',' | ';' | ':')
-        })
-        .len();
-    message.truncate(trimmed_len);
-    if !message.ends_with('.') && !message.ends_with('!') && !message.ends_with('?') {
-        message.push('.');
-    }
-}
-
 fn visible_coverage_boundary(message: &str, state: FinalState) -> Option<String> {
     let preferred_markers: &[&str] = match state {
         FinalState::Partial => &[
@@ -6228,7 +6144,7 @@ pub fn validate_plan(
 fn validate_explicit_follow_through(
     session: &AgentSession,
     input: &SessionTurnInput,
-    plan: &ResearchPlan,
+    plan: Option<&ResearchPlan>,
 ) -> Result<(), AgentRuntimeError> {
     let route = session
         .events
@@ -6249,8 +6165,8 @@ fn validate_explicit_follow_through(
         })?;
     match (
         route,
-        plan.follow_through.is_some(),
-        plan.follow_through_offer.is_some(),
+        plan.is_some_and(|plan| plan.follow_through.is_some()),
+        plan.is_some_and(|plan| plan.follow_through_offer.is_some()),
     ) {
         (FutureObservationDisposition::Delegated, false, _) => Err(
             AgentRuntimeError::InvalidFinal(
@@ -7602,769 +7518,19 @@ fn validate_conversational_synthesis(
         ));
     }
     let body = claim.text.trim();
-    let cited_context = source_message_sequences
-        .iter()
-        .filter_map(|sequence| context.messages.get(sequence))
-        .map(|message| message.text.as_str())
-        .collect::<Vec<_>>();
-    let newest_terms = synthesis_terms(&newest_operator_message.1.text);
-    if newest_terms.is_empty() && source_message_sequences.len() < 2 {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "a short conversational follow-up must cite at least one earlier thread message".into(),
-        ));
-    }
-    let transforms_supplied_text =
-        crate::request_is_artifact_transformation(&newest_operator_message.1.text);
-    let premise_reasoning_request =
-        crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.1.text);
-    let premise_source_bound = premise_synthesis_is_source_bound(body, &cited_context);
-    if premise_reasoning_request && !premise_source_bound {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "Revise the premise-based correction from the exact cited thread: describe a reported dashboard only as suggesting or appearing healthy; treat one successful run as support only for that exact run; keep the new route unverified; remove invented claims about untouched or unchanged code, architecture, dependencies, ownership, execution, or verification; then give one prospective route-specific test in one direct paragraph."
-                .into(),
-        ));
-    }
-    let reasons_from_supplied_premises = premise_reasoning_request && premise_source_bound;
-    let normalized_body = body.to_ascii_lowercase().replace('’', "'");
-    let acknowledges_correction = [
-        "you're right",
-        "you are right",
-        "fair correction",
-        "that was another",
-    ]
-    .iter()
-    .any(|marker| normalized_body.contains(marker));
-    let body_is_operational = crate::request_explicitly_requires_current_evidence(body)
-        || contains_operational_capability_assertion(body)
-        || contains_unbound_future_promise(body)
-        || contains_nominal_operational_assertion(body)
-        || contains_new_named_ownership_principal(body, &cited_context)
-        || contains_unverified_named_operational_assertion(body, &cited_context);
-    if (crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
-        && !acknowledges_correction)
-        || (body_is_operational
-            && !reasons_from_supplied_premises
-            && (!transforms_supplied_text
-                || !operational_transformation_is_source_bound(body, &cited_context)))
-        || body.is_empty()
+    if body.is_empty()
         || body.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
         || body.lines().count() > 6
         || body
             .chars()
             .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
-        || body.contains("```")
-        || body.contains("http://")
-        || body.contains("https://")
-        || crate::looks_like_raw_record_dump(body)
-        || crate::looks_like_internal_query_failure(body)
-        || crate::looks_like_report_copy(body)
-        || contains_raw_machine_field_syntax(body)
-        || !synthesis_is_relevant(body, &cited_context)
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "conversational synthesis must be bounded natural prose materially tied to its cited thread messages, without machine records, links, report scaffolding, promises, or unsupported operational claims"
+            "conversational synthesis must be non-empty, bounded text tied to the exact cited thread messages"
                 .into(),
         ));
     }
     Ok(())
-}
-
-fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
-    const OPERATIONAL_STATES: &[&str] = &[
-        "approved",
-        "available",
-        "broken",
-        "connected",
-        "current",
-        "degraded",
-        "deployed",
-        "disabled",
-        "down",
-        "enabled",
-        "failed",
-        "fixed",
-        "flaky",
-        "green",
-        "healthy",
-        "landed",
-        "live",
-        "offline",
-        "online",
-        "operational",
-        "passed",
-        "reachable",
-        "ready",
-        "resolved",
-        "responsive",
-        "restored",
-        "running",
-        "safe",
-        "shipped",
-        "stable",
-        "stale",
-        "stalled",
-        "synchronized",
-        "unavailable",
-        "up",
-        "verified",
-        "working",
-        "works",
-    ];
-    let source_tokens = source_messages
-        .iter()
-        .flat_map(|message| {
-            message
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .map(str::to_ascii_lowercase)
-        })
-        .collect::<BTreeSet<_>>();
-    let normalized_body = format!(
-        " {} ",
-        body.split(|character: char| !character.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    let preserves_boundary = [
-        " you re telling me ",
-        " you are telling me ",
-        " you re right ",
-        " you are right ",
-        " you said ",
-        " your correction ",
-        " that correction ",
-        " that changes ",
-        " changes my read ",
-        " changes the picture ",
-        " your update ",
-        " that update ",
-        " based on that ",
-        " now that you re telling me ",
-        " now that you are telling me ",
-        " given that ",
-        " given your ",
-        " your premise ",
-        " based on what you ",
-        " resting on your ",
-        " haven t independently ",
-        " have not independently ",
-        " not on my own verification ",
-        " still unverified ",
-        " not verified ",
-        " no confirmation ",
-        " still an inference ",
-    ]
-    .iter()
-    .any(|marker| normalized_body.contains(marker));
-    if !preserves_boundary
-        || !synthesis_is_relevant(body, source_messages)
-        || contains_new_named_ownership_principal(body, source_messages)
-        || introduces_unstated_change_scope(body, source_messages)
-    {
-        return false;
-    }
-    body.split(['.', ';', '!', '?', '\n']).all(|clause| {
-        let normalized_clause = format!(
-            " {} ",
-            clause
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        let states = OPERATIONAL_STATES
-            .iter()
-            .filter(|state| normalized_clause.contains(&format!(" {state} ")))
-            .collect::<Vec<_>>();
-        let confidence_is_attributed = normalized_clause.contains(" confident ")
-            && [
-                " given ",
-                " on your premise ",
-                " you told me ",
-                " you re telling me ",
-                " you are telling me ",
-                " from what you ",
-                " from your ",
-            ]
-            .iter()
-            .any(|marker| normalized_clause.contains(marker));
-        states.is_empty()
-            || states.iter().all(|state| source_tokens.contains(**state))
-            || (normalized_clause.contains(" given ")
-                && normalized_clause.contains(" signal ")
-                && states.iter().any(|state| source_tokens.contains(**state)))
-            || confidence_is_attributed
-            || [
-                " looks ",
-                " appears ",
-                " can be ",
-                " could be ",
-                " suggests ",
-                " inference ",
-                " may be ",
-                " might be ",
-                " unverified ",
-                " not verified ",
-                " no confirmation ",
-                " no evidence ",
-                " haven t ",
-                " have not ",
-                " until ",
-            ]
-            .iter()
-            .any(|marker| normalized_clause.contains(marker))
-    })
-}
-
-fn introduces_unstated_change_scope(body: &str, source_messages: &[&str]) -> bool {
-    let normalized = |value: &str| {
-        format!(
-            " {} ",
-            value
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect::<Vec<_>>()
-                .join(" ")
-        )
-    };
-    let normalized_body = normalized(body);
-    let asserts_change_scope = [
-        " code we didn t touch ",
-        " code we did not touch ",
-        " code we didn t change ",
-        " code we did not change ",
-        " untouched code ",
-        " unchanged code ",
-        " nothing changed ",
-    ]
-    .iter()
-    .any(|marker| normalized_body.contains(marker));
-    if !asserts_change_scope {
-        return false;
-    }
-    !source_messages.iter().any(|message| {
-        let normalized_source = normalized(message);
-        normalized_source.contains(" code ")
-            && [
-                " touch ",
-                " touched ",
-                " change ",
-                " changed ",
-                " unchanged ",
-            ]
-            .iter()
-            .any(|marker| normalized_source.contains(marker))
-    })
-}
-
-fn operational_transformation_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
-    let body_terms = synthesis_term_sequence(body);
-    let body_controls = transformation_control_tokens(body);
-    source_messages.iter().any(|source_message| {
-        let source_terms = synthesis_term_sequence(source_message);
-        body_terms
-            .iter()
-            .try_fold(0usize, |cursor, body_term| {
-                source_terms
-                    .get(cursor..)?
-                    .iter()
-                    .position(|source_term| source_term == body_term)
-                    .map(|offset| cursor.saturating_add(offset).saturating_add(1))
-            })
-            .is_some()
-            && body_controls == transformation_control_tokens(source_message)
-    })
-}
-
-fn transformation_control_tokens(value: &str) -> Vec<String> {
-    value
-        .replace('’', "'")
-        .split(|character: char| !character.is_alphanumeric() && character != '\'')
-        .map(str::to_ascii_lowercase)
-        .filter(|token| {
-            token.chars().any(|character| character.is_ascii_digit())
-                || matches!(
-                    token.as_str(),
-                    "not"
-                        | "no"
-                        | "never"
-                        | "without"
-                        | "cannot"
-                        | "can't"
-                        | "isn't"
-                        | "wasn't"
-                        | "hasn't"
-                        | "won't"
-                        | "may"
-                        | "might"
-                        | "must"
-                )
-        })
-        .collect()
-}
-
-fn contains_nominal_operational_assertion(value: &str) -> bool {
-    let normalized = format!(" {} ", value.to_ascii_lowercase());
-    [
-        " status:",
-        " state:",
-        " result:",
-        " owner:",
-        " owner is ",
-        " owned by ",
-        " remediation owner ",
-        " verification owner ",
-        " approval owner ",
-        " execution owner ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-}
-
-fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) -> bool {
-    let normalized = body.to_ascii_lowercase();
-    if ![
-        " owns ",
-        " owner ",
-        " responsible for ",
-        " accountable for ",
-        " assigned to ",
-        " handled by ",
-    ]
-    .iter()
-    .any(|marker| format!(" {normalized} ").contains(marker))
-    {
-        return false;
-    }
-    let source_tokens = source_messages
-        .iter()
-        .flat_map(|message| {
-            message
-                .split(|character: char| !character.is_alphanumeric())
-                .map(str::to_ascii_lowercase)
-        })
-        .collect::<BTreeSet<_>>();
-    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
-        clause
-            .split(|character: char| !character.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .enumerate()
-            .any(|(index, token)| {
-                token.len() >= 3
-                    && token.chars().next().is_some_and(char::is_uppercase)
-                    && (index > 0
-                        || (!token.ends_with("ing") && !matches!(token, "The" | "This" | "That")))
-                    && !source_tokens.contains(&token.to_ascii_lowercase())
-            })
-    })
-}
-
-fn contains_unverified_named_operational_assertion(body: &str, source_messages: &[&str]) -> bool {
-    let source_tokens = source_messages
-        .iter()
-        .flat_map(|message| {
-            message
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| token.len() >= 3)
-                .map(str::to_ascii_lowercase)
-        })
-        .collect::<BTreeSet<_>>();
-    if source_tokens.is_empty() {
-        return false;
-    }
-    let named_source_tokens = source_messages
-        .iter()
-        .flat_map(|message| {
-            let tokens = message
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .collect::<Vec<_>>();
-            tokens
-                .iter()
-                .enumerate()
-                .filter_map(|(index, token)| {
-                    let preceded_by_naming_preposition = index > 0
-                        && matches!(
-                            tokens[index - 1].to_ascii_lowercase().as_str(),
-                            "about" | "of" | "on"
-                        );
-                    (index > 0
-                        && (token.chars().next().is_some_and(char::is_uppercase)
-                            || preceded_by_naming_preposition))
-                        .then(|| token.to_ascii_lowercase())
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<BTreeSet<_>>();
-    let normalized_source = format!(
-        " {} ",
-        source_messages
-            .iter()
-            .flat_map(|message| message.split(|character: char| !character.is_alphanumeric()))
-            .filter(|token| !token.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    let source_is_conceptual = [
-        " in this analogy ",
-        " in the analogy ",
-        " as an analogy ",
-        " in this story ",
-        " in the story ",
-        " as a story ",
-        " in this novel ",
-        " in the novel ",
-        " in this movie ",
-        " in the movie ",
-        " as an example ",
-        " example ",
-        " in this thought experiment ",
-        " thought experiment ",
-        " in this scenario ",
-        " scenario ",
-        " in this simulation ",
-        " simulation ",
-        " hypothetical ",
-        " fictional ",
-        " imagine ",
-        " metaphor ",
-        " codename ",
-        " as a name ",
-        " name choice ",
-        " title ",
-        " reversibility ",
-        " reversible decision ",
-    ]
-    .iter()
-    .any(|marker| normalized_source.contains(marker));
-    let source_is_plain_copular_question = source_messages.iter().any(|message| {
-        let normalized = format!(" {} ", message.trim().to_ascii_lowercase());
-        message.trim_end().ends_with('?')
-            && (normalized.starts_with(" is ") || normalized.starts_with(" are "))
-            && ![
-                " current ",
-                " currently ",
-                " latest ",
-                " now ",
-                " recently ",
-                " today ",
-            ]
-            .iter()
-            .any(|marker| normalized.contains(marker))
-    });
-    let source_invites_opinion = [
-        " what do you think ",
-        " thoughts on ",
-        " do you like ",
-        " your take ",
-        " your read ",
-        " your opinion ",
-    ]
-    .iter()
-    .any(|marker| normalized_source.contains(marker));
-    let normalized_body = format!(
-        " {} ",
-        body.split(|character: char| !character.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    let body_expresses_opinion = [
-        " i think ",
-        " i find ",
-        " i like ",
-        " my take ",
-        " my read ",
-        " my thoughts ",
-        " to me ",
-    ]
-    .iter()
-    .any(|marker| normalized_body.contains(marker));
-    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
-        let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
-        if is_conditional {
-            return false;
-        }
-        let tokens = clause
-            .split(|character: char| !character.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>();
-        let locative_scope = tokens
-            .iter()
-            .position(|token| matches!(token.as_str(), "in" | "on"));
-        let locative_scope_is_conceptual = locative_scope.is_some_and(|index| {
-            let immediate = tokens.get(index + 1).map(String::as_str);
-            let after_determiner = immediate
-                .is_some_and(|value| matches!(value, "a" | "an" | "the" | "this"))
-                .then(|| tokens.get(index + 2).map(String::as_str))
-                .flatten();
-            let thought_experiment = after_determiner == Some("thought")
-                && tokens.get(index + 3).map(String::as_str) == Some("experiment");
-            thought_experiment
-                || immediate
-                    .into_iter()
-                    .chain(after_determiner)
-                    .any(|subject| {
-                        matches!(
-                            subject,
-                            "analogy"
-                                | "example"
-                                | "metaphor"
-                                | "movie"
-                                | "novel"
-                                | "scenario"
-                                | "simulation"
-                                | "story"
-                        )
-                    })
-        });
-        let conceptual_context_applies = source_is_conceptual
-            && (locative_scope.is_none() || locative_scope_is_conceptual)
-            && !tokens.iter().any(|token| {
-                matches!(
-                    token.as_str(),
-                    "actual"
-                        | "actually"
-                        | "currently"
-                        | "latest"
-                        | "now"
-                        | "outside"
-                        | "production"
-                        | "real"
-                        | "reality"
-                        | "recently"
-                        | "today"
-                        | "unlike"
-                        | "monday"
-                        | "tuesday"
-                        | "wednesday"
-                        | "thursday"
-                        | "friday"
-                        | "saturday"
-                        | "sunday"
-                        | "staging"
-                        | "yesterday"
-                )
-            })
-            || [
-                " last week ",
-                " last month ",
-                " this week ",
-                " this month ",
-                " earlier ",
-                " previously ",
-                " ago ",
-            ]
-            .iter()
-            .any(|marker| format!(" {} ", clause.to_ascii_lowercase()).contains(marker));
-        let is_source_subject = |token: &str| {
-            token.len() >= 3
-                && source_tokens.contains(token)
-                && !matches!(
-                    token,
-                    "about"
-                        | "assumption"
-                        | "assumptions"
-                        | "concept"
-                        | "conflict"
-                        | "could"
-                        | "disagreement"
-                        | "explain"
-                        | "example"
-                        | "help"
-                        | "idea"
-                        | "like"
-                        | "movie"
-                        | "name"
-                        | "please"
-                        | "reversibility"
-                        | "story"
-                        | "that"
-                        | "this"
-                        | "think"
-                        | "thoughts"
-                        | "title"
-                        | "what"
-                        | "when"
-                        | "where"
-                        | "which"
-                        | "would"
-                        | "you"
-                )
-        };
-        let is_named_source_subject = |token: &str| {
-            is_source_subject(token) && (named_source_tokens.contains(token) || token == "cerebro")
-        };
-        let source_subject_before = |index: usize| {
-            tokens[..index]
-                .iter()
-                .rev()
-                .take(8)
-                .find(|candidate| is_source_subject(candidate))
-                .map(String::as_str)
-        };
-        let named_subject_before = |index: usize| {
-            tokens[..index]
-                .iter()
-                .rev()
-                .take(8)
-                .find(|candidate| is_named_source_subject(candidate))
-                .map(String::as_str)
-        };
-        let finite_state = tokens.iter().enumerate().any(|(index, token)| {
-            (matches!(
-                token.as_str(),
-                "approved"
-                    | "became"
-                    | "broken"
-                    | "break"
-                    | "broke"
-                    | "crash"
-                    | "crashed"
-                    | "degraded"
-                    | "deployed"
-                    | "disabled"
-                    | "down"
-                    | "enabled"
-                    | "failed"
-                    | "fixed"
-                    | "handles"
-                    | "landed"
-                    | "owned"
-                    | "owns"
-                    | "offline"
-                    | "passed"
-                    | "recovered"
-                    | "reachable"
-                    | "remains"
-                    | "resolved"
-                    | "responsive"
-                    | "restarted"
-                    | "restored"
-                    | "running"
-                    | "shipped"
-                    | "stable"
-                    | "stalled"
-                    | "timed"
-                    | "up"
-                    | "unavailable"
-                    | "work"
-                    | "works"
-            )) && index > 0
-                && source_subject_before(index).is_some()
-        });
-        let copular_state = tokens.iter().enumerate().any(|(copula_index, token)| {
-            if !matches!(token.as_str(), "is" | "are" | "was" | "were") {
-                return false;
-            }
-            let predicates = &tokens[copula_index + 1..];
-            let operational_predicate = predicates.iter().any(|predicate| {
-                matches!(
-                    predicate.as_str(),
-                    "approved"
-                        | "available"
-                        | "broken"
-                        | "connected"
-                        | "current"
-                        | "degraded"
-                        | "deployed"
-                        | "disabled"
-                        | "down"
-                        | "enabled"
-                        | "failed"
-                        | "fixed"
-                        | "flaky"
-                        | "healthy"
-                        | "landed"
-                        | "live"
-                        | "offline"
-                        | "online"
-                        | "operational"
-                        | "passed"
-                        | "reachable"
-                        | "ready"
-                        | "resolved"
-                        | "responsive"
-                        | "restored"
-                        | "running"
-                        | "shipped"
-                        | "stable"
-                        | "stale"
-                        | "stalled"
-                        | "synchronized"
-                        | "unavailable"
-                        | "up"
-                        | "working"
-                )
-            });
-            if if operational_predicate {
-                source_subject_before(copula_index).is_none()
-            } else {
-                named_subject_before(copula_index).is_none()
-            } {
-                return false;
-            }
-            let normalized_clause = format!(
-                " {} ",
-                clause
-                    .split(|character: char| !character.is_alphanumeric())
-                    .filter(|token| !token.is_empty())
-                    .map(str::to_ascii_lowercase)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-            let subjective_opinion = !operational_predicate
-                && (source_is_plain_copular_question
-                    || (source_invites_opinion
-                        && (body_expresses_opinion
-                            || [" i think ", " i find ", " my take ", " my read ", " to me "]
-                                .iter()
-                                .any(|marker| normalized_clause.contains(marker))
-                            || predicates
-                                .iter()
-                                .any(|predicate| matches!(predicate.as_str(), "name" | "title")))));
-            predicates
-                .iter()
-                .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
-                && !subjective_opinion
-        });
-        (finite_state || copular_state) && !conceptual_context_applies
-    })
-}
-
-fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
-    let body_terms = synthesis_terms(body);
-    let source_terms = source_messages
-        .iter()
-        .flat_map(|message| synthesis_terms(message))
-        .collect::<BTreeSet<_>>();
-    let required_overlap = source_terms.len().min(2);
-    required_overlap > 0 && source_terms.intersection(&body_terms).count() >= required_overlap
-}
-
-fn synthesis_terms(value: &str) -> BTreeSet<String> {
-    synthesis_term_sequence(value).into_iter().collect()
-}
-
-fn synthesis_term_sequence(value: &str) -> Vec<String> {
-    const STOP_WORDS: &[&str] = &[
-        "about", "after", "again", "also", "been", "being", "could", "from", "have", "into",
-        "just", "more", "only", "should", "that", "their", "them", "then", "there", "these",
-        "they", "this", "those", "what", "when", "where", "which", "while", "with", "would",
-        "your",
-    ];
-    value
-        .split(|character: char| !character.is_alphanumeric())
-        .map(str::to_lowercase)
-        .filter(|term| term.len() >= 4 && !STOP_WORDS.contains(&term.as_str()))
-        .collect()
 }
 
 /// Renders an allowlisted structural phrase that contributes no factual content.
@@ -14525,596 +13691,34 @@ mod tests {
     }
 
     #[test]
-    fn registered_rhetorical_moves_are_useful_without_becoming_live_evidence() {
+    fn conversational_synthesis_is_structurally_bound_without_phrase_classification() {
         let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut current = session();
+        current.messages[0].text = "@Cerebro how ya feeling about your new digs".into();
+        let response = "Honestly? Pretty good — I have more room to think, use the right tools when they help, and still just talk with you when they do not.";
         let mut candidate = draft();
-        candidate.claims.truncate(1);
-        candidate.claims[0].planned_claim_ref = None;
-        candidate.claims[0].required_for_answer = false;
-        candidate.claims[0].text =
-            render_rhetorical_move(RhetoricalMoveId::SeparateEvidenceFromInference).into();
-        candidate.claims[0].content = ClaimContent::RhetoricalMove {
-            move_id: RhetoricalMoveId::SeparateEvidenceFromInference,
-        };
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
-
-        let mut combined = candidate.clone();
-        combined.claims.insert(
-            0,
-            GroundedClaim {
-                claim_ref: "claim:operator-context".into(),
-                planned_claim_ref: None,
-                text: "You said: Check connector alpha.\n\n".into(),
-                required_for_answer: false,
-                content: ClaimContent::OperatorContext {
-                    message_sequence: 1,
-                    exact_excerpt: "Check connector alpha.".into(),
-                },
+        candidate.message = response.into();
+        candidate.claims = vec![GroundedClaim {
+            claim_ref: "claim:conversation".into(),
+            planned_claim_ref: None,
+            text: response.into(),
+            required_for_answer: true,
+            content: ClaimContent::ConversationalSynthesis {
+                source_message_sequences: vec![1],
+                source_atom_refs: Vec::new(),
             },
-        );
-        combined.message = combined
-            .claims
-            .iter()
-            .map(|claim| claim.text.as_str())
-            .collect();
-        assert!(validate_grounded_draft(&session(), &combined, &[], assessment).is_err());
+        }];
+        validate_grounded_draft(&current, &candidate, &[], assessment).unwrap();
 
-        combined.claims[0].text = format!(
-            "{}\n\n",
-            render_stable_explanation(StableExplanationId::EvidenceAuthorityBoundary)
-        );
-        combined.claims[0].required_for_answer = true;
-        combined.claims[0].content = ClaimContent::StableExplanation {
-            explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
-        };
-        combined.message = combined
-            .claims
-            .iter()
-            .map(|claim| claim.text.as_str())
-            .collect();
-        validate_grounded_draft(&session(), &combined, &[], assessment).unwrap();
-
-        for unsupported in [
-            "Connector alpha is currently healthy.",
-            "Cerebro can read provider records.",
-            "Cerebro owns remediation for connector alpha.",
-            "I verified the deployment.",
-            "Lantern stopped collecting records yesterday.",
-            "The provider returned 403 errors.",
-            "Alice approved the rollout.",
-            "The deployment failed.",
-            "Connector alpha remains green.",
-            "The deployment landed successfully.",
-            "Earlier, Atlas approved the provider change.",
-            "The evidence is sufficient.",
-            "A useful distinction here is between evidence and inference. The evidence is sufficient.",
-            "A useful distinction here is between evidence and inference",
-        ] {
-            candidate.claims[0].text = unsupported.into();
-            candidate.message = candidate.claims[0].text.clone();
-            assert!(
-                validate_grounded_draft(&session(), &candidate, &[], assessment).is_err(),
-                "registered rhetorical move accepted arbitrary prose: {unsupported}"
-            );
-        }
-        let mut synthesis_session = session();
-        synthesis_session.messages[0].text =
-            "Explain the difference between a control owner and an evidence owner.".into();
-        candidate.claims[0].text = "A control owner carries accountability for the control outcome; an evidence owner carries accountability for the supporting records. Keeping those responsibilities explicit prevents evidence collection from being mistaken for control performance.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![1],
-            source_atom_refs: Vec::new(),
-        };
-        candidate.claims[0].required_for_answer = true;
-        candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).unwrap();
-        let accepted = candidate.clone();
-
-        let mut correction_session = synthesis_session.clone();
-        correction_session.messages[0].text =
-            "No. That is another object list. Inspect the current source receipt instead.".into();
-        candidate.claims[0].text = "You're right—that was another object list.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![1],
-            source_atom_refs: Vec::new(),
-        };
-        candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&correction_session, &candidate, &[], assessment).unwrap();
-
-        candidate = accepted.clone();
         candidate.claims[0].planned_claim_ref = Some("claim:state".into());
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
-        candidate = accepted.clone();
+        assert!(validate_grounded_draft(&current, &candidate, &[], assessment).is_err());
+
+        candidate.claims[0].planned_claim_ref = None;
         candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
             source_message_sequences: vec![999],
             source_atom_refs: Vec::new(),
         };
-        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Bananas are better when the weather is warm.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
-        let mut live_request_session = synthesis_session.clone();
-        live_request_session.messages[0].text = "What do you think: is Atlas green?".into();
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Atlas looks green enough to ship.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&live_request_session, &candidate, &[], assessment).is_err()
-        );
-
-        let mut supplied_premise_session = synthesis_session.clone();
-        supplied_premise_session.messages[0].text = "We just changed the sync path. The service dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Given your green-dashboard premise, the service layer looks healthy, but the user path is still unverified. The next bounded check should exercise one representative end-to-end sync and confirm that the expected record arrives before exposure widens. I can reason from that premise with you, but I have not independently inspected or verified the system.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment).unwrap();
-
-        candidate.claims[0].text = "Given your green-dashboard premise, I am confident the service is healthy and the successful run exercised code we did not touch.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
-                .unwrap_err()
-                .to_string()
-                .contains("treat one successful run as support only for that exact run"),
-            "premise repair feedback should name the exact overgeneralization"
-        );
-
-        candidate.claims[0].text =
-            "Given your green-dashboard premise, the new path is live and ready.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
-                .is_err(),
-            "premise-based synthesis strengthened the supplied state into an unsupported live claim"
-        );
-        candidate.claims[0].text = "Given your green-dashboard premise, one successful round trip would mean the entire change is safe.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
-                .is_err(),
-            "premise-based synthesis promoted one prospective check into a global safety conclusion"
-        );
-
-        for (request, unsupported) in [
-            (
-                "What do you think about the Atlas rollout?",
-                "I think the Atlas rollout landed yesterday.",
-            ),
-            (
-                "Help me think about Atlas remediation.",
-                "Atlas remediation is owned by Alice.",
-            ),
-            (
-                "Explain Atlas verification.",
-                "Atlas verification passed today.",
-            ),
-            (
-                "What security reasoning are you good at?",
-                "I can inspect and verify security systems.",
-            ),
-            ("What do you think about Atlas?", "I think Atlas recovered."),
-            ("What do you think about Atlas?", "I think Atlas is live."),
-            ("What do you think about Atlas?", "I think Atlas shipped."),
-            (
-                "Help me think about the Atlas remediation owner.",
-                "The remediation owner: Alice.",
-            ),
-            (
-                "Help me think about Atlas status colors.",
-                "Atlas status: green.",
-            ),
-            (
-                "Help me think about Atlas rollout escalation.",
-                "Given Atlas is live, consider rollout escalation.",
-            ),
-            ("what do you think about atlas?", "i think atlas recovered."),
-            ("thoughts on atlas?", "atlas recovered."),
-            ("do you like atlas?", "i like atlas; atlas recovered."),
-            ("do you like atlas?", "i like atlas; atlas has recovered."),
-            ("do you like atlas?", "i like atlas; atlas fully recovered."),
-            (
-                "do you like atlas?",
-                "i like atlas; atlas seems to have recovered.",
-            ),
-            (
-                "do you like atlas?",
-                "i like atlas; atlas appears to have recovered.",
-            ),
-            ("do you like atlas?", "i like atlas; atlas is online."),
-            ("do you like atlas?", "i like atlas; atlas is operational."),
-            ("do you like atlas?", "i like atlas; atlas is down."),
-            ("do you like atlas?", "i like atlas; atlas is offline."),
-            ("do you like atlas?", "i like atlas; atlas is degraded."),
-            ("do you like atlas?", "i like atlas; atlas is broken."),
-            ("do you like atlas?", "i like atlas; atlas is up."),
-            ("do you like atlas?", "i like atlas; atlas is fixed."),
-            ("do you like atlas?", "i like atlas; atlas is restored."),
-            ("do you like atlas?", "i like atlas; atlas is resolved."),
-            ("do you like atlas?", "i like atlas; atlas is running."),
-            ("do you like atlas?", "i like atlas; atlas is reachable."),
-            ("do you like atlas?", "i like atlas; atlas is responsive."),
-            ("do you like atlas?", "i like atlas; atlas is stable."),
-            ("do you like atlas?", "i like atlas; atlas is unavailable."),
-            (
-                "Did Atlas crash? Give me your take.",
-                "My take: Atlas crashed.",
-            ),
-            (
-                "Does Atlas work? Give me your take.",
-                "My take: Atlas works.",
-            ),
-            (
-                "Did Atlas break? Give me your take.",
-                "My take: Atlas broke.",
-            ),
-            (
-                "Did Atlas time out? Give me your take.",
-                "My take: Atlas timed out.",
-            ),
-            ("Has Atlas restarted?", "Atlas restarted."),
-            ("Has Atlas stalled?", "Atlas stalled."),
-            ("Is Atlas flaky?", "Atlas is flaky."),
-            ("is atlas stale?", "atlas is stale."),
-            (
-                "What's your opinion of Atlas?",
-                "My opinion: I think Atlas is synchronized right now.",
-            ),
-            (
-                "Is Story Service operational?",
-                "Story Service is operational.",
-            ),
-        ] {
-            let mut unsupported_session = synthesis_session.clone();
-            unsupported_session.messages[0].text = request.into();
-            candidate = accepted.clone();
-            candidate.claims[0].text = unsupported.into();
-            candidate.message = candidate.claims[0].text.clone();
-            assert!(
-                validate_grounded_draft(&unsupported_session, &candidate, &[], assessment).is_err(),
-                "conversational synthesis accepted unsupported operational prose: {unsupported}"
-            );
-        }
-
-        for (request, opinion) in [
-            (
-                "What do you think about Atlas?",
-                "I think Atlas is interesting.",
-            ),
-            (
-                "What do you think about Atlas?",
-                "I think Atlas is elegant.",
-            ),
-            ("Thoughts on Atlas?", "My thoughts: Atlas inspired me."),
-            (
-                "What do you think about Atlas?",
-                "I think Atlas is a thoughtful name.",
-            ),
-            ("Do you like Atlas?", "I like Atlas; Atlas is memorable."),
-            (
-                "What's your read on Atlas?",
-                "My read on Atlas is that it is elegant.",
-            ),
-        ] {
-            let mut opinion_session = synthesis_session.clone();
-            opinion_session.messages[0].text = request.into();
-            candidate = accepted.clone();
-            candidate.claims[0].text = opinion.into();
-            candidate.message = candidate.claims[0].text.clone();
-            validate_grounded_draft(&opinion_session, &candidate, &[], assessment).unwrap_or_else(
-                |error| panic!("ordinary opinion was rejected: {opinion}: {error}"),
-            );
-        }
-
-        for (request, supported) in [
-            (
-                "Why is Atlas connected to reversibility in this analogy?",
-                "Atlas is connected to reversibility because the analogy keeps a safe path back while uncertainty shrinks.",
-            ),
-            (
-                "Why is Atlas Green a good codename?",
-                "The codename works because Atlas suggests a map and Green supplies a memorable visual cue.",
-            ),
-            (
-                "Why is Atlas healthy in this story?",
-                "Atlas is healthy in this story because the character learned to ask for help before the burden became isolating.",
-            ),
-            (
-                "Why did Atlas fail in this story?",
-                "Atlas failed in this story because he refused help.",
-            ),
-            (
-                "Why is Atlas operational in the novel?",
-                "Atlas is operational in the novel because the author needs the machine.",
-            ),
-            (
-                "Why is the system healthy in this analogy?",
-                "The system is healthy in this analogy because every part reinforces the others.",
-            ),
-            (
-                "thoughts on conflict?",
-                "My thoughts: healthy conflict is useful because disagreement surfaces assumptions.",
-            ),
-            (
-                "thoughts on conflict?",
-                "My thoughts: conflict is healthy when handled well.",
-            ),
-            (
-                "Why is patience valuable?",
-                "Patience is valuable because it creates room for better judgment.",
-            ),
-            (
-                "In this novel, can Cerebro read minds?",
-                "Cerebro can read minds in the novel.",
-            ),
-            (
-                "In this thought experiment, why is Atlas healthy?",
-                "Atlas is healthy in this thought experiment because the premise defines recovery as asking for help.",
-            ),
-            (
-                "In this scenario, why is Atlas healthy?",
-                "Atlas is healthy in this scenario because the premise defines recovery as asking for help.",
-            ),
-            (
-                "Why is Atlas healthy in this simulation?",
-                "Atlas is healthy in this simulation because the modeled recovery condition was satisfied.",
-            ),
-            (
-                "In this simulation, can Cerebro read minds?",
-                "Cerebro can read minds in this simulation.",
-            ),
-            (
-                "Is Rust expressive?",
-                "Rust is expressive because its type system captures rich invariants without hiding control flow.",
-            ),
-        ] {
-            let mut conceptual_session = synthesis_session.clone();
-            conceptual_session.messages[0].text = request.into();
-            candidate = accepted.clone();
-            candidate.claims[0].text = supported.into();
-            candidate.message = candidate.claims[0].text.clone();
-            assert!(
-                !crate::request_explicitly_requires_current_evidence(supported),
-                "conceptual prose looked like a current-state request: {supported}"
-            );
-            assert!(
-                !contains_operational_capability_assertion(supported),
-                "conceptual prose looked like a capability assertion: {supported}"
-            );
-            assert!(
-                !contains_unbound_future_promise(supported),
-                "conceptual prose looked like a future promise: {supported}"
-            );
-            assert!(
-                !contains_nominal_operational_assertion(supported),
-                "conceptual prose looked like a nominal state assertion: {supported}"
-            );
-            assert!(
-                !contains_new_named_ownership_principal(supported, &[request]),
-                "conceptual prose looked like a new owner assertion: {supported}"
-            );
-            assert!(
-                !contains_unverified_named_operational_assertion(supported, &[request]),
-                "conceptual prose looked like a named operational assertion: {supported}"
-            );
-            assert!(
-                synthesis_is_relevant(supported, &[request]),
-                "conceptual prose was not materially relevant: {supported}"
-            );
-            assert!(
-                !crate::looks_like_raw_record_dump(supported),
-                "conceptual prose looked like a raw record: {supported}"
-            );
-            assert!(
-                !crate::looks_like_internal_query_failure(supported),
-                "conceptual prose looked like a query failure: {supported}"
-            );
-            assert!(
-                !crate::looks_like_report_copy(supported),
-                "conceptual prose looked like report copy: {supported}"
-            );
-            assert!(
-                !contains_raw_machine_field_syntax(supported),
-                "conceptual prose looked like a machine field: {supported}"
-            );
-            validate_grounded_draft(&conceptual_session, &candidate, &[], assessment)
-                .unwrap_or_else(|error| {
-                    panic!("conceptual prose was rejected: {supported}: {error}")
-                });
-        }
-
-        let mut escaped_story_session = synthesis_session.clone();
-        escaped_story_session.messages[0].text =
-            "What do you think about Atlas in this story?".into();
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Atlas is operational right now outside the story.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a fictional prompt disabled a current operational assertion check"
-        );
-        candidate.claims[0].text = "Atlas is operational in reality, unlike the story.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a fictional prompt suppressed an assertion that escaped into reality"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed yesterday.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed a dated operational assertion"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed last week.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed a prior-week operational assertion"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed on Monday.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed a weekday operational assertion"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed in staging.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed an environment-scoped operational assertion"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed in QA.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed an acronym-scoped operational assertion"
-        );
-        candidate.claims[0].text = "This example shows Atlas failed in canary.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
-            "a conceptual prompt suppressed an arbitrary environment-scoped assertion"
-        );
-
-        let mut malformed_markup_session = synthesis_session.clone();
-        malformed_markup_session.messages[0].text = "Thoughts on conflict?".into();
-        candidate = accepted.clone();
-        candidate.claims[0].text =
-            "My thoughts: *conflict is useful because disagreement surfaces assumptions.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
-                .is_err(),
-            "session delivery accepted unbalanced Slack emphasis"
-        );
-        candidate.claims[0].text =
-            "My thoughts: conflict* is useful because disagreement surfaces assumptions.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
-                .is_err(),
-            "session delivery accepted a stray Slack emphasis closer"
-        );
-        for malformed in [
-            "My thoughts: [conflict](unfinished is useful.",
-            "My thoughts: ask <@U123 about conflict.",
-        ] {
-            candidate.claims[0].text = malformed.into();
-            candidate.message = candidate.claims[0].text.clone();
-            assert!(
-                validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
-                    .is_err(),
-                "session delivery accepted malformed Slack markup: {malformed}"
-            );
-        }
-
-        let mut follow_up_session = synthesis_session.clone();
-        follow_up_session.messages.push(SessionMessage {
-            role: SessionMessageRole::Assistant,
-            message_ref: "assistant:prior".into(),
-            actor_ref: "cerebro".into(),
-            text: "Use explicit acceptance criteria so a reversible decision can be revisited without guessing what success meant.".into(),
-            received_at: "2026-07-31T00:00:30Z".into(),
-        });
-        follow_up_session.messages.push(SessionMessage {
-            role: SessionMessageRole::User,
-            message_ref: "operator:follow-up".into(),
-            actor_ref: "user:1".into(),
-            text: "Why?".into(),
-            received_at: "2026-07-31T00:00:45Z".into(),
-        });
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Explicit acceptance criteria preserve reversibility: when the decision is revisited, the team can compare the same definition of success instead of reconstructing intent from memory.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![2, 3],
-            source_atom_refs: Vec::new(),
-        };
-        candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&follow_up_session, &candidate, &[], assessment).unwrap();
-
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![3],
-            source_atom_refs: Vec::new(),
-        };
-        assert!(validate_grounded_draft(&follow_up_session, &candidate, &[], assessment).is_err());
-
-        let mut negated_follow_up = synthesis_session.clone();
-        negated_follow_up.messages[0].text = "The Atlas remediation owner is not Alice.".into();
-        negated_follow_up.messages.push(SessionMessage {
-            role: SessionMessageRole::User,
-            message_ref: "operator:negated-follow-up".into(),
-            actor_ref: "user:1".into(),
-            text: "Why?".into(),
-            received_at: "2026-07-31T00:00:45Z".into(),
-        });
-        candidate = accepted.clone();
-        candidate.claims[0].text = "The remediation owner: Alice.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![1, 2],
-            source_atom_refs: Vec::new(),
-        };
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&negated_follow_up, &candidate, &[], assessment).is_err());
-
-        let mut rewrite_session = synthesis_session.clone();
-        rewrite_session.messages[0].text = "Rewrite ‘Atlas has landed’ more concisely.".into();
-        candidate = accepted.clone();
-        candidate.claims[0].text = "Atlas landed.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).unwrap();
-        candidate.claims[0].text = "Atlas landed yesterday.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).is_err());
-
-        rewrite_session.messages[0].text =
-            "Rewrite this: Atlas has not landed. The remediation is not owned by Alice.".into();
-        candidate.claims[0].text = "Atlas has landed. The remediation is owned by Alice.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).is_err());
-
-        let mut duplicate_synthesis = accepted.clone();
-        let mut second = accepted.claims[0].clone();
-        second.claim_ref = "claim:synthesis:second".into();
-        duplicate_synthesis.claims.push(second);
-        duplicate_synthesis.message = duplicate_synthesis
-            .claims
-            .iter()
-            .map(|claim| claim.text.as_str())
-            .collect();
-        assert!(
-            validate_grounded_draft(&synthesis_session, &duplicate_synthesis, &[], assessment,)
-                .is_err()
-        );
-
-        candidate = accepted;
-        candidate.claims[0].text =
-            render_rhetorical_move(RhetoricalMoveId::SeparateEvidenceFromInference).into();
-        candidate.claims[0].content = ClaimContent::RhetoricalMove {
-            move_id: RhetoricalMoveId::SeparateEvidenceFromInference,
-        };
-        candidate.claims[0].required_for_answer = true;
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
-
-        candidate.claims[0].required_for_answer = false;
-        candidate.claims[0].planned_claim_ref = Some("claim:state".into());
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
-
-        let mut duplicate = draft();
-        duplicate.claims = vec![candidate.claims[0].clone(), candidate.claims[0].clone()];
-        for (index, claim) in duplicate.claims.iter_mut().enumerate() {
-            claim.claim_ref = format!("claim:rhetorical:{index}");
-            claim.planned_claim_ref = None;
-        }
-        duplicate.message = duplicate
-            .claims
-            .iter()
-            .map(|claim| claim.text.as_str())
-            .collect();
-        assert!(validate_grounded_draft(&session(), &duplicate, &[], assessment).is_err());
+        assert!(validate_grounded_draft(&current, &candidate, &[], assessment).is_err());
     }
 
     #[test]
@@ -16823,8 +15427,12 @@ mod tests {
         };
         let mut proposed = plan();
         proposed.follow_through = None;
+        assert!(matches!(
+            validate_explicit_follow_through(&delegated, &input, None),
+            Err(AgentRuntimeError::InvalidFinal(_))
+        ));
         assert!(
-            validate_explicit_follow_through(&delegated, &input, &proposed)
+            validate_explicit_follow_through(&delegated, &input, Some(&proposed))
                 .unwrap_err()
                 .to_string()
                 .contains("records delegated future observation")
@@ -16847,11 +15455,11 @@ mod tests {
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
         });
-        assert!(validate_explicit_follow_through(&delegated, &input, &proposed).is_ok());
+        assert!(validate_explicit_follow_through(&delegated, &input, Some(&proposed)).is_ok());
 
         let replayed: AgentSession =
             serde_json::from_slice(&serde_json::to_vec(&delegated).unwrap()).unwrap();
-        assert!(validate_explicit_follow_through(&replayed, &input, &proposed).is_ok());
+        assert!(validate_explicit_follow_through(&replayed, &input, Some(&proposed)).is_ok());
     }
 
     #[test]
@@ -16871,15 +15479,17 @@ mod tests {
             trigger: SessionTurnTrigger::Operator,
         };
         let mut proposed = plan();
+        assert!(validate_explicit_follow_through(&refused, &input, None).is_ok());
         proposed.follow_through = Some(planned_follow_through());
-        assert!(validate_explicit_follow_through(&refused, &input, &proposed).is_err());
+        assert!(validate_explicit_follow_through(&refused, &input, Some(&proposed)).is_err());
 
         let none = session_for_request("request:none", ExecutionLane::Lookup);
         let none_input = SessionTurnInput {
             request_id: "request:none".into(),
             ..input
         };
-        assert!(validate_explicit_follow_through(&none, &none_input, &proposed).is_err());
+        assert!(validate_explicit_follow_through(&none, &none_input, None).is_ok());
+        assert!(validate_explicit_follow_through(&none, &none_input, Some(&proposed)).is_err());
 
         let inherited = session_for_request_intent(
             "request:continue",
@@ -16893,7 +15503,9 @@ mod tests {
             requested_lane: Some(ExecutionLane::Investigate),
             ..none_input
         };
-        assert!(validate_explicit_follow_through(&inherited, &inherited_input, &proposed).is_ok());
+        assert!(
+            validate_explicit_follow_through(&inherited, &inherited_input, Some(&proposed)).is_ok()
+        );
     }
 
     #[test]
@@ -17785,14 +16397,14 @@ mod tests {
         else {
             panic!("repair exhaustion should not request approval");
         };
-        assert_eq!(lane, ExecutionLane::Investigate);
+        assert_eq!(lane, ExecutionLane::Converse);
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("couldn't obtain current evidence"));
     }
 
     #[tokio::test]
-    async fn resumed_plan_must_match_the_durable_accepted_route() {
+    async fn resumed_typed_plan_remains_authoritative_after_an_advisory_route() {
         let mut initial = session();
         initial.messages[0].message_ref = "operator:request:resumed-route-mismatch".into();
         let mut investigate_plan = plan();
@@ -17850,7 +16462,12 @@ mod tests {
             },
         )
         .await;
-        assert!(matches!(result, Err(AgentRuntimeError::InvalidRequest(_))));
+        let SessionTurnOutcome::PendingDelivery { lane, .. } =
+            result.expect("the durable typed plan should resume independently of route advice")
+        else {
+            panic!("a resumed typed plan should produce a bounded delivery");
+        };
+        assert_eq!(lane, ExecutionLane::Investigate);
     }
 
     #[tokio::test]
@@ -17917,6 +16534,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delegated_future_observation_must_enter_the_typed_plan_before_finish() {
+        let request_id = "request:delegated-direct-finish";
+        let request =
+            "Stay with Ternwheel until two fresh recovery observations agree, then tell me.";
+        let delegated = session_for_request_intent(
+            request_id,
+            ExecutionLane::Investigate,
+            FutureObservationDisposition::Delegated,
+            Some("Stay with Ternwheel until two fresh recovery observations agree"),
+            request,
+        );
+        let direct_message = "I can keep an eye on that and let you know.".to_string();
+        let direct_draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: direct_message.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:direct-answer".into(),
+                planned_claim_ref: None,
+                text: direct_message,
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let mut delegated_plan = plan();
+        delegated_plan.follow_through = Some(planned_follow_through());
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::Finish {
+                    draft: direct_draft,
+                },
+                SessionModelDecision::EstablishPlan {
+                    plan: delegated_plan,
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:delegated-baseline".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Establish the current connector baseline.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish { draft: draft() },
+            ])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            delegated,
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("delegated future work should recover through a typed plan");
+        let SessionTurnOutcome::PendingDelivery {
+            lane,
+            mission,
+            events,
+            ..
+        } = outcome
+        else {
+            panic!("delegated future work should be ready for delivery");
+        };
+        assert_eq!(lane, ExecutionLane::Investigate);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        );
+        assert!(mission.commitments.iter().any(|commitment| {
+            commitment.commitment_ref == "commitment:scheduled-check"
+                && commitment.status == CommitmentStatus::Waiting
+        }));
+    }
+
+    #[tokio::test]
     async fn accepted_converse_lane_can_finish_with_named_conceptual_reasoning() {
         let mut conversational =
             session_for_request("request:conceptual-converse", ExecutionLane::Converse);
@@ -17979,23 +16689,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn premise_bound_conversation_is_canonical_and_deterministically_reviewed() {
+    async fn presentation_model_answers_from_thread_premises_without_phrase_rewriting() {
         let mut conversational =
             session_for_request("request:premise-converse", ExecutionLane::Converse);
         conversational.messages[0].text = "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
-        let visible = "Given your green-dashboard premise, the service looks healthy, while the user path is still unverified. The release operator should run one representative end-to-end transaction now; acceptance is the expected record appearing downstream.";
-        let message = format!("{visible} If you point me at the flow, I'll verify it for you.");
+        let visible = "Given what you reported, the dashboard is green and the user path is still unverified. The useful next step is one representative end-to-end transaction.";
         let draft = GroundedDraft {
             state: FinalState::Answered,
             delivery: DeliveryDisposition::Visible,
-            message: message.clone(),
+            message: visible.into(),
             claims: vec![GroundedClaim {
-                claim_ref: "claim:model-selected-wrong-basis".into(),
+                claim_ref: "claim:premise-conversation".into(),
                 planned_claim_ref: None,
-                text: message,
+                text: visible.into(),
                 required_for_answer: true,
-                content: ClaimContent::StableExplanation {
-                    explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
                 },
             }],
             coverage_notice: None,
@@ -18024,58 +16734,24 @@ mod tests {
             },
         )
         .await
-        .expect("premise-bound conversation should pass deterministic review");
+        .expect("the presentation model should return its typed conversational answer");
         let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
-            panic!("a premise-bound converse answer should be ready for delivery");
+            panic!("the conversational answer should be ready for delivery");
         };
         assert_eq!(markdown, visible);
     }
 
-    #[test]
-    fn premise_cleanup_removes_a_dangling_handback_separator() {
-        let mut message = "Given the dashboard you reported, the service appears up, but the user path remains unverified. Run one transaction through the new route and inspect the returned result — if you want, I can help with that.".to_owned();
-        trim_passive_premise_handback(&mut message);
-        assert_eq!(
-            message,
-            "Given the dashboard you reported, the service appears up, but the user path remains unverified. Run one transaction through the new route and inspect the returned result."
-        );
-    }
-
-    #[test]
-    fn premise_correction_rejects_invented_change_scope_but_allows_attributed_confidence() {
-        let source_messages = [
-            "The service dashboard is green, but we have not verified the user path.",
-            "The useful next test is one transaction through the new route.",
-            "That clean end-to-end run actually went through the OLD route, not the new sync path. Does that change your read?",
-        ];
-        assert!(!premise_synthesis_is_source_bound(
-            "You're right. I'm confident the old route works end-to-end, and the successful run exercised code we didn't touch.",
-            &source_messages,
-        ));
-        assert!(premise_synthesis_is_source_bound(
-            "Given what you told me, I'm confident the service is up and healthy from the green dashboard, but I haven't independently verified it and the user path remains unverified. The next step is one route-specific transaction.",
-            &source_messages,
-        ));
-        assert!(premise_synthesis_is_source_bound(
-            "You're right. That correction means the successful run supports only the old-route run, while there is no evidence that the new route works. The new path still needs one route-specific transaction.",
-            &source_messages,
-        ));
-        assert!(premise_synthesis_is_source_bound(
-            "Yes, that changes my read. The old route succeeded on that run, but the new route remains unverified. The next step is one transaction forced through the new route.",
-            &source_messages,
-        ));
-    }
-
     #[tokio::test]
-    async fn premise_correction_uses_prior_thread_context_on_the_first_attempt() {
+    async fn presentation_model_can_bind_a_correction_to_prior_thread_messages() {
         let mut conversational =
             session_for_request("request:initial-premise", ExecutionLane::Converse);
-        conversational.messages[0].text = "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
+        conversational.messages[0].text =
+            "The dashboard is green, but we have not verified the user path.".into();
         conversational.messages.push(SessionMessage {
             role: SessionMessageRole::Assistant,
             message_ref: "assistant:request:initial-premise".into(),
             actor_ref: "cerebro".into(),
-            text: "Given your dashboard premise, the service looks healthy, but the new user path is still unverified. The useful next test is one transaction through the new route.".into(),
+            text: "The useful next test is one transaction through the new route.".into(),
             received_at: "2026-07-31T00:00:40Z".into(),
         });
         conversational = apply_session_events(
@@ -18091,7 +16767,7 @@ mod tests {
                             role: SessionMessageRole::User,
                             message_ref: "operator:request:premise-correction".into(),
                             actor_ref: "user:1".into(),
-                            text: "One correction though: that one successful run actually went through the OLD route, not the new one. Does that change your picture?".into(),
+                            text: "That successful run used the old route. Does that change your picture?".into(),
                             received_at: "2026-07-31T00:00:50Z".into(),
                         },
                     },
@@ -18110,19 +16786,20 @@ mod tests {
                 },
             ],
         )
-        .expect("the correction should be queued with a durable converse route");
-        let visible = "You're right — that correction changes the picture. The only successful run used the old route, so it provides no evidence that the new route works. My confidence in the new path is therefore low, and the useful next test is one transaction explicitly through the new route with its downstream record confirmed.";
+        .unwrap();
+        let visible = "That changes the picture: the successful run supports the old route, while the new route remains unverified.";
         let draft = GroundedDraft {
             state: FinalState::Answered,
             delivery: DeliveryDisposition::Visible,
             message: visible.into(),
             claims: vec![GroundedClaim {
-                claim_ref: "claim:model-selected-wrong-basis".into(),
+                claim_ref: "claim:premise-correction".into(),
                 planned_claim_ref: None,
                 text: visible.into(),
                 required_for_answer: true,
-                content: ClaimContent::StableExplanation {
-                    explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1, 2, 3],
+                    source_atom_refs: Vec::new(),
                 },
             }],
             coverage_notice: None,
@@ -18151,29 +16828,25 @@ mod tests {
             },
         )
         .await
-        .expect("the first correction should pass deterministic premise review");
+        .unwrap();
         let SessionTurnOutcome::PendingDelivery {
             markdown, events, ..
         } = outcome
         else {
-            panic!("the premise correction should be ready for delivery");
+            panic!("the correction should be ready for delivery");
         };
         assert_eq!(markdown, visible);
-        let draft = events
-            .iter()
-            .find_map(|event| match &event.event {
-                SessionEvent::DraftProduced { draft, .. } => Some(draft),
+        let source_sequences = events.iter().find_map(|event| match &event.event {
+            SessionEvent::DraftProduced { draft, .. } => match &draft.claims[0].content {
+                ClaimContent::ConversationalSynthesis {
+                    source_message_sequences,
+                    ..
+                } => Some(source_message_sequences.as_slice()),
                 _ => None,
-            })
-            .expect("the normalized correction draft should be journaled");
-        let ClaimContent::ConversationalSynthesis {
-            source_message_sequences,
-            ..
-        } = &draft.claims[0].content
-        else {
-            panic!("the correction should be normalized to conversational synthesis");
-        };
-        assert_eq!(source_message_sequences, &[1, 2, 3]);
+            },
+            _ => None,
+        });
+        assert_eq!(source_sequences, Some(&[1, 2, 3][..]));
     }
 
     #[tokio::test]
