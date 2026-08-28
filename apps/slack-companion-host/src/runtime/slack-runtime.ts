@@ -441,6 +441,15 @@ export class AssistantQuestionService {
         };
       } catch (error) {
         const state = error instanceof CerebroAskError ? error.sourceState : "unavailable";
+        if (state === "busy") {
+          await input.onProgress?.({
+            occurredAt: this.clock().toISOString(),
+            phase: "working",
+            sequence: 0,
+            status: "Queued behind the current thread task.",
+          });
+          throw error;
+        }
         return {
           pending: pendingOutcome({
             budgetMs: budget.latency_budget_ms,
@@ -626,7 +635,9 @@ export class AssistantQuestionService {
         };
       }
       this.recordSourceResult(false, Math.max(0, this.clock().getTime() - observedAt.getTime()));
-      const state = error instanceof CerebroAskError ? error.sourceState : "unavailable";
+      const state = error instanceof CerebroAskError && error.sourceState !== "busy"
+        ? error.sourceState
+        : "unavailable";
       const output = this.host.buildEvidenceFallback({
         evidence: [],
         gaps: [{
@@ -2692,6 +2703,8 @@ function continuationOnlyRequest(value: string): boolean {
 
 function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {
   switch (state) {
+    case "busy":
+      return "Wait for the active thread task to finish; this request remains queued.";
     case "not_configured":
       return "Configure the Cerebro read binding before retrying this question.";
     case "not_found":
@@ -2710,6 +2723,10 @@ function agentRuntimeFailureText(state: CerebroAskError["sourceState"]): string 
     detail: string;
     nextAction: string;
   }> = {
+    busy: {
+      detail: "The Slack thread already has an active agent turn.",
+      nextAction: "Wait for the active thread task to finish; this request remains queued.",
+    },
     not_configured: {
       detail: "The Rust agent runtime is not configured in this Slack environment, so no live check started.",
       nextAction: "Ask the Cerebro runtime owner to configure the Rust agent endpoint before retrying; repeated Slack retries will not help.",

@@ -2024,6 +2024,51 @@ test("Rust agent body timeout is reported as timed out", async () => {
   );
 });
 
+test("busy Rust agent turns remain queued for durable ingress retry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-busy-turn-"));
+  const progress: string[] = [];
+  try {
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        agentRuntimeUrl: "http://127.0.0.1:8091",
+        answerAuthority: testAnswerAuthority,
+        apiKey: "unused",
+        baseUrl: "https://legacy.example.com",
+        fetchImpl: async () => Response.json(
+          {
+            code: "agent_turn_busy",
+            message: "The Slack thread already has an active agent turn.",
+          },
+          { status: 409 },
+        ),
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-08-27T20:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    await assert.rejects(
+      service.answer({
+        actorRef: "slack-user:U-ONE",
+        onProgress: async (update) => {
+          progress.push(update.status);
+        },
+        requestKey: "T-ONE:C-ONE:thread-one:event-busy",
+        text: "<@BOT> Check the latest connector state.",
+        threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+      }),
+      (error: unknown) =>
+        error instanceof CerebroAskError && error.sourceState === "busy",
+    );
+    assert.deepEqual(progress, ["Queued behind the current thread task."]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("Rust runtime failures give operators bounded state-specific recovery", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
