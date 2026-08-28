@@ -559,7 +559,7 @@ rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned
 	# floor over its pure logic below.
 	# Evaluation wire and deterministic black-box logic have explicit focused floors below.
 	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/action-store/src/lib\.rs|crates/agent-runtime/src/session\.rs|crates/cerebro-migrator/src/.*\.rs|crates/cerebro-platform/src/(generated/.*|main|oidc|rpc|slack_agent|slack_agent_eval|slack_agent_mcp|slack_agent_session|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres|page_publication|promotion_evidence_store)\.rs|crates/slack-agent-eval-wire/src/lib\.rs|crates/source-runtime-next/src/http\.rs|tools/policycataloggen/src/main\.rs|tools/slack-agent-blackbox/src/.*\.rs)$$' --fail-under-lines 90 --summary-only
-	$(CARGO) llvm-cov report -p cerebro-migrator --fail-under-lines 79 --summary-only
+	$(CARGO) llvm-cov report -p cerebro-migrator --fail-under-lines 86 --summary-only
 	$(CARGO) llvm-cov report -p cerebro-organizational-store --ignore-filename-regex '(^|/)crates/organizational-store/src/(lib|neo4j|postgres|page_publication|promotion_evidence_store)\.rs$$' --fail-under-lines 90 --summary-only
 	$(CARGO) llvm-cov report -p cerebro-agent-runtime --fail-under-lines 85 --summary-only
 	$(CARGO) llvm-cov report -p cerebro-slack-agent-eval-wire --fail-under-lines 65 --summary-only

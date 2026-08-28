@@ -53,8 +53,20 @@ fn ingests_repository_packages_and_condenses_import_cycles() {
         "a"
     );
     assert_eq!(
+        graph.packages()["github.com/writer/cerebro/a"].import_path(),
+        "github.com/writer/cerebro/a"
+    );
+    assert_eq!(
+        graph.packages()["github.com/writer/cerebro/a"].module_path(),
+        Some(MODULE)
+    );
+    assert_eq!(
         graph.packages()["github.com/writer/cerebro/a"].imports(),
         &["github.com/writer/cerebro/b"]
+    );
+    assert_eq!(
+        graph.packages()["github.com/writer/cerebro/b"].source_files(),
+        &["b.go", "b_test.go"]
     );
 
     let condensed = graph.condense().unwrap();
@@ -151,4 +163,57 @@ fn go_list_errors_fail_closed() {
             error: "missing generated package".to_owned(),
         }
     );
+}
+
+#[test]
+fn rejects_duplicate_and_empty_import_paths() {
+    let item = package("github.com/writer/cerebro/a", &[], &["a.go"]);
+    let duplicate = format!("{item}\n{item}");
+    assert!(matches!(
+        GoPackageGraph::from_go_list_json(duplicate.as_bytes(), Some(MODULE)),
+        Err(MigratorError::DuplicatePackage(package))
+            if package == "github.com/writer/cerebro/a"
+    ));
+
+    let empty = serde_json::json!({
+        "ImportPath":"",
+        "Module":{"Path":MODULE},
+        "GoFiles":["empty.go"]
+    })
+    .to_string();
+    assert!(matches!(
+        GoPackageGraph::from_go_list_json(empty.as_bytes(), Some(MODULE)),
+        Err(MigratorError::InvalidField {
+            field: "Go import path",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn normalizes_module_root_and_unscoped_package_paths() {
+    let module_root = package(MODULE, &[], &["main.go"]);
+    let graph = GoPackageGraph::from_go_list_json(module_root.as_bytes(), Some(MODULE)).unwrap();
+    assert_eq!(graph.packages()[MODULE].repository_path(), ".");
+
+    let unscoped = package("example.com/standalone", &[], &["main.go"]);
+    let graph = GoPackageGraph::from_go_list_json(unscoped.as_bytes(), None).unwrap();
+    assert_eq!(
+        graph.packages()["example.com/standalone"].repository_path(),
+        "example.com/standalone"
+    );
+
+    let nonportable = serde_json::json!({
+        "ImportPath":format!("{MODULE}//nested"),
+        "Module":{"Path":MODULE},
+        "GoFiles":["nested.go"]
+    })
+    .to_string();
+    assert!(matches!(
+        GoPackageGraph::from_go_list_json(nonportable.as_bytes(), Some(MODULE)),
+        Err(MigratorError::InvalidField {
+            field: "Go import path",
+            ..
+        })
+    ));
 }

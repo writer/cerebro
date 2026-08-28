@@ -183,3 +183,143 @@ impl From<serde_json::Error> for MigratorError {
         Self::Json(error.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MigratorError;
+
+    #[test]
+    fn operator_errors_have_stable_actionable_messages() {
+        let cases = [
+            (
+                MigratorError::Io("disk full".to_owned()),
+                "I/O failed: disk full",
+            ),
+            (
+                MigratorError::Json("bad token".to_owned()),
+                "JSON decoding failed: bad token",
+            ),
+            (
+                MigratorError::Canonicalization("unsupported value".to_owned()),
+                "canonical JSON encoding failed: unsupported value",
+            ),
+            (
+                MigratorError::InvalidField {
+                    field: "unit id",
+                    reason: "must not be empty".to_owned(),
+                },
+                "invalid unit id: must not be empty",
+            ),
+            (
+                MigratorError::DigestMismatch {
+                    expected: "sha256:expected".to_owned(),
+                    actual: "sha256:actual".to_owned(),
+                },
+                "content digest mismatch: expected sha256:expected, computed sha256:actual",
+            ),
+            (
+                MigratorError::DuplicatePackage("example/pkg".to_owned()),
+                "duplicate Go package example/pkg",
+            ),
+            (
+                MigratorError::GoListPackage {
+                    package: "example/pkg".to_owned(),
+                    error: "not found".to_owned(),
+                },
+                "go list failed for example/pkg: not found",
+            ),
+            (
+                MigratorError::DuplicateUnit("source/example/items".to_owned()),
+                "duplicate migration unit source/example/items",
+            ),
+            (
+                MigratorError::MissingPrerequisite {
+                    unit: "source/example/items".to_owned(),
+                    prerequisite: "runtime/http".to_owned(),
+                },
+                "migration unit source/example/items requires missing prerequisite runtime/http",
+            ),
+            (
+                MigratorError::MixedBaseSha {
+                    expected: "aaaa".to_owned(),
+                    actual: "bbbb".to_owned(),
+                },
+                "migration units mix base revisions aaaa and bbbb",
+            ),
+            (
+                MigratorError::ScoreOverflow,
+                "migration objective score overflowed",
+            ),
+            (
+                MigratorError::GitCommand {
+                    operation: "resolve-head",
+                    error: "missing ref".to_owned(),
+                },
+                "Git operation resolve-head failed: missing ref",
+            ),
+            (
+                MigratorError::RepositoryRootMismatch {
+                    requested: "/requested".to_owned(),
+                    actual: "/actual".to_owned(),
+                },
+                "requested repository root /requested does not match Git root /actual",
+            ),
+            (
+                MigratorError::DirtyWorktree,
+                "repository worktree is not clean",
+            ),
+            (
+                MigratorError::BaseShaMismatch {
+                    expected: "aaaa".to_owned(),
+                    actual: "bbbb".to_owned(),
+                },
+                "manifest base commit aaaa does not match checkout HEAD bbbb",
+            ),
+            (
+                MigratorError::ManifestIneligible,
+                "deletion manifest is not deletion-eligible",
+            ),
+            (
+                MigratorError::UnsupportedDeletionTarget("symbol".to_owned()),
+                "unsupported deletion target class symbol",
+            ),
+            (
+                MigratorError::InvalidDeletionTarget {
+                    path: "internal/link.go".to_owned(),
+                    reason: "symbolic link".to_owned(),
+                },
+                "invalid deletion target internal/link.go: symbolic link",
+            ),
+            (
+                MigratorError::FileDigestMismatch {
+                    path: "internal/source.go".to_owned(),
+                    expected: "sha256:expected".to_owned(),
+                    actual: "sha256:actual".to_owned(),
+                },
+                "deletion target internal/source.go digest mismatch: expected sha256:expected, computed sha256:actual",
+            ),
+            (
+                MigratorError::DeletionFailed {
+                    path: "internal/source.go".to_owned(),
+                    error: "permission denied".to_owned(),
+                },
+                "failed to delete exact file internal/source.go: permission denied",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn dependency_errors_preserve_their_bounded_messages() {
+        let io_error: MigratorError = std::io::Error::other("read failed").into();
+        assert_eq!(io_error, MigratorError::Io("read failed".to_owned()));
+
+        let json_error = serde_json::from_slice::<serde_json::Value>(b"{").unwrap_err();
+        let expected = json_error.to_string();
+        let migrator_error: MigratorError = json_error.into();
+        assert_eq!(migrator_error, MigratorError::Json(expected));
+    }
+}
