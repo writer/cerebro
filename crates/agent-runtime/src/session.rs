@@ -2425,7 +2425,6 @@ async fn run_session_turn_recorded_at(
             return repair_fallback_outcome(
                 &session,
                 &input,
-                &trigger,
                 plan.as_ref(),
                 &observations,
                 accepted_at,
@@ -2472,7 +2471,6 @@ async fn run_session_turn_recorded_at(
                     return repair_fallback_outcome(
                         &session,
                         &input,
-                        &trigger,
                         plan.as_ref(),
                         &observations,
                         accepted_at,
@@ -3002,7 +3000,6 @@ async fn run_session_turn_recorded_at(
     repair_fallback_outcome(
         &session,
         &input,
-        &trigger,
         plan.as_ref(),
         &observations,
         accepted_at,
@@ -3023,7 +3020,6 @@ fn turn_outcome_lane(input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> E
 async fn repair_fallback_outcome(
     session: &AgentSession,
     input: &SessionTurnInput,
-    trigger: &SessionTurnTrigger,
     plan: Option<&ResearchPlan>,
     observations: &[ToolObservation],
     accepted_at: OffsetDateTime,
@@ -3032,6 +3028,7 @@ async fn repair_fallback_outcome(
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
     let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
         .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+    let trigger = &input.trigger;
     let mut mission = session.mission.clone();
     let uncertain_effect = observations.iter().find_map(|observation| {
         if observation.descriptor.authority_class != ToolAuthorityClass::Actuate
@@ -5316,6 +5313,7 @@ fn has_effect_authorization(
         .is_some_and(|authorization| !consumed.contains(&authorization.approval_ref))
 }
 
+#[cfg(test)]
 fn validate_effect_closure(
     observations: &[ToolObservation],
     draft: &GroundedDraft,
@@ -16520,7 +16518,6 @@ mod tests {
                 requested_lane: None,
                 trigger: trigger.clone(),
             },
-            &trigger,
             Some(&plan),
             std::slice::from_ref(&observation),
             test_turn_time(),
@@ -17443,7 +17440,6 @@ mod tests {
         let outcome = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[failed.clone()],
             test_turn_time(),
@@ -17488,7 +17484,6 @@ mod tests {
         let mixed = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[supported.clone(), failed.clone()],
             test_turn_time(),
@@ -17520,7 +17515,6 @@ mod tests {
         let mixed_same_subject = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[same_subject, failed.clone()],
             test_turn_time(),
@@ -17568,7 +17562,6 @@ mod tests {
             let outcome = repair_fallback_outcome(
                 &session(),
                 &input,
-                &input.trigger,
                 None,
                 &observations,
                 test_turn_time(),
@@ -17604,7 +17597,6 @@ mod tests {
         let effect = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[failed_effect],
             test_turn_time(),
@@ -17644,7 +17636,6 @@ mod tests {
         let error = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[supported],
             accepted_at,
@@ -17687,7 +17678,6 @@ mod tests {
         let outcome = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[runtime],
             test_turn_time(),
@@ -17753,7 +17743,6 @@ mod tests {
         let outcome = repair_fallback_outcome(
             &session(),
             &input,
-            &input.trigger,
             None,
             &[first, latest],
             test_turn_time(),
@@ -17801,7 +17790,6 @@ mod tests {
             repair_fallback_outcome(
                 &exact,
                 &input,
-                &input.trigger,
                 None,
                 &[supported],
                 test_turn_time(),
@@ -17907,7 +17895,6 @@ mod tests {
                 requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
-            &SessionTurnTrigger::Operator,
             Some(&proposed),
             &[baseline],
             test_turn_time(),
