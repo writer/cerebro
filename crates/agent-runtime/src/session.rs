@@ -3064,14 +3064,21 @@ async fn repair_fallback_outcome(
             {
                 return None;
             }
-            let atom_ref = observation
-                .result
-                .evidence
-                .iter()
-                .flat_map(|evidence| &evidence.atoms)
-                .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
-                .atom_ref
-                .clone();
+            let atom_ref = observation.result.evidence.iter().find_map(|evidence| {
+                if !evidence_record_supports_current_draft(
+                    evidence,
+                    observation.result.state,
+                    FinalState::Partial,
+                    accepted_at,
+                ) {
+                    return None;
+                }
+                evidence
+                    .atoms
+                    .iter()
+                    .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))
+                    .map(|atom| atom.atom_ref.clone())
+            })?;
             Some((observation.result.summary.trim().to_owned(), atom_ref))
         })
         .collect::<Vec<_>>();
@@ -17613,7 +17620,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repair_fallback_rejects_evidence_expired_before_host_acceptance() {
+    async fn repair_fallback_excludes_evidence_expired_before_host_acceptance() {
         let mut supported = recovering_observation_with_tool_outcome("2026-07-31T00:02:00Z");
         supported.recorded_at = Some("2026-07-31T00:01:45Z".into());
         for evidence in &mut supported.result.evidence {
@@ -17633,7 +17640,7 @@ mod tests {
         };
         let accepted_at = OffsetDateTime::parse("2026-07-31T00:02:01Z", &Rfc3339).unwrap();
 
-        let error = repair_fallback_outcome(
+        let outcome = repair_fallback_outcome(
             &session(),
             &input,
             None,
@@ -17643,8 +17650,20 @@ mod tests {
             &NoopSessionJournal,
         )
         .await
-        .expect_err("expired fallback evidence must not be published");
-        assert!(matches!(error, AgentRuntimeError::InvalidFinal(_)));
+        .expect("expired support should produce a safe coverage-only fallback");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            evidence_atom_refs,
+            ..
+        } = outcome
+        else {
+            panic!("a coverage-only fallback must remain visible")
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(!markdown.contains("recovering"));
+        assert!(markdown.contains("No current authoritative observation was obtained"));
+        assert!(evidence_atom_refs.is_empty());
     }
 
     #[tokio::test]
