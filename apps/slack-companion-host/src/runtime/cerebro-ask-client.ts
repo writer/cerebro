@@ -106,6 +106,7 @@ export class CerebroAskError extends Error {
   constructor(
     public readonly sourceState: AssistantTurnSourceGapState,
     message: string,
+    public readonly turnCommitState: "not_committed" | "unknown" = "unknown",
   ) {
     super(message);
     this.name = "CerebroAskError";
@@ -249,9 +250,19 @@ export class CerebroAskClient {
       await progressTask;
     }
     if (!response.ok) {
+      let turnCommitState: CerebroAskError["turnCommitState"] = "unknown";
+      try {
+        const failure = await response.clone().json() as { code?: unknown };
+        if (failure.code === "followup_acceptance_not_committed") {
+          turnCommitState = "not_committed";
+        }
+      } catch {
+        // An intermediary or malformed response cannot prove whether Rust committed.
+      }
       throw new CerebroAskError(
         response.status === 409 ? "busy" : sourceState(response.status),
         `The Rust agent failed with status ${response.status}.`,
+        turnCommitState,
       );
     }
     let outcome: RustAgentTurnOutcome;

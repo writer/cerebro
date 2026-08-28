@@ -208,6 +208,7 @@ export interface AssistantQuestionResult {
   };
   pending: Omit<PendingAssistantOutcome, "delivered_message_ts">;
   proactiveFollowup?: RustProactiveFollowupOffer;
+  followupAcceptanceCommitState?: "not_committed" | "unknown";
   text: string;
   verifiedTurn?: {
     answer: string;
@@ -470,6 +471,15 @@ export class AssistantQuestionService {
           throw error;
         }
         return {
+          ...(input.followupAcceptance === undefined
+            ? {}
+            : {
+                followupAcceptanceCommitState:
+                  error instanceof CerebroAskError
+                  && error.turnCommitState === "not_committed"
+                    ? "not_committed" as const
+                    : "unknown" as const,
+              }),
           pending: pendingOutcome({
             budgetMs: budget.latency_budget_ms,
             executionLane: "investigate",
@@ -1656,36 +1666,53 @@ export async function handleSlackMention(input: {
     });
     deliveredMessageTs = progress.ts;
     await input.leaseGuard?.();
-    const result = await input.questions.answer({
-      actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
-      contextScopeRef,
-      ...(followupAcceptance === undefined ? {} : { followupAcceptance }),
-      requestKey,
-      scratchpadContext,
-      threadContext,
-      text: input.event.text,
-      threadRef: scratchpadRef,
-      ...(input.priorDeliveryAttempt
-        ? {}
-        : {
-            onProgress: async (update: RustAgentProgressUpdate) => {
-              await input.leaseGuard?.();
-              await input.client.chat.update({
-                channel: input.event.channel,
-                text: formatEnvironmentMessage(input.config, update.status),
-                ts: deliveredMessageTs,
-              });
-            },
-          }),
-      ...(scratchpad?.working_state === undefined
-        ? {}
-        : { workingState: scratchpad.working_state }),
-    });
+    let result: AssistantQuestionResult;
+    try {
+      result = await input.questions.answer({
+        actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
+        contextScopeRef,
+        ...(followupAcceptance === undefined ? {} : { followupAcceptance }),
+        requestKey,
+        scratchpadContext,
+        threadContext,
+        text: input.event.text,
+        threadRef: scratchpadRef,
+        ...(input.priorDeliveryAttempt
+          ? {}
+          : {
+              onProgress: async (update: RustAgentProgressUpdate) => {
+                await input.leaseGuard?.();
+                await input.client.chat.update({
+                  channel: input.event.channel,
+                  text: formatEnvironmentMessage(input.config, update.status),
+                  ts: deliveredMessageTs,
+                });
+              },
+            }),
+        ...(scratchpad?.working_state === undefined
+          ? {}
+          : { workingState: scratchpad.working_state }),
+      });
+    } catch (error) {
+      if (
+        followupAcceptance
+        && error instanceof CerebroAskError
+        && error.turnCommitState === "not_committed"
+      ) {
+        await fenceMutation();
+        await input.followups?.releaseAcceptance(followupAcceptance);
+      }
+      throw error;
+    }
     if (followupAcceptance) {
       if (result.acceptedFollowupRef !== followupAcceptance.offer.offer_ref) {
-        await input.followups?.releaseAcceptance(followupAcceptance);
+        if (result.followupAcceptanceCommitState === "not_committed") {
+          await fenceMutation();
+          await input.followups?.releaseAcceptance(followupAcceptance);
+        }
         throw new Error("The Rust agent did not acknowledge the exact proactive follow-up.");
       }
+      await fenceMutation();
       await input.followups?.acknowledgeAcceptance(
         followupAcceptance,
         result.acceptedFollowupRef,

@@ -126,26 +126,45 @@ export class FileProactiveFollowupStore {
       const attemptedAt = Date.parse(input.attemptedAt);
       const normalizedAction = normalizeAction(input.operatorText);
       if (!normalizedAction) return undefined;
-      const current = (await this.list()).reverse().find((record) =>
+      const records = await this.list();
+      const matchingClaim = records.filter((record) =>
         record.offer.thread_ref === input.threadRef
         && normalizeAction(record.offer.action) === normalizedAction
-        && record.state !== "prepared"
+        && (record.state === "accepting" || record.state === "accepted")
+        && record.acceptance?.actorRef === input.actorRef
+        && record.acceptance.ingressRequestKey === input.ingressRequestKey
       );
-      if (!current) return undefined;
-      const createdAt = Date.parse(current.offer.created_at);
-      const expiresAt = Date.parse(current.offer.expires_at);
-      if (attemptedAt < createdAt || attemptedAt > expiresAt) return undefined;
-      if (current.state === "accepting" || current.state === "accepted") {
-        if (
-          current.acceptance?.actorRef !== input.actorRef
-          || current.acceptance.ingressRequestKey !== input.ingressRequestKey
-        ) return undefined;
+      if (matchingClaim.length > 1) {
+        throw new Error("The proactive follow-up acceptance identity is ambiguous.");
+      }
+      const replay = matchingClaim[0];
+      if (replay?.acceptance) {
+        const createdAt = Date.parse(replay.offer.created_at);
+        const expiresAt = Date.parse(replay.offer.expires_at);
+        const claimedAt = Date.parse(replay.acceptance.attemptedAt);
+        if (claimedAt < createdAt || claimedAt > expiresAt) {
+          throw new Error("The proactive follow-up acceptance is outside the offer window.");
+        }
         return {
-          claim: current.acceptance,
-          offer: current.offer,
-          recordRef: current.recordRef,
+          claim: replay.acceptance,
+          offer: replay.offer,
+          recordRef: replay.recordRef,
         };
       }
+      const current = records
+        .filter((record) =>
+          record.offer.thread_ref === input.threadRef
+          && normalizeAction(record.offer.action) === normalizedAction
+          && record.state === "delivered"
+          && attemptedAt >= Date.parse(record.offer.created_at)
+          && attemptedAt <= Date.parse(record.offer.expires_at)
+        )
+        .sort((left, right) =>
+          Date.parse(right.delivery!.deliveredAt) - Date.parse(left.delivery!.deliveredAt)
+          || Date.parse(right.offer.created_at) - Date.parse(left.offer.created_at)
+          || right.recordRef.localeCompare(left.recordRef)
+        )[0];
+      if (!current) return undefined;
       const claim: ProactiveFollowupAcceptanceClaim = {
         actorRef: input.actorRef,
         attemptedAt: input.attemptedAt,
