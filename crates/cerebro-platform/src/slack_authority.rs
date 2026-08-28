@@ -445,6 +445,7 @@ async fn run_turn_route(
             }),
         )
     })?;
+    let followup_acceptance = request.followup_acceptance.is_some();
     let mut boundary_receipt = TurnBoundaryReceipt::start(&request.request_id);
     match agent.run(request).await {
         Ok(outcome) => {
@@ -460,7 +461,7 @@ async fn run_turn_route(
             runtime
                 .agent_turn_failures_total
                 .fetch_add(1, Ordering::Relaxed);
-            Err(agent_error(error))
+            Err(agent_turn_error(error, followup_acceptance))
         }
     }
 }
@@ -481,6 +482,15 @@ fn outcome_tool_call_count(outcome: &AgentTurnOutcome) -> u64 {
 }
 
 fn agent_error(error: AgentRuntimeError) -> (StatusCode, Json<ErrorResponse>) {
+    agent_turn_error(error, false)
+}
+
+fn agent_turn_error(
+    error: AgentRuntimeError,
+    followup_acceptance: bool,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let followup_rejected_before_commit =
+        followup_acceptance && !matches!(&error, AgentRuntimeError::ModelUnavailable(_));
     if matches!(
         &error,
         AgentRuntimeError::InvalidRequest(message)
@@ -489,7 +499,11 @@ fn agent_error(error: AgentRuntimeError) -> (StatusCode, Json<ErrorResponse>) {
         return (
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: "agent_turn_busy",
+                code: if followup_rejected_before_commit {
+                    "followup_acceptance_not_committed"
+                } else {
+                    "agent_turn_busy"
+                },
                 message: "The Slack thread already has an active agent turn.".to_owned(),
             }),
         );
@@ -501,7 +515,15 @@ fn agent_error(error: AgentRuntimeError) -> (StatusCode, Json<ErrorResponse>) {
     (
         status,
         Json(ErrorResponse {
-            code: "agent_turn_failed",
+            // Validation failures occur before append_operator_finalized and
+            // prove no acceptance commit. Store failures remain unknown: a
+            // PostgreSQL COMMIT can succeed even when its acknowledgement is
+            // lost, and the exact request must reconcile that state by replay.
+            code: if followup_rejected_before_commit {
+                "followup_acceptance_not_committed"
+            } else {
+                "agent_turn_failed"
+            },
             message: error.to_string(),
         }),
     )
@@ -715,6 +737,28 @@ mod tests {
             response.message,
             "The Slack thread already has an active agent turn."
         );
+    }
+
+    #[test]
+    fn failed_followup_acceptance_has_an_explicit_no_commit_state() {
+        let (status, Json(response)) = agent_turn_error(
+            AgentRuntimeError::InvalidRequest("offer expired".to_owned()),
+            true,
+        );
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(response.code, "followup_acceptance_not_committed");
+    }
+
+    #[test]
+    fn unavailable_followup_acceptance_preserves_unknown_commit_state() {
+        let (status, Json(response)) = agent_turn_error(
+            AgentRuntimeError::ModelUnavailable("commit acknowledgement lost".to_owned()),
+            true,
+        );
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.code, "agent_turn_failed");
     }
 
     #[tokio::test]

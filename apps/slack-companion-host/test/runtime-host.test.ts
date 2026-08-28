@@ -12,9 +12,12 @@ import {
   CerebroAskClient,
   CerebroAskError,
   type RustPendingWakeDelivery,
+  type RustProactiveFollowupOffer,
 } from "../src/runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
+import { ProactiveFollowupCoordinator } from "../src/runtime/proactive-followup.js";
+import { FileProactiveFollowupStore } from "../src/runtime/proactive-followup-store.js";
 import { FileSlackThreadRouteStore } from "../src/runtime/slack-thread-route-store.js";
 import {
   FileSlackIngressQueue,
@@ -44,7 +47,11 @@ import {
   slackDeliveryReferences,
   splitSlackAnswerParts,
 } from "../src/runtime/slack-runtime.js";
-import { decodeSlackActionEnvelope } from "@writer/cerebro-slack-companion";
+import {
+  decodeSlackActionEnvelope,
+  slackScratchpadAuthorRef,
+  slackThreadScratchpadRef,
+} from "@writer/cerebro-slack-companion";
 
 async function withIngressExecution<T>(
   ingress: FileSlackIngressQueue,
@@ -3865,6 +3872,117 @@ test("a multi-part answer binds every part under one request and recovers on ret
   }
 });
 
+test("a definitive Rust follow-up rejection releases the claim for a new ingress", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-followup-runtime-"));
+  try {
+    const fixture = await slackFollowupAcceptanceTestFixture(root);
+    const questions = fixture.questions(async () => Response.json({
+      code: "followup_acceptance_not_committed",
+      message: "The offer was rejected before commit.",
+    }, { status: 422 }));
+
+    await assert.rejects(
+      handleSlackMention({
+        client: fixture.client,
+        config: fixture.config,
+        event: fixture.event,
+        followups: fixture.followups,
+        host: fixture.host,
+        outcomes: fixture.outcomes,
+        questions,
+      }),
+      /did not acknowledge/u,
+    );
+    assert.equal((await fixture.store.list())[0]?.state, "delivered");
+    assert.ok(await fixture.followups.beginAcceptance({
+      actorRef: slackScratchpadAuthorRef(fixture.event.teamId, fixture.event.userId),
+      ingressRequestKey: "T-ONE:C-ONE:1710000000.000001:1710000000.000004",
+      operatorText: fixture.event.text,
+      threadRef: fixture.offer.thread_ref,
+    }), "a new Slack ingress must be able to retry after the definite failure");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("an ambiguous Rust timeout retains the exact ingress claim after expiry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-followup-uncertain-"));
+  try {
+    const fixture = await slackFollowupAcceptanceTestFixture(root);
+    const questions = fixture.questions(async () => {
+      throw new Error("connection lost after dispatch");
+    });
+    await assert.rejects(handleSlackMention({
+      client: fixture.client,
+      config: fixture.config,
+      event: fixture.event,
+      followups: fixture.followups,
+      host: fixture.host,
+      outcomes: fixture.outcomes,
+      questions,
+    }), /did not acknowledge/u);
+    const accepting = (await fixture.store.list())[0];
+    assert.equal(accepting?.state, "accepting");
+
+    fixture.setNow("2026-08-28T08:00:00.001Z");
+    assert.deepEqual(await fixture.followups.beginAcceptance({
+      actorRef: slackScratchpadAuthorRef(fixture.event.teamId, fixture.event.userId),
+      ingressRequestKey: fixture.requestKey,
+      operatorText: fixture.event.text,
+      threadRef: fixture.offer.thread_ref,
+    }), {
+      claim: accepting!.acceptance,
+      offer: fixture.offer,
+      recordRef: accepting!.recordRef,
+    });
+    assert.equal(await fixture.followups.beginAcceptance({
+      actorRef: slackScratchpadAuthorRef(fixture.event.teamId, fixture.event.userId),
+      ingressRequestKey: `${fixture.requestKey}:different`,
+      operatorText: fixture.event.text,
+      threadRef: fixture.offer.thread_ref,
+    }), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("lease loss after Rust acknowledgement leaves the claim accepting", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-followup-fenced-"));
+  try {
+    const fixture = await slackFollowupAcceptanceTestFixture(root);
+    let leaseValid = true;
+    const questions = fixture.questions(async () => {
+      leaseValid = false;
+      return Response.json({
+        accepted_followup_ref: fixture.offer.offer_ref,
+        evidence_refs: [],
+        final_state: "answered",
+        lane: "investigate",
+        markdown: "I’ll check again at 2026-08-28T08:30:00Z.",
+        outcome: "pending_delivery",
+        proactive_followup_offer: null,
+        working_state: null,
+      });
+    });
+    await assert.rejects(handleSlackMention({
+      client: fixture.client,
+      config: fixture.config,
+      event: fixture.event,
+      followups: fixture.followups,
+      host: fixture.host,
+      leaseGuard: async () => {
+        if (!leaseValid) throw new Error("ingress lease lost");
+      },
+      outcomes: fixture.outcomes,
+      priorDeliveryAttempt: true,
+      questions,
+    }), /ingress lease lost/u);
+    assert.equal((await fixture.store.list())[0]?.state, "accepting");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("a first Slack delivery posts without scanning thread history", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-first-delivery-"));
   try {
@@ -4612,6 +4730,95 @@ function slackDeliveryTestFixture(root: string, options: { markdown?: string } =
     }),
   );
   return { config, event, host, outcomes, questions };
+}
+
+async function slackFollowupAcceptanceTestFixture(root: string) {
+  let now = new Date("2026-08-28T07:30:00.000Z");
+  const config = loadSlackRuntimeConfig({
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_AGENT_ENABLED: "true",
+    CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+    CEREBRO_SLACK_PRODUCTION: "false",
+    CEREBRO_TENANT_ID: "writer",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+  });
+  const event = {
+    botUserId: "U-BOT",
+    channel: "C-ONE",
+    eventTs: "1710000000.000002",
+    hasThreadContext: false,
+    teamId: "T-ONE",
+    text: "start this follow-up",
+    threadTs: "1710000000.000001",
+    userId: "U-ONE",
+  };
+  const requestKey = [
+    event.teamId,
+    event.channel,
+    event.threadTs,
+    event.eventTs,
+  ].join(":");
+  const outcomes = new FileOutcomeStore(root, { log: () => undefined });
+  const host = createAssistantTurnHost(outcomes);
+  const store = new FileProactiveFollowupStore(root);
+  const followups = new ProactiveFollowupCoordinator(store, () => now);
+  const offer: RustProactiveFollowupOffer = {
+    action: event.text,
+    action_key: "start_followup:runtime",
+    created_at: "2026-08-28T07:00:00.000Z",
+    expires_at: "2026-08-28T08:00:00.000Z",
+    grounding_refs: ["evidence://graph/current"],
+    offer_ref: `proactive-followup://sha256/${"a".repeat(64)}`,
+    schema_version: "proactive-followup-offer/v1",
+    tenant_id: "writer",
+    thread_ref: slackThreadScratchpadRef(event.teamId, event.channel, event.threadTs),
+    title: "Keep checking the missing evidence",
+    turn_ref: "agent-turn://slack-request-original",
+  };
+  const prepared = await followups.prepareDelivery(offer);
+  await followups.markDeliveredForTurn(prepared.sourceRequestId, {
+    deliveredAt: "2026-08-28T07:00:01.000Z",
+    deliveryRef: `slack-message://sha256/${"b".repeat(64)}`,
+    payloadDigest: `sha256:${"c".repeat(64)}`,
+  });
+  const client = {
+    chat: {
+      postMessage: async () => ({ ts: "1710000000.000003" }),
+      update: async () => undefined,
+    },
+    conversations: {
+      replies: async () => ({ messages: [] }),
+    },
+  };
+  return {
+    client,
+    config,
+    event,
+    followups,
+    host,
+    offer,
+    outcomes,
+    questions: (fetchImpl: typeof fetch) => new AssistantQuestionService(
+      host,
+      new CerebroAskClient({
+        agentRuntimeUrl: config.slackAnswerAuthorityUrl,
+        answerAuthority: testAnswerAuthority,
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl,
+        tenantId: "writer",
+      }),
+    ),
+    requestKey,
+    setNow: (value: string) => {
+      now = new Date(value);
+    },
+    store,
+  };
 }
 
 function assistantDeliveryMetadataFixture(

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
   CerebroAskClient,
+  CerebroAskError,
   type RustProactiveFollowupOffer,
 } from "../src/runtime/cerebro-ask-client.js";
 import { ProactiveFollowupCoordinator } from "../src/runtime/proactive-followup.js";
@@ -186,6 +188,109 @@ test("Rust refusal remains retryable and only its exact acknowledgement accepts"
   }
 });
 
+test("the original ingress replays accepting and accepted claims after expiry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-followup-expired-replay-"));
+  try {
+    let now = new Date("2026-08-28T07:30:00.000Z");
+    const store = new FileProactiveFollowupStore(root);
+    const coordinator = new ProactiveFollowupCoordinator(store, () => now);
+    const prepared = await store.prepare(offer());
+    await store.markDeliveredForTurn(prepared.sourceRequestId, {
+      deliveredAt: "2026-08-28T07:00:01.000Z",
+      deliveryRef: "slack-message://sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      payloadDigest: "sha256:9aa4c8c404f5a13282e0dd832b1d3add24e2cb4f8eb9d804d34f0aaf5a275020",
+    });
+    const accepting = await coordinator.beginAcceptance(acceptanceInput());
+    assert.ok(accepting);
+
+    now = new Date("2026-08-28T08:00:00.001Z");
+    assert.deepEqual(
+      await coordinator.beginAcceptance(acceptanceInput()),
+      accepting,
+      "the original ingress must recover its accepting claim after expiry",
+    );
+    assert.equal(
+      await coordinator.beginAcceptance({
+        ...acceptanceInput(),
+        ingressRequestKey: "T:C:thread:event-two",
+      }),
+      undefined,
+      "another ingress must not acquire an expired accepting offer",
+    );
+
+    await coordinator.acknowledgeAcceptance(accepting, offer().offer_ref);
+    assert.deepEqual(
+      await coordinator.beginAcceptance(acceptanceInput()),
+      accepting,
+      "the original ingress must recover its accepted claim after expiry",
+    );
+    assert.equal(
+      await coordinator.beginAcceptance({
+        ...acceptanceInput(),
+        ingressRequestKey: "T:C:thread:event-three",
+      }),
+      undefined,
+      "another ingress must not acquire an expired accepted offer",
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("same-action lookup uses the exact claim and newest delivery instead of hash order", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-followup-same-action-"));
+  try {
+    let now = new Date("2026-08-28T07:30:00.000Z");
+    const store = new FileProactiveFollowupStore(root);
+    const coordinator = new ProactiveFollowupCoordinator(store, () => now);
+    const offerRefs = [
+      `proactive-followup://sha256/${"a".repeat(64)}`,
+      `proactive-followup://sha256/${"b".repeat(64)}`,
+    ];
+    const byDescendingRecordRef = [...offerRefs].sort((left, right) =>
+      followupRecordRef(right).localeCompare(followupRecordRef(left))
+    );
+    const older = offer({
+      created_at: "2026-08-28T07:00:00.000Z",
+      expires_at: "2026-08-28T08:00:00.000Z",
+      offer_ref: byDescendingRecordRef[0]!,
+      turn_ref: "agent-turn://slack-request-older",
+    });
+    const newer = offer({
+      created_at: "2026-08-28T07:15:00.000Z",
+      expires_at: "2026-08-28T08:00:00.000Z",
+      offer_ref: byDescendingRecordRef[1]!,
+      turn_ref: "agent-turn://slack-request-newer",
+    });
+    assert.ok(
+      followupRecordRef(older.offer_ref) > followupRecordRef(newer.offer_ref),
+      "the older offer must sort first under the former reversed-hash lookup",
+    );
+    for (const [candidate, deliveredAt, deliveryByte] of [
+      [older, "2026-08-28T07:01:00.000Z", "d"],
+      [newer, "2026-08-28T07:16:00.000Z", "e"],
+    ] as const) {
+      const prepared = await store.prepare(candidate);
+      await store.markDeliveredForTurn(prepared.sourceRequestId, {
+        deliveredAt,
+        deliveryRef: `slack-message://sha256/${deliveryByte.repeat(64)}`,
+        payloadDigest: `sha256:${"f".repeat(64)}`,
+      });
+    }
+
+    const accepting = await coordinator.beginAcceptance(acceptanceInput());
+    assert.equal(accepting?.offer.offer_ref, newer.offer_ref);
+    now = new Date("2026-08-28T08:00:00.001Z");
+    assert.deepEqual(await coordinator.beginAcceptance(acceptanceInput()), accepting);
+    assert.equal(await coordinator.beginAcceptance({
+      ...acceptanceInput(),
+      ingressRequestKey: "T:C:thread:event-two",
+    }), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("the client sends the exact offer to Rust and requires a matching acknowledgement", async () => {
   const requests: Record<string, unknown>[] = [];
   const client = new CerebroAskClient({
@@ -223,6 +328,33 @@ test("the client sends the exact offer to Rust and requires a matching acknowled
   });
   assert.deepEqual(requests[0]!.capabilities, ["proactive_followup_offer/v1"]);
   assert.equal(result.acceptedFollowupRef, offer().offer_ref);
+});
+
+test("the client trusts only the explicit Rust no-commit failure code", async () => {
+  for (const [code, status, expected] of [
+    ["followup_acceptance_not_committed", 422, "not_committed"],
+    ["agent_turn_failed", 503, "unknown"],
+  ] as const) {
+    const client = new CerebroAskClient({
+      agentRuntimeUrl: "https://agent.example.com",
+      answerAuthority,
+      apiKey: "runtime-bound",
+      baseUrl: "https://cerebro.example.com",
+      fetchImpl: async () => Response.json({ code, message: "bounded failure" }, { status }),
+      tenantId: "writer",
+    });
+    await assert.rejects(client.runAgentTurn({
+      actorRef: "slack-user://operator",
+      assessmentAt: "2026-08-28T07:30:00.000Z",
+      followupAcceptance: offer(),
+      question: offer().action,
+      requestId: `slack-request-${status}`,
+      signal: new AbortController().signal,
+      threadRef: offer().thread_ref,
+    }), (error: unknown) =>
+      error instanceof CerebroAskError && error.turnCommitState === expected
+    );
+  }
 });
 
 test("the host rejects Rust offers outside the exact tenant, thread, or time contract", async () => {
@@ -293,4 +425,12 @@ function acceptanceInput(): {
     operatorText: "  START   this follow-up  ",
     threadRef: offer().thread_ref,
   };
+}
+
+function followupRecordRef(offerRef: string): string {
+  return `slack-proactive-followup://sha256/${createHash("sha256").update([
+    offer().tenant_id,
+    offer().thread_ref,
+    offerRef,
+  ].join("\n")).digest("hex")}`;
 }
