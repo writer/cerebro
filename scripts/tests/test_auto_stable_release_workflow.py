@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 AUTO_WORKFLOW = ROOT / ".github" / "workflows" / "auto-stable-release.yml"
 CANDIDATE_WORKFLOW = ROOT / ".github" / "workflows" / "cut-release.yml"
+RUST_GRAPH_WORKFLOW = ROOT / ".github" / "workflows" / "rust-graph-replacement.yml"
 
 
 class AutoStableReleaseWorkflowTest(unittest.TestCase):
@@ -62,6 +63,12 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
             proof.index('if [[ "${graph_runs}" == 0 ]]'),
             proof.index("gh workflow run rust-graph-replacement.yml"),
         )
+
+    def test_rust_graph_proof_has_a_cold_build_budget(self) -> None:
+        workflow = RUST_GRAPH_WORKFLOW.read_text(encoding="utf-8")
+        replacement = workflow.split("  replacement:\n", 1)[1]
+
+        self.assertIn("timeout-minutes: 30", replacement)
 
 
 if __name__ == "__main__":
