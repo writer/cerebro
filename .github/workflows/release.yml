@@ -19,6 +19,11 @@ on:
         description: Successful canary or production smoke receipt URL
         required: true
         type: string
+      require_current_main:
+        description: Reject promotion if the candidate is no longer current main
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -245,8 +250,18 @@ jobs:
           WEB_CANDIDATE_IMAGE: ${{ needs.verify-candidate.outputs.web_image }}
           WEB_IMAGE_DIGEST: ${{ needs.verify-candidate.outputs.web_digest }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          REQUIRE_CURRENT_MAIN: ${{ inputs.require_current_main }}
+          CANDIDATE_SHA: ${{ needs.verify-candidate.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [[ "${REQUIRE_CURRENT_MAIN}" == true ]]; then
+            current_main="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+            if [[ "${CANDIDATE_SHA}" != "${current_main}" ]]; then
+              echo "ERROR: automatic candidate ${CANDIDATE_SHA} is superseded by main ${current_main}" >&2
+              exit 1
+            fi
+          fi
           image_base="ghcr.io/${GITHUB_REPOSITORY}"
           web_image_base="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web"
           cosign verify "${image_base}@${IMAGE_DIGEST}" \
@@ -340,8 +355,8 @@ jobs:
       - name: Dispatch product release event
         shell: bash
         env:
-          RELEASE_CONSUMER_TOKEN: ${{ secrets.RELEASE_CONSUMER_TOKEN }}
-          RELEASE_CONSUMER_REPOSITORY: ${{ vars.RELEASE_CONSUMER_REPOSITORY }}
+          RELEASE_CONSUMER_TOKEN: ${{ secrets.RELEASE_CONSUMER_TOKEN || secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
+          RELEASE_CONSUMER_REPOSITORY: ${{ vars.RELEASE_CONSUMER_REPOSITORY || secrets.CEREBRO_INFRA_REPOSITORY }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_COMMIT: ${{ needs.verify-candidate.outputs.sha }}
           MANIFEST_SHA256: ${{ needs.promote.outputs.product_manifest_sha256 }}

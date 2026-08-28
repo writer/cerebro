@@ -40,6 +40,15 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("-o -name 'smoke-receipt.json*'", workflow)
         self.assertIn("CANDIDATE_RUNTIME_DIGEST", workflow)
 
+    def test_automatic_release_rechecks_current_main_before_promotion(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("require_current_main:", workflow)
+        self.assertIn(
+            "REQUIRE_CURRENT_MAIN: ${{ inputs.require_current_main }}", workflow
+        )
+        self.assertIn("automatic candidate ${CANDIDATE_SHA} is superseded", workflow)
+
     def test_portable_smoke_receipt_signing_is_isolated_from_pr_job(self) -> None:
         workflow = EPHEMERAL_CEREBRO_WORKFLOW.read_text(encoding="utf-8")
         topology = workflow.split("  topology:\n", 1)[1].split(
