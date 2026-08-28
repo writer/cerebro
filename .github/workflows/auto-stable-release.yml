@@ -95,6 +95,23 @@ jobs:
           PROOF_DEADLINE_SECONDS: "7200"
         run: |
           set -euo pipefail
+          graph_runs="$({
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/rust-graph-replacement.yml/runs" \
+              -f head_sha="${CANDIDATE_SHA}" -f per_page=20 \
+              --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | length'
+          } || echo 0)"
+          if [[ "${graph_runs}" == 0 ]]; then
+            current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+            if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]; then
+              echo "ERROR: main advanced to ${current_main} before Rust graph qualification" >&2
+              exit 1
+            fi
+            gh workflow run rust-graph-replacement.yml \
+              --repo "${GITHUB_REPOSITORY}" --ref main
+            echo "Dispatched Rust Graph Replacement for ${CANDIDATE_SHA}"
+          fi
+
           for workflow in ci.yml rust-graph-replacement.yml rust-only-candidate.yml; do
             deadline=$((SECONDS + PROOF_DEADLINE_SECONDS))
             while (( SECONDS < deadline )); do

@@ -46,6 +46,22 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("-f require_current_main=true", workflow)
         self.assertIn('test "$(gh api', workflow)
 
+    def test_orchestrator_dispatches_missing_rust_graph_proof_once(self) -> None:
+        workflow = AUTO_WORKFLOW.read_text(encoding="utf-8")
+        proof = workflow.split("      - name: Require exact-head main proofs\n", 1)[1]
+        proof = proof.split(
+            "      - name: Resolve or dispatch published-image smoke\n", 1
+        )[0]
+
+        self.assertIn('if [[ "${graph_runs}" == 0 ]]', proof)
+        self.assertIn("gh workflow run rust-graph-replacement.yml", proof)
+        self.assertIn("--ref main", proof)
+        self.assertIn('if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]', proof)
+        self.assertLess(
+            proof.index('if [[ "${graph_runs}" == 0 ]]'),
+            proof.index("gh workflow run rust-graph-replacement.yml"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
