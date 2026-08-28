@@ -105,8 +105,12 @@ func TestRustPayloadRuleCloseProjectionEnforcesClosedPayloadBounds(t *testing.T)
 	for index := 0; index <= closedJSONMaximumCollectionItems; index++ {
 		objectFields = append(objectFields, fmt.Sprintf(`"field_%d":0`, index))
 	}
+	invalidUTF8 := append([]byte(`{"state":"fixed","image_digest":"sha256:`), 0xff)
+	invalidUTF8 = append(invalidUTF8, []byte(`"}`)...)
 	tests := map[string][]byte{
 		"truncated":       []byte(`{"state":`),
+		"null":            []byte(`null`),
+		"invalid UTF-8":   invalidUTF8,
 		"duplicate":       []byte(`{"state":"fixed","state":"open"}`),
 		"oversized":       []byte(`{"state":"` + strings.Repeat("a", closedJSONMaximumBytes) + `"}`),
 		"too deep":        []byte(`{"state":[[[[[[[["fixed"]]]]]]]]}`),

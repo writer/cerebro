@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -243,6 +244,9 @@ func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	if len(event.GetPayload()) > closedJSONMaximumBytes {
 		return nil, fmt.Errorf("project Aurelius close payload: payload exceeds the closed byte limit")
 	}
+	if !utf8.Valid(event.GetPayload()) {
+		return nil, fmt.Errorf("project Aurelius close payload: payload is not valid UTF-8")
+	}
 	preflight := json.NewDecoder(bytes.NewReader(event.GetPayload()))
 	preflight.UseNumber()
 	if err := validateUniqueBoundedJSON(preflight, 1); err != nil {
@@ -256,6 +260,9 @@ func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	decoder.UseNumber()
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
+	}
+	if payload == nil {
+		return nil, fmt.Errorf("project Aurelius close payload: payload must be an object")
 	}
 	allowed := map[string]struct{}{"image_digest": {}, "image_uri": {}, "cve_id": {}, "package": {}, "severity": {}, "installed_version": {}, "fixed_version": {}, "state": {}, "promoted": {}, "exception_status": {}, "track": {}}
 	for key, value := range payload {
