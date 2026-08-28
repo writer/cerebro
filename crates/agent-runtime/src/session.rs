@@ -3082,16 +3082,6 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
-                if let Err(error) = validate_cross_turn_consistency(&session, &draft) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
-                }
                 let validated = match validate_grounded_draft_at(
                     &session,
                     &draft,
@@ -3132,6 +3122,57 @@ async fn run_session_turn_recorded_at(
                         &mut repairs,
                         &mut repair_feedback,
                         response_contract_issues.join(" "),
+                    );
+                    continue;
+                }
+                let review = match model
+                    .review_message(ClaimReviewTurn {
+                        session: session.clone(),
+                        trigger: trigger.clone(),
+                        prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                        wake_assessment: build_wake_assessment(
+                            &session,
+                            &trigger,
+                            prior_commitment_checkpoint.as_ref(),
+                            &observations,
+                            assessment_at,
+                        ),
+                        draft: draft.clone(),
+                        observations: observations.clone(),
+                    })
+                    .await
+                {
+                    Ok(review) => review,
+                    Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            format!("The presentation review was malformed: {reason}"),
+                        );
+                        continue;
+                    }
+                    Err(_) => {
+                        return repair_fallback_outcome(
+                            &session,
+                            &input,
+                            plan.as_ref(),
+                            &observations,
+                            accepted_at,
+                            events,
+                            journal,
+                        )
+                        .await;
+                    }
+                };
+                if let Err(error) = validate_message_review(&draft, &review) {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
                     );
                     continue;
                 }
@@ -5944,6 +5985,84 @@ pub fn message_digest(message: &str) -> String {
     format!("sha256:{digest}")
 }
 
+fn validate_message_review(
+    draft: &GroundedDraft,
+    review: &MessageReview,
+) -> Result<(), AgentRuntimeError> {
+    if review.message_digest != message_digest(&draft.message)
+        || review.claim_reviews.len() != draft.claims.len()
+        || review.attention.delivery != draft.delivery
+        || !bounded(&review.attention.reason, MAX_TEXT_BYTES)
+        || review
+            .undeclared_material
+            .iter()
+            .any(|item| !bounded(item, MAX_TEXT_BYTES))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "The presentation review must bind the exact message, every declared claim, and the selected delivery disposition."
+                .into(),
+        ));
+    }
+    let declared = draft
+        .claims
+        .iter()
+        .map(|claim| claim.claim_ref.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut reviewed = BTreeSet::new();
+    let mut issues = Vec::new();
+    for claim in &review.claim_reviews {
+        if !bounded(&claim.claim_ref, MAX_TEXT_BYTES)
+            || !declared.contains(claim.claim_ref.as_str())
+            || !reviewed.insert(claim.claim_ref.as_str())
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "The presentation review must contain one result for each exact claim reference."
+                    .into(),
+            ));
+        }
+        match (&claim.verdict, claim.issue.as_deref()) {
+            (ClaimReviewVerdict::Supported, None) => {}
+            (ClaimReviewVerdict::Unsupported, Some(issue)) if bounded(issue, MAX_TEXT_BYTES) => {
+                issues.push(issue);
+            }
+            _ => {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "Supported claim reviews cannot carry an issue, and unsupported reviews require one bounded repair issue."
+                        .into(),
+                ));
+            }
+        }
+    }
+    if reviewed.len() != declared.len() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "The presentation review omitted a declared claim.".into(),
+        ));
+    }
+    if !review.undeclared_material.is_empty() {
+        issues.push("Remove or declare material that appears outside the reviewed claims.");
+    }
+    if !review.behavioral.answers_newest_request {
+        issues.push("Answer the newest operator request directly.");
+    }
+    if !review.behavioral.conversational {
+        issues.push("Rewrite the response as coherent conversational prose.");
+    }
+    if !review.behavioral.owns_follow_through {
+        issues.push("Bind future Cerebro work to the typed follow-through contract.");
+    }
+    if !review.behavioral.right_sized {
+        issues.push("Match the response detail and length to the request.");
+    }
+    if !review.behavioral.evidence_boundary_correct {
+        issues.push("Separate observations, inferences, and unknowns correctly.");
+    }
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::InvalidFinal(issues.join(" ")))
+    }
+}
+
 /// Validates that a research plan is bounded, executable, and internally referential.
 ///
 /// Selected tools must exist in the supplied catalog and fit the lane budget;
@@ -6272,29 +6391,6 @@ fn validate_plan_completion(
                 "the final mission must persist this exact active, scheduled executor contract without rewriting another commitment: {expected}"
             )));
         }
-    }
-    Ok(())
-}
-
-fn validate_cross_turn_consistency(
-    session: &AgentSession,
-    draft: &GroundedDraft,
-) -> Result<(), AgentRuntimeError> {
-    let current = draft.message.to_ascii_lowercase();
-    if current.contains("no regressions occurred")
-        && session.messages.iter().any(|message| {
-            message.role == SessionMessageRole::Assistant && {
-                let prior = message.text.to_ascii_lowercase();
-                prior.contains("regressed")
-                    || prior.contains("regression detected")
-                    || prior.contains("streak reset")
-            }
-        })
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the response contradicts the delivered trajectory: an earlier update reported a regression, so do not claim that no regressions occurred; describe only the current check or say that no further regression was observed"
-                .into(),
-        ));
     }
     Ok(())
 }
@@ -7157,14 +7253,6 @@ fn validate_claim(
     context: &ClaimValidationContext<'_, '_>,
     cited_atoms: &mut BTreeSet<String>,
 ) -> Result<(), AgentRuntimeError> {
-    if !matches!(claim.content, ClaimContent::Commitment { .. })
-        && contains_unbound_future_promise(&claim.text)
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "future Cerebro work must cite the exact active commitment that records it. If no commitment was created, remove first-person future or capability language and state the next bounded check as a recommendation with its external role owner, trigger, and acceptance condition"
-                .into(),
-        ));
-    }
     let atom_refs = match &claim.content {
         ClaimContent::Observation { atom_refs } => {
             validate_observation_wording(&claim.text, atom_refs, context, false)?;
@@ -9761,148 +9849,6 @@ fn bounded(value: &str, max_bytes: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max_bytes
 }
 
-fn contains_unbound_future_promise(value: &str) -> bool {
-    let normalized = value.to_lowercase().replace('’', "'");
-    let self_promises_operational_work = normalized
-        .split(['.', ';', '!', '?', '\n'])
-        .flat_map(|clause| clause.split(" but "))
-        .any(|clause| {
-            let future_subject = [
-                "i'll ",
-                "i will ",
-                "i'm going to ",
-                "i am going to ",
-                "we'll ",
-                "we will ",
-                "cerebro will ",
-                "cerebro is going to ",
-            ]
-            .iter()
-            .any(|marker| clause.contains(marker));
-            let positive_self_capability = [
-                "i can ",
-                "i am able to ",
-                "i'm able to ",
-                "we can ",
-                "cerebro can ",
-            ]
-            .iter()
-            .any(|marker| clause.contains(marker));
-            let operational_work = [
-                "check",
-                "inspect",
-                "review",
-                "investigate",
-                "monitor",
-                "report",
-                "update",
-                "follow",
-                "handle",
-                "own",
-                "run",
-                "chase",
-                "pull",
-                "drive",
-                "schedule",
-                "set up",
-                "watch",
-                "notify",
-                "send",
-                "change",
-                "fix",
-                "prepare",
-                "reconcile",
-                "verify",
-                "collect",
-            ]
-            .iter()
-            .any(|verb| clause.contains(verb));
-            (future_subject || positive_self_capability) && operational_work
-        });
-    let mentions_operational_work = [
-        "check",
-        "inspect",
-        "review",
-        "investigate",
-        "monitor",
-        "report",
-        "update",
-        "follow",
-        "handle",
-        "own",
-        "run",
-        "chase",
-        "pull",
-        "drive",
-        "schedule",
-        "set up",
-        "watch",
-        "notify",
-        "send",
-        "change",
-        "fix",
-        "prepare",
-        "reconcile",
-        "verify",
-        "collect",
-    ]
-    .iter()
-    .any(|verb| normalized.contains(verb));
-    let subjectless_follow_through = [
-        "check",
-        "inspection",
-        "recheck",
-        "re-check",
-        "follow-up",
-        "follow up",
-        "report",
-        "update",
-    ]
-    .iter()
-    .any(|noun| normalized.contains(noun))
-        && [
-            "will follow",
-            "will happen",
-            "is scheduled",
-            "is due",
-            "will be sent",
-            "will be posted",
-        ]
-        .iter()
-        .any(|future| normalized.contains(future));
-    self_promises_operational_work
-        || (normalized.contains("expect me to ") && mentions_operational_work)
-        || subjectless_follow_through
-        || ((normalized.contains("update from me")
-            || normalized.contains("hear back from me")
-            || normalized.contains("follow-up from me"))
-            && (normalized.contains("tomorrow")
-                || normalized.contains("later")
-                || normalized.contains("will")))
-        || normalized.contains("i intend to ")
-        || normalized.contains("i plan to ")
-        || [
-            "i own the follow-through",
-            "i own this follow-through",
-            "cerebro owns the follow-through",
-            "want me to ",
-            "keep an eye on",
-            "keep watching",
-            "scheduled recheck",
-            "scheduled re-check",
-            "set that recheck",
-            "set that re-check",
-            "re-report after",
-            "check back at",
-            "check scheduled",
-            "recheck is still on",
-        ]
-        .iter()
-        .any(|promise| normalized.contains(promise))
-        || ((normalized.contains("i've set") || normalized.contains("i have set"))
-            && (normalized.contains("recheck") || normalized.contains("re-check")))
-}
-
 fn contains_operational_capability_assertion(value: &str) -> bool {
     let normalized = value.to_lowercase().replace('’', "'");
     let padded = format!(" {normalized} ");
@@ -11278,9 +11224,37 @@ mod tests {
 
         async fn review_message(
             &self,
-            _turn: ClaimReviewTurn,
+            turn: ClaimReviewTurn,
         ) -> Result<MessageReview, AgentRuntimeError> {
-            panic!("premise-bound conversation must not invoke the evidence critic")
+            Ok(supported_message_review(turn))
+        }
+    }
+
+    fn supported_message_review(turn: ClaimReviewTurn) -> MessageReview {
+        MessageReview {
+            message_digest: message_digest(&turn.draft.message),
+            claim_reviews: turn
+                .draft
+                .claims
+                .into_iter()
+                .map(|claim| ClaimReview {
+                    claim_ref: claim.claim_ref,
+                    verdict: ClaimReviewVerdict::Supported,
+                    issue: None,
+                })
+                .collect(),
+            undeclared_material: Vec::new(),
+            attention: AttentionReview {
+                delivery: turn.draft.delivery,
+                reason: "The scripted review accepts the requested delivery boundary.".into(),
+            },
+            behavioral: BehavioralReview {
+                answers_newest_request: true,
+                conversational: true,
+                owns_follow_through: true,
+                right_sized: true,
+                evidence_boundary_correct: true,
+            },
         }
     }
 
@@ -11301,33 +11275,7 @@ mod tests {
             &self,
             turn: ClaimReviewTurn,
         ) -> Result<MessageReview, AgentRuntimeError> {
-            let message_digest = message_digest(&turn.draft.message);
-            let claim_reviews = turn
-                .draft
-                .claims
-                .into_iter()
-                .map(|claim| ClaimReview {
-                    claim_ref: claim.claim_ref,
-                    verdict: ClaimReviewVerdict::Supported,
-                    issue: None,
-                })
-                .collect();
-            Ok(MessageReview {
-                message_digest,
-                claim_reviews,
-                undeclared_material: Vec::new(),
-                attention: AttentionReview {
-                    delivery: turn.draft.delivery,
-                    reason: "The scripted review accepts the requested delivery boundary.".into(),
-                },
-                behavioral: BehavioralReview {
-                    answers_newest_request: true,
-                    conversational: true,
-                    owns_follow_through: true,
-                    right_sized: true,
-                    evidence_boundary_correct: true,
-                },
-            })
+            Ok(supported_message_review(turn))
         }
     }
 
@@ -11768,115 +11716,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_future_work_disguised_as_a_stable_explanation() {
-        let mut promise = draft();
-        promise.message = "I’ll check back at 14:27 UTC.".into();
-        promise.claims = vec![GroundedClaim {
-            claim_ref: "claim:unbound-future-work".into(),
-            planned_claim_ref: None,
-            text: promise.message.clone(),
-            required_for_answer: true,
-            content: ClaimContent::StableExplanation {
-                explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
-            },
-        }];
-
-        let error = validate_grounded_draft(
-            &session(),
-            &promise,
-            &[observation(true, Some("2026-08-01T00:00:00Z"))],
-            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-        )
-        .expect_err("future work requires a real commitment claim");
-        assert!(error.to_string().contains("exact active commitment"));
-    }
-
-    #[test]
-    fn rejects_future_work_under_non_commitment_claim_bases() {
-        let observed = observation(true, Some("2026-08-01T00:00:00Z"));
-        for content in [
-            ClaimContent::Observation {
-                atom_refs: vec!["atom:status".into()],
-            },
-            ClaimContent::Recommendation {
-                action: ActionSpec {
-                    tool_id: None,
-                    target_ref: Some("connector:alpha".into()),
-                    input: json!({}),
-                },
-                directive: RecommendationDirective::InspectTarget,
-                rationale_atom_refs: vec!["atom:status".into()],
-            },
-            ClaimContent::Hypothesis {
-                supporting_atom_refs: vec!["atom:status".into()],
-                alternatives: vec!["The connector may remain degraded.".into()],
-            },
-        ] {
-            let mut promise = draft();
-            promise.message =
-                "I've set a recheck and I'll re-inspect the receipt, then I'll report back.".into();
-            promise.claims = vec![GroundedClaim {
-                claim_ref: "claim:unbound-future-work".into(),
-                planned_claim_ref: None,
-                text: promise.message.clone(),
-                required_for_answer: true,
-                content,
-            }];
-            let error = validate_grounded_draft(
-                &session(),
-                &promise,
-                std::slice::from_ref(&observed),
-                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            )
-            .expect_err("every future Cerebro promise requires commitment basis");
-            assert!(error.to_string().contains("exact active commitment"));
-        }
-    }
-
-    #[test]
-    fn operator_context_cannot_present_a_user_future_statement_as_cerebro_work() {
-        let mut quoted = draft();
-        quoted.message = "I'll re-inspect the receipt.".into();
-        let mut quoted_session = session();
-        quoted_session.messages[0].text = quoted.message.clone();
-        quoted.claims = vec![GroundedClaim {
-            claim_ref: "claim:quoted-operator-context".into(),
-            planned_claim_ref: None,
-            text: quoted.message.clone(),
-            required_for_answer: false,
-            content: ClaimContent::OperatorContext {
-                message_sequence: 1,
-                exact_excerpt: quoted.message.clone(),
-            },
-        }];
-        assert!(
-            validate_grounded_draft(
-                &quoted_session,
-                &quoted,
-                &[],
-                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            )
-            .expect_err("first-person future work always requires an exact commitment")
-            .to_string()
-            .contains("exact active commitment")
-        );
-
-        quoted.message = "You asked: I'll re-inspect the receipt, and I can chase it next.".into();
-        quoted.claims[0].text = quoted.message.clone();
-        assert!(
-            validate_grounded_draft(
-                &quoted_session,
-                &quoted,
-                &[],
-                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            )
-            .expect_err(
-                "operator context cannot smuggle new future work around the commitment gate"
-            )
-            .to_string()
-            .contains("exact active commitment")
-        );
-
+    fn operator_context_requires_exact_thread_attribution() {
         let mut attributed = draft();
         attributed.message = "You said: Check connector alpha.".into();
         attributed.claims = vec![GroundedClaim {
@@ -14141,7 +13981,7 @@ mod tests {
 
         let error =
             validate_grounded_draft(&session(), &candidate, &[overview], assessment).unwrap_err();
-        assert!(error.to_string().contains("exact active commitment"));
+        assert!(error.to_string().contains("does not bind it"));
 
         candidate.claims[0].text = "The collected-content read is available to me.".into();
         candidate.message = candidate.claims[0].text.clone();
@@ -15145,52 +14985,6 @@ mod tests {
     }
 
     #[test]
-    fn unbound_scheduling_phrases_are_detected() {
-        for text in [
-            "I can keep an eye on it.",
-            "Want me to set that recheck up?",
-            "I can keep watching and re-report after the next run.",
-            "If you want, I'll run the collected-content read next.",
-            "I can chase the connector side next.",
-            "Expect an update from me tomorrow.",
-            "An update from me will follow later.",
-            "A recheck will follow tomorrow.",
-            "You can expect me to inspect it again tomorrow.",
-            "The next inspection is due tomorrow.",
-        ] {
-            assert!(contains_unbound_future_promise(text), "{text}");
-        }
-        assert!(!contains_unbound_future_promise(
-            "I can reason from that premise with you, but I have not independently inspected or verified the system."
-        ));
-    }
-
-    #[test]
-    fn final_update_cannot_erase_an_earlier_reported_regression() {
-        let mut current = session();
-        current.messages.push(SessionMessage {
-            role: SessionMessageRole::Assistant,
-            message_ref: "message:regression".into(),
-            actor_ref: "cerebro".into(),
-            text: "Regression detected: the streak regressed from 2 to 0.".into(),
-            received_at: "2026-07-31T00:01:00Z".into(),
-        });
-        let mut final_update = draft();
-        final_update.message =
-            "The feed is decision-grade at this check. No regressions occurred.".into();
-        let error = validate_cross_turn_consistency(&current, &final_update).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("contradicts the delivered trajectory")
-        );
-
-        final_update.message =
-            "The feed is decision-grade at this check. No further regression was observed.".into();
-        assert!(validate_cross_turn_consistency(&current, &final_update).is_ok());
-    }
-
-    #[test]
     fn wake_assessment_computes_typed_scalar_deltas_before_model_review() {
         let mut awakened = session();
         let mut commitment = scheduled_commitment();
@@ -16180,7 +15974,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deterministic_validation_does_not_invoke_the_model_claim_reviewer() {
+    async fn presentation_review_repairs_unsupported_and_unhelpful_drafts() {
         let model = RefiningSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan { plan: plan() },
@@ -16192,6 +15986,8 @@ mod tests {
                         input: json!({"connector_ref": "connector:alpha"}),
                     }],
                 },
+                SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::Finish { draft: draft() },
                 SessionModelDecision::Finish { draft: draft() },
             ])),
             reviews: AtomicUsize::new(0),
@@ -16216,7 +16012,7 @@ mod tests {
             outcome,
             SessionTurnOutcome::PendingDelivery { .. }
         ));
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 0);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
@@ -16531,6 +16327,79 @@ mod tests {
         assert_eq!(final_state, FinalState::Answered);
         assert_eq!(markdown, message);
         assert!(evidence_atom_refs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn presentation_review_rejects_a_current_claim_disguised_as_conversation() {
+        let mut current = session_for_request(
+            "request:misclassified-current-state",
+            ExecutionLane::Converse,
+        );
+        current.messages[0].text = "Is Atlas currently green?".into();
+        let make_draft = |claim_ref: &str, message: &str| GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: message.into(),
+            claims: vec![GroundedClaim {
+                claim_ref: claim_ref.into(),
+                planned_claim_ref: None,
+                text: message.into(),
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let unsupported = make_draft(
+            "claim:unsupported",
+            "Atlas is currently green and the deployment passed.",
+        );
+        let safe = make_draft(
+            "claim:safe-boundary",
+            "I need a current observation before I can answer that honestly.",
+        );
+        let model = RefiningSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::Finish { draft: unsupported },
+                SessionModelDecision::Finish {
+                    draft: safe.clone(),
+                },
+                SessionModelDecision::Finish { draft: safe },
+            ])),
+            reviews: AtomicUsize::new(0),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            current,
+            SessionTurnInput {
+                request_id: "request:misclassified-current-state".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Converse),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .unwrap();
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
+            panic!("the reviewed boundary should be ready for delivery");
+        };
+        assert_eq!(
+            markdown,
+            "I need a current observation before I can answer that honestly."
+        );
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
