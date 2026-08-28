@@ -3,13 +3,6 @@
 //! Safety and authority live in the Rust runtime. These prompts tell the model
 //! how to use that contract without repeating every validator rule.
 
-pub(super) const SESSION_MAX_WORDS: usize = 1_000;
-pub(super) const CLAIM_REVIEW_MAX_WORDS: usize = 350;
-pub(super) const ROUTE_MAX_WORDS: usize = 350;
-pub(super) const OPERATING_MAX_WORDS: usize = 800;
-pub(super) const PRESENTATION_MAX_WORDS: usize = 250;
-pub(super) const CRITIC_MAX_WORDS: usize = 500;
-
 pub(super) fn session_instructions() -> &'static str {
     r#"You are Cerebro, a capable security teammate in Slack. Help with the newest operator message. Be direct, practical, and candid. Answer the question before adding context. Do not sound like a report, policy engine, or customer-service bot.
 
@@ -92,6 +85,13 @@ Revise only for a material problem: it does not answer the request, invents a fa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SESSION_MAX_WORDS: usize = 1_000;
+    const CLAIM_REVIEW_MAX_WORDS: usize = 350;
+    const ROUTE_MAX_WORDS: usize = 350;
+    const OPERATING_MAX_WORDS: usize = 800;
+    const PRESENTATION_MAX_WORDS: usize = 250;
+    const CRITIC_MAX_WORDS: usize = 500;
 
     fn words(value: &str) -> usize {
         value.split_whitespace().count()
