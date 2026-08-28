@@ -3,10 +3,14 @@
 //! A session is the unit of work. Slack and other clients append operator input
 //! and render session events; they do not own the model loop or its continuity.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::OnceLock,
+};
 
 use async_trait::async_trait;
 use futures_util::future::join_all;
+use regex::RegexSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -49,6 +53,21 @@ const MAX_SEMANTIC_CANDIDATES: usize = 16;
 const MAX_SEMANTIC_PRINCIPALS: usize = 16;
 const MAX_SEMANTIC_RESULT_COUNT: u32 = 1_000_000;
 const MAX_SEMANTIC_SEARCH_LIMIT: u32 = 10_000;
+
+fn contains_credential_shaped_text(value: &str) -> bool {
+    static PATTERNS: OnceLock<RegexSet> = OnceLock::new();
+    PATTERNS
+        .get_or_init(|| {
+            RegexSet::new([
+                r"xox[baprs]-[a-z0-9-]+",
+                r"(?:akia|asia)[a-z0-9]{16}",
+                r"-----begin [a-z0-9 ]{1,32} private key-----",
+                r#"(?:bearer|api[_-]?key|token|secret|password)[\"']?[ \t]*[:=][ \t]*(?:\"[^\"\r\n]+\"|'[^'\r\n]+'|[^ \t\r\n,;]{8,})"#,
+            ])
+            .expect("credential egress patterns are static")
+        })
+        .is_match(&value.to_ascii_lowercase())
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -5894,6 +5913,15 @@ pub fn validate_plan(
             "research plan is empty or exceeds its bounded contract".into(),
         ));
     }
+    if plan
+        .user_visible_work
+        .iter()
+        .any(|status| contains_credential_shaped_text(status))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "user-visible plan updates contain credential-shaped text".into(),
+        ));
+    }
     let available = available_tools.iter().collect::<BTreeSet<_>>();
     let mut claim_refs = BTreeSet::new();
     for claim in &plan.claims {
@@ -6349,6 +6377,11 @@ pub fn validate_grounded_draft(
     if !crate::presentation_markup_is_balanced(&draft.message) {
         return Err(AgentRuntimeError::InvalidFinal(
             "visible response contains an unclosed code fence or emphasis span".into(),
+        ));
+    }
+    if contains_credential_shaped_text(&draft.message) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "visible response contains credential-shaped text".into(),
         ));
     }
 
@@ -11003,6 +11036,49 @@ mod tests {
             user_visible_work: vec!["Checking connector alpha.".into()],
             follow_through: None,
         }
+    }
+
+    #[test]
+    fn credential_shaped_text_is_rejected_from_visible_progress_and_answers() {
+        let synthetic_token = format!("xoxb-{}", "a".repeat(32));
+        assert!(contains_credential_shaped_text(&synthetic_token));
+        assert!(contains_credential_shaped_text(&format!(
+            "api_key={}",
+            "b".repeat(32)
+        )));
+        assert!(!contains_credential_shaped_text(
+            "The provider token is missing and no request was sent."
+        ));
+
+        let mut progress = plan();
+        progress.user_visible_work = vec![format!("Using {synthetic_token} for the request.")];
+        let error = validate_plan(&progress, &["connector.read".into()])
+            .err()
+            .unwrap();
+        assert!(matches!(
+            error,
+            AgentRuntimeError::InvalidFinal(message)
+                if message == "user-visible plan updates contain credential-shaped text"
+        ));
+
+        let mut answer = draft();
+        answer.message = format!("The provider returned token={synthetic_token}.");
+        answer.claims[0].text.clone_from(&answer.message);
+        answer.claims.truncate(1);
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let error = validate_grounded_draft(
+            &session(),
+            &answer,
+            &[observation(true, Some("2026-08-01T00:00:00Z"))],
+            assessment,
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(
+            error,
+            AgentRuntimeError::InvalidFinal(message)
+                if message == "visible response contains credential-shaped text"
+        ));
     }
 
     fn planned_follow_through() -> PlannedFollowThrough {
