@@ -11,7 +11,6 @@ import {
   assessAssistantTurnOutcome,
   assistantTurnBudget,
   buildAssistantTurnEvidenceFallback,
-  createToolCatalog,
   decodeSlackActionEnvelope,
   decideSlackAction,
   formatSlackThreadScratchpadContext,
@@ -37,11 +36,8 @@ import {
 import {
   AssistantTurnHostAdapter,
   type AssistantExecutionLane,
-  type AssistantTurnPlanPreflightInput,
-  type AssistantTurnSourceHealthSnapshot,
 } from "../assistant-turn.js";
 import {
-  CerebroAnswerRejectedError,
   CerebroAskClient,
   CerebroAskError,
   approvalCommandCode,
@@ -89,10 +85,6 @@ import {
   archetypeUnavailableHome,
 } from "./archetype-workspace.js";
 
-const GRAPH_CAPABILITY = "cerebro:graph_read";
-const GRAPH_SOURCE_REF = "source/cerebro/grc-ask";
-const GRAPH_TOOL_ID = "cerebro.grc_ask";
-const GRAPH_TOOL_VERSION = "1.0.0";
 const MAX_SLACK_TEXT = 3_500;
 const MAX_SLACK_ANSWER_PARTS = 8;
 const MAX_SLACK_ANSWER_TEXT = MAX_SLACK_TEXT * MAX_SLACK_ANSWER_PARTS;
@@ -172,20 +164,6 @@ export interface SlackMentionEvent {
   userId: string;
 }
 
-const graphCatalog = createToolCatalog([{
-  authority_class: "observe",
-  effect_class: "read",
-  input_schema_ref: "schema/cerebro/grc-ask-input/v1",
-  replay_policy: "safe",
-  required_capabilities: [GRAPH_CAPABILITY],
-  result_schema_ref: "schema/cerebro/grc-ask-summary/v1",
-  schema_version: "tool-catalog-entry/v1",
-  summary: "Read governed Cerebro graph evidence for one question.",
-  title: "Ask Cerebro graph",
-  tool_id: GRAPH_TOOL_ID,
-  tool_version: GRAPH_TOOL_VERSION,
-}]);
-
 export interface AssistantQuestionInput {
   actorRef: string;
   contextScopeRef?: string;
@@ -235,11 +213,6 @@ export class AssistantQuestionService {
   private readonly approvalStore?: FileAgentApprovalStore;
   private readonly clock: () => Date;
   private readonly timeoutSignal: (milliseconds: number) => AbortSignal;
-  private sourceAttempts = 0;
-  private sourceConsecutiveFailures = 0;
-  private sourceLatencyMs = 0;
-  private sourceSuccesses = 0;
-  private sourceUnavailableUntil = 0;
 
   constructor(
     private readonly host: AssistantTurnHostAdapter,
@@ -358,8 +331,7 @@ export class AssistantQuestionService {
                   ...(input.workingState.active_lane === undefined
                     ? {}
                     : { active_lane: input.workingState.active_lane }),
-                  current_request:
-                    durableMissionRequest(input.workingState, currentRequest),
+                  current_request: currentRequest,
                   ...(input.workingState.blocker === undefined
                     ? {}
                     : { last_blocker: input.workingState.blocker }),
@@ -497,202 +469,27 @@ export class AssistantQuestionService {
         };
       }
     }
-    let questionDecision;
-    try {
-      questionDecision = await this.askClient.authorizeQuestion(
-        input.requestKey,
-        currentRequest,
-        history,
-      );
-    } catch (error) {
-      const state = error instanceof CerebroAskError ? error.sourceState : "unauthorized";
-      const authorityBudget = this.host.enforceBudget({
-        execution_lane: "converse",
-        planned_tool_call_count: 0,
-        selected_capability_count: 0,
-      });
-      return {
-        pending: pendingOutcome({
-          budgetMs: authorityBudget.latency_budget_ms,
-          executionLane: "converse",
-          openedAt,
-          outcomeState: "blocked",
-          requestId,
-          verified: false,
-        }),
-        text: "Cerebro could not authorize this Slack request. Retry after the request authority is healthy.",
-        workingTurn: {
-          blocker: `Request authority was ${state.replaceAll("_", " ")}.`,
-          currentRequest,
-          outcome: "blocked",
-        },
-      };
-    }
-    if (questionDecision.execution_lane === "converse") {
-      const converseBudget = this.host.enforceBudget({
-        execution_lane: "converse",
-        planned_tool_call_count: 0,
-        selected_capability_count: 0,
-      });
-      const answer = await this.askClient.ask(
-        input.requestKey,
-        currentRequest,
-        this.timeoutSignal(converseBudget.latency_budget_ms),
-        history,
-        questionDecision,
-      );
-      const usefulAnswerAt = this.clock();
-      return {
-        pending: pendingOutcome({
-          budgetMs: converseBudget.latency_budget_ms,
-          executionLane: "converse",
-          openedAt,
-          outcomeState: "completed",
-          requestId,
-          usefulAnswerAt,
-          verified: true,
-        }),
-        text: boundedSlackAnswer(answer.markdown),
-        workingTurn: {
-          currentRequest,
-          outcome: "completed",
-        },
-      };
-    }
-
     const budget = this.host.enforceBudget({
-      execution_lane: "lookup",
-      planned_tool_call_count: 1,
-      selected_capability_count: 1,
+      execution_lane: "converse",
+      planned_tool_call_count: 0,
+      selected_capability_count: 0,
     });
-    const observedAt = this.clock();
-    const preflight = this.host.preflightInvocation(preflightInput(
-      currentRequest,
-      requestId,
-      budget,
-      openedAt,
-      observedAt,
-      this.sourceHealth(observedAt),
-    ));
-    if (!preflight.allowed) {
-      const output = this.host.buildEvidenceFallback({
-        evidence: [],
-        gaps: [{
-          scope: "approved graph lookup",
-          source_label: "Cerebro",
-          source_ref: GRAPH_SOURCE_REF,
-          state: "unavailable",
-        }],
-        next_action: "Retry after the request authority and source health checks pass.",
-      });
-      return {
-        pending: pendingOutcome({
-          budgetMs: budget.latency_budget_ms,
-          openedAt,
-          outcomeState: "blocked",
-          requestId,
-          verified: false,
-        }),
-        text: renderOutput(output),
-        workingTurn: {
-          blocker: "Request authority or source health did not pass preflight.",
-          currentRequest,
-          outcome: "blocked",
-        },
-      };
-    }
-
-    try {
-      const sourceStartedAt = this.clock().getTime();
-      const answer = await this.askClient.ask(
-        input.requestKey,
+    return {
+      pending: pendingOutcome({
+        budgetMs: budget.latency_budget_ms,
+        executionLane: "converse",
+        openedAt,
+        outcomeState: "blocked",
+        requestId,
+        verified: false,
+      }),
+      text: "Cerebro's Rust agent runtime is required for Slack answers.",
+      workingTurn: {
+        blocker: "Rust agent runtime is not configured.",
         currentRequest,
-        this.timeoutSignal(Math.max(1, preflight.remaining_ms)),
-        history,
-        questionDecision,
-      );
-      const usefulAnswerAt = this.clock();
-      this.recordSourceResult(true, Math.max(0, usefulAnswerAt.getTime() - sourceStartedAt));
-      return {
-        pending: pendingOutcome({
-          budgetMs: budget.latency_budget_ms,
-          executionLane: answer.executionLane,
-          openedAt,
-          outcomeState: "completed",
-          requestId,
-          usefulAnswerAt,
-          verified: answer.citationValidationPassed,
-        }),
-        text: boundedSlackAnswer(answer.markdown),
-        workingTurn: {
-          currentRequest,
-          outcome: "completed",
-        },
-        ...(answer.citationValidationPassed && answer.traceId
-          ? {
-              verifiedTurn: {
-                answer: answer.markdown,
-                question: currentRequest,
-                traceId: answer.traceId,
-              },
-            }
-          : {}),
-      };
-    } catch (error) {
-      if (error instanceof CerebroAnswerRejectedError) {
-        this.recordSourceResult(true, Math.max(0, this.clock().getTime() - observedAt.getTime()));
-        return {
-          pending: pendingOutcome({
-            budgetMs: budget.latency_budget_ms,
-            openedAt,
-            outcomeState: "blocked",
-            requestId,
-            verified: false,
-          }),
-          text: [
-            "**Current evidence was not verified**",
-            "",
-            "Cerebro returned an answer without source evidence, so I did not present it as fact.",
-            "",
-            "Next action: run a fresh lookup for this named source's connector status, last successful collection receipt, and accessible record types.",
-          ].join("\n"),
-          workingTurn: {
-            blocker: "The answer did not include source evidence.",
-            currentRequest,
-            outcome: "blocked",
-          },
-        };
-      }
-      this.recordSourceResult(false, Math.max(0, this.clock().getTime() - observedAt.getTime()));
-      const state = error instanceof CerebroAskError && error.sourceState !== "busy"
-        ? error.sourceState
-        : "unavailable";
-      const output = this.host.buildEvidenceFallback({
-        evidence: [],
-        gaps: [{
-          scope: "current graph evidence",
-          source_label: "Cerebro",
-          source_ref: GRAPH_SOURCE_REF,
-          state,
-        }],
-        next_action: sourceRecoveryAction(state),
-      });
-      return {
-        pending: pendingOutcome({
-          budgetMs: budget.latency_budget_ms,
-          openedAt,
-          outcomeState: "blocked",
-          requestId,
-          verified: false,
-        }),
-        text: renderOutput(output),
-        workingTurn: {
-          blocker: `Graph evidence was ${state.replaceAll("_", " ")}.`,
-          currentRequest,
-          outcome: "blocked",
-        },
-      };
-    }
+        outcome: "blocked",
+      },
+    };
   }
 
   async acknowledgeAgentDelivery(input: {
@@ -708,44 +505,6 @@ export class AssistantQuestionService {
     });
   }
 
-  private recordSourceResult(succeeded: boolean, latencyMs: number): void {
-    this.sourceAttempts += 1;
-    this.sourceLatencyMs += latencyMs;
-    if (succeeded) {
-      this.sourceSuccesses += 1;
-      this.sourceConsecutiveFailures = 0;
-      this.sourceUnavailableUntil = 0;
-      return;
-    }
-    this.sourceConsecutiveFailures += 1;
-    this.sourceUnavailableUntil = this.clock().getTime() + 30_000;
-  }
-
-  private sourceHealth(observedAt: Date): AssistantTurnSourceHealthSnapshot {
-    const coolingDown = observedAt.getTime() < this.sourceUnavailableUntil;
-    return {
-      allowed: !coolingDown,
-      attempts: this.sourceAttempts,
-      average_latency_ms: this.sourceAttempts === 0
-        ? 0
-        : Math.round(this.sourceLatencyMs / this.sourceAttempts),
-      consecutive_failures: this.sourceConsecutiveFailures,
-      retry_after_ms: coolingDown
-        ? this.sourceUnavailableUntil - observedAt.getTime()
-        : undefined,
-      schema_version: "source-health-snapshot/v1",
-      slow: false,
-      source_ref: GRAPH_SOURCE_REF,
-      status: coolingDown
-        ? "cooldown"
-        : this.sourceConsecutiveFailures > 0
-          ? "degraded"
-          : "healthy",
-      success_rate: this.sourceAttempts === 0
-        ? 0
-        : this.sourceSuccesses / this.sourceAttempts,
-    };
-  }
 }
 
 class DurableSocketModeReceiver extends SocketModeReceiver {
@@ -2311,47 +2070,6 @@ export function createAssistantTurnHost(store: FileOutcomeStore): AssistantTurnH
   }, store, store);
 }
 
-function preflightInput(
-  question: string,
-  requestId: string,
-  budget: ReturnType<typeof assistantTurnBudget>,
-  openedAt: Date,
-  observedAt: Date,
-  sourceHealth: AssistantTurnSourceHealthSnapshot,
-): AssistantTurnPlanPreflightInput {
-  const requestDigest = `sha256:${digest(question)}`;
-  const invocationId = `${requestId}-invocation`;
-  const runId = `${requestId}-run`;
-  const stepId = `${requestId}-step`;
-  const authority = {
-    authority_ref: `authority/${requestId}`,
-    decided_at: openedAt.toISOString(),
-    decision_id: `${requestId}-authority`,
-    expires_at: new Date(openedAt.getTime() + budget.latency_budget_ms).toISOString(),
-    invocation_id: invocationId,
-    outcome: "allowed" as const,
-    reason_code: "workspace.allowed",
-    request_digest: requestDigest,
-    run_id: runId,
-    schema_version: "tool-authority-decision/v1" as const,
-    step_id: stepId,
-    subject_ref: requestId,
-    tool_id: GRAPH_TOOL_ID,
-    tool_version: GRAPH_TOOL_VERSION,
-  };
-  return {
-    budget,
-    catalog: graphCatalog,
-    completed_tool_calls: 0,
-    elapsed_ms: Math.max(0, observedAt.getTime() - openedAt.getTime()),
-    invocation: { ...authority, authority, source_ref: GRAPH_SOURCE_REF },
-    observed_at: observedAt.toISOString(),
-    replan_count: 0,
-    selected_capability_refs: [GRAPH_CAPABILITY],
-    source_health: [sourceHealth],
-  };
-}
-
 function pendingOutcome(input: {
   budgetMs: number;
   executionLane?: AssistantExecutionLane;
@@ -2415,15 +2133,6 @@ function agentWorkingOutcome(
   if (state === "blocked") return "blocked";
   if (state === "needs_input") return "needs_user";
   return "completed";
-}
-
-function renderOutput(output: ReturnType<typeof buildAssistantTurnEvidenceFallback>): string {
-  return boundedSlackAnswer([
-    output.answer,
-    output.coverage_notice,
-    output.next_action,
-    output.question,
-  ].filter(Boolean).join("\n\n"));
 }
 
 function boundedSlackText(value: string): string {
@@ -2772,48 +2481,6 @@ export function slackDeliveryReferences(
 
 function normalizedSlackText(value: string): string {
   return value.replace(/<@[A-Z0-9]+>/gu, " ").replace(/\s+/gu, " ").trim();
-}
-
-function durableMissionRequest(
-  workingState: SlackThreadWorkingStateV1,
-  currentRequest: string,
-): string {
-  return workingState.recent_requests.find((request) =>
-    !continuationOnlyRequest(request)
-  ) ?? currentRequest;
-}
-
-function continuationOnlyRequest(value: string): boolean {
-  const normalized = value
-    .toLocaleLowerCase("en-US")
-    .replace(/[.!?]+$/gu, "")
-    .trim();
-  return [
-    "continue",
-    "go on",
-    "keep going",
-    "proceed",
-    "resume",
-    "carry on",
-    "do it",
-  ].includes(normalized);
-}
-
-function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {
-  switch (state) {
-    case "busy":
-      return "Wait for the active thread task to finish; this request remains queued.";
-    case "not_configured":
-      return "Configure the Cerebro read binding before retrying this question.";
-    case "not_found":
-      return "Check the asset, identity, finding, or source name and retry the question.";
-    case "timed_out":
-      return "Retry with one asset, identity, finding, or source so Cerebro can finish within 30 seconds.";
-    case "unauthorized":
-      return "Restore the Cerebro read binding, then retry this question.";
-    case "unavailable":
-      return "Retry after the Cerebro source health check passes.";
-  }
 }
 
 function agentRuntimeFailureText(state: CerebroAskError["sourceState"]): string {

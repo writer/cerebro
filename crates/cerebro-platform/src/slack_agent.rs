@@ -26,7 +26,7 @@ use cerebro_agent_runtime::{
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PROACTIVE_FOLLOWUP_CAPABILITY_V1,
     PresentationDecision, PresentationTurn, ResolvedRequestRoute, RouteDecision, RouteTurn,
     ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    resolve_request_route, run_turn,
+    resolve_request_route,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
@@ -35,9 +35,10 @@ use cerebro_agent_runtime::{
         SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
         SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
         SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft, message_digest,
-        run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
-        semantic_evidence_atoms, validate_followup_acceptance,
+        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft,
+        grounded_draft_digest, message_digest, run_session_turn_recorded,
+        run_session_turn_recorded_with_followup_offers, semantic_evidence_atoms,
+        validate_followup_acceptance,
     },
     validate_agent_turn_request,
 };
@@ -289,15 +290,12 @@ impl SlackAgentService {
                 "tenant does not match the Slack runtime".into(),
             ));
         }
-        if self.sessions.is_some() {
-            return self.run_session_v2(request).await;
+        if self.sessions.is_none() {
+            return Err(AgentRuntimeError::ModelUnavailable(
+                "durable Slack session storage is required".into(),
+            ));
         }
-        tokio::time::timeout(
-            StdDuration::from_secs(300),
-            run_turn(self.model.as_ref(), self.tools.as_ref(), request),
-        )
-        .await
-        .map_err(|_| AgentRuntimeError::ModelUnavailable("turn deadline exceeded".into()))?
+        self.run_session_v2(request).await
     }
 
     pub async fn run_due_wake(
@@ -781,19 +779,6 @@ impl SlackAgentService {
                 .format(&Rfc3339)
                 .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
             let resolved = validate_followup_acceptance(&session, acceptance, accepted_at)?;
-            let normalized = |value: &str| {
-                value
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .to_lowercase()
-            };
-            if normalized(&request.message) != normalized(&resolved.offer.action) {
-                return Err(AgentRuntimeError::InvalidRequest(
-                    "ordinary follow-up acceptance text does not match the exact offered action"
-                        .into(),
-                ));
-            }
             let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
             let mut events = vec![
                 SessionEventRecord {
@@ -3104,6 +3089,7 @@ fn claim_review_schema() -> Value {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+            "draft_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
             "message_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
             "claim_reviews": {
                 "type": "array",
@@ -3152,7 +3138,7 @@ fn claim_review_schema() -> Value {
                 ]
             }
         },
-        "required": ["message_digest", "claim_reviews", "undeclared_material", "attention", "behavioral"]
+        "required": ["draft_digest", "message_digest", "claim_reviews", "undeclared_material", "attention", "behavioral"]
     })
 }
 
@@ -3555,6 +3541,7 @@ fn tagged_context_value<T: Serialize>(item: &T, context_kind: &str) -> Value {
 fn claim_review_payload(turn: &ClaimReviewTurn) -> Value {
     json!({
         "draft": &turn.draft,
+        "draft_digest": grounded_draft_digest(&turn.draft),
         "message_digest": format!(
             "sha256:{}",
             Sha256::digest(turn.draft.message.as_bytes())
@@ -3770,8 +3757,6 @@ fn search_capability_catalog<'a>(
     catalog: &'a [ToolDescriptor],
     input: &CapabilitySearchInput,
 ) -> Vec<(usize, &'a ToolDescriptor)> {
-    let query = input.query.trim().to_ascii_lowercase();
-    let query_terms = capability_terms(&query);
     let namespaces = input
         .namespaces
         .iter()
@@ -3803,16 +3788,9 @@ fn search_capability_catalog<'a>(
                 input.effect_classes.contains(&descriptor.effect_class)
             }
         })
-        .filter_map(|descriptor| {
-            capability_match_score(descriptor, &query, &query_terms)
-                .map(|score| (score, descriptor))
-        })
+        .map(|descriptor| (0, descriptor))
         .collect::<Vec<_>>();
-    matches.sort_by(|(left_score, left), (right_score, right)| {
-        right_score
-            .cmp(left_score)
-            .then_with(|| left.tool_id.cmp(&right.tool_id))
-    });
+    matches.sort_by(|(_, left), (_, right)| left.tool_id.cmp(&right.tool_id));
     matches
 }
 
@@ -3825,96 +3803,6 @@ fn capability_search_selectable(tool_id: &str) -> bool {
             | CAPABILITY_EXECUTE_READ
             | CAPABILITY_EXECUTE_PROPOSAL
     )
-}
-
-fn capability_match_score(
-    descriptor: &ToolDescriptor,
-    query: &str,
-    query_terms: &BTreeSet<String>,
-) -> Option<usize> {
-    let tool_id = descriptor.tool_id.to_ascii_lowercase();
-    let title = descriptor.title.to_ascii_lowercase();
-    let summary = capability_search_summary(&descriptor.summary).to_ascii_lowercase();
-    let id_terms = capability_terms(&tool_id);
-    let title_terms = capability_terms(&title);
-    let summary_terms = capability_terms(&summary);
-    if query_terms.is_empty() {
-        return None;
-    }
-    let exact_phrase = tool_id.contains(query) || title.contains(query) || summary.contains(query);
-    let matched_terms = query_terms
-        .iter()
-        .filter(|term| {
-            id_terms.contains(*term) || title_terms.contains(*term) || summary_terms.contains(*term)
-        })
-        .count();
-    let required_terms = if query_terms.len() <= 2 { 1 } else { 2 };
-    if !exact_phrase && matched_terms < required_terms {
-        return None;
-    }
-    let mut score = matched_terms * 10;
-    if tool_id == query {
-        score += 200;
-    } else if tool_id.contains(query) {
-        score += 80;
-    }
-    if title == query {
-        score += 120;
-    } else if title.contains(query) {
-        score += 50;
-    }
-    if summary.contains(query) {
-        score += 20;
-    }
-    for term in query_terms {
-        if id_terms.contains(term) {
-            score += 24;
-        } else if tool_id.contains(term) {
-            score += 12;
-        }
-        if title_terms.contains(term) {
-            score += 16;
-        } else if title.contains(term) {
-            score += 8;
-        }
-        if summary_terms.contains(term) {
-            score += 5;
-        } else if summary.contains(term) {
-            score += 2;
-        }
-    }
-    Some(score)
-}
-
-fn capability_terms(value: &str) -> BTreeSet<String> {
-    const STOP_WORDS: &[&str] = &[
-        "a", "an", "and", "for", "from", "in", "of", "on", "or", "the", "to", "with",
-    ];
-    value
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|term| term.len() >= 2)
-        .filter(|term| !STOP_WORDS.contains(term))
-        .map(normalize_capability_term)
-        .collect()
-}
-
-fn normalize_capability_term(term: &str) -> String {
-    match term {
-        "deployed" | "deploying" | "deployment" | "deployments" => "deploy",
-        "pull" => "pr",
-        "repos" | "repositories" | "repository" => "repo",
-        "assets" => "asset",
-        "checks" => "check",
-        "findings" => "finding",
-        "messages" => "message",
-        "records" => "record",
-        "requests" => "request",
-        "sources" => "source",
-        "threads" => "thread",
-        "tools" => "tool",
-        _ => term,
-    }
-    .to_owned()
 }
 
 fn capability_search_summary(summary: &str) -> &str {
@@ -4021,17 +3909,6 @@ where
     }
     let matches = search_capability_catalog(catalog, &input);
     let total_matches = matches.len();
-    let top_score_tie_count = matches.first().map_or(0, |(top_score, _)| {
-        matches
-            .iter()
-            .take_while(|(score, _)| score == top_score)
-            .count()
-    });
-    let selection_status = match top_score_tie_count {
-        0 => "no_match",
-        1 => "unique_top_match",
-        _ => "tied_top_matches",
-    };
     let query_digest = sha256_digest(query);
     let page = matches
         .into_iter()
@@ -4054,7 +3931,7 @@ where
     Ok(ToolResult {
         state: ToolResultState::Succeeded,
         summary: format!(
-            "Found {} bound tools matching the requested intent.",
+            "Returned {} bound tools from the requested typed catalog filters.",
             page.len()
         ),
         data: json!({
@@ -4064,8 +3941,8 @@ where
             "query": query,
             "query_digest": query_digest,
             "schema_version": "capability-search-result/v1",
-            "selection_status": selection_status,
-            "top_score_tie_count": top_score_tie_count,
+            "selection_status": "catalog_page",
+            "top_score_tie_count": 0,
             "total_matches": total_matches,
         }),
         evidence: vec![],
@@ -4892,15 +4769,13 @@ impl PlatformAgentTools {
                 "source catalog query or limit is invalid".into(),
             ));
         }
-        let normalized_query = query.to_ascii_lowercase();
-        let (sources, truncated) =
-            source_catalog_views(&self.catalog, &normalized_query, input.limit);
+        let (sources, truncated) = source_catalog_views(&self.catalog, input.limit);
         let evidence = catalog_evidence(
             request,
             call,
             !truncated,
             format!(
-                "The checked-in source catalog returned {} matching connector definitions; truncated={truncated}.",
+                "The checked-in source catalog returned {} connector definitions; truncated={truncated}.",
                 sources.len(),
             ),
         )?;
@@ -4910,14 +4785,14 @@ impl PlatformAgentTools {
             } else {
                 ToolResultState::Succeeded
             },
-            summary: format!("Read {} matching source definitions.", sources.len()),
+            summary: format!("Read {} source definitions.", sources.len()),
             data: json!({
                 "sources": sources,
                 "truncated": truncated,
             }),
             evidence: vec![evidence],
             blocker: truncated
-                .then(|| "More source definitions matched than this bounded read returned.".into()),
+                .then(|| "More source definitions exist than this bounded page returned.".into()),
         })
     }
 
@@ -5218,30 +5093,8 @@ impl PlatformAgentTools {
     }
 }
 
-fn source_catalog_views(
-    catalog: &SourceCatalog,
-    normalized_query: &str,
-    limit: usize,
-) -> (Vec<Value>, bool) {
-    let mut matches = catalog
-        .sources()
-        .filter(|source| {
-            source.id().to_ascii_lowercase().contains(normalized_query)
-                || source
-                    .display_name()
-                    .to_ascii_lowercase()
-                    .contains(normalized_query)
-        })
-        .collect::<Vec<_>>();
-    if matches.iter().any(|source| {
-        source.id().eq_ignore_ascii_case(normalized_query)
-            || source.display_name().eq_ignore_ascii_case(normalized_query)
-    }) {
-        matches.retain(|source| {
-            source.id().eq_ignore_ascii_case(normalized_query)
-                || source.display_name().eq_ignore_ascii_case(normalized_query)
-        });
-    }
+fn source_catalog_views(catalog: &SourceCatalog, limit: usize) -> (Vec<Value>, bool) {
+    let mut matches = catalog.sources().collect::<Vec<_>>();
     matches.sort_by(|left, right| left.id().cmp(right.id()));
     let truncated = matches.len() > limit;
     let sources = matches
@@ -5403,13 +5256,11 @@ fn source_runtime_view(
 }
 
 fn source_runtime_finding_state(status: &str) -> &'static str {
-    let status = status.trim().to_ascii_lowercase();
-    if status.contains("fail") || status.contains("error") || status.contains("cancel") {
-        "failed"
-    } else if status.contains("running") || status.contains("pending") {
-        "running"
-    } else {
-        "current"
+    match status.trim().to_ascii_lowercase().as_str() {
+        "failed" | "error" | "cancelled" | "canceled" => "failed",
+        "running" | "pending" => "running",
+        "current" | "complete" | "completed" | "success" | "succeeded" => "current",
+        _ => "not_observed",
     }
 }
 
@@ -5858,7 +5709,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_search_prefers_the_direct_provider_tool() {
+    fn capability_search_returns_a_stable_typed_catalog_page() {
         let catalog = vec![
             discovered_tool(
                 "graph.search",
@@ -5893,24 +5744,29 @@ mod tests {
 
         let matches = search_capability_catalog(&catalog, &input);
 
-        assert_eq!(matches[0].1.tool_id, "mcp.slack.thread.read");
         assert_eq!(
-            capability_namespace(matches[0].1.tool_id.as_str()),
+            matches
+                .iter()
+                .map(|(_, descriptor)| descriptor.tool_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "github.pull_request.read",
+                "graph.search",
+                "mcp.slack.thread.read"
+            ]
+        );
+        assert_eq!(
+            capability_namespace(matches[2].1.tool_id.as_str()),
             "mcp.slack"
         );
         assert!(capability_namespace_matches(
-            matches[0].1.tool_id.as_str(),
+            matches[2].1.tool_id.as_str(),
             "slack"
         ));
-        assert!(
-            matches
-                .iter()
-                .all(|(_, tool)| tool.tool_id != "graph.search")
-        );
     }
 
     #[test]
-    fn capability_search_marks_tied_top_matches_for_disambiguation() {
+    fn capability_search_does_not_claim_a_lexical_winner() {
         let catalog = vec![
             discovered_tool(
                 "mcp.chat.alpha.read",
@@ -5932,8 +5788,8 @@ mod tests {
             capability_search_result(&catalog, &json!({"query": "message"}), |_, _| Ok(None))
                 .unwrap();
 
-        assert_eq!(result.data["selection_status"], "tied_top_matches");
-        assert_eq!(result.data["top_score_tie_count"], 2);
+        assert_eq!(result.data["selection_status"], "catalog_page");
+        assert_eq!(result.data["top_score_tie_count"], 0);
     }
 
     #[test]
@@ -6101,7 +5957,9 @@ mod tests {
             offset: 0,
         };
 
-        assert!(search_capability_catalog(&catalog, &input).is_empty());
+        let matches = search_capability_catalog(&catalog, &input);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].1.tool_id, "mcp.slack.thread.read");
     }
 
     #[test]
@@ -6144,7 +6002,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_search_normalizes_bounded_operator_vocabulary() {
+    fn capability_search_results_do_not_depend_on_query_wording() {
         let catalog = vec![
             discovered_tool(
                 "mcp.github.deploy.read",
@@ -6170,11 +6028,23 @@ mod tests {
             offset: 0,
         };
 
-        for query in ["deployments", "deployed repos", "repository checks"] {
+        let expected = vec!["mcp.github.deploy.read", "mcp.policy.search"];
+        for query in [
+            "deployments",
+            "deployed repos",
+            "repository checks",
+            "police",
+        ] {
             let matches = search_capability_catalog(&catalog, &input(query));
-            assert_eq!(matches[0].1.tool_id, "mcp.github.deploy.read", "{query}");
+            assert_eq!(
+                matches
+                    .iter()
+                    .map(|(_, descriptor)| descriptor.tool_id.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{query}"
+            );
         }
-        assert!(search_capability_catalog(&catalog, &input("police")).is_empty());
     }
 
     #[test]
@@ -7454,6 +7324,7 @@ mod tests {
     #[test]
     fn claim_review_recovers_a_schema_object_encoded_as_text() {
         let review = parse_message_review_value(json!({
+            "draft_digest": format!("sha256:{}", "0".repeat(64)),
             "message_digest": format!("sha256:{}", "0".repeat(64)),
             "claim_reviews": [],
             "undeclared_material": [],
@@ -7578,6 +7449,7 @@ mod tests {
     #[test]
     fn claim_review_recovers_an_attention_object_with_trailing_wrapper_text() {
         let review = parse_message_review_value(json!({
+            "draft_digest": format!("sha256:{}", "0".repeat(64)),
             "message_digest": format!("sha256:{}", "0".repeat(64)),
             "claim_reviews": [],
             "undeclared_material": [],
@@ -7848,20 +7720,19 @@ mod tests {
     #[test]
     fn source_catalog_view_reports_declared_vanta_access_without_credentials() {
         let catalog = super::super::load_catalog().unwrap();
-        let (sources, truncated) = source_catalog_views(&catalog, "vanta", 10);
+        let (sources, truncated) = source_catalog_views(&catalog, 100);
 
         assert!(!truncated);
-        assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0]["source_id"], "vanta");
+        let vanta = sources
+            .iter()
+            .find(|source| source["source_id"] == "vanta")
+            .expect("the bounded catalog page includes Vanta");
+        assert_eq!(vanta["authentication_model"], "oauth_client_credentials");
+        assert_eq!(vanta["credential_access_observed"], false);
+        assert_eq!(vanta["provider_permission_scope_observed"], false);
+        assert_eq!(vanta["runtime_enablement_observed"], false);
         assert_eq!(
-            sources[0]["authentication_model"],
-            "oauth_client_credentials"
-        );
-        assert_eq!(sources[0]["credential_access_observed"], false);
-        assert_eq!(sources[0]["provider_permission_scope_observed"], false);
-        assert_eq!(sources[0]["runtime_enablement_observed"], false);
-        assert_eq!(
-            sources[0]["declared_families"]
+            vanta["declared_families"]
                 .as_array()
                 .unwrap()
                 .iter()
