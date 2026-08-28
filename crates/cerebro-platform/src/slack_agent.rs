@@ -2083,7 +2083,7 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
             {
                 "decision_schemas": {
                     "continue": session_continue_decision_schema(),
-                    "plan": session_plan_decision_schema(),
+                    "initial": session_initial_decision_schema(),
                 },
                 "decision_tool": SESSION_DECISION_TOOL,
                 "instructions": session_instructions(),
@@ -2133,9 +2133,6 @@ impl SessionAgentModel for ConfiguredModel {
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError> {
-        if turn.requested_lane == Some(ExecutionLane::Converse) {
-            return self.present_session_turn(&turn).await;
-        }
         let decision_schema = session_decision_schema_for_turn(&turn);
         let value = self
             .complete_session_structured(
@@ -3055,17 +3052,15 @@ fn required_session_decision_property(schema: &Value, property: &str) -> Value {
         .expect("the complete session schema carries the requested non-null property")
 }
 
-fn session_plan_decision_schema() -> Value {
+fn session_initial_decision_schema() -> Value {
     let complete = session_decision_schema();
-    let mut calls = complete["properties"]["calls"].clone();
-    calls["minItems"] = json!(1);
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
-            "decision": {"type": "string", "enum": ["establish_plan"]},
-            "plan": required_session_decision_property(&complete, "plan"),
-            "calls": calls,
+            "decision": {"type": "string", "enum": ["establish_plan", "finish_research"]},
+            "plan": complete["properties"]["plan"].clone(),
+            "calls": complete["properties"]["calls"].clone(),
         },
         "required": ["decision", "plan", "calls"]
     })
@@ -3098,7 +3093,7 @@ fn session_presentation_schema() -> Value {
 
 fn session_decision_schema_for_turn(turn: &SessionModelTurn) -> Value {
     if turn.plan.is_none() {
-        session_plan_decision_schema()
+        session_initial_decision_schema()
     } else {
         session_continue_decision_schema()
     }
@@ -7423,15 +7418,14 @@ mod tests {
         assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
 
-        let plan_schema = session_plan_decision_schema();
+        let initial_schema = session_initial_decision_schema();
         let continue_schema = session_continue_decision_schema();
         let presentation_schema = session_presentation_schema();
         assert_eq!(
-            plan_schema["properties"]["decision"]["enum"],
-            json!(["establish_plan"])
+            initial_schema["properties"]["decision"]["enum"],
+            json!(["establish_plan", "finish_research"])
         );
-        assert_eq!(plan_schema["properties"]["calls"]["minItems"], 1);
-        assert!(plan_schema["properties"].get("draft").is_none());
+        assert!(initial_schema["properties"].get("draft").is_none());
         assert_eq!(
             continue_schema["properties"]["decision"]["enum"],
             json!(["invoke_tools", "finish_research"])
@@ -7447,7 +7441,7 @@ mod tests {
         for explanation_id in ALL_STABLE_EXPLANATION_IDS {
             assert!(presentation_schema.to_string().contains(explanation_id));
         }
-        assert!(plan_schema.to_string().len() < decision_schema.len());
+        assert!(initial_schema.to_string().len() < decision_schema.len());
         assert!(continue_schema.to_string().len() < decision_schema.len());
         assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
