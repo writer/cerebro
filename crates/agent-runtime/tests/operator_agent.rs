@@ -2010,7 +2010,7 @@ async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
 }
 
 #[tokio::test]
-async fn ambiguous_directive_uses_the_model_route_without_granting_effect_authority() {
+async fn retained_artifact_uses_typed_continuation_without_granting_effect_authority() {
     let mut turn = request("ship it");
     turn.working_state = Some(WorkingState {
         mission_ref: Some("mission://approval-note".into()),
@@ -2023,9 +2023,9 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
     });
     let model = ScriptedModel {
         routes: Mutex::new(VecDeque::from([RouteDecision {
-            lane: ExecutionLane::Act,
+            lane: ExecutionLane::Continue,
             confidence: RouteConfidence::High,
-            reason: "The model selected the typed act lane for the retained artifact.".into(),
+            reason: "The model selected the retained approval-note mission.".into(),
             requires_current_evidence: false,
             future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
             future_observation_excerpt: None,
@@ -2065,7 +2065,7 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
     else {
         panic!("expected the model-routed artifact response");
     };
-    assert_eq!(lane, ExecutionLane::Act);
+    assert_eq!(lane, ExecutionLane::Converse);
     assert_eq!(final_state, FinalState::Answered);
     assert_eq!(tool_call_count, 0);
     assert!(markdown.contains("No external change has been executed"));
