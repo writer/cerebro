@@ -75,7 +75,6 @@ enum McpPostFailureKind {
 
 struct McpPostFailure {
     kind: McpPostFailureKind,
-    runtime_error: AgentRuntimeError,
 }
 
 impl McpPostFailureKind {
@@ -358,7 +357,12 @@ impl McpAgentTools {
         {
             Ok(response) => response,
             Err(error) if tool.descriptor.authority_class == ToolAuthorityClass::Actuate => {
-                return Err(error.runtime_error);
+                let guidance = error.kind.guidance();
+                return Ok(actuation_outcome_unknown(
+                    tool,
+                    json!({"dispatch_error_kind": guidance.error_kind}),
+                    "The capability gateway did not return a verifiable outcome.",
+                ));
             }
             Err(error) => {
                 let guidance = error.kind.guidance();
@@ -376,10 +380,15 @@ impl McpAgentTools {
         };
         if let Some(error) = response.error {
             if tool.descriptor.authority_class == ToolAuthorityClass::Actuate {
-                return Err(AgentRuntimeError::ModelUnavailable(format!(
-                    "MCP actuation {} returned an ambiguous error",
-                    tool.mcp_name
-                )));
+                let guidance = json_rpc_error_guidance(error.code);
+                return Ok(actuation_outcome_unknown(
+                    tool,
+                    json!({
+                        "dispatch_error_kind": guidance.error_kind,
+                        "error_code": error.code,
+                    }),
+                    "The capability returned an error after dispatch, so its outcome is not known.",
+                ));
             }
             let guidance = json_rpc_error_guidance(error.code);
             return Ok(ToolResult {
@@ -408,15 +417,12 @@ impl McpAgentTools {
             .get("structuredContent")
             .cloned()
             .unwrap_or_else(|| result.clone());
-        let normalized = normalize_tool_result(data, is_error, invalid_is_error);
-        if tool.descriptor.authority_class == ToolAuthorityClass::Actuate
-            && normalized.state != ToolResultState::Succeeded
-        {
-            return Err(AgentRuntimeError::ModelUnavailable(format!(
-                "MCP actuation {} did not return a verified success result",
-                tool.mcp_name
-            )));
-        }
+        let normalized = normalize_tool_result_for_authority(
+            data,
+            is_error,
+            invalid_is_error,
+            tool.descriptor.authority_class == ToolAuthorityClass::Actuate,
+        );
         let state = normalized.state;
         let data = normalized.data;
         let complete = state == ToolResultState::Succeeded;
@@ -480,7 +486,6 @@ impl McpAgentTools {
                 } else {
                     McpPostFailureKind::Unavailable
                 },
-                runtime_error: AgentRuntimeError::ModelUnavailable(error.to_string()),
             })?;
         if !response.status().is_success() {
             let status = response.status();
@@ -496,19 +501,24 @@ impl McpAgentTools {
             } else {
                 McpPostFailureKind::Rejected
             };
-            return Err(McpPostFailure {
-                kind,
-                runtime_error: AgentRuntimeError::ModelUnavailable(format!(
-                    "MCP gateway returned status {status}"
-                )),
-            });
+            return Err(McpPostFailure { kind });
         }
-        bounded_json(response)
-            .await
-            .map_err(|error| McpPostFailure {
-                kind: McpPostFailureKind::InvalidResponse,
-                runtime_error: AgentRuntimeError::InvalidToolCall(error),
-            })
+        bounded_json(response).await.map_err(|_| McpPostFailure {
+            kind: McpPostFailureKind::InvalidResponse,
+        })
+    }
+}
+
+fn actuation_outcome_unknown(tool: &BoundMcpTool, data: Value, blocker: &str) -> ToolResult {
+    ToolResult {
+        state: ToolResultState::OutcomeUnknown,
+        summary: format!("MCP actuation {} has an unknown outcome.", tool.mcp_name),
+        data: with_recovery_guidance(data, OUTCOME_UNKNOWN_GUIDANCE),
+        evidence: vec![],
+        blocker: Some(format!(
+            "The {} capability did not prove completion. {} {}",
+            tool.descriptor.title, blocker, OUTCOME_UNKNOWN_GUIDANCE.operator_action
+        )),
     }
 }
 
@@ -526,12 +536,23 @@ fn provider_error_signal(result: &Value) -> (bool, Option<Value>) {
     }
 }
 
+#[cfg(test)]
 fn normalize_tool_result(
     data: Value,
     is_error: bool,
     invalid_is_error: Option<Value>,
 ) -> NormalizedToolResult {
+    normalize_tool_result_for_authority(data, is_error, invalid_is_error, false)
+}
+
+fn normalize_tool_result_for_authority(
+    data: Value,
+    is_error: bool,
+    invalid_is_error: Option<Value>,
+    require_explicit_success: bool,
+) -> NormalizedToolResult {
     let (declared_state, invalid_state) = match data.get("state") {
+        None if require_explicit_success => (ToolResultState::OutcomeUnknown, false),
         None => (ToolResultState::Succeeded, false),
         Some(Value::String(state)) => match state.as_str() {
             "complete" | "succeeded" => (ToolResultState::Succeeded, false),
@@ -542,11 +563,14 @@ fn normalize_tool_result(
         },
         Some(_) => (ToolResultState::Failed, true),
     };
-    let state = if is_error || invalid_is_error.is_some() {
+    let mut state = if is_error || invalid_is_error.is_some() {
         ToolResultState::Failed
     } else {
         declared_state
     };
+    if require_explicit_success && state != ToolResultState::Succeeded {
+        state = ToolResultState::OutcomeUnknown;
+    }
     let blocker = invalid_is_error
         .is_some()
         .then(|| "The provider returned a non-boolean isError signal.".into())
@@ -558,26 +582,30 @@ fn normalize_tool_result(
                 .then(|| provider_blocker(&data))
                 .flatten()
         });
+    let has_invalid_is_error = invalid_is_error.is_some();
     let data = if let Some(invalid_is_error) = invalid_is_error {
         json!({
             "provider_result": data,
             "invalid_is_error": invalid_is_error,
-            "error_kind": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.error_kind,
-            "retryable": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.retryable,
-            "operator_action": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.operator_action,
+            "dispatch_error_kind": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.error_kind,
         })
     } else if invalid_state {
         json!({
             "provider_result": data,
-            "error_kind": INVALID_PROVIDER_STATE_GUIDANCE.error_kind,
-            "retryable": INVALID_PROVIDER_STATE_GUIDANCE.retryable,
-            "operator_action": INVALID_PROVIDER_STATE_GUIDANCE.operator_action,
+            "dispatch_error_kind": INVALID_PROVIDER_STATE_GUIDANCE.error_kind,
         })
-    } else if state == ToolResultState::OutcomeUnknown {
-        with_recovery_guidance(data, OUTCOME_UNKNOWN_GUIDANCE)
     } else if is_error || state == ToolResultState::Failed {
         let guidance = tool_error_guidance(&data);
         with_recovery_guidance(data, guidance)
+    } else {
+        data
+    };
+    let data = if state == ToolResultState::OutcomeUnknown {
+        with_recovery_guidance(data, OUTCOME_UNKNOWN_GUIDANCE)
+    } else if has_invalid_is_error {
+        with_recovery_guidance(data, INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE)
+    } else if invalid_state {
+        with_recovery_guidance(data, INVALID_PROVIDER_STATE_GUIDANCE)
     } else {
         data
     };
@@ -1302,6 +1330,59 @@ mod tests {
         assert_eq!(normalized.data["operation_ref"], "operation-one");
         assert_eq!(normalized.data["error_kind"], "provider_outcome_unknown");
         assert_eq!(normalized.data["retryable"], false);
+    }
+
+    #[test]
+    fn actuation_requires_an_explicit_success_state() {
+        let absent = normalize_tool_result_for_authority(
+            json!({"operation_ref": "operation-one"}),
+            false,
+            None,
+            true,
+        );
+        assert_eq!(absent.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(absent.data["error_kind"], "provider_outcome_unknown");
+        assert_eq!(absent.data["retryable"], false);
+
+        for state in ["partial", "blocked", "outcome_unknown"] {
+            let normalized = normalize_tool_result_for_authority(
+                json!({"state": state, "operation_ref": "operation-one"}),
+                false,
+                None,
+                true,
+            );
+            assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
+            assert_eq!(normalized.data["error_kind"], "provider_outcome_unknown");
+            assert_eq!(normalized.data["retryable"], false);
+        }
+
+        let provider_error = normalize_tool_result_for_authority(
+            json!({"state": "succeeded", "operation_ref": "operation-one"}),
+            true,
+            None,
+            true,
+        );
+        assert_eq!(provider_error.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(
+            provider_error.data["error_kind"],
+            "provider_outcome_unknown"
+        );
+        assert_eq!(provider_error.data["retryable"], false);
+
+        let succeeded = normalize_tool_result_for_authority(
+            json!({"state": "succeeded", "operation_ref": "operation-one"}),
+            false,
+            None,
+            true,
+        );
+        assert_eq!(succeeded.state, ToolResultState::Succeeded);
+    }
+
+    #[test]
+    fn observation_keeps_legacy_success_default_when_state_is_absent() {
+        let normalized =
+            normalize_tool_result_for_authority(json!({"records": []}), false, None, false);
+        assert_eq!(normalized.state, ToolResultState::Succeeded);
     }
 
     #[test]
@@ -2037,13 +2118,82 @@ mod tests {
             input: json!({"channel_id": "channel-one", "text": "hello"}),
         };
 
-        let result = mcp.invoke(&turn_request(), &call).await;
+        let result = mcp.invoke(&turn_request(), &call).await.unwrap();
         server.abort();
 
-        assert!(matches!(
-            result,
-            Err(AgentRuntimeError::ModelUnavailable(_))
-        ));
+        assert_eq!(result.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(result.data["error_kind"], "provider_outcome_unknown");
+        assert_eq!(result.data["retryable"], false);
+        assert_eq!(
+            result.data["dispatch_error_kind"],
+            "capability_gateway_unavailable"
+        );
+        assert!(result.evidence.is_empty());
+        assert!(result.blocker.is_some());
+    }
+
+    #[tokio::test]
+    async fn actuation_json_rpc_errors_remain_outcome_unknown_to_the_runtime() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route(
+                    "/mcp",
+                    post(|| async {
+                        Json(json!({
+                            "jsonrpc": "2.0",
+                            "id": "send-one",
+                            "error": {
+                                "code": -32603,
+                                "message": "provider did not confirm completion"
+                            }
+                        }))
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let tools = bind_tools(
+            vec![tool("slack.message.send", false)],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::from(["slack.message.send".into()]),
+        )
+        .unwrap();
+        let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
+        let mcp = McpAgentTools {
+            client: Client::new(),
+            endpoint: Url::parse(&format!("http://{address}/mcp")).unwrap(),
+            bearer_token: "tenant-token".into(),
+            selection_signing_key: "host-only-selection-signing-secret".into(),
+            toolsets: "task".into(),
+            descriptors,
+            tools,
+        };
+        let call = ToolCall {
+            call_id: "send-one".into(),
+            tool_id: "mcp.slack.message.send".into(),
+            purpose: "Send the approved message.".into(),
+            input: json!({}),
+        };
+
+        let result = mcp.invoke(&turn_request(), &call).await.unwrap();
+        server.abort();
+
+        assert_eq!(result.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(result.data["error_kind"], "provider_outcome_unknown");
+        assert_eq!(result.data["retryable"], false);
+        assert_eq!(
+            result.data["dispatch_error_kind"],
+            "provider_internal_error"
+        );
+        assert_eq!(result.data["error_code"], -32603);
+        assert!(result.data.get("error_message").is_none());
+        assert!(result.evidence.is_empty());
+        assert!(result.blocker.is_some());
     }
 
     #[tokio::test]
