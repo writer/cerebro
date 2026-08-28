@@ -4,6 +4,8 @@ import { FileAgentDeliveryOutbox } from "./runtime/agent-delivery-outbox.js";
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
+import { ProactiveFollowupCoordinator } from "./runtime/proactive-followup.js";
+import { FileProactiveFollowupStore } from "./runtime/proactive-followup-store.js";
 import { FileThreadScratchpadStore } from "./runtime/thread-scratchpad-store.js";
 import { FileSlackThreadRouteStore } from "./runtime/slack-thread-route-store.js";
 import { FileWakeDeliveryOutbox } from "./runtime/wake-delivery-outbox.js";
@@ -21,6 +23,9 @@ async function main(): Promise<void> {
   const approvals = new FileAgentApprovalStore(config.memoryDirectory);
   const agentDeliveries = new FileAgentDeliveryOutbox(config.memoryDirectory);
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
+  const followups = new ProactiveFollowupCoordinator(
+    new FileProactiveFollowupStore(config.memoryDirectory),
+  );
   const threadRoutes = new FileSlackThreadRouteStore(config.memoryDirectory);
   const wakeDeliveries = new FileWakeDeliveryOutbox(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
@@ -53,6 +58,7 @@ async function main(): Promise<void> {
     questions,
     outcomes,
     scratchpads,
+    followups,
     agentDeliveries,
     threadRoutes,
     agentClient,

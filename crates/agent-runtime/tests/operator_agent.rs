@@ -602,6 +602,8 @@ fn request(message: &str) -> AgentTurnRequest {
         history_metadata: vec![],
         working_state: None,
         effect_authorizations: vec![],
+        capabilities: vec![],
+        followup_acceptance: None,
     }
 }
 

@@ -2319,6 +2319,8 @@ impl SessionTools for EvalTools {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: session.effect_authorizations.clone(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let result = <Self as AgentTools>::invoke(self, &request, call).await;
         *self
@@ -3010,6 +3012,8 @@ fn evaluation_initial_request(
         history_metadata: Vec::new(),
         working_state: None,
         effect_authorizations: Vec::new(),
+        capabilities: Vec::new(),
+        followup_acceptance: None,
     }
 }
 
@@ -4806,6 +4810,8 @@ async fn run_conversation_lab(
                 history_metadata: Vec::new(),
                 working_state: working_state.clone(),
                 effect_authorizations,
+                capabilities: Vec::new(),
+                followup_acceptance: None,
             };
             let original_route_context = RouteContext::from_request(&request);
             let measured = MeasuredModel::new(model.clone());
@@ -6930,6 +6936,8 @@ fn eval_request(index: usize, eval_case: EvalCase, assessment_at: &str) -> Agent
                 open_loops: vec!["Resume the retained request.".into()],
             }),
         effect_authorizations: vec![],
+        capabilities: Vec::new(),
+        followup_acceptance: None,
     }
 }
 
@@ -7817,6 +7825,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let result = AgentTools::invoke(
             &tools,
@@ -7976,6 +7986,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
 
         let error = run_turn(&model, &tools, request).await.unwrap_err();
@@ -8013,6 +8025,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let result = AgentTools::invoke(
             &tools,
@@ -8092,6 +8106,8 @@ mod tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+            capabilities: Vec::new(),
+            followup_acceptance: None,
         };
         let search = AgentTools::invoke(
             &tools,

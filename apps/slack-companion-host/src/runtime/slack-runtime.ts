@@ -48,6 +48,7 @@ import {
   type CerebroAskHistoryMessage,
   type CerebroAskResult,
   type RustAgentProgressUpdate,
+  type RustProactiveFollowupOffer,
 } from "./cerebro-ask-client.js";
 import type { FileAgentApprovalStore } from "./agent-approval-store.js";
 import {
@@ -75,6 +76,12 @@ import {
   type ReleaseNoticeMonitor,
   startReleaseNoticeMonitor,
 } from "./release-notifier.js";
+import {
+  ProactiveFollowupCoordinator,
+} from "./proactive-followup.js";
+import type {
+  ProactiveFollowupAcceptance,
+} from "./proactive-followup-store.js";
 import {
   archetypeErrorModal,
   archetypeLoadingModal,
@@ -182,6 +189,7 @@ const graphCatalog = createToolCatalog([{
 export interface AssistantQuestionInput {
   actorRef: string;
   contextScopeRef?: string;
+  followupAcceptance?: ProactiveFollowupAcceptance;
   requestKey: string;
   scratchpadContext?: string;
   threadContext?: string | readonly CerebroAskHistoryMessage[];
@@ -192,12 +200,14 @@ export interface AssistantQuestionInput {
 }
 
 export interface AssistantQuestionResult {
+  acceptedFollowupRef?: string;
   agentDelivery?: {
     payloadDigest: string;
     requestId: string;
     threadRef: string;
   };
   pending: Omit<PendingAssistantOutcome, "delivered_message_ts">;
+  proactiveFollowup?: RustProactiveFollowupOffer;
   text: string;
   verifiedTurn?: {
     answer: string;
@@ -330,6 +340,9 @@ export class AssistantQuestionService {
                   toolId: resumingApproval.toolId,
                 }],
               }),
+          ...(input.followupAcceptance === undefined
+            ? {}
+            : { followupAcceptance: input.followupAcceptance.offer }),
           history,
           question: turnQuestion,
           requestId: turnRequestId,
@@ -386,6 +399,9 @@ export class AssistantQuestionService {
           );
         }
         return {
+          ...(answer.acceptedFollowupRef === undefined
+            ? {}
+            : { acceptedFollowupRef: answer.acceptedFollowupRef }),
           ...(answer.deliveryAckRequired
             ? {
                 agentDelivery: {
@@ -404,6 +420,9 @@ export class AssistantQuestionService {
             usefulAnswerAt,
             verified: answer.citationValidationPassed,
           }),
+          ...(answer.followupOffer === undefined
+            ? {}
+            : { proactiveFollowup: answer.followupOffer }),
           text: slackText,
           workingTurn: {
             ...(answer.workingState?.active_lane == null
@@ -766,6 +785,7 @@ export class SlackCompanionRuntime {
     private readonly questions: AssistantQuestionService,
     private readonly outcomes: FileOutcomeStore,
     private readonly scratchpads: SlackThreadScratchpadPort,
+    private readonly followups: ProactiveFollowupCoordinator,
     private readonly agentDeliveries: FileAgentDeliveryOutbox,
     private readonly threadRoutes: FileSlackThreadRouteStore,
     agentClient: CerebroAskClient,
@@ -1197,6 +1217,7 @@ export class SlackCompanionRuntime {
         priorDeliveryAttempt: claim.attempt > 1,
         questions: this.questions,
         scratchpads: this.scratchpads,
+        followups: this.followups,
         threadRoutes: this.threadRoutes,
       });
       return;
@@ -1225,6 +1246,7 @@ export class SlackCompanionRuntime {
       priorDeliveryAttempt: claim.attempt > 1,
       questions: this.questions,
       scratchpads: this.scratchpads,
+      followups: this.followups,
       teamId: event.teamId,
       threadRoutes: this.threadRoutes,
     });
@@ -1261,6 +1283,11 @@ export class SlackCompanionRuntime {
           payloadDigest: current.payloadDigest,
           requestId: current.requestId,
           threadRef: current.threadRef,
+        });
+        await this.followups.markDeliveredForTurn(current.requestId, {
+          deliveredAt: current.deliveredAt,
+          deliveryRef: current.deliveryRef,
+          payloadDigest: current.payloadDigest,
         });
         await this.agentDeliveries.complete(current.recordRef);
       } catch (error) {
@@ -1315,6 +1342,7 @@ export async function handleSlackThreadReply(input: {
   config: SlackRuntimeConfig;
   event: unknown;
   host: AssistantTurnHostAdapter;
+  followups?: ProactiveFollowupCoordinator;
   ingressQueue?: FileSlackIngressQueue;
   leaseGuard?: () => Promise<void>;
   outcomes: FileOutcomeStore;
@@ -1358,6 +1386,7 @@ export async function handleSlackThreadReply(input: {
       userId: event.userId,
     },
     host: input.host,
+    followups: input.followups,
     ingressQueue: input.ingressQueue,
     leaseGuard: input.leaseGuard,
     outcomes: input.outcomes,
@@ -1402,6 +1431,7 @@ export async function handleSlackMention(input: {
   client: SlackMentionClient;
   config: SlackRuntimeConfig;
   event: SlackMentionEvent;
+  followups?: ProactiveFollowupCoordinator;
   host: AssistantTurnHostAdapter;
   ingressQueue?: FileSlackIngressQueue;
   leaseGuard?: () => Promise<void>;
@@ -1428,6 +1458,7 @@ export async function handleSlackMention(input: {
   const runId = `slack-run-${requestDigest}`;
   const progressClientMessageId = slackClientMessageId(requestId);
   let deliveredMessageTs = "";
+  let followupAcceptance: ProactiveFollowupAcceptance | undefined;
   let pendingOutcomeRecorded = false;
   const fenceMutation = async (): Promise<void> => input.leaseGuard?.();
   const recordBlockedPending = async (): Promise<void> => {
@@ -1587,6 +1618,15 @@ export async function handleSlackMention(input: {
     const scratchpadContext = scratchpad
       ? formatSlackThreadScratchpadContext(scratchpad)
       : undefined;
+    if (input.followups) {
+      await fenceMutation();
+      followupAcceptance = await input.followups.beginAcceptance({
+        actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
+        ingressRequestKey: requestKey,
+        operatorText: input.event.text,
+        threadRef: scratchpadRef,
+      });
+    }
     await fenceMutation();
     await input.host.recordProgress(runId, {
       execution_lane: "lookup",
@@ -1619,6 +1659,7 @@ export async function handleSlackMention(input: {
     const result = await input.questions.answer({
       actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
       contextScopeRef,
+      ...(followupAcceptance === undefined ? {} : { followupAcceptance }),
       requestKey,
       scratchpadContext,
       threadContext,
@@ -1640,6 +1681,16 @@ export async function handleSlackMention(input: {
         ? {}
         : { workingState: scratchpad.working_state }),
     });
+    if (followupAcceptance) {
+      if (result.acceptedFollowupRef !== followupAcceptance.offer.offer_ref) {
+        await input.followups?.releaseAcceptance(followupAcceptance);
+        throw new Error("The Rust agent did not acknowledge the exact proactive follow-up.");
+      }
+      await input.followups?.acknowledgeAcceptance(
+        followupAcceptance,
+        result.acceptedFollowupRef,
+      );
+    }
     const deliveredText = result.agentDelivery
       ? result.text
       : formatEnvironmentAnswer(input.config, result.text);
@@ -1649,6 +1700,10 @@ export async function handleSlackMention(input: {
       && result.agentDelivery.payloadDigest !== deliveredPayloadDigest
     ) {
       throw new Error("The Slack payload changed after the Rust agent prepared delivery.");
+    }
+    if (input.followups && result.proactiveFollowup) {
+      await fenceMutation();
+      await input.followups.prepareDelivery(result.proactiveFollowup);
     }
     const deliveredAt = new Date().toISOString();
     const references = slackDeliveryReferences(
@@ -1708,6 +1763,11 @@ export async function handleSlackMention(input: {
           requestId: result.agentDelivery.requestId,
           threadRef: result.agentDelivery.threadRef,
         });
+        await input.followups?.markDeliveredForTurn(result.agentDelivery.requestId, {
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          payloadDigest: deliveredPayloadDigest,
+        });
         if (outboxRecord) {
           await fenceMutation();
           await input.agentDeliveries?.complete(outboxRecord.recordRef);
@@ -1739,6 +1799,17 @@ export async function handleSlackMention(input: {
       state: "completed",
       updated_at: deliveredAt,
     });
+    if (input.followups && result.proactiveFollowup && !result.agentDelivery) {
+      await fenceMutation();
+      await input.followups.markDeliveredForTurn(
+        result.proactiveFollowup.turn_ref.slice("agent-turn://".length),
+        {
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          payloadDigest: deliveredPayloadDigest,
+        },
+      );
+    }
     if (input.scratchpads && result.workingTurn) {
       try {
         await fenceMutation();
