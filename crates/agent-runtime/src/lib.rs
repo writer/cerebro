@@ -1943,6 +1943,8 @@ fn request_is_read_only_status_or_change_question(message: &str) -> bool {
         " land ",
         " ship ",
         " roll out ",
+        " roll it out ",
+        " roll this out ",
         " create ",
         " change ",
         " update ",
