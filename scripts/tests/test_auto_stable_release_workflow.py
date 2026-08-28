@@ -55,6 +55,7 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
 
         self.assertIn('if [[ "${graph_runs}" == 0 ]]', proof)
         self.assertIn("gh workflow run rust-graph-replacement.yml", proof)
+        self.assertNotIn("|| echo 0", proof)
         self.assertIn("--ref main", proof)
         self.assertIn('if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]', proof)
         self.assertLess(
