@@ -7229,7 +7229,7 @@ fn render_coverage_boundary(boundary: CoverageBoundaryKind) -> &'static str {
             "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
         }
         CoverageBoundaryKind::NoCurrentAuthoritativeObservation => {
-            "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+            "Coverage gap: I couldn't obtain current evidence, so I can't evaluate the requested condition honestly. I did not take action or schedule a follow-up. Retry once; if this persists, inspect the agent's model and capability health."
         }
         CoverageBoundaryKind::PartialConclusionUnsupported => {
             "Coverage gap: The requested conclusion remains only partially supported."
@@ -17805,7 +17805,7 @@ mod tests {
         assert_eq!(lane, ExecutionLane::Investigate);
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("No current authoritative observation was obtained"));
+        assert!(markdown.contains("couldn't obtain current evidence"));
     }
 
     #[tokio::test]
@@ -18178,7 +18178,7 @@ mod tests {
             panic!("a current-state fallback should be visible");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("No current authoritative observation was obtained"));
+        assert!(markdown.contains("couldn't obtain current evidence"));
     }
 
     #[tokio::test]
@@ -18219,7 +18219,7 @@ mod tests {
             panic!("an unsupported operating answer should be visible");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("No current authoritative observation was obtained"));
+        assert!(markdown.contains("couldn't obtain current evidence"));
     }
 
     #[tokio::test]
@@ -18272,7 +18272,7 @@ mod tests {
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("upstream request timed out"));
         assert!(markdown.contains("The source read failed"));
-        assert!(!markdown.contains("No current authoritative observation was obtained"));
+        assert!(!markdown.contains("couldn't obtain current evidence"));
 
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
         supported.result.evidence[0].evidence_ref = "evidence:other".into();
@@ -18466,7 +18466,7 @@ mod tests {
         };
         assert_eq!(final_state, FinalState::Blocked);
         assert!(!markdown.contains("recovering"));
-        assert!(markdown.contains("No current authoritative observation was obtained"));
+        assert!(markdown.contains("couldn't obtain current evidence"));
         assert!(evidence_atom_refs.is_empty());
     }
 
