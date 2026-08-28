@@ -76,7 +76,7 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			name: "finding rule evaluator", artifact: "internal/findings/findingrule.wasm",
 			exports:    wasmGuestExports{abi: "cerebro_finding_rule_abi_version", allocate: "cerebro_finding_rule_alloc", operation: "cerebro_finding_rule_evaluate"},
 			abiVersion: 1, resultBytes: 16, maxInputBytes: 1 << 20, invalidRangeStatus: 4, tooLargeStatus: 4, zeroInputStatus: 4, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
-			validInput: `{"schema_version":"cerebro.finding-rule-authority.v1","input_digest":"sha256:de42728562ef25d22c6371a520ed9b685233f01c089c7af74ac2661dcea5b46a","request":{"operation":"open_anchor","rule_id":"tailscale-tailnet-device-approval-disabled","runtime_id":"","runtime_source_id":"","runtime_tenant_id":"","runtime_workspace_id":"","event_id":"","event_tenant_id":"","event_source_id":"","event_kind":"","occurred_at":"","attributes":{}}}`,
+			validInput: `{"schema_version":"cerebro.finding-rule-authority.v1","input_digest":"sha256:138175849564dc77fcd4c62497ea4789f07f1009c31da16a1a57bd8c69ec8c38","request":{"operation":"open_anchor","rule_id":"tailscale-tailnet-device-approval-disabled","runtime_id":"","runtime_source_id":"","runtime_tenant_id":"","runtime_workspace_id":"","event_id":"","event_tenant_id":"","event_source_id":"","event_kind":"","event_schema_ref":"","occurred_at":"","replay_sequence":0,"attributes":{},"payload":[]}}`,
 		},
 		{
 			name: "security path evaluator", artifact: "internal/securitypathdelta/evaluator.wasm",

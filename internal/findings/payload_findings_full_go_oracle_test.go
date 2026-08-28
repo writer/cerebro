@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestPayloadFindingFullGoOracle(t *testing.T) {
@@ -60,4 +63,27 @@ func TestPayloadFindingFullGoOracle(t *testing.T) {
 			t.Fatalf("%s full FindingRecord drift\nactual: %s\nexpected: %s", tc.name, actualCanonical, expectedCanonical)
 		}
 	}
+}
+
+func aureliusPromotedVulnerabilityEvent(id string, overrides map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
+	attributes := map[string]string{
+		"image_digest": "sha256:c6b86af5b3d40000", "image_uri": "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
+		"cve_id": "CVE-2026-1111", "package": "openssl", "severity": "high", "installed_version": "3.0.0", "fixed_version": "3.0.12",
+		"state": "promoted", "promoted": "true", "exception_status": "none", "track": "prod", ports.EventAttributeSourceRuntimeID: "writer-aurelius-finding",
+	}
+	for key, value := range overrides {
+		attributes[key] = value
+	}
+	return &cerebrov1.EventEnvelope{Id: id, TenantId: "writer", SourceId: "aurelius", Kind: "aurelius.finding", SchemaRef: "aurelius/finding/v1", OccurredAt: timestamppb.New(occurredAt), Attributes: attributes}
+}
+
+func cosmoCoordinationFactEvent(id string, overrides map[string]string, occurredAt time.Time) *cerebrov1.EventEnvelope {
+	attributes := map[string]string{
+		"key": "coordination:risk:thread-7", "category": "coordination_risk", "source": "session:thread-7", "risk_state": "active",
+		"risk_reason": "agent coordinated a privileged change across multiple sessions without approval", "risk_severity": "high", ports.EventAttributeSourceRuntimeID: "writer-cosmo-fact",
+	}
+	for key, value := range overrides {
+		attributes[key] = value
+	}
+	return &cerebrov1.EventEnvelope{Id: id, TenantId: "writer", SourceId: "cosmo", Kind: "cosmo.fact", SchemaRef: "cosmo/fact/v1", OccurredAt: timestamppb.New(occurredAt), Attributes: attributes}
 }

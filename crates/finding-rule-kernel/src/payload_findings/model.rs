@@ -2,11 +2,10 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use crate::digest::sha256;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub(crate) const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_PAYLOAD_DEPTH: usize = 8;
@@ -125,6 +124,7 @@ pub(crate) struct Decision {
     pub(crate) finding: Option<RuleFindingDecision>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EvaluatorReceipt {
     pub(crate) workspace_id: String,
@@ -138,6 +138,7 @@ pub(crate) struct EvaluatorReceipt {
     pub(crate) action: Action,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EvaluatorOutput {
     pub(crate) decision: Decision,
@@ -149,6 +150,7 @@ pub(crate) struct EvaluatorOutput {
 /// Workspace is deliberately absent from the public finding identity and raw
 /// rule record. The shared adapter must retain this envelope through candidate
 /// evaluation, upsert, and closeout so storage can enforce workspace scope.
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ScopedDecision {
     pub(crate) workspace_id: String,
@@ -162,6 +164,7 @@ pub(crate) struct ScopedDecision {
     pub(crate) decision: Decision,
 }
 
+#[cfg(test)]
 impl ScopedDecision {
     pub(crate) fn require_workspace(&self, workspace_id: &str) -> Result<&Decision, KernelError> {
         if workspace_id.trim().is_empty() || self.workspace_id != workspace_id.trim() {
@@ -171,6 +174,7 @@ impl ScopedDecision {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PersistencePath {
     Candidate,
@@ -178,6 +182,7 @@ pub(crate) enum PersistencePath {
     Closeout,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ScopedPersistenceAction {
     pub(crate) workspace_id: String,
@@ -192,6 +197,7 @@ pub(crate) struct ScopedPersistenceAction {
     pub(crate) decision: Decision,
 }
 
+#[cfg(test)]
 impl ScopedDecision {
     pub(crate) fn for_path(&self, path: PersistencePath) -> ScopedPersistenceAction {
         ScopedPersistenceAction {
@@ -211,6 +217,7 @@ impl ScopedDecision {
 
 /// Exact zero/default host-owned fields embedded by Go's `FindingRecord`.
 /// `Option<Vec<_>>` preserves nil versus explicitly empty slices.
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct HostFindingFields {
     #[serde(rename = "GraphEvidenceRows")]
@@ -263,6 +270,7 @@ pub(crate) struct HostFindingFields {
     pub(crate) tombstone_generation: i32,
 }
 
+#[cfg(test)]
 impl Default for HostFindingFields {
     fn default() -> Self {
         const GO_ZERO_TIME: &str = "0001-01-01T00:00:00Z";
@@ -295,6 +303,7 @@ impl Default for HostFindingFields {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct CompleteFindingRecord {
     #[serde(flatten)]
@@ -303,6 +312,7 @@ pub(crate) struct CompleteFindingRecord {
     pub(crate) host: HostFindingFields,
 }
 
+#[cfg(test)]
 impl From<RuleFindingDecision> for CompleteFindingRecord {
     fn from(rule: RuleFindingDecision) -> Self {
         Self {
@@ -312,6 +322,7 @@ impl From<RuleFindingDecision> for CompleteFindingRecord {
     }
 }
 
+#[cfg(test)]
 impl CompleteFindingRecord {
     /// Applies a fresh rule decision without erasing analyst-managed state.
     pub(crate) fn overlay_preserving_host_state(&self, mut rule: RuleFindingDecision) -> Self {
@@ -641,13 +652,130 @@ impl<'a, 'de> Visitor<'de> for BoundedValueVisitor<'a> {
     }
 }
 
-pub(super) fn normalized_observation_time(value: &str) -> Result<String, KernelError> {
-    let parsed = OffsetDateTime::parse(value.trim(), &Rfc3339)
-        .map_err(|_| KernelError::InvalidObservationTime)?;
-    parsed
-        .to_offset(time::UtcOffset::UTC)
-        .format(&Rfc3339)
+pub(crate) fn normalized_observation_time(value: &str) -> Result<String, KernelError> {
+    let value = value.trim();
+    if !value.is_ascii() {
+        return Err(KernelError::InvalidObservationTime);
+    }
+    let (date_time, offset_seconds) = if let Some(value) = value.strip_suffix('Z') {
+        (value, 0_i64)
+    } else {
+        let offset_index = value
+            .char_indices()
+            .rev()
+            .find(|(index, character)| *index >= 19 && matches!(character, '+' | '-'))
+            .map(|(index, _)| index)
+            .ok_or(KernelError::InvalidObservationTime)?;
+        let (date_time, offset) = value.split_at(offset_index);
+        let sign = if offset.starts_with('+') {
+            1_i64
+        } else {
+            -1_i64
+        };
+        if offset.len() != 6 || offset.as_bytes()[3] != b':' {
+            return Err(KernelError::InvalidObservationTime);
+        }
+        let hours = parse_digits(&offset[1..3])?;
+        let minutes = parse_digits(&offset[4..6])?;
+        if hours > 23 || minutes > 59 {
+            return Err(KernelError::InvalidObservationTime);
+        }
+        (date_time, sign * i64::from(hours * 3600 + minutes * 60))
+    };
+    if date_time.len() < 19
+        || &date_time[4..5] != "-"
+        || &date_time[7..8] != "-"
+        || &date_time[10..11] != "T"
+        || &date_time[13..14] != ":"
+        || &date_time[16..17] != ":"
+    {
+        return Err(KernelError::InvalidObservationTime);
+    }
+    let year = parse_digits(&date_time[0..4])? as i32;
+    let month = parse_digits(&date_time[5..7])?;
+    let day = parse_digits(&date_time[8..10])?;
+    let hour = parse_digits(&date_time[11..13])?;
+    let minute = parse_digits(&date_time[14..16])?;
+    let second = parse_digits(&date_time[17..19])?;
+    if !(1..=12).contains(&month)
+        || day == 0
+        || day > days_in_month(year, month)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(KernelError::InvalidObservationTime);
+    }
+    let fraction = &date_time[19..];
+    if !fraction.is_empty()
+        && (!fraction.starts_with('.')
+            || fraction.len() == 1
+            || fraction.len() > 10
+            || !fraction[1..].bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err(KernelError::InvalidObservationTime);
+    }
+    // Match Go's RFC3339Nano formatting: nanosecond precision with trailing
+    // fractional zeroes removed, including the decimal point when all zero.
+    let fraction = fraction.trim_end_matches('0');
+    let fraction = if fraction == "." { "" } else { fraction };
+    let seconds = days_from_civil(year, month, day) * 86_400
+        + i64::from(hour * 3600 + minute * 60 + second)
+        - offset_seconds;
+    let days = seconds.div_euclid(86_400);
+    let seconds_of_day = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    let hour = seconds_of_day / 3600;
+    let minute = seconds_of_day % 3600 / 60;
+    let second = seconds_of_day % 60;
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}{fraction}Z"
+    ))
+}
+
+fn parse_digits(value: &str) -> Result<u32, KernelError> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(KernelError::InvalidObservationTime);
+    }
+    value
+        .parse::<u32>()
         .map_err(|_| KernelError::InvalidObservationTime)
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let adjusted_year = year - i32::from(month <= 2);
+    let era = adjusted_year.div_euclid(400);
+    let year_of_era = adjusted_year - era * 400;
+    let shifted_month = i64::from(month) + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * shifted_month + 2) / 5 + i64::from(day) - 1;
+    let day_of_era = i64::from(year_of_era) * 365 + i64::from(year_of_era / 4)
+        - i64::from(year_of_era / 100)
+        + day_of_year;
+    i64::from(era) * 146_097 + day_of_era - 719_468
+}
+
+fn civil_from_days(days: i64) -> (i32, u32, u32) {
+    let days = days + 719_468;
+    let era = days.div_euclid(146_097);
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    (year as i32, month as u32, day as u32)
 }
 
 pub(super) fn attribute<'a>(event: &'a EventInput, key: &str) -> &'a str {
@@ -671,12 +799,12 @@ pub(super) fn trim_empty(attributes: &mut BTreeMap<String, String>) {
 }
 
 pub(super) fn finding_hash(parts: &[&str]) -> String {
-    let mut digest = Sha256::new();
+    let mut input = Vec::new();
     for part in parts {
-        digest.update(part.trim().as_bytes());
-        digest.update([0]);
+        input.extend_from_slice(part.trim().as_bytes());
+        input.push(0);
     }
-    hex_digest(&digest.finalize())
+    hex_digest(&sha256(&input))
 }
 
 pub(super) fn stable_external_id(value: &str) -> String {
@@ -684,7 +812,7 @@ pub(super) fn stable_external_id(value: &str) -> String {
     if !valid_identity_component(normalized) {
         return String::new();
     }
-    let digest = Sha256::digest(normalized.as_bytes());
+    let digest = sha256(normalized.as_bytes());
     format!("id-{}", hex_digest(&digest[..16]))
 }
 
@@ -711,8 +839,9 @@ pub(super) fn valid_identity_component(value: &str) -> bool {
     !value.trim().is_empty() && !value.chars().any(char::is_control)
 }
 
+#[cfg(test)]
 pub(super) fn byte_digest(value: &[u8]) -> String {
-    hex_digest(&Sha256::digest(value))
+    hex_digest(&sha256(value))
 }
 
 fn hex_digest(value: &[u8]) -> String {

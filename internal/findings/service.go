@@ -1146,6 +1146,9 @@ func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *por
 		}
 		return nil, nil, err
 	}
+	if strings.TrimSpace(existing.ApplicationWorkspaceID) != strings.TrimSpace(finding.ApplicationWorkspaceID) {
+		return nil, nil, fmt.Errorf("finding %q application workspace scope mismatch", findingID)
+	}
 	return mergeFindingEvidenceForUpsert(existing, finding), existing, nil
 }
 

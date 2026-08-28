@@ -34,6 +34,14 @@ type ContextCounterEventRule interface {
 	CloseOnEventContext(ctx context.Context, event Event) (anchor string, closes bool, err error)
 }
 
+// TrustedContextCounterEventRule receives the persisted finding and runtime
+// envelope so external authorities can bind tenant, runtime, workspace, and
+// close event identity without placing workspace in a public anchor.
+type TrustedContextCounterEventRule interface {
+	OpenAnchorForFindingContext(context.Context, *ports.FindingRecord) (string, error)
+	CloseOnEventForRuntimeContext(context.Context, *cerebrov1.SourceRuntime, Event) (string, bool, error)
+}
+
 // CounterEventStateUpdate lets aggregate durable-state rules describe which
 // subcontrol at an anchor an event made compliant or non-compliant.
 type CounterEventStateUpdate struct {

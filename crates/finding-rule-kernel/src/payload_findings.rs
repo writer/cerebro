@@ -1,9 +1,4 @@
-//! Rule-specific payload authority staged behind the shared finding DTO seam.
-//!
-//! This module is intentionally not registered by `lib.rs` yet. The active
-//! shared authority lane owns dispatcher, wire-model, and Wasm artifact paths.
-//! Its source-only integration test imports this file directly until that seam
-//! is published and this module can use the shared `FindingRecord` verbatim.
+//! Closed payload-backed rule decisions used by the production Wasm dispatcher.
 
 #[path = "payload_findings/aurelius.rs"]
 mod aurelius;
@@ -12,12 +7,22 @@ mod cosmo;
 #[path = "payload_findings/model.rs"]
 mod model;
 
+pub(crate) use model::normalized_observation_time;
 pub(crate) use model::{
-    Action, CompleteFindingRecord, Decision, EvaluatorOutput, EvaluatorReceipt, EventInput,
-    HostFindingFields, KernelError, MAX_PAYLOAD_ARRAY_ITEMS, MAX_PAYLOAD_BYTES, MAX_PAYLOAD_DEPTH,
-    MAX_PAYLOAD_OBJECT_FIELDS, MAX_PAYLOAD_STRING_BYTES, Operation, PersistencePath,
-    RuleFindingDecision, RuleRequest, ScopedDecision, ScopedPersistenceAction, TrustedRuntime,
+    Action, Decision, EventInput, KernelError, Operation, RuleFindingDecision, RuleRequest,
+    TrustedRuntime,
 };
+#[cfg(test)]
+pub(crate) use model::{
+    CompleteFindingRecord, EvaluatorOutput, EvaluatorReceipt, HostFindingFields,
+    MAX_PAYLOAD_ARRAY_ITEMS, MAX_PAYLOAD_BYTES, MAX_PAYLOAD_DEPTH, MAX_PAYLOAD_OBJECT_FIELDS,
+    MAX_PAYLOAD_STRING_BYTES, PersistencePath, ScopedDecision, ScopedPersistenceAction,
+};
+
+pub(crate) const AURELIUS_RULE_ID: &str = aurelius::RULE_ID;
+pub(crate) const AURELIUS_DEFINITION_DIGEST: &str = aurelius::DEFINITION_DIGEST;
+pub(crate) const COSMO_RULE_ID: &str = cosmo::RULE_ID;
+pub(crate) const COSMO_DEFINITION_DIGEST: &str = cosmo::DEFINITION_DIGEST;
 
 /// Evaluates one of the two closed payload-backed rule families.
 pub(crate) fn evaluate(request: &RuleRequest) -> Result<Decision, KernelError> {
@@ -32,6 +37,7 @@ pub(crate) fn evaluate(request: &RuleRequest) -> Result<Decision, KernelError> {
 ///
 /// The evaluator is injected so the host boundary can prove that a Wasm
 /// invocation failure is terminal: this function never calls a second engine.
+#[cfg(test)]
 pub(crate) fn evaluate_scoped_with(
     request: &RuleRequest,
     evaluator: impl FnOnce(&RuleRequest) -> Result<Decision, KernelError>,
@@ -45,6 +51,7 @@ pub(crate) fn evaluate_scoped_with(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn evaluate_scoped_output_with(
     request: &RuleRequest,
     evaluator: impl FnOnce(&RuleRequest) -> Result<EvaluatorOutput, KernelError>,
@@ -69,6 +76,7 @@ pub(crate) fn evaluate_scoped_output_with(
     })
 }
 
+#[cfg(test)]
 fn expected_receipt(
     request: &RuleRequest,
     decision: &Decision,
@@ -118,6 +126,7 @@ fn expected_receipt(
     })
 }
 
+#[cfg(test)]
 fn validate_evaluator_receipt(
     request: &RuleRequest,
     output: &EvaluatorOutput,
@@ -129,6 +138,7 @@ fn validate_evaluator_receipt(
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_evaluator_decision(
     request: &RuleRequest,
     decision: &Decision,
@@ -165,6 +175,7 @@ fn validate_evaluator_decision(
 }
 
 /// Production rule dispatch through the closed, workspace-scoped envelope.
+#[cfg(test)]
 pub(crate) fn evaluate_scoped(request: &RuleRequest) -> Result<ScopedDecision, KernelError> {
     evaluate_scoped_with(request, evaluate)
 }

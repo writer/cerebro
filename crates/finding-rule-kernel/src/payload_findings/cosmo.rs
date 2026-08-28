@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
+#[cfg(test)]
 use serde_json::Value;
 
 use super::model::{
     CanonicalScalar, ControlRef, Decision, KernelError, Operation, RuleFindingDecision,
-    RuleRequest, attribute, byte_digest, decode_payload, finding_hash, first_non_empty,
-    identity_anchor, normalized_observation_time, scalar, stable_external_id, trim_empty,
-    valid_identity_component, validate_scope,
+    RuleRequest, attribute, decode_payload, finding_hash, first_non_empty, identity_anchor,
+    normalized_observation_time, scalar, stable_external_id, trim_empty, valid_identity_component,
+    validate_scope,
 };
 
 pub(super) const RULE_ID: &str = "cosmo-coordination-active-risk";
@@ -48,6 +49,7 @@ struct Payload {
     _summary: Option<CanonicalScalar>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProjectionReceipt {
     pub(super) input_digest: String,
@@ -57,6 +59,7 @@ pub(super) struct ProjectionReceipt {
 
 /// Projects arbitrary bounded provider fact data into the closed rule DTO.
 /// Trusted context fields are never projected from provider-controlled bytes.
+#[cfg(test)]
 pub(super) fn project_source_payload(
     raw: &[u8],
 ) -> Result<(Vec<u8>, ProjectionReceipt), KernelError> {
@@ -103,8 +106,8 @@ pub(super) fn project_source_payload(
     }
     let output = serde_json::to_vec(&projected).map_err(|_| KernelError::MalformedPayload)?;
     let receipt = ProjectionReceipt {
-        input_digest: byte_digest(raw),
-        output_digest: byte_digest(&output),
+        input_digest: super::model::byte_digest(raw),
+        output_digest: super::model::byte_digest(&output),
         dropped_fields,
     };
     Ok((output, receipt))
