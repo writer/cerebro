@@ -36,6 +36,8 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("SMOKE_RECEIPT_ALLOWED_ORIGINS", workflow)
         self.assertIn("stable-release-smoke-evidence-", workflow)
         self.assertIn("-o -name 'smoke-evidence.json'", workflow)
+        self.assertIn("${{ runner.temp }}/smoke-receipt.json.sig", workflow)
+        self.assertIn("-o -name 'smoke-receipt.json*'", workflow)
         self.assertIn("CANDIDATE_RUNTIME_DIGEST", workflow)
 
     def test_portable_smoke_receipt_signing_is_isolated_from_pr_job(self) -> None:
@@ -55,6 +57,8 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         )
         self.assertIn("signed-pr-rust-graph-", signer)
         self.assertIn("cosign sign-blob --yes", signer)
+        self.assertIn("CANDIDATE_SHA: ${{ inputs.candidate_sha }}", signer)
+        self.assertNotIn('"${{ inputs.candidate_sha }}"', signer)
         self.assertIn("scripts/release/render_smoke_receipt.sh", qualification)
         self.assertIn('"cerebro.smoke-receipt/v1"', renderer)
         self.assertIn("runtime_image_digest", renderer)

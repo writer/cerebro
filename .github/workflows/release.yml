@@ -190,7 +190,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-release-smoke-evidence-${{ steps.run.outputs.sha }}
-          path: ${{ runner.temp }}/smoke-evidence.json
+          path: |
+            ${{ runner.temp }}/smoke-evidence.json
+            ${{ runner.temp }}/smoke-receipt.json
+            ${{ runner.temp }}/smoke-receipt.json.sig
+            ${{ runner.temp }}/smoke-receipt.json.pem
           if-no-files-found: error
           overwrite: true
 
@@ -315,6 +319,7 @@ jobs:
             -o -name 'candidate-receipt.json' -o -name 'go-module-inventory.ndjson' \
             -o -name 'rust-organizational-e2e-receipt.json' \
             -o -name 'smoke-evidence.json' \
+            -o -name 'smoke-receipt.json*' \
             -o -name '*.tgz' -o -name 'cerebro-product-release.json*' \
             -o -name 'cerebro-openapi.yaml' -o -name 'agent-service-lifecycle.schema.json' \
             -o -name 'product-release.schema.json' -o -name 'product-release-published.schema.json' \) | sort)

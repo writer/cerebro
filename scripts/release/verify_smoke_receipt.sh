@@ -111,9 +111,14 @@ if [[ "${smoke_url}" == "${actions_prefix}"* ]]; then
       --signature "${portable_signature}" \
       --certificate "${portable_certificate}" \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      --certificate-identity-regexp \
-      "^https://github.com/${repository}/.github/workflows/ephemeral-cerebro.yml@refs/heads/main$" \
+      --certificate-identity \
+      "https://github.com/${repository}/.github/workflows/ephemeral-cerebro.yml@refs/heads/main" \
       "${portable_receipt}" >/dev/null
+
+    evidence_dir="$(dirname "${out}")"
+    cp "${portable_receipt}" "${evidence_dir}/smoke-receipt.json"
+    cp "${portable_signature}" "${evidence_dir}/smoke-receipt.json.sig"
+    cp "${portable_certificate}" "${evidence_dir}/smoke-receipt.json.pem"
 
     jq -n \
       --arg url "${smoke_url}" \
