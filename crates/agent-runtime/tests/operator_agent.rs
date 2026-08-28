@@ -2022,7 +2022,14 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
         open_loops: vec!["Return the finished approval note.".into()],
     });
     let model = ScriptedModel {
-        routes: Mutex::new(VecDeque::from([route(ExecutionLane::Act)])),
+        routes: Mutex::new(VecDeque::from([RouteDecision {
+            lane: ExecutionLane::Act,
+            confidence: RouteConfidence::High,
+            reason: "The model selected the typed act lane for the retained artifact.".into(),
+            requires_current_evidence: false,
+            future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        }])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
             draft: FinalDraft {
                 state: FinalState::Answered,
@@ -2050,6 +2057,8 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
 
     let AgentTurnOutcome::Delivered {
         lane,
+        markdown,
+        final_state,
         tool_call_count,
         ..
     } = run_turn(&model, &tools, turn).await.unwrap()
@@ -2057,7 +2066,9 @@ async fn ambiguous_directive_uses_the_model_route_without_granting_effect_author
         panic!("expected the model-routed artifact response");
     };
     assert_eq!(lane, ExecutionLane::Act);
+    assert_eq!(final_state, FinalState::Answered);
     assert_eq!(tool_call_count, 0);
+    assert!(markdown.contains("No external change has been executed"));
 }
 
 #[tokio::test]
