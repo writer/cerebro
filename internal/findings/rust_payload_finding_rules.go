@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -22,6 +24,10 @@ const (
 	cosmoCoordinationActiveRiskRuleID         = "cosmo-coordination-active-risk"
 	cosmoRustDefinitionDigest                 = "1367f20b5cfe85e3f901760f27d8540d15227712b86e5ca3da41122e296225a4"
 	trustedTenantWorkspacePrefix              = "tenant-only:"
+	closedJSONMaximumBytes                    = 64 << 10
+	closedJSONMaximumDepth                    = 8
+	closedJSONMaximumCollectionItems          = 64
+	closedJSONMaximumStringBytes              = 8 << 10
 )
 
 var aureliusPromotedVulnerabilityActiveDefinition = RuleDefinition{
@@ -229,17 +235,24 @@ func payloadBytes(raw []byte) []int {
 
 func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	attributes := cloneStringMap(event.GetAttributes())
-	if len(event.GetPayload()) == 0 {
+	// Legacy Go close parity consumes the trusted promoted attributes only when
+	// they already contain a complete remediation decision. Payload admission is
+	// required only when projection must fill one of those decision attributes.
+	if len(event.GetPayload()) == 0 || aureliusCloseAttributesComplete(attributes) {
 		return attributes, nil
+	}
+	if len(event.GetPayload()) > closedJSONMaximumBytes {
+		return nil, fmt.Errorf("project Aurelius close payload: payload exceeds the closed byte limit")
+	}
+	if !utf8.Valid(event.GetPayload()) {
+		return nil, fmt.Errorf("project Aurelius close payload: payload is not valid UTF-8")
+	}
+	if err := validateJSONUnicodeEscapes(event.GetPayload()); err != nil {
+		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
 	}
 	preflight := json.NewDecoder(bytes.NewReader(event.GetPayload()))
 	preflight.UseNumber()
 	if err := validateUniqueBoundedJSON(preflight, 1); err != nil {
-		// Go parity permits a malformed payload when the complete remediation
-		// decision is already present in trusted promoted attributes.
-		if aureliusCloseAttributesComplete(attributes) {
-			return attributes, nil
-		}
 		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
 	}
 	if err := requireJSONEOF(preflight); err != nil {
@@ -250,6 +263,9 @@ func projectAureliusCloseAttributes(event Event) (map[string]string, error) {
 	decoder.UseNumber()
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, fmt.Errorf("project Aurelius close payload: %w", err)
+	}
+	if payload == nil {
+		return nil, fmt.Errorf("project Aurelius close payload: payload must be an object")
 	}
 	allowed := map[string]struct{}{"image_digest": {}, "image_uri": {}, "cve_id": {}, "package": {}, "severity": {}, "installed_version": {}, "fixed_version": {}, "state": {}, "promoted": {}, "exception_status": {}, "track": {}}
 	for key, value := range payload {
@@ -310,6 +326,47 @@ func requireJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
+func validateJSONUnicodeEscapes(raw []byte) error {
+	inString := false
+	for index := 0; index < len(raw); index++ {
+		switch raw[index] {
+		case '"':
+			inString = !inString
+		case '\\':
+			if !inString || index+1 >= len(raw) {
+				continue
+			}
+			if raw[index+1] != 'u' {
+				index++
+				continue
+			}
+			if index+6 > len(raw) {
+				continue
+			}
+			first, err := strconv.ParseUint(string(raw[index+2:index+6]), 16, 16)
+			if err != nil {
+				continue
+			}
+			switch {
+			case first >= 0xd800 && first <= 0xdbff:
+				if index+12 > len(raw) || raw[index+6] != '\\' || raw[index+7] != 'u' {
+					return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+				}
+				second, err := strconv.ParseUint(string(raw[index+8:index+12]), 16, 16)
+				if err != nil || second < 0xdc00 || second > 0xdfff {
+					return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+				}
+				index += 11
+			case first >= 0xdc00 && first <= 0xdfff:
+				return fmt.Errorf("payload contains an unpaired UTF-16 surrogate")
+			default:
+				index += 5
+			}
+		}
+	}
+	return nil
+}
+
 func decodeStrictRustFindingResponse(raw []byte, response *rustFindingResponse) error {
 	if len(raw) == 0 || len(raw) > 1<<20 {
 		return fmt.Errorf("response size is outside the closed limit")
@@ -353,11 +410,20 @@ func validateRustFindingResponse(request rustFindingRequest, response rustFindin
 	if finding.FirstObservedAt.IsZero() || finding.LastObservedAt.IsZero() || finding.LastObservedAt.Before(finding.FirstObservedAt) {
 		return fmt.Errorf("rust finding-rule authority returned invalid chronology")
 	}
+	if finding.Status != findingStatusOpen {
+		return fmt.Errorf("rust finding-rule authority returned non-open rule state")
+	}
+	if !reflect.DeepEqual(finding.FindingPersistenceEnvelope, ports.FindingPersistenceEnvelope{}) ||
+		!reflect.DeepEqual(finding.FindingRisk, ports.FindingRisk{}) ||
+		!reflect.DeepEqual(finding.FindingWorkflow, ports.FindingWorkflow{}) ||
+		!reflect.DeepEqual(finding.FindingTombstone, ports.FindingTombstone{}) {
+		return fmt.Errorf("rust finding-rule authority returned host-owned finding state")
+	}
 	return nil
 }
 
 func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
-	if depth > 16 {
+	if depth > closedJSONMaximumDepth {
 		return fmt.Errorf("response nesting exceeds the closed limit")
 	}
 	token, err := decoder.Token()
@@ -366,6 +432,9 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 	}
 	delimiter, ok := token.(json.Delim)
 	if !ok {
+		if value, isString := token.(string); isString && len(value) > closedJSONMaximumStringBytes {
+			return fmt.Errorf("response string exceeds the closed byte limit")
+		}
 		return nil
 	}
 	switch delimiter {
@@ -381,12 +450,15 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 			if !ok {
 				return fmt.Errorf("response object key is not a string")
 			}
+			if len(key) > closedJSONMaximumStringBytes {
+				return fmt.Errorf("response object key exceeds the closed byte limit")
+			}
 			if _, exists := seen[key]; exists {
 				return fmt.Errorf("response contains duplicate field %q", key)
 			}
 			seen[key] = struct{}{}
 			fields++
-			if fields > 128 {
+			if fields > closedJSONMaximumCollectionItems {
 				return fmt.Errorf("response object exceeds the closed field limit")
 			}
 			if err := validateUniqueBoundedJSON(decoder, depth+1); err != nil {
@@ -401,7 +473,7 @@ func validateUniqueBoundedJSON(decoder *json.Decoder, depth int) error {
 		items := 0
 		for decoder.More() {
 			items++
-			if items > 256 {
+			if items > closedJSONMaximumCollectionItems {
 				return fmt.Errorf("response array exceeds the closed item limit")
 			}
 			if err := validateUniqueBoundedJSON(decoder, depth+1); err != nil {
