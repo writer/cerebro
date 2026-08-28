@@ -2421,12 +2421,14 @@ async fn run_session_turn_recorded_at(
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
+            let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
             return repair_fallback_outcome(
                 &session,
                 &input,
                 &trigger,
                 plan.as_ref(),
                 &observations,
+                accepted_at,
                 events,
                 journal,
             )
@@ -2465,12 +2467,15 @@ async fn run_session_turn_recorded_at(
                     continue;
                 }
                 Err(_) => {
+                    let accepted_at =
+                        elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
                         &session,
                         &input,
                         &trigger,
                         plan.as_ref(),
                         &observations,
+                        accepted_at,
                         events,
                         journal,
                     )
@@ -2993,12 +2998,14 @@ async fn run_session_turn_recorded_at(
             }
         }
     }
+    let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
     repair_fallback_outcome(
         &session,
         &input,
         &trigger,
         plan.as_ref(),
         &observations,
+        accepted_at,
         events,
         journal,
     )
@@ -3019,6 +3026,7 @@ async fn repair_fallback_outcome(
     trigger: &SessionTurnTrigger,
     plan: Option<&ResearchPlan>,
     observations: &[ToolObservation],
+    accepted_at: OffsetDateTime,
     mut events: Vec<SessionEventRecord>,
     journal: &dyn SessionJournal,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
@@ -3221,13 +3229,23 @@ async fn repair_fallback_outcome(
             observations,
         )?;
         validate_plan_completion(plan, &routine_silent_draft)?;
-        validate_effect_closure(observations, &routine_silent_draft, assessment_at)?;
+        validate_effect_closure_at(
+            observations,
+            &routine_silent_draft,
+            assessment_at,
+            accepted_at,
+        )?;
         if !validate_explicit_response_contract(session, trigger, &routine_silent_draft).is_empty()
         {
             return Err(AgentRuntimeError::PresentationRepairLimit);
         }
-        let validated =
-            validate_grounded_draft(session, &routine_silent_draft, observations, assessment_at)?;
+        let validated = validate_grounded_draft_at(
+            session,
+            &routine_silent_draft,
+            observations,
+            assessment_at,
+            accepted_at,
+        )?;
         emit_final_events(
             session,
             &input.assessment_at,
@@ -3451,7 +3469,8 @@ async fn repair_fallback_outcome(
     if !validate_explicit_response_contract(session, trigger, &draft).is_empty() {
         return Err(AgentRuntimeError::PresentationRepairLimit);
     }
-    let validated = validate_grounded_draft(session, &draft, observations, assessment_at)?;
+    let validated =
+        validate_grounded_draft_at(session, &draft, observations, assessment_at, accepted_at)?;
     emit_final_events(
         session,
         &input.assessment_at,
@@ -10306,6 +10325,10 @@ mod tests {
         .await
     }
 
+    fn test_turn_time() -> OffsetDateTime {
+        OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap()
+    }
+
     #[derive(Default)]
     struct BatchOnlyJournal {
         individual_records: AtomicUsize,
@@ -16500,6 +16523,7 @@ mod tests {
             &trigger,
             Some(&plan),
             std::slice::from_ref(&observation),
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17422,6 +17446,7 @@ mod tests {
             &input.trigger,
             None,
             &[failed.clone()],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17466,6 +17491,7 @@ mod tests {
             &input.trigger,
             None,
             &[supported.clone(), failed.clone()],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17497,6 +17523,7 @@ mod tests {
             &input.trigger,
             None,
             &[same_subject, failed.clone()],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17544,6 +17571,7 @@ mod tests {
                 &input.trigger,
                 None,
                 &observations,
+                test_turn_time(),
                 Vec::new(),
                 &NoopSessionJournal,
             )
@@ -17579,6 +17607,7 @@ mod tests {
             &input.trigger,
             None,
             &[failed_effect],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17589,6 +17618,42 @@ mod tests {
         };
         assert!(markdown.contains("The external action failed"));
         assert!(!markdown.contains("did not evaluate the requested condition, execute an action"));
+    }
+
+    #[tokio::test]
+    async fn repair_fallback_rejects_evidence_expired_before_host_acceptance() {
+        let mut supported = recovering_observation_with_tool_outcome("2026-07-31T00:02:00Z");
+        supported.recorded_at = Some("2026-07-31T00:01:45Z".into());
+        for evidence in &mut supported.result.evidence {
+            evidence.observed_at = "2026-07-31T00:01:45Z".into();
+            evidence.fresh_until = Some("2026-07-31T00:02:00Z".into());
+            for atom in &mut evidence.atoms {
+                atom.observed_at = "2026-07-31T00:01:45Z".into();
+                atom.fresh_until = Some("2026-07-31T00:02:00Z".into());
+            }
+        }
+        let input = SessionTurnInput {
+            request_id: "request:expired-fallback".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let accepted_at = OffsetDateTime::parse("2026-07-31T00:02:01Z", &Rfc3339).unwrap();
+
+        let error = repair_fallback_outcome(
+            &session(),
+            &input,
+            &input.trigger,
+            None,
+            &[supported],
+            accepted_at,
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect_err("expired fallback evidence must not be published");
+        assert!(matches!(error, AgentRuntimeError::InvalidFinal(_)));
     }
 
     #[tokio::test]
@@ -17625,6 +17690,7 @@ mod tests {
             &input.trigger,
             None,
             &[runtime],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17690,6 +17756,7 @@ mod tests {
             &input.trigger,
             None,
             &[first, latest],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -17737,6 +17804,7 @@ mod tests {
                 &input.trigger,
                 None,
                 &[supported],
+                test_turn_time(),
                 Vec::new(),
                 &NoopSessionJournal,
             )
@@ -17842,6 +17910,7 @@ mod tests {
             &SessionTurnTrigger::Operator,
             Some(&proposed),
             &[baseline],
+            test_turn_time(),
             Vec::new(),
             &NoopSessionJournal,
         )
