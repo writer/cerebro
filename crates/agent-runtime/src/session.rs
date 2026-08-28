@@ -6,6 +6,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::OnceLock,
+    time::Instant,
 };
 
 use async_trait::async_trait;
@@ -2289,6 +2290,7 @@ pub async fn run_session_turn_recorded(
     let trigger = input.trigger.clone();
     let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
         .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+    let host_turn_started_at = Instant::now();
     let available_tools = tools.catalog();
     let available_tool_ids = available_tools
         .iter()
@@ -2319,6 +2321,7 @@ pub async fn run_session_turn_recorded(
     } else {
         recalled_observations_for_trigger(&session, &trigger, assessment_at)
     };
+    let host_turn_clock_base = authoritative_turn_clock(&turn_observations, assessment_at)?;
     let current_turn_observation_start = if resumed { 0 } else { observations.len() };
     let mut events = Vec::new();
     if !resumed {
@@ -2640,7 +2643,10 @@ pub async fn run_session_turn_recorded(
                 }
                 let results = join_all(calls.iter().map(|call| async {
                     let result = tools.invoke(&session, &input, call).await;
-                    (result, OffsetDateTime::now_utc())
+                    (
+                        result,
+                        elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at),
+                    )
                 }))
                 .await;
                 for (call, (result, recorded_at)) in calls.into_iter().zip(results) {
@@ -2660,7 +2666,7 @@ pub async fn run_session_turn_recorded(
                         }
                         Err(_) => failed_tool_result(&session, &input, &call, assessment_at)?,
                     };
-                    let recorded_at = recorded_at.format(&Rfc3339).map_err(|_| {
+                    let recorded_at = recorded_at?.format(&Rfc3339).map_err(|_| {
                         AgentRuntimeError::InvalidToolResult(
                             "tool observation time could not be formatted".into(),
                         )
@@ -2688,6 +2694,8 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
+                let accepted_at =
+                    elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                 normalize_message_from_grounded_claims(&mut draft);
                 let canonical_premise_conversation =
                     normalize_supplied_premise_conversation(&session, &input, &trigger, &mut draft);
@@ -2859,21 +2867,28 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
-                let validated =
-                    match validate_grounded_draft(&session, &draft, &observations, assessment_at) {
-                        Ok(validated) => validated,
-                        Err(error) => {
-                            record_draft_repair(
-                                &mut rejected_operating_drafts,
-                                &draft,
-                                &mut repairs,
-                                &mut repair_feedback,
-                                error.to_string(),
-                            );
-                            continue;
-                        }
-                    };
-                if let Err(error) = validate_effect_closure(&observations, &draft, assessment_at) {
+                let validated = match validate_grounded_draft_at(
+                    &session,
+                    &draft,
+                    &observations,
+                    assessment_at,
+                    accepted_at,
+                ) {
+                    Ok(validated) => validated,
+                    Err(error) => {
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            error.to_string(),
+                        );
+                        continue;
+                    }
+                };
+                if let Err(error) =
+                    validate_effect_closure_at(&observations, &draft, assessment_at, accepted_at)
+                {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
                         &draft,
@@ -5239,6 +5254,17 @@ fn validate_effect_closure(
     draft: &GroundedDraft,
     assessment_at: OffsetDateTime,
 ) -> Result<(), AgentRuntimeError> {
+    let accepted_at = authoritative_turn_clock(observations, assessment_at)?;
+    validate_effect_closure_at(observations, draft, assessment_at, accepted_at)
+}
+
+fn validate_effect_closure_at(
+    observations: &[ToolObservation],
+    draft: &GroundedDraft,
+    assessment_at: OffsetDateTime,
+    accepted_at: OffsetDateTime,
+) -> Result<(), AgentRuntimeError> {
+    let assessment_at = authoritative_turn_clock_at(observations, assessment_at, accepted_at)?;
     for (effect_index, effect) in observations.iter().enumerate().filter(|(_, observation)| {
         observation.descriptor.authority_class == ToolAuthorityClass::Actuate
     }) {
@@ -6195,10 +6221,21 @@ pub fn validate_grounded_draft(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
 ) -> Result<ValidatedDraft, AgentRuntimeError> {
+    let accepted_at = authoritative_turn_clock(observations, assessment_at)?;
+    validate_grounded_draft_at(session, draft, observations, assessment_at, accepted_at)
+}
+
+fn validate_grounded_draft_at(
+    session: &AgentSession,
+    draft: &GroundedDraft,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+    accepted_at: OffsetDateTime,
+) -> Result<ValidatedDraft, AgentRuntimeError> {
     validate_session(session)?;
     validate_mission(&draft.mission)?;
     validate_explicit_streak_reset_language(draft, observations)?;
-    let assessment_at = authoritative_turn_clock(observations, assessment_at)?;
+    let assessment_at = authoritative_turn_clock_at(observations, assessment_at, accepted_at)?;
     if !bounded(&draft.message, MAX_DELIVERY_MESSAGE_BYTES)
         || draft.claims.len() > MAX_VISIBLE_CLAIMS
         || !draft.presentation_ready
@@ -9606,10 +9643,45 @@ fn authoritative_turn_clock(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
 ) -> Result<OffsetDateTime, AgentRuntimeError> {
+    let accepted_at = observations.iter().try_fold(
+        assessment_at,
+        |accepted_at, observation| -> Result<_, AgentRuntimeError> {
+            let Some(value) = observation.recorded_at.as_deref() else {
+                return Ok(accepted_at);
+            };
+            let recorded_at = OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+                AgentRuntimeError::InvalidFinal("invalid host tool observation time".into())
+            })?;
+            Ok(accepted_at.max(recorded_at))
+        },
+    )?;
+    authoritative_turn_clock_at(observations, assessment_at, accepted_at)
+}
+
+fn elapsed_host_turn_time(
+    clock_base: OffsetDateTime,
+    started_at: Instant,
+) -> Result<OffsetDateTime, AgentRuntimeError> {
+    let elapsed_seconds = i64::try_from(started_at.elapsed().as_secs())
+        .map_err(|_| AgentRuntimeError::InvalidFinal("host turn duration overflowed".into()))?;
+    clock_base
+        .checked_add(Duration::seconds(elapsed_seconds))
+        .ok_or_else(|| AgentRuntimeError::InvalidFinal("host turn clock overflowed".into()))
+}
+
+fn authoritative_turn_clock_at(
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+    accepted_at: OffsetDateTime,
+) -> Result<OffsetDateTime, AgentRuntimeError> {
     let deadline = assessment_at
         .checked_add(Duration::seconds(MAX_IN_TURN_EVIDENCE_DELAY_SECONDS))
         .ok_or_else(|| AgentRuntimeError::InvalidFinal("turn clock overflowed".into()))?;
-    let mut turn_clock = assessment_at;
+    if accepted_at < assessment_at || accepted_at > deadline {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "host acceptance time exceeds the bounded turn window".into(),
+        ));
+    }
     for observation in observations {
         let evidence_times = observation
             .result
@@ -9629,11 +9701,16 @@ fn authoritative_turn_clock(
             Some(value) => OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
                 AgentRuntimeError::InvalidFinal("invalid host tool observation time".into())
             })?,
-            None => assessment_at,
+            None => accepted_at,
         };
         if recorded_at > deadline {
             return Err(AgentRuntimeError::InvalidFinal(
                 "host tool observation time exceeds the bounded turn window".into(),
+            ));
+        }
+        if recorded_at > accepted_at {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "host tool observation time exceeds the host acceptance time".into(),
             ));
         }
         let evidence_deadline = recorded_at
@@ -9647,9 +9724,8 @@ fn authoritative_turn_clock(
                 "evidence timestamps exceed the host-recorded tool clock".into(),
             ));
         }
-        turn_clock = turn_clock.max(recorded_at);
     }
-    Ok(turn_clock)
+    Ok(accepted_at)
 }
 
 /// Validates a complete materialized session and its cross-record invariants.
@@ -10745,6 +10821,56 @@ mod tests {
         assert!(observation_is_complete_and_fresh(&live, assessment));
         assert!(evidence_atoms(std::slice::from_ref(&live), assessment).is_ok());
         assert!(validate_grounded_draft(&session(), &draft(), &[live], assessment).is_ok());
+    }
+
+    #[test]
+    fn evidence_expired_before_host_acceptance_is_rejected() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut live = observation(true, Some("2026-07-31T00:02:00Z"));
+        live.recorded_at = Some("2026-07-31T00:01:45Z".into());
+        live.result.evidence[0].observed_at = "2026-07-31T00:01:45Z".into();
+        live.result.evidence[0].atoms[0].observed_at = "2026-07-31T00:01:45Z".into();
+
+        let before_expiry = OffsetDateTime::parse("2026-07-31T00:01:59Z", &Rfc3339).unwrap();
+        assert!(
+            validate_grounded_draft_at(
+                &session(),
+                &draft(),
+                std::slice::from_ref(&live),
+                assessment,
+                before_expiry,
+            )
+            .is_ok()
+        );
+
+        let after_expiry = OffsetDateTime::parse("2026-07-31T00:02:01Z", &Rfc3339).unwrap();
+        assert!(
+            validate_grounded_draft_at(
+                &session(),
+                &draft(),
+                std::slice::from_ref(&live),
+                assessment,
+                after_expiry,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn host_acceptance_time_obeys_the_exact_turn_window() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let boundary = OffsetDateTime::parse("2026-07-31T00:16:00Z", &Rfc3339).unwrap();
+        assert_eq!(
+            authoritative_turn_clock_at(&[], assessment, boundary).unwrap(),
+            boundary
+        );
+
+        let beyond = OffsetDateTime::parse("2026-07-31T00:16:01Z", &Rfc3339).unwrap();
+        assert!(matches!(
+            authoritative_turn_clock_at(&[], assessment, beyond),
+            Err(AgentRuntimeError::InvalidFinal(message))
+                if message == "host acceptance time exceeds the bounded turn window"
+        ));
     }
 
     #[test]
