@@ -2010,7 +2010,7 @@ async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
 }
 
 #[tokio::test]
-async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() {
+async fn ambiguous_directive_uses_the_model_route_without_granting_effect_authority() {
     let mut turn = request("ship it");
     turn.working_state = Some(WorkingState {
         mission_ref: Some("mission://approval-note".into()),
@@ -2022,17 +2022,7 @@ async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() 
         open_loops: vec!["Return the finished approval note.".into()],
     });
     let model = ScriptedModel {
-        routes: Mutex::new(VecDeque::from([
-            route(ExecutionLane::Act),
-            RouteDecision {
-                lane: ExecutionLane::Continue,
-                confidence: RouteConfidence::High,
-                reason: "The directive resumes the retained approval-note artifact.".into(),
-                requires_current_evidence: false,
-                future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
-                future_observation_excerpt: None,
-            },
-        ])),
+        routes: Mutex::new(VecDeque::from([route(ExecutionLane::Act)])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
             draft: FinalDraft {
                 state: FinalState::Answered,
@@ -2058,12 +2048,17 @@ async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() 
         results: Mutex::new(BTreeMap::new()),
     };
 
-    let AgentTurnOutcome::Delivered { lane, markdown, .. } =
-        run_turn(&model, &tools, turn).await.unwrap()
+    let AgentTurnOutcome::Delivered {
+        lane,
+        markdown,
+        tool_call_count,
+        ..
+    } = run_turn(&model, &tools, turn).await.unwrap()
     else {
-        panic!("expected the artifact mission to resume");
+        panic!("expected the model-routed artifact response");
     };
-    assert_eq!(lane, ExecutionLane::Converse);
+    assert_eq!(lane, ExecutionLane::Act);
+    assert_eq!(tool_call_count, 0);
     assert!(markdown.starts_with("Approve"));
 }
 
