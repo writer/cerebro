@@ -2914,16 +2914,18 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		severity = effectiveSeverity
 	}
 	return &ports.FindingRecord{
-		ID:                     r.ID,
-		Fingerprint:            r.Fingerprint,
-		TenantID:               r.TenantID,
-		ApplicationWorkspaceID: r.ApplicationWorkspaceID,
-		RuntimeID:              r.RuntimeID,
-		RuleID:                 r.RuleID,
-		Title:                  r.Title,
-		Severity:               severity,
-		Status:                 r.Status,
-		Summary:                r.Summary,
+		ID:          r.ID,
+		Fingerprint: r.Fingerprint,
+		TenantID:    r.TenantID,
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{
+			ApplicationWorkspaceID: r.ApplicationWorkspaceID,
+		},
+		RuntimeID: r.RuntimeID,
+		RuleID:    r.RuleID,
+		Title:     r.Title,
+		Severity:  severity,
+		Status:    r.Status,
+		Summary:   r.Summary,
 		FindingRisk: ports.FindingRisk{
 			RiskScore:        r.RiskScore,
 			LikelihoodScore:  r.LikelihoodScore,

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/cosmofactprojection"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
@@ -177,11 +178,11 @@ func responseRecords(response listResponse, collection string, family string) ([
 }
 
 func parseRecord(family string, raw json.RawMessage) (record, error) {
-	var values map[string]any
-	if err := json.Unmarshal(raw, &values); err != nil {
-		return record{}, fmt.Errorf("decode cosmo %s record: %w", family, err)
+	if decoded, err := cosmofactprojection.DecodeRecord(family == familyFact, raw); err != nil {
+		return record{}, fmt.Errorf("decode or project cosmo %s record: %w", family, err)
+	} else {
+		return record{Raw: cloneRaw(decoded.Payload), Values: decoded.Values, ID: recordID(family, decoded.Values)}, nil
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: recordID(family, values)}, nil
 }
 
 func recordID(family string, values map[string]any) string {
@@ -262,9 +263,8 @@ func valueString(value any) string {
 	return sourcecdk.JSONScalar{Value: value}.Flattened()
 }
 
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	return append(json.RawMessage(nil), raw...)
-}
+// cloneRaw preserves caller ownership of provider and projected payload bytes.
+func cloneRaw(raw json.RawMessage) json.RawMessage { return append(json.RawMessage(nil), raw...) }
 
 func stableID(parts ...string) string {
 	values := make([]string, 0, len(parts))

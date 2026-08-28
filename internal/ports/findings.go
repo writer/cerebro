@@ -95,33 +95,45 @@ type FindingTombstone struct {
 	TombstoneGeneration int
 }
 
+// FindingPersistenceEnvelope carries host-owned scope and persisted graph evidence.
+// ApplicationWorkspaceID is deliberately excluded from the public finding wire identity.
+type FindingPersistenceEnvelope struct {
+	ApplicationWorkspaceID string `json:"-"`
+	GraphEvidenceRows      []*cerebrov1.GraphEvidenceRow
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
-	ID                     string
-	Fingerprint            string
-	TenantID               string
-	ApplicationWorkspaceID string `json:"-"`
-	RuntimeID              string
-	RuleID                 string
-	Title                  string
-	Severity               string
-	Status                 string
-	Summary                string
-	ResourceURNs           []string
-	EventIDs               []string
-	ObservedPolicyIDs      []string
-	PolicyID               string
-	PolicyName             string
-	CheckID                string
-	CheckName              string
-	ControlRefs            []FindingControlRef
-	GraphEvidenceRows      []*cerebrov1.GraphEvidenceRow
+	ID                string
+	Fingerprint       string
+	TenantID          string
+	RuntimeID         string
+	RuleID            string
+	Title             string
+	Severity          string
+	Status            string
+	Summary           string
+	ResourceURNs      []string
+	EventIDs          []string
+	ObservedPolicyIDs []string
+	PolicyID          string
+	PolicyName        string
+	CheckID           string
+	CheckName         string
+	ControlRefs       []FindingControlRef
+	FindingPersistenceEnvelope
 	FindingRisk
 	FindingWorkflow
 	FindingTombstone
 	Attributes      map[string]string
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
+}
+
+// FindingAgeRange scopes findings by their age in whole days.
+type FindingAgeRange struct {
+	MinAgeDays uint32
+	MaxAgeDays uint32
 }
 
 // ListFindingsRequest scopes one finding query.
@@ -145,12 +157,11 @@ type ListFindingsRequest struct {
 	StatusUpdatedFrom      time.Time
 	StatusUpdatedBefore    time.Time
 	LastObservedBefore     time.Time
-	MinAgeDays             uint32
-	MaxAgeDays             uint32
-	SLAStatus              string
-	Limit                  uint32
-	PriorityOrder          bool
-	Order                  FindingOrder
+	FindingAgeRange
+	SLAStatus     string
+	Limit         uint32
+	PriorityOrder bool
+	Order         FindingOrder
 }
 
 // FindingOrder controls persisted finding list sort order.

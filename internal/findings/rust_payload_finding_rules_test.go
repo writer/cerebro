@@ -3,7 +3,6 @@ package findings
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +30,7 @@ func TestRustPayloadRulesUseOneFailClosedEvaluator(t *testing.T) {
 	rule := newRustPayloadFindingRule(aureliusPromotedVulnerabilityActiveDefinition, aureliusRustDefinitionDigest, "aurelius/finding/v1")
 	rule.evaluator = failingFindingRuleEvaluator{err: errors.New("invocation failed")}
 	records, err := rule.Evaluate(context.Background(), payloadRuleRuntime("aurelius", "writer-aurelius-finding", "workspace-a"), aureliusPromotedVulnerabilityEvent("event-1", nil, time.Now().UTC()))
-	if err == nil || !strings.Contains(err.Error(), "authority unavailable") {
+	if !errors.Is(err, errRustFindingAuthorityUnavailable) {
 		t.Fatalf("Evaluate() error = %v, want typed Rust authority failure", err)
 	}
 	if len(records) != 0 {

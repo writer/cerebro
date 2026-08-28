@@ -480,29 +480,18 @@ func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
 }
 
 func TestFactAttributesExposeCoordinationRiskContract(t *testing.T) {
-	attrs := attributesFor(familyFact, map[string]any{
+	values := map[string]any{
 		"key":         "coordination:risk:thread-1",
 		"category":    "coordination_risk",
 		"source":      "session:thread-1",
 		"risk_reason": "agent coordinated a privileged change across sessions",
 		"severity":    "high",
-	})
-	for _, key := range []string{"key", "category", "source", "risk_reason", "risk_severity"} {
-		if attrs[key] == "" {
-			t.Fatalf("fact attribute %q = empty, want populated coordination-risk contract field", key)
+	}
+	attrs := attributesFor(familyFact, values)
+	for key, want := range map[string]string{"key": values["key"].(string), "category": values["category"].(string), "source": values["source"].(string), "risk_reason": values["risk_reason"].(string), "risk_severity": "high"} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("fact attribute %q = %q, want %q", key, got, want)
 		}
-	}
-	if got, want := attrs["category"], "coordination_risk"; got != want {
-		t.Fatalf("category = %q, want %q", got, want)
-	}
-	if got, want := attrs["source"], "session:thread-1"; got != want {
-		t.Fatalf("source = %q, want %q so downstream projection/finding can resolve session context", got, want)
-	}
-	if got, want := attrs["risk_reason"], "agent coordinated a privileged change across sessions"; got != want {
-		t.Fatalf("risk_reason = %q, want %q", got, want)
-	}
-	if got, want := attrs["risk_severity"], "high"; got != want {
-		t.Fatalf("risk_severity = %q, want %q", got, want)
 	}
 }
 

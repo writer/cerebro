@@ -12,6 +12,7 @@ class OSSAuditTests(unittest.TestCase):
             "docs.datadoghq.com",
             "fivetran.com",
             "json-schema.org",
+            "kubernetes.io",
             "nvd.nist.gov",
             "ok11static.oktacdn.com",
             "ok12static.oktacdn.com",

@@ -103,6 +103,7 @@ ALLOWED_PUBLIC_PROVIDER_HOSTS = {
     "huggingface.co",
     "invoke-ai.github.io",
     "json-schema.org",
+    "kubernetes.io",
     "launchpad.net",
     "learn.microsoft.com",
     "logos.haveibeenpwned.com",

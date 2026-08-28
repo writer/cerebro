@@ -101,14 +101,6 @@ func (r *rustPayloadFindingRule) Evaluate(ctx context.Context, runtime *cerebrov
 	}
 }
 
-func (r *rustPayloadFindingRule) OpenAnchor(attributes map[string]string) string {
-	anchor, _ := r.OpenAnchorContext(context.Background(), attributes)
-	return anchor
-}
-func (r *rustPayloadFindingRule) CloseOnEvent(event Event) (string, bool) {
-	anchor, closes, _ := r.CloseOnEventContext(context.Background(), event)
-	return anchor, closes
-}
 func (r *rustPayloadFindingRule) OpenAnchorContext(ctx context.Context, attributes map[string]string) (string, error) {
 	tenantID := "host-anchor"
 	runtime := &cerebrov1.SourceRuntime{Id: "host-anchor", SourceId: r.definition.SourceID, TenantId: tenantID, Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: trustedTenantWorkspacePrefix + tenantID}}

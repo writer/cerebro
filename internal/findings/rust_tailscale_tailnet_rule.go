@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -44,6 +45,8 @@ var rustFindingRuleEvaluator = wasmjson.New(wasmjson.Config{
 	ABIVersionExport: "cerebro_finding_rule_abi_version", AllocateExport: "cerebro_finding_rule_alloc", EvaluateExport: "cerebro_finding_rule_evaluate",
 	MemoryLimitPages: 128, MaxInputBytes: 1 << 20, MaxOutputBytes: 1 << 20, InitializeTimeout: 30 * time.Second, CallTimeout: 2 * time.Second,
 })
+
+var errRustFindingAuthorityUnavailable = errors.New("rust finding-rule authority unavailable")
 
 type rustTailscaleRule struct{ evaluator findingRuleEvaluator }
 type rustFindingRequest struct {
@@ -146,7 +149,7 @@ func runRustFinding(ctx context.Context, evaluator findingRuleEvaluator, request
 	}
 	output, err := evaluator.Evaluate(ctx, payload)
 	if err != nil {
-		return rustFindingResponse{}, fmt.Errorf("rust finding-rule authority unavailable: %w", err)
+		return rustFindingResponse{}, fmt.Errorf("%w: %w", errRustFindingAuthorityUnavailable, err)
 	}
 	var response rustFindingResponse
 	if err := decodeStrictRustFindingResponse(output, &response); err != nil {

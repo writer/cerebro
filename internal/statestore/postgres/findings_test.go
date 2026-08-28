@@ -370,8 +370,7 @@ func TestFindingFilterClausesSupportTrendDrilldownFilters(t *testing.T) {
 		FirstObservedBefore: openedBefore,
 		StatusUpdatedFrom:   closedAfter,
 		StatusUpdatedBefore: closedBefore,
-		MinAgeDays:          8,
-		MaxAgeDays:          30,
+		FindingAgeRange:     ports.FindingAgeRange{MinAgeDays: 8, MaxAgeDays: 30},
 		SLAStatus:           "overdue",
 	})
 	if err != nil {
