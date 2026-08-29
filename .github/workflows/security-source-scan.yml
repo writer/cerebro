@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -28,7 +30,7 @@ jobs:
   gosec-source-scan:
     name: gosec-source-scan shard ${{ matrix.shard_index }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +38,8 @@ jobs:
         shard_total: [4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -48,28 +52,70 @@ jobs:
 
       - name: Run gosec shard (JSON report)
         shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard_index }}
+          SHARD_TOTAL: ${{ matrix.shard_total }}
+          GOSEC_BATCH_SIZE: "12"
         run: |
           set -euo pipefail
-          report_path="gosec-report-${{ matrix.shard_index }}.json"
+          report_path="gosec-report-${SHARD_INDEX}.json"
           mapfile -t all_packages < <(go list -f '{{.Dir}}' ./...)
           selected=()
           for i in "${!all_packages[@]}"; do
-            if (( i % ${{ matrix.shard_total }} == ${{ matrix.shard_index }} )); then
+            if (( i % SHARD_TOTAL == SHARD_INDEX )); then
               selected+=("${all_packages[$i]}")
             fi
           done
-          echo "Running gosec shard ${{ matrix.shard_index }} with ${#selected[@]} packages"
+          echo "Running gosec shard ${SHARD_INDEX} with ${#selected[@]} packages"
           printf '{"Issues":[]}' > "${report_path}"
           if [ "${#selected[@]}" -eq 0 ]; then
             exit 0
           fi
-          "$(go env GOPATH)/bin/gosec" -severity medium -confidence medium -exclude-generated -fmt=json -out "${report_path}" "${selected[@]}" || true
+
+          # gosec retains every analysed package for the life of the process, so
+          # one invocation over a whole shard grows until the hosted runner is
+          # killed mid-scan (exit 143, "runner has received a shutdown signal").
+          # Scan in bounded batches and merge the per-batch reports instead.
+          rm -rf gosec-batches
+          mkdir gosec-batches
+          batch_index=0
+          for (( start = 0; start < ${#selected[@]}; start += GOSEC_BATCH_SIZE )); do
+            batch=("${selected[@]:start:GOSEC_BATCH_SIZE}")
+            batch_report="gosec-batches/batch-${batch_index}.json"
+            echo "gosec batch ${batch_index}: ${#batch[@]} package(s)"
+            # gosec exits non-zero when it reports findings, so its status is not
+            # a usable error signal; an unwritten report is.
+            "$(go env GOPATH)/bin/gosec" -severity medium -confidence medium \
+              -exclude-generated -fmt=json -out "${batch_report}" "${batch[@]}" || true
+            if [ ! -s "${batch_report}" ]; then
+              echo "ERROR: gosec wrote no report for batch ${batch_index}; these packages went unscanned:" >&2
+              printf '  %s\n' "${batch[@]}" >&2
+              exit 1
+            fi
+            batch_index=$((batch_index + 1))
+          done
+
+          python3 - "${report_path}" gosec-batches/*.json <<'PY'
+          import json
+          import sys
+
+          out_path, *batch_paths = sys.argv[1:]
+          issues = []
+          for path in batch_paths:
+              with open(path, "r", encoding="utf-8") as handle:
+                  issues.extend(json.load(handle).get("Issues") or [])
+          with open(out_path, "w", encoding="utf-8") as handle:
+              json.dump({"Issues": issues}, handle)
+          print(f"merged {len(batch_paths)} batch report(s): {len(issues)} finding(s)")
+          PY
 
       - name: Fail on HIGH findings
         shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard_index }}
         run: |
           set -euo pipefail
-          report_path="gosec-report-${{ matrix.shard_index }}.json"
+          report_path="gosec-report-${SHARD_INDEX}.json"
           python3 - "${report_path}" <<'PY'
           import json
           import sys
