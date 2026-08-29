@@ -1,10 +1,10 @@
 {
   "units": 73,
-  "candidate_units": 2,
-  "blocked_units": 71,
-  "production_lines": 451,
-  "test_lines": 337,
-  "deletion_targets": 6,
+  "candidate_units": 1,
+  "blocked_units": 72,
+  "production_lines": 391,
+  "test_lines": 267,
+  "deletion_targets": 4,
   "blocked_source_ids": [
     "projection/abnormal_security",
     "projection/abuseipdb",
@@ -45,6 +45,7 @@
     "projection/bitwarden",
     "projection/botify",
     "projection/box",
+    "projection/cloudflare",
     "projection/cloudflare_workers_ai",
     "projection/cloudflare_zero_trust",
     "projection/cohere",

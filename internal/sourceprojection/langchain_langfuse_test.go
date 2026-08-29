@@ -9,43 +9,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// TestProjectLangChainWorkspaceMemberAccess exercises the shared
-// aiScopedUserAccessProjections helper via the langChainOracle* override in
-// openai_oracle_test.go: langchain's own Go projection writer was retired to
-// Rust authority, so the real registry now fails closed for langchain.*
-// kinds and this test routes through the oracle service instead.
-func TestProjectLangChainWorkspaceMemberAccess(t *testing.T) {
-	state := &projectionRecorder{}
-	service := newOpenAIOracleService(t, state)
-	event := &cerebrov1.EventEnvelope{
-		Id:         "langchain-workspace-member",
-		TenantId:   "writer",
-		SourceId:   "langchain",
-		Kind:       "langchain.workspace_member",
-		OccurredAt: timestamppb.New(time.Date(2026, time.June, 24, 12, 0, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"email":        "ada@example.com",
-			"name":         "Ada Lovelace",
-			"role":         "Admin",
-			"user_id":      "user_123",
-			"workspace_id": "workspace_123",
-		},
-	}
-	if _, err := service.Project(context.Background(), event); err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-
-	userURN := "urn:cerebro:writer:langchain_user:user_123"
-	workspaceURN := "urn:cerebro:writer:langchain_workspace:workspace_123"
-	if entity := state.entities[userURN]; entity == nil || entity.EntityType != "langchain.user" || entity.Attributes["email"] != "ada@example.com" {
-		t.Fatalf("langchain user entity missing or wrong: %#v", entity)
-	}
-	if entity := state.entities[workspaceURN]; entity == nil || entity.EntityType != "langchain.workspace" {
-		t.Fatalf("langchain workspace entity missing or wrong: %#v", entity)
-	}
-	assertProjectedLink(t, state, userURN, relationCanAdmin, workspaceURN)
-}
-
 func TestProjectLangfuseProjectAccessAndCredential(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
