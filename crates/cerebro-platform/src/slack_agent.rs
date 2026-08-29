@@ -26,19 +26,18 @@ use cerebro_agent_runtime::{
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PROACTIVE_FOLLOWUP_CAPABILITY_V1,
     PresentationDecision, PresentationTurn, ResolvedRequestRoute, RouteDecision, RouteTurn,
     ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    resolve_request_route,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
-        EvidenceAssertion, EvidenceAtom, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview,
-        MissionState, ProactiveFollowupOffer, SemanticEvidenceAtomization,
+        EvidenceAssertion, EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
+        MessageReview, MissionState, ProactiveFollowupOffer, SemanticEvidenceAtomization,
         SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
-        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft,
-        grounded_draft_digest, message_digest, run_session_turn_recorded,
-        run_session_turn_recorded_with_followup_offers, semantic_evidence_atoms,
-        validate_followup_acceptance,
+        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn,
+        SessionPresentationTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
+        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
+        followup_acceptance_draft, grounded_draft_digest, message_digest,
+        run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
+        semantic_evidence_atoms, validate_followup_acceptance,
     },
     validate_agent_turn_request,
 };
@@ -93,7 +92,6 @@ const STARTUP_INITIAL_RETRY_DELAY: StdDuration = StdDuration::from_millis(500);
 const STARTUP_MAX_RETRY_DELAY: StdDuration = StdDuration::from_secs(5);
 const STARTUP_DEPENDENCY_ATTEMPTS: usize = 5;
 const STARTUP_DEPENDENCY_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
-const OPERATOR_ROUTE_TIMEOUT: StdDuration = StdDuration::from_secs(90);
 const OPERATOR_TURN_LEASE_SECONDS: i64 = 1_000;
 const MAX_ACCEPTANCE_CLOCK_DELAY_SECONDS: i64 = 900;
 const SLACK_ROUTE_MAX_TOKENS: i32 = 768;
@@ -582,68 +580,23 @@ impl SlackAgentService {
                 .accept_followup_offer(store, session, request, message_exists, &lease_owner)
                 .await;
         }
-        let requested_route = match accepted_route.clone() {
-            Some(route) => route,
-            None => {
-                let route_request = route_request_from_session(&session, &request);
-                let route = tokio::time::timeout(
-                    OPERATOR_ROUTE_TIMEOUT,
-                    resolve_request_route(self.model.as_ref(), route_request),
-                )
-                .await
-                .map_err(|_| {
-                    AgentRuntimeError::ModelUnavailable(
-                        "semantic route decision deadline exceeded".into(),
-                    )
-                })
-                .and_then(|result| result);
-                match route {
-                    Ok(route) => route,
-                    Err(error) => {
-                        return Err(release_turn_after_failure(
-                            store,
-                            &session.session_ref,
-                            &request.request_id,
-                            &lease_owner,
-                            error,
-                        )
-                        .await);
-                    }
-                }
-            }
-        };
-        if !message_exists || accepted_route.is_none() {
+        if !message_exists {
             let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
-            let mut durable_events = Vec::new();
-            if !message_exists {
-                durable_events.push(SessionEventRecord {
-                    schema_version: AGENT_SESSION_EVENT_V2.into(),
-                    session_ref: session.session_ref.clone(),
-                    sequence: expected_sequence + 1,
-                    occurred_at: request.assessment_at.clone(),
-                    event: SessionEvent::UserMessageQueued {
-                        message: SessionMessage {
-                            role: SessionMessageRole::User,
-                            message_ref,
-                            actor_ref: request.actor_ref.clone(),
-                            text: request.message.clone(),
-                            received_at: request.assessment_at.clone(),
-                        },
-                    },
-                });
-            }
-            durable_events.push(SessionEventRecord {
+            let durable_events = vec![SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: session.session_ref.clone(),
-                sequence: expected_sequence + durable_events.len() as u64 + 1,
+                sequence: expected_sequence + 1,
                 occurred_at: request.assessment_at.clone(),
-                event: SessionEvent::RouteAccepted {
-                    request_id: request.request_id.clone(),
-                    lane: requested_route.lane,
-                    future_observation: requested_route.future_observation,
-                    future_observation_excerpt: requested_route.future_observation_excerpt.clone(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref,
+                        actor_ref: request.actor_ref.clone(),
+                        text: request.message.clone(),
+                        received_at: request.assessment_at.clone(),
+                    },
                 },
-            });
+            }];
             if let Err(error) = store
                 .append_operator_fenced(
                     &session.session_ref,
@@ -696,7 +649,7 @@ impl SlackAgentService {
                 request_id: request.request_id.clone(),
                 actor_ref: request.actor_ref.clone(),
                 assessment_at: request.assessment_at.clone(),
-                requested_lane: Some(requested_route.lane),
+                requested_lane: accepted_route.map(|route| route.lane),
                 trigger: cerebro_agent_runtime::session::SessionTurnTrigger::Operator,
             };
             if offers_enabled {
@@ -2084,18 +2037,18 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
 impl ConfiguredModel {
     async fn present_session_turn(
         &self,
-        turn: &SessionModelTurn,
-    ) -> Result<SessionModelDecision, AgentRuntimeError> {
+        turn: &SessionPresentationTurn,
+    ) -> Result<GroundedDraft, AgentRuntimeError> {
         let value = self
             .complete_session_structured(
                 session_presentation_instructions(),
-                session_turn_payload(turn),
+                session_presentation_payload(turn),
                 SLACK_SESSION_DECISION_MAX_TOKENS,
                 SESSION_PRESENTATION_TOOL,
                 session_presentation_schema(),
             )
             .await?;
-        parse_session_presentation_value(value)
+        apply_session_presentation_value(&turn.research_draft, value)
     }
 }
 
@@ -2115,10 +2068,16 @@ impl SessionAgentModel for ConfiguredModel {
                 decision_schema,
             )
             .await?;
-        match parse_session_research_decision_value(value)? {
-            SessionResearchDecision::Continue(decision) => Ok(*decision),
-            SessionResearchDecision::Present => self.present_session_turn(&turn).await,
-        }
+        let SessionResearchDecision::Continue(decision) =
+            parse_session_research_decision_value(value)?;
+        Ok(*decision)
+    }
+
+    async fn present(
+        &self,
+        turn: SessionPresentationTurn,
+    ) -> Result<GroundedDraft, AgentRuntimeError> {
+        self.present_session_turn(&turn).await
     }
 
     async fn review_message(
@@ -2841,9 +2800,13 @@ fn session_decision_schema() -> Value {
             "next_action": {"type": "string", "minLength": 1},
             "attention_policy": attention_policy.clone(),
             "check_after_seconds": {"type": "integer", "minimum": 30, "maximum": 3600},
-            "verification": {"type": "string", "minLength": 1}
+            "verification": {"type": "string", "minLength": 1},
+            "authorization_excerpt": {
+                "type": ["string", "null"],
+                "description": "For an operator-authorized durable follow-through, copy one exact bounded excerpt from the newest operator message. Use null inside an unaccepted follow_through_offer."
+            }
         },
-        "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria", "next_action", "attention_policy", "check_after_seconds", "verification"]
+        "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria", "next_action", "attention_policy", "check_after_seconds", "verification", "authorization_excerpt"]
     });
     let planned_follow_through_offer = json!({
         "type": "object",
@@ -3013,17 +2976,6 @@ fn session_decision_schema() -> Value {
     })
 }
 
-fn required_session_decision_property(schema: &Value, property: &str) -> Value {
-    schema
-        .get("properties")
-        .and_then(|properties| properties.get(property))
-        .and_then(|property| property.get("oneOf"))
-        .and_then(Value::as_array)
-        .and_then(|variants| variants.first())
-        .cloned()
-        .expect("the complete session schema carries the requested non-null property")
-}
-
 fn session_initial_decision_schema() -> Value {
     let complete = session_decision_schema();
     json!({
@@ -3033,8 +2985,9 @@ fn session_initial_decision_schema() -> Value {
             "decision": {"type": "string", "enum": ["establish_plan", "finish_research"]},
             "plan": complete["properties"]["plan"].clone(),
             "calls": complete["properties"]["calls"].clone(),
+            "draft": complete["properties"]["draft"].clone(),
         },
-        "required": ["decision", "plan", "calls"]
+        "required": ["decision", "plan", "calls", "draft"]
     })
 }
 
@@ -3046,20 +2999,33 @@ fn session_continue_decision_schema() -> Value {
         "properties": {
             "decision": {"type": "string", "enum": ["invoke_tools", "finish_research"]},
             "calls": complete["properties"]["calls"].clone(),
+            "draft": complete["properties"]["draft"].clone(),
         },
-        "required": ["decision", "calls"]
+        "required": ["decision", "calls", "draft"]
     })
 }
 
 fn session_presentation_schema() -> Value {
-    let complete = session_decision_schema();
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
-            "draft": required_session_decision_property(&complete, "draft"),
+            "claims": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "claim_ref": {"type": "string", "minLength": 1},
+                        "text": {"type": "string", "minLength": 1, "maxLength": 16384}
+                    },
+                    "required": ["claim_ref", "text"]
+                }
+            }
         },
-        "required": ["draft"]
+        "required": ["claims"]
     })
 }
 
@@ -3181,6 +3147,7 @@ fn parse_first_embedded_object(encoded: &str) -> Option<Value> {
     None
 }
 
+#[cfg(test)]
 fn parse_session_decision_value(
     mut value: Value,
 ) -> Result<SessionModelDecision, AgentRuntimeError> {
@@ -3231,13 +3198,14 @@ fn parse_session_decision_value(
 #[derive(Debug)]
 enum SessionResearchDecision {
     Continue(Box<SessionModelDecision>),
-    Present,
 }
 
 fn parse_session_research_decision_value(
     mut value: Value,
 ) -> Result<SessionResearchDecision, AgentRuntimeError> {
     normalize_embedded_session_object(&mut value, "plan");
+    normalize_embedded_session_object(&mut value, "draft");
+    normalize_grounded_claim_aliases(&mut value);
     let decision = value
         .get("decision")
         .and_then(Value::as_str)
@@ -3280,7 +3248,11 @@ fn parse_session_research_decision_value(
                     "finish_research cannot include tool calls".into(),
                 ));
             }
-            Ok(SessionResearchDecision::Present)
+            let draft = serde_json::from_value(value.get("draft").cloned().unwrap_or(Value::Null))
+                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            Ok(SessionResearchDecision::Continue(Box::new(
+                SessionModelDecision::ResearchComplete { draft },
+            )))
         }
         _ => Err(AgentRuntimeError::InvalidFinal(
             "session research decision is unsupported".into(),
@@ -3288,15 +3260,61 @@ fn parse_session_research_decision_value(
     }
 }
 
-fn parse_session_presentation_value(
-    mut value: Value,
-) -> Result<SessionModelDecision, AgentRuntimeError> {
-    normalize_embedded_session_object(&mut value, "draft");
-    normalize_grounded_claim_aliases(&mut value);
-    parse_session_decision_value(json!({
-        "decision": "finish",
-        "draft": value.get("draft").cloned().unwrap_or(Value::Null),
-    }))
+fn apply_session_presentation_value(
+    research_draft: &GroundedDraft,
+    value: Value,
+) -> Result<GroundedDraft, AgentRuntimeError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct PresentedClaim {
+        claim_ref: String,
+        text: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct PresentedClaims {
+        claims: Vec<PresentedClaim>,
+    }
+
+    let presented: PresentedClaims = serde_json::from_value(value)
+        .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+    let original = research_draft
+        .claims
+        .iter()
+        .map(|claim| (claim.claim_ref.as_str(), claim))
+        .collect::<BTreeMap<_, _>>();
+    let mut seen = BTreeSet::new();
+    let mut claims = Vec::with_capacity(presented.claims.len());
+    for presented in presented.claims {
+        let source = original.get(presented.claim_ref.as_str()).ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "presentation referenced a claim outside the frozen research draft".into(),
+            )
+        })?;
+        if !seen.insert(presented.claim_ref.clone()) {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "presentation repeated a frozen research claim".into(),
+            ));
+        }
+        let mut claim = (*source).clone();
+        claim.text = presented.text;
+        claims.push(claim);
+    }
+    if seen.len() != original.len() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "presentation omitted a frozen research claim".into(),
+        ));
+    }
+    let mut draft = research_draft.clone();
+    draft.claims = claims;
+    draft.message = draft
+        .claims
+        .iter()
+        .map(|claim| claim.text.as_str())
+        .collect();
+    draft.presentation_ready = true;
+    Ok(draft)
 }
 
 fn normalize_embedded_session_object(value: &mut Value, field: &str) {
@@ -3428,6 +3446,15 @@ fn session_turn_payload(turn: &SessionModelTurn) -> Value {
             "session_ref": &turn.session.session_ref,
             "thread_ref": &turn.session.thread_ref,
         },
+    })
+}
+
+fn session_presentation_payload(turn: &SessionPresentationTurn) -> Value {
+    json!({
+        "research": session_turn_payload(&turn.research),
+        "research_draft": &turn.research_draft,
+        "prior_presentation": &turn.prior_presentation,
+        "review_feedback": &turn.review_feedback,
     })
 }
 
@@ -7282,22 +7309,21 @@ mod tests {
             initial_schema["properties"]["decision"]["enum"],
             json!(["establish_plan", "finish_research"])
         );
-        assert!(initial_schema["properties"].get("draft").is_none());
+        assert!(initial_schema["properties"].get("draft").is_some());
         assert_eq!(
             continue_schema["properties"]["decision"]["enum"],
             json!(["invoke_tools", "finish_research"])
         );
         assert!(continue_schema["properties"].get("plan").is_none());
-        assert!(continue_schema["properties"].get("draft").is_none());
+        assert!(continue_schema["properties"].get("draft").is_some());
         assert_eq!(
             presentation_schema["properties"]
                 .as_object()
                 .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["draft".into()])
+            Some(vec!["claims".into()])
         );
-        for explanation_id in ALL_STABLE_EXPLANATION_IDS {
-            assert!(presentation_schema.to_string().contains(explanation_id));
-        }
+        assert!(!presentation_schema.to_string().contains("mission"));
+        assert!(!presentation_schema.to_string().contains("memory_updates"));
         assert!(initial_schema.to_string().len() < decision_schema.len());
         assert!(continue_schema.to_string().len() < decision_schema.len());
         assert!(presentation_schema.to_string().len() < decision_schema.len());
@@ -7331,8 +7357,8 @@ mod tests {
     }
 
     #[test]
-    fn session_presentation_recovers_a_string_encoded_draft_and_claim_alias() {
-        let encoded_draft = json!({
+    fn session_presentation_rewrites_only_visible_claim_copy() {
+        let research_draft: GroundedDraft = serde_json::from_value(json!({
             "state": "answered",
             "delivery": "visible",
             "message": "The current read is complete.",
@@ -7340,7 +7366,7 @@ mod tests {
                 "claim_ref": "claim:one",
                 "planned_claim_ref": "planned:one",
                 "text": "The current read is complete.",
-                "required": true,
+                "required_for_answer": true,
                 "content": {"basis": "observation", "atom_refs": ["atom:one"]}
             }],
             "coverage_notice": null,
@@ -7358,39 +7384,93 @@ mod tests {
             },
             "memory_updates": [],
             "presentation_ready": true
-        })
-        .to_string();
-
-        let decision = parse_session_presentation_value(json!({
-            "draft": encoded_draft
         }))
         .unwrap();
 
-        let SessionModelDecision::Finish { draft } = decision else {
-            panic!("expected a recovered finish decision");
-        };
-        assert!(draft.claims[0].required_for_answer);
-        assert_eq!(draft.message, "The current read is complete.");
+        let presented = apply_session_presentation_value(
+            &research_draft,
+            json!({
+                "claims": [{
+                    "claim_ref": "claim:one",
+                    "text": "The current read is complete, so the bounded check passed."
+                }]
+            }),
+        )
+        .unwrap();
+
+        assert!(presented.claims[0].required_for_answer);
+        assert_eq!(
+            presented.claims[0].content,
+            research_draft.claims[0].content
+        );
+        assert_eq!(presented.mission, research_draft.mission);
+        assert_eq!(presented.memory_updates, research_draft.memory_updates);
+        assert_eq!(
+            presented.message,
+            "The current read is complete, so the bounded check passed."
+        );
+        assert!(
+            apply_session_presentation_value(
+                &research_draft,
+                json!({"claims": [{"claim_ref": "claim:other", "text": "Invented."}]})
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn session_research_hands_completed_evidence_to_the_presenter() {
+        let research_draft = json!({
+            "state": "answered",
+            "delivery": "visible",
+            "message": "The current read is complete.",
+            "claims": [{
+                "claim_ref": "claim:one",
+                "planned_claim_ref": null,
+                "text": "The current read is complete.",
+                "required_for_answer": true,
+                "content": {"basis": "stable_explanation", "explanation_id": "evidence_authority_boundary"}
+            }],
+            "coverage_notice": null,
+            "question": null,
+            "mission": {
+                "mission_ref": "mission:one",
+                "objective": "Answer the bounded question.",
+                "desired_outcome": "The operator has the supported answer.",
+                "resolved_scope": [],
+                "scope_assumptions": [],
+                "acceptance_criteria": ["The answer is delivered."],
+                "commitments": [],
+                "open_loops": [],
+                "status": "completed"
+            },
+            "memory_updates": [],
+            "presentation_ready": false
+        });
         let decision = parse_session_research_decision_value(json!({
             "decision": "finish_research",
-            "calls": []
+            "plan": null,
+            "calls": [],
+            "draft": research_draft
         }))
         .unwrap();
 
-        assert!(matches!(decision, SessionResearchDecision::Present));
+        assert!(matches!(
+            decision,
+            SessionResearchDecision::Continue(decision)
+                if matches!(*decision, SessionModelDecision::ResearchComplete { .. })
+        ));
         assert!(
             parse_session_research_decision_value(json!({
                 "decision": "finish_research",
+                "plan": null,
                 "calls": [{
                     "call_id": "call:late",
                     "tool_id": "source_runtime.inspect",
                     "purpose": "This call must be made before presenting.",
                     "input": {}
-                }]
+                }],
+                "draft": null
             }))
             .is_err()
         );
