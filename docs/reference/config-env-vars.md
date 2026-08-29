@@ -71,7 +71,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_NEO4J_QUERY_TIMEOUT` | unset | Optional timeout applied to Neo4j read transactions. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Legacy combined Rust graph origin. Prefer the separate read and projection origins so observing reads cannot activate a writer path. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | unset | Rust bounded graph read origin. This does not configure Rust projection writes. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Leave unset until the Rust writer path is intentionally enabled. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Required by the orchestrator, which fails closed without it; see the note below. It must point at a service running `serve-neo4j` or `serve-neo4j-consumer`, because `serve-neo4j-readonly` answers every `/v1/projections/*` route with 503. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | Optional explicit read mode. Only `authority` is supported; typed product reads return Rust results and fail closed. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
@@ -85,6 +85,31 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_RUNTIME_SECONDS` | `3600` | Replay seconds per invocation before a resumable stopped receipt. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.
+
+### The projection origin is not optional for the orchestrator
+
+Read and projection origins are separate so that enabling observing reads cannot
+activate a writer path. That separation is about the *read* origin: it does not
+make the projection origin optional.
+
+The orchestrator fails closed without it. `newOrchestratorSyncProjector` always
+wraps the authority client, and `AppendLogProjector.Project` returns
+`rust projection authority client is required` when there is none, so every
+source-runtime sync fails. There is deliberately no legacy fallback: projecting
+in Go without first asking Rust which family owns an event can double-write a
+family Rust already owns. `TestNewOrchestratorRuntimeServiceDoesNotFallBackWithoutRustAuthority`
+pins this behaviour.
+
+Both failure modes look the same from the orchestrator — every sync fails and
+the task exits 1 — but they need opposite fixes:
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `rust projection returned 503 Service Unavailable` | Origin set, but the service runs `serve-neo4j-readonly`, which leaves the projection runtime unset | Move the service to `serve-neo4j` or `serve-neo4j-consumer` |
+| `rust projection authority client is required` | Origin unset | Set `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` |
+
+Unsetting the origin to escape the 503 does not help; it just swaps one failure
+for the other. The service has to be able to answer.
 
 ## Rust Slack agent
 
