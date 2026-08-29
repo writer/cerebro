@@ -2854,9 +2854,11 @@ async fn run_session_turn_recorded_at(
         })
         .collect::<BTreeSet<_>>();
     let mut consumed_approvals = BTreeSet::new();
-    let mut repair_feedback = correction_requires_feedback
-        .then(|| vec![EMPTY_OPERATING_RESEARCH_FEEDBACK.into()])
-        .unwrap_or_default();
+    let mut repair_feedback = if correction_requires_feedback {
+        vec![EMPTY_OPERATING_RESEARCH_FEEDBACK.into()]
+    } else {
+        Vec::new()
+    };
     let mut repairs = usize::from(correction_requires_feedback);
     let mut rejected_operating_drafts = BTreeSet::new();
     let mut coissued_plan_calls = None;
