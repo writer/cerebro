@@ -7489,7 +7489,8 @@ mod tests {
         assert_eq!(SLACK_SESSION_DECISION_MAX_TOKENS, 4_096);
         assert_eq!(SLACK_CLAIM_REVIEW_MAX_TOKENS, 1_024);
 
-        let decision_schema = session_decision_schema().to_string();
+        let complete_schema = session_decision_schema();
+        let decision_schema = complete_schema.to_string();
         for explanation_id in ALL_STABLE_EXPLANATION_IDS {
             assert!(decision_schema.contains(explanation_id));
         }
@@ -7515,6 +7516,18 @@ mod tests {
         );
         assert!(initial_schema["properties"].get("draft").is_some());
         assert_eq!(
+            initial_schema["properties"]["plan"],
+            complete_schema["properties"]["plan"]
+        );
+        assert_eq!(
+            initial_schema["properties"]["calls"],
+            complete_schema["properties"]["calls"]
+        );
+        assert_eq!(
+            initial_schema["properties"]["draft"],
+            complete_schema["properties"]["draft"]
+        );
+        assert_eq!(
             continue_schema["properties"]["decision"]["enum"],
             json!(["invoke_tools", "finish_research"])
         );
@@ -7528,7 +7541,6 @@ mod tests {
         );
         assert!(!presentation_schema.to_string().contains("mission"));
         assert!(!presentation_schema.to_string().contains("memory_updates"));
-        assert!(initial_schema.to_string().len() < decision_schema.len());
         assert!(continue_schema.to_string().len() < decision_schema.len());
         assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
