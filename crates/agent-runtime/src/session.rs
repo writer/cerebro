@@ -341,6 +341,13 @@ pub struct PlannedFollowThrough {
     pub check_after_seconds: u32,
     /// Description of how fresh observations establish the outcome.
     pub verification: String,
+    /// Exact operator-authored excerpt that authorizes this durable future observation.
+    ///
+    /// This is `None` for an unaccepted proactive offer. The runtime verifies a
+    /// committed follow-through against the newest operator message without
+    /// classifying its wording.
+    #[serde(default)]
+    pub authorization_excerpt: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1058,6 +1065,11 @@ pub enum SessionModelDecision {
         /// Calls to validate and execute under runtime authority checks.
         calls: Vec<ToolCall>,
     },
+    /// Freeze the completed research artifact before presentation begins.
+    ResearchComplete {
+        /// Grounded candidate whose operating state and provenance are immutable in presentation.
+        draft: GroundedDraft,
+    },
     /// Stop model iteration and submit a draft for validation and review.
     Finish {
         /// Candidate grounded response and next mission state.
@@ -1329,6 +1341,19 @@ pub struct SessionModelTurn {
     pub repair_feedback: Vec<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+/// Immutable research output supplied to the presentation-only model phase.
+pub struct SessionPresentationTurn {
+    /// Complete research context, including the accumulated observation ledger.
+    pub research: SessionModelTurn,
+    /// Typed research artifact whose authority-bearing fields may not be regenerated.
+    pub research_draft: GroundedDraft,
+    /// Prior visible candidate when one bounded presentation revision is requested.
+    pub prior_presentation: Option<GroundedDraft>,
+    /// Exact deterministic or independent-review defects to correct in visible copy only.
+    pub review_feedback: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 /// Durable result of assessing one scheduled commitment occurrence.
@@ -1542,6 +1567,14 @@ pub trait SessionAgentModel: Send + Sync {
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError>;
+
+    /// Rewrites visible claim copy without changing the frozen research artifact.
+    async fn present(
+        &self,
+        turn: SessionPresentationTurn,
+    ) -> Result<GroundedDraft, AgentRuntimeError> {
+        Ok(turn.research_draft)
+    }
 
     /// Reviews an exact candidate against its declared claims and supplied evidence.
     async fn review_message(
@@ -2607,12 +2640,20 @@ async fn run_session_turn_recorded_at(
     let mut repairs = 0;
     let mut rejected_operating_drafts = BTreeSet::new();
     let mut coissued_plan_calls = None;
+    let mut frozen_research_draft: Option<GroundedDraft> = None;
+    let mut pending_presentation_revision: Option<(GroundedDraft, Vec<String>)> = None;
+    let mut presentation_revision_used = false;
+    let mut review_attempted = false;
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
             let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
             return repair_fallback_outcome(
-                RepairFallbackRuntime { model, journal },
+                RepairFallbackRuntime {
+                    journal,
+                    proactive_followup_offers_enabled,
+                    failure_stage: "research repair",
+                },
                 &session,
                 &input,
                 plan.as_ref(),
@@ -2622,30 +2663,83 @@ async fn run_session_turn_recorded_at(
             )
             .await;
         }
-        let decision = if let Some(calls) = coissued_plan_calls.take() {
-            SessionModelDecision::InvokeTools { calls }
-        } else {
-            match model
-                .advance(SessionModelTurn {
-                    session: session.clone(),
-                    trigger: trigger.clone(),
-                    assessment_at: input.assessment_at.clone(),
-                    requested_lane: input.requested_lane,
-                    prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                    wake_assessment: build_wake_assessment(
-                        &session,
-                        &trigger,
-                        prior_commitment_checkpoint.as_ref(),
-                        &observations,
-                        assessment_at,
-                    ),
-                    plan: plan.clone(),
-                    available_tools: available_tools.clone(),
-                    observations: observations.clone(),
-                    repair_feedback: repair_feedback.clone(),
+        let model_turn = SessionModelTurn {
+            session: session.clone(),
+            trigger: trigger.clone(),
+            assessment_at: input.assessment_at.clone(),
+            requested_lane: input.requested_lane,
+            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+            wake_assessment: build_wake_assessment(
+                &session,
+                &trigger,
+                prior_commitment_checkpoint.as_ref(),
+                &observations,
+                assessment_at,
+            ),
+            plan: plan.clone(),
+            available_tools: available_tools.clone(),
+            observations: observations.clone(),
+            repair_feedback: repair_feedback.clone(),
+        };
+        let decision = if let Some((prior_presentation, review_feedback)) =
+            pending_presentation_revision.take()
+        {
+            let prior_message_digest = message_digest(&prior_presentation.message);
+            let research_draft = frozen_research_draft
+                .clone()
+                .expect("presentation revision requires a frozen research draft");
+            let draft = match model
+                .present(SessionPresentationTurn {
+                    research: model_turn.clone(),
+                    research_draft,
+                    prior_presentation: Some(prior_presentation),
+                    review_feedback,
                 })
                 .await
             {
+                Ok(draft) => draft,
+                Err(_) => {
+                    let accepted_at =
+                        elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                    return repair_fallback_outcome(
+                        RepairFallbackRuntime {
+                            journal,
+                            proactive_followup_offers_enabled,
+                            failure_stage: "presentation revision",
+                        },
+                        &session,
+                        &input,
+                        plan.as_ref(),
+                        &observations,
+                        accepted_at,
+                        events,
+                    )
+                    .await;
+                }
+            };
+            if message_digest(&draft.message) == prior_message_digest {
+                let accepted_at =
+                    elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                return repair_fallback_outcome(
+                    RepairFallbackRuntime {
+                        journal,
+                        proactive_followup_offers_enabled,
+                        failure_stage: "presentation revision",
+                    },
+                    &session,
+                    &input,
+                    plan.as_ref(),
+                    &observations,
+                    accepted_at,
+                    events,
+                )
+                .await;
+            }
+            SessionModelDecision::Finish { draft }
+        } else if let Some(calls) = coissued_plan_calls.take() {
+            SessionModelDecision::InvokeTools { calls }
+        } else {
+            match model.advance(model_turn.clone()).await {
                 Ok(decision) => decision,
                 Err(AgentRuntimeError::InvalidFinal(reason)) => {
                     repairs += 1;
@@ -2658,7 +2752,11 @@ async fn run_session_turn_recorded_at(
                     let accepted_at =
                         elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
-                        RepairFallbackRuntime { model, journal },
+                        RepairFallbackRuntime {
+                            journal,
+                            proactive_followup_offers_enabled,
+                            failure_stage: "research model",
+                        },
                         &session,
                         &input,
                         plan.as_ref(),
@@ -2676,6 +2774,45 @@ async fn run_session_turn_recorded_at(
                 (SessionModelDecision::EstablishPlan { plan }, Some(calls))
             }
             decision => (decision, None),
+        };
+
+        let decision = match decision {
+            SessionModelDecision::ResearchComplete { draft } => {
+                frozen_research_draft = Some(draft.clone());
+                presentation_revision_used = false;
+                review_attempted = false;
+                let presented = match model
+                    .present(SessionPresentationTurn {
+                        research: model_turn,
+                        research_draft: draft.clone(),
+                        prior_presentation: None,
+                        review_feedback: Vec::new(),
+                    })
+                    .await
+                {
+                    Ok(presented) => presented,
+                    Err(_) => {
+                        let accepted_at =
+                            elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                        return repair_fallback_outcome(
+                            RepairFallbackRuntime {
+                                journal,
+                                proactive_followup_offers_enabled,
+                                failure_stage: "initial presentation",
+                            },
+                            &session,
+                            &input,
+                            plan.as_ref(),
+                            &observations,
+                            accepted_at,
+                            events,
+                        )
+                        .await;
+                    }
+                };
+                SessionModelDecision::Finish { draft: presented }
+            }
+            decision => decision,
         };
 
         match decision {
@@ -2925,18 +3062,53 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::Finish { mut draft } => {
                 let accepted_at =
                     elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                macro_rules! repair_presentation_or_research {
+                    (feedback: $feedback:expr) => {{
+                        let feedback: Vec<String> = $feedback;
+                        if frozen_research_draft.is_some() {
+                            if !presentation_revision_used {
+                                presentation_revision_used = true;
+                                pending_presentation_revision = Some((draft.clone(), feedback));
+                                continue;
+                            }
+                            return repair_fallback_outcome(
+                                RepairFallbackRuntime {
+                                    journal,
+                                    proactive_followup_offers_enabled,
+                                    failure_stage: "presentation revision",
+                                },
+                                &session,
+                                &input,
+                                plan.as_ref(),
+                                &observations,
+                                accepted_at,
+                                events,
+                            )
+                            .await;
+                        }
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            feedback.join(" "),
+                        );
+                        continue;
+                    }};
+                    ($reason:expr) => {{
+                        repair_presentation_or_research!(feedback: vec![$reason]);
+                    }};
+                }
+                if let Some(research_draft) = frozen_research_draft.as_ref()
+                    && let Err(error) = validate_presentation_boundary(research_draft, &draft)
+                {
+                    repair_presentation_or_research!(error.to_string());
+                }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && let Err(error) =
                         validate_explicit_follow_through(&session, &input, plan.as_ref())
                 {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 normalize_message_from_grounded_claims(&mut draft);
                 let effective_lane = turn_outcome_lane(&input, plan.as_ref());
@@ -2949,15 +3121,10 @@ async fn run_session_turn_recorded_at(
                     && plan.is_none()
                     && observations.len() > current_turn_observation_start
                 {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
+                    repair_presentation_or_research!(
                         "A tool observation cannot be presented without the typed plan that authorized it. Establish the plan before using tools."
-                            .into(),
+                            .into()
                     );
-                    continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && draft.state == FinalState::Answered
@@ -2984,15 +3151,10 @@ async fn run_session_turn_recorded_at(
                     if partial_evidence_covers_every_required_claim {
                         draft.state = FinalState::Partial;
                     } else {
-                        record_draft_repair(
-                            &mut rejected_operating_drafts,
-                            &draft,
-                            &mut repairs,
-                            &mut repair_feedback,
+                        repair_presentation_or_research!(
                             "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
-                                .into(),
+                                .into()
                         );
-                        continue;
                     }
                 }
                 materialize_planned_follow_through(
@@ -3014,14 +3176,7 @@ async fn run_session_turn_recorded_at(
                     &observations,
                     assessment_at,
                 ) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 if let Err(error) = validate_commitment_baselines(
                     &session,
@@ -3030,14 +3185,7 @@ async fn run_session_turn_recorded_at(
                     &observations,
                     assessment_at,
                 ) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 if let Err(error) = canonicalize_routine_silent_wake(
                     &session,
@@ -3047,14 +3195,7 @@ async fn run_session_turn_recorded_at(
                     assessment_at,
                     &mut draft,
                 ) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 if let Err(error) = validate_wake_completion(
                     &session,
@@ -3063,24 +3204,10 @@ async fn run_session_turn_recorded_at(
                     assessment_at,
                     &observations,
                 ) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
                 let validated = match validate_grounded_draft_at(
                     &session,
@@ -3091,78 +3218,73 @@ async fn run_session_turn_recorded_at(
                 ) {
                     Ok(validated) => validated,
                     Err(error) => {
-                        record_draft_repair(
-                            &mut rejected_operating_drafts,
-                            &draft,
-                            &mut repairs,
-                            &mut repair_feedback,
-                            error.to_string(),
-                        );
-                        continue;
+                        repair_presentation_or_research!(error.to_string());
                     }
                 };
                 if let Err(error) =
                     validate_effect_closure_at(&observations, &draft, assessment_at, accepted_at)
                 {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
+                    repair_presentation_or_research!(error.to_string());
                 }
-                let review = match model
-                    .review_message(ClaimReviewTurn {
-                        session: session.clone(),
-                        trigger: trigger.clone(),
-                        prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                        wake_assessment: build_wake_assessment(
-                            &session,
-                            &trigger,
-                            prior_commitment_checkpoint.as_ref(),
-                            &observations,
-                            assessment_at,
-                        ),
-                        draft: draft.clone(),
-                        observations: observations.clone(),
-                    })
-                    .await
-                {
-                    Ok(review) => review,
-                    Err(AgentRuntimeError::InvalidFinal(reason)) => {
-                        record_draft_repair(
-                            &mut rejected_operating_drafts,
-                            &draft,
-                            &mut repairs,
-                            &mut repair_feedback,
-                            format!("The presentation review was malformed: {reason}"),
-                        );
-                        continue;
+                if !review_attempted {
+                    review_attempted = true;
+                    let review = match model
+                        .review_message(ClaimReviewTurn {
+                            session: session.clone(),
+                            trigger: trigger.clone(),
+                            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                            wake_assessment: build_wake_assessment(
+                                &session,
+                                &trigger,
+                                prior_commitment_checkpoint.as_ref(),
+                                &observations,
+                                assessment_at,
+                            ),
+                            draft: draft.clone(),
+                            observations: observations.clone(),
+                        })
+                        .await
+                    {
+                        Ok(review) => review,
+                        Err(_) => {
+                            return repair_fallback_outcome(
+                                RepairFallbackRuntime {
+                                    journal,
+                                    proactive_followup_offers_enabled,
+                                    failure_stage: "independent review",
+                                },
+                                &session,
+                                &input,
+                                plan.as_ref(),
+                                &observations,
+                                accepted_at,
+                                events,
+                            )
+                            .await;
+                        }
+                    };
+                    let feedback = match message_review_feedback(&draft, &review) {
+                        Ok(feedback) => feedback,
+                        Err(_) => {
+                            return repair_fallback_outcome(
+                                RepairFallbackRuntime {
+                                    journal,
+                                    proactive_followup_offers_enabled,
+                                    failure_stage: "independent review",
+                                },
+                                &session,
+                                &input,
+                                plan.as_ref(),
+                                &observations,
+                                accepted_at,
+                                events,
+                            )
+                            .await;
+                        }
+                    };
+                    if !feedback.is_empty() {
+                        repair_presentation_or_research!(feedback: feedback);
                     }
-                    Err(_) => {
-                        return repair_fallback_outcome(
-                            RepairFallbackRuntime { model, journal },
-                            &session,
-                            &input,
-                            plan.as_ref(),
-                            &observations,
-                            accepted_at,
-                            events,
-                        )
-                        .await;
-                    }
-                };
-                if let Err(error) = validate_message_review(&draft, &review) {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        error.to_string(),
-                    );
-                    continue;
                 }
                 let proactive_followup = if proactive_followup_offers_enabled {
                     materialize_proactive_followup_offer(
@@ -3220,11 +3342,18 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::EstablishPlanAndInvoke { .. } => {
                 unreachable!("coissued plan calls are normalized before decision execution")
             }
+            SessionModelDecision::ResearchComplete { .. } => {
+                unreachable!("research completion is normalized before presentation")
+            }
         }
     }
     let accepted_at = elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
     repair_fallback_outcome(
-        RepairFallbackRuntime { model, journal },
+        RepairFallbackRuntime {
+            journal,
+            proactive_followup_offers_enabled,
+            failure_stage: "research step budget",
+        },
         &session,
         &input,
         plan.as_ref(),
@@ -3240,8 +3369,9 @@ fn turn_outcome_lane(_input: &SessionTurnInput, plan: Option<&ResearchPlan>) -> 
 }
 
 struct RepairFallbackRuntime<'a> {
-    model: &'a dyn SessionAgentModel,
     journal: &'a dyn SessionJournal,
+    proactive_followup_offers_enabled: bool,
+    failure_stage: &'static str,
 }
 
 async fn repair_fallback_outcome(
@@ -3273,7 +3403,11 @@ async fn repair_fallback_outcome(
             .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
             .atom_ref
             .clone();
-        Some((observation.result.summary.trim().to_owned(), atom_ref))
+        Some((
+            observation.call.tool_id.clone(),
+            observation.result.summary.trim().to_owned(),
+            atom_ref,
+        ))
     });
     let supported = observations
         .iter()
@@ -3306,7 +3440,12 @@ async fn repair_fallback_outcome(
                     .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))
                     .map(|atom| atom.atom_ref.clone())
             })?;
-            Some((observation.result.summary.trim().to_owned(), atom_ref))
+            Some((
+                observation.sequence,
+                observation.call.tool_id.clone(),
+                observation.result.summary.trim().to_owned(),
+                atom_ref,
+            ))
         })
         .collect::<Vec<_>>();
     let failed_reads = observations
@@ -3333,7 +3472,12 @@ async fn repair_fallback_outcome(
                 .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
                 .atom_ref
                 .clone();
-            Some((observation.result.summary.trim().to_owned(), atom_ref))
+            Some((
+                observation.sequence,
+                observation.call.tool_id.clone(),
+                observation.result.summary.trim().to_owned(),
+                atom_ref,
+            ))
         })
         .collect::<Vec<_>>();
     let failed_effect = observations.iter().rev().find_map(|observation| {
@@ -3358,7 +3502,11 @@ async fn repair_fallback_outcome(
             .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
             .atom_ref
             .clone();
-        Some((observation.result.summary.trim().to_owned(), atom_ref))
+        Some((
+            observation.call.tool_id.clone(),
+            observation.result.summary.trim().to_owned(),
+            atom_ref,
+        ))
     });
     let rescheduled_wake = match trigger {
         SessionTurnTrigger::Wake { commitment_ref, .. }
@@ -3517,162 +3665,178 @@ async fn repair_fallback_outcome(
     } else {
         CoverageBoundaryKind::NoCurrentAuthoritativeObservation
     };
-    let coverage_notice = render_coverage_boundary(coverage_boundary).to_owned();
-    let (state, mut message, mut claims) = if let Some((summary, atom_ref)) = uncertain_effect {
-        let notice = format!("\n\n{coverage_notice}");
-        (
-            FinalState::Blocked,
-            format!("{summary}{notice}"),
-            vec![
-                GroundedClaim {
-                    claim_ref: format!("fallback-observation:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: summary,
-                    required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
-                    },
-                },
-                GroundedClaim {
-                    claim_ref: format!("fallback-boundary:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: notice,
-                    required_for_answer: true,
-                    content: ClaimContent::CoverageBoundary {
-                        boundary: coverage_boundary,
-                    },
-                },
-            ],
+    let coverage_notice = if coverage_boundary
+        == CoverageBoundaryKind::NoCurrentAuthoritativeObservation
+    {
+        format!(
+            "Coverage gap: The {} stage ended before any capability returned current evidence. Retry this request once; if it repeats, inspect that stage's model or capability health.",
+            runtime.failure_stage
         )
-    } else if let Some((summary, atom_ref)) = failed_effect {
-        let notice = format!("\n\n{coverage_notice}");
-        (
-            FinalState::Blocked,
-            format!("{summary}{notice}"),
-            vec![
-                GroundedClaim {
-                    claim_ref: format!("fallback-observation:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: summary,
-                    required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
-                    },
-                },
-                GroundedClaim {
-                    claim_ref: format!("fallback-boundary:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: notice,
-                    required_for_answer: true,
-                    content: ClaimContent::CoverageBoundary {
-                        boundary: coverage_boundary,
-                    },
-                },
-            ],
-        )
-    } else if !supported.is_empty() {
-        let mut message = String::new();
-        let mut claims = Vec::new();
-        let mut summaries = BTreeSet::new();
-        for (index, (summary, atom_ref)) in supported.iter().enumerate() {
-            if !summaries.insert(summary.as_str()) {
-                continue;
-            }
-            let text = if message.is_empty() {
-                summary.clone()
-            } else {
-                format!("\n\n{summary}")
-            };
-            message.push_str(&text);
-            claims.push(GroundedClaim {
-                claim_ref: format!("fallback-observation:{}:{index}", input.request_id),
-                planned_claim_ref: None,
-                text,
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec![atom_ref.clone()],
-                },
-            });
-        }
-        for (index, (summary, atom_ref)) in failed_reads.iter().enumerate() {
-            if !summaries.insert(summary.as_str()) {
-                continue;
-            }
-            let text = format!("\n\n{summary}");
-            message.push_str(&text);
-            claims.push(GroundedClaim {
-                claim_ref: format!("fallback-failed-read:{}:{index}", input.request_id),
-                planned_claim_ref: None,
-                text,
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec![atom_ref.clone()],
-                },
-            });
-        }
-        let notice = format!("\n\n{coverage_notice}");
-        message.push_str(&notice);
-        claims.push(GroundedClaim {
-            claim_ref: format!("fallback-boundary:{}", input.request_id),
-            planned_claim_ref: None,
-            text: notice,
-            required_for_answer: true,
-            content: ClaimContent::CoverageBoundary {
-                boundary: coverage_boundary,
-            },
-        });
-        (FinalState::Partial, message, claims)
-    } else if !failed_reads.is_empty() {
-        let mut message = String::new();
-        let mut claims = Vec::new();
-        let mut summaries = BTreeSet::new();
-        for (index, (summary, atom_ref)) in failed_reads.iter().enumerate() {
-            if !summaries.insert(summary.as_str()) {
-                continue;
-            }
-            let text = if message.is_empty() {
-                summary.clone()
-            } else {
-                format!("\n\n{summary}")
-            };
-            message.push_str(&text);
-            claims.push(GroundedClaim {
-                claim_ref: format!("fallback-failed-read:{}:{index}", input.request_id),
-                planned_claim_ref: None,
-                text,
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec![atom_ref.clone()],
-                },
-            });
-        }
-        let notice = format!("\n\n{coverage_notice}");
-        message.push_str(&notice);
-        claims.push(GroundedClaim {
-            claim_ref: format!("fallback-boundary:{}", input.request_id),
-            planned_claim_ref: None,
-            text: notice,
-            required_for_answer: true,
-            content: ClaimContent::CoverageBoundary {
-                boundary: coverage_boundary,
-            },
-        });
-        (FinalState::Blocked, message, claims)
     } else {
-        (
-            FinalState::Blocked,
-            coverage_notice.clone(),
-            vec![GroundedClaim {
+        render_coverage_boundary(coverage_boundary).to_owned()
+    };
+    let (state, mut message, mut claims) =
+        if let Some((tool_id, summary, atom_ref)) = uncertain_effect {
+            let summary = format!("{tool_id}: {summary}");
+            let notice = format!("\n\n{coverage_notice}");
+            (
+                FinalState::Blocked,
+                format!("{summary}{notice}"),
+                vec![
+                    GroundedClaim {
+                        claim_ref: format!("fallback-observation:{}", input.request_id),
+                        planned_claim_ref: None,
+                        text: summary,
+                        required_for_answer: true,
+                        content: ClaimContent::Observation {
+                            atom_refs: vec![atom_ref],
+                        },
+                    },
+                    GroundedClaim {
+                        claim_ref: format!("fallback-boundary:{}", input.request_id),
+                        planned_claim_ref: None,
+                        text: notice,
+                        required_for_answer: true,
+                        content: ClaimContent::CoverageBoundary {
+                            boundary: coverage_boundary,
+                        },
+                    },
+                ],
+            )
+        } else if let Some((tool_id, summary, atom_ref)) = failed_effect {
+            let summary = format!("{tool_id}: {summary}");
+            let notice = format!("\n\n{coverage_notice}");
+            (
+                FinalState::Blocked,
+                format!("{summary}{notice}"),
+                vec![
+                    GroundedClaim {
+                        claim_ref: format!("fallback-observation:{}", input.request_id),
+                        planned_claim_ref: None,
+                        text: summary,
+                        required_for_answer: true,
+                        content: ClaimContent::Observation {
+                            atom_refs: vec![atom_ref],
+                        },
+                    },
+                    GroundedClaim {
+                        claim_ref: format!("fallback-boundary:{}", input.request_id),
+                        planned_claim_ref: None,
+                        text: notice,
+                        required_for_answer: true,
+                        content: ClaimContent::CoverageBoundary {
+                            boundary: coverage_boundary,
+                        },
+                    },
+                ],
+            )
+        } else if !supported.is_empty() {
+            let mut message = String::new();
+            let mut claims = Vec::new();
+            let mut summaries = BTreeSet::new();
+            let mut trace = supported
+                .iter()
+                .map(|(sequence, tool_id, summary, atom_ref)| {
+                    (*sequence, tool_id, summary, atom_ref, false)
+                })
+                .chain(
+                    failed_reads
+                        .iter()
+                        .map(|(sequence, tool_id, summary, atom_ref)| {
+                            (*sequence, tool_id, summary, atom_ref, true)
+                        }),
+                )
+                .collect::<Vec<_>>();
+            trace.sort_by_key(|(sequence, ..)| *sequence);
+            for (index, (_, tool_id, summary, atom_ref, failed)) in trace.into_iter().enumerate() {
+                let summary = format!("{tool_id}: {summary}");
+                if !summaries.insert(summary.clone()) {
+                    continue;
+                }
+                let text = if message.is_empty() {
+                    summary
+                } else {
+                    format!("\n\n{summary}")
+                };
+                message.push_str(&text);
+                claims.push(GroundedClaim {
+                    claim_ref: if failed {
+                        format!("fallback-failed-read:{}:{index}", input.request_id)
+                    } else {
+                        format!("fallback-observation:{}:{index}", input.request_id)
+                    },
+                    planned_claim_ref: None,
+                    text,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref.clone()],
+                    },
+                });
+            }
+            let notice = format!("\n\n{coverage_notice}");
+            message.push_str(&notice);
+            claims.push(GroundedClaim {
                 claim_ref: format!("fallback-boundary:{}", input.request_id),
                 planned_claim_ref: None,
-                text: coverage_notice.clone(),
+                text: notice,
                 required_for_answer: true,
                 content: ClaimContent::CoverageBoundary {
                     boundary: coverage_boundary,
                 },
-            }],
-        )
-    };
+            });
+            (FinalState::Partial, message, claims)
+        } else if !failed_reads.is_empty() {
+            let mut message = String::new();
+            let mut claims = Vec::new();
+            let mut summaries = BTreeSet::new();
+            for (index, (_, tool_id, summary, atom_ref)) in failed_reads.iter().enumerate() {
+                let summary = format!("{tool_id}: {summary}");
+                if !summaries.insert(summary.clone()) {
+                    continue;
+                }
+                let text = if message.is_empty() {
+                    summary
+                } else {
+                    format!("\n\n{summary}")
+                };
+                message.push_str(&text);
+                claims.push(GroundedClaim {
+                    claim_ref: format!("fallback-failed-read:{}:{index}", input.request_id),
+                    planned_claim_ref: None,
+                    text,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref.clone()],
+                    },
+                });
+            }
+            let notice = format!("\n\n{coverage_notice}");
+            message.push_str(&notice);
+            claims.push(GroundedClaim {
+                claim_ref: format!("fallback-boundary:{}", input.request_id),
+                planned_claim_ref: None,
+                text: notice,
+                required_for_answer: true,
+                content: ClaimContent::CoverageBoundary {
+                    boundary: coverage_boundary,
+                },
+            });
+            (FinalState::Blocked, message, claims)
+        } else {
+            (
+                FinalState::Blocked,
+                coverage_notice.clone(),
+                vec![GroundedClaim {
+                    claim_ref: format!("fallback-boundary:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: coverage_notice.clone(),
+                    required_for_answer: true,
+                    content: ClaimContent::CoverageBoundary {
+                        boundary: coverage_boundary,
+                    },
+                }],
+            )
+        };
     if let Some((commitment_ref, wake_at)) = rescheduled_wake {
         let follow_up = format!("\n\nI’ll check again at {wake_at}.");
         message.push_str(&follow_up);
@@ -3697,35 +3861,35 @@ async fn repair_fallback_outcome(
     };
     let validated =
         validate_grounded_draft_at(session, &draft, observations, assessment_at, accepted_at)?;
-    let prior_commitment_checkpoint = prior_commitment_checkpoint(session, trigger);
-    let review = runtime
-        .model
-        .review_message(ClaimReviewTurn {
-            session: session.clone(),
-            trigger: trigger.clone(),
-            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-            wake_assessment: build_wake_assessment(
-                session,
-                trigger,
-                prior_commitment_checkpoint.as_ref(),
-                observations,
-                assessment_at,
-            ),
-            draft: draft.clone(),
-            observations: observations.to_vec(),
-        })
-        .await
-        .map_err(|_| AgentRuntimeError::PresentationRepairLimit)?;
-    validate_message_review(&draft, &review)
-        .map_err(|_| AgentRuntimeError::PresentationRepairLimit)?;
+    let proactive_followup = if runtime.proactive_followup_offers_enabled {
+        materialize_proactive_followup_offer(
+            session,
+            input,
+            plan,
+            &draft,
+            observations,
+            &validated.evidence_atom_refs,
+            accepted_at,
+        )?
+    } else {
+        None
+    };
+    let mut final_events = vec![SessionEvent::DraftProduced {
+        request_id: input.request_id.clone(),
+        draft: draft.clone(),
+    }];
+    if let Some((offer, planned_follow_through)) = &proactive_followup {
+        final_events.push(SessionEvent::FollowupOffered {
+            request_id: input.request_id.clone(),
+            offer: offer.clone(),
+            planned_follow_through: planned_follow_through.clone(),
+        });
+    }
     emit_final_events(
         session,
         &input.assessment_at,
         &mut events,
-        [SessionEvent::DraftProduced {
-            request_id: input.request_id.clone(),
-            draft: draft.clone(),
-        }],
+        final_events,
         runtime.journal,
     )
     .await?;
@@ -3735,7 +3899,7 @@ async fn repair_fallback_outcome(
         markdown: validated.markdown,
         final_state: state,
         evidence_atom_refs: validated.evidence_atom_refs,
-        proactive_followup_offer: None,
+        proactive_followup_offer: proactive_followup.map(|(offer, _)| Box::new(offer)),
         accepted_followup_ref: None,
         mission: draft.mission,
         events,
@@ -3861,17 +4025,17 @@ fn validate_turn_input(
     }
     match &input.trigger {
         SessionTurnTrigger::Operator => {
-            if !matches!(
-                input.requested_lane,
-                Some(
+            if input.requested_lane.is_some_and(|lane| {
+                !matches!(
+                    lane,
                     ExecutionLane::Converse
                         | ExecutionLane::Lookup
                         | ExecutionLane::Investigate
                         | ExecutionLane::Act
                 )
-            ) {
+            }) {
                 return Err(AgentRuntimeError::InvalidRequest(
-                    "operator turn requires one accepted semantic route lane".into(),
+                    "operator turn carries an invalid durable legacy route lane".into(),
                 ));
             }
             let latest = session.messages.last().ok_or_else(|| {
@@ -3897,14 +4061,9 @@ fn validate_turn_input(
                     } if request_id == &input.request_id => Some(*lane),
                     _ => None,
                 });
-            let Some(accepted_lane) = accepted_lane else {
+            if accepted_lane != input.requested_lane {
                 return Err(AgentRuntimeError::InvalidRequest(
-                    "operator turn requires a durable accepted route".into(),
-                ));
-            };
-            if Some(accepted_lane) != input.requested_lane {
-                return Err(AgentRuntimeError::InvalidRequest(
-                    "turn route does not match the durable accepted route".into(),
+                    "turn route hint does not match the durable legacy route".into(),
                 ));
             }
         }
@@ -4612,6 +4771,54 @@ fn normalize_message_from_grounded_claims(draft: &mut GroundedDraft) {
         .collect();
 }
 
+fn validate_presentation_boundary(
+    research: &GroundedDraft,
+    presented: &GroundedDraft,
+) -> Result<(), AgentRuntimeError> {
+    if research.state != presented.state
+        || research.delivery != presented.delivery
+        || research.coverage_notice != presented.coverage_notice
+        || research.question != presented.question
+        || research.mission != presented.mission
+        || research.memory_updates != presented.memory_updates
+        || !presented.presentation_ready
+        || research.claims.len() != presented.claims.len()
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "presentation may rewrite visible claim copy only; research state, delivery, coverage, mission, memory, and claim bases are immutable"
+                .into(),
+        ));
+    }
+    let research_claims = research
+        .claims
+        .iter()
+        .map(|claim| (claim.claim_ref.as_str(), claim))
+        .collect::<BTreeMap<_, _>>();
+    let mut seen = BTreeSet::new();
+    for claim in &presented.claims {
+        let Some(source) = research_claims.get(claim.claim_ref.as_str()) else {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "presentation introduced a claim outside the frozen research artifact".into(),
+            ));
+        };
+        if !seen.insert(claim.claim_ref.as_str())
+            || source.planned_claim_ref != claim.planned_claim_ref
+            || source.required_for_answer != claim.required_for_answer
+            || source.content != claim.content
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "presentation changed or repeated an immutable research claim basis".into(),
+            ));
+        }
+    }
+    if seen.len() != research_claims.len() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "presentation omitted an immutable research claim".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn canonicalize_routine_silent_wake(
     session: &AgentSession,
     trigger: &SessionTurnTrigger,
@@ -4928,23 +5135,33 @@ fn evidence_record_supports_current_draft(
         ),
         FinalState::NeedsInput => false,
     };
-    let blocked_failure = final_state == FinalState::Blocked
-        && matches!(
-            result_state,
-            ToolResultState::Failed | ToolResultState::OutcomeUnknown
-        )
-        && evidence.atoms.iter().any(|atom| {
-            matches!(
+    let record_is_current = evidence.fresh_until.as_deref().is_some_and(|fresh_until| {
+        OffsetDateTime::parse(fresh_until, &Rfc3339)
+            .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+    });
+    let bounded_failure_receipt = matches!(
+        (final_state, result_state),
+        (
+            FinalState::Partial | FinalState::Blocked,
+            ToolResultState::Failed
+        ) | (FinalState::Blocked, ToolResultState::OutcomeUnknown)
+    ) && evidence.atoms.iter().any(|atom| {
+        let observed_in_time = OffsetDateTime::parse(&atom.observed_at, &Rfc3339)
+            .is_ok_and(|observed_at| observed_at <= assessment_at);
+        let current_or_durable_uncertainty = result_state == ToolResultState::OutcomeUnknown
+            || atom.fresh_until.as_deref().is_some_and(|fresh_until| {
+                OffsetDateTime::parse(fresh_until, &Rfc3339)
+                    .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+            });
+        atom.complete
+            && observed_in_time
+            && current_or_durable_uncertainty
+            && matches!(
                 &atom.assertion,
                 EvidenceAssertion::ToolOutcome { state, .. } if *state == result_state
             )
-        });
-    (admissible_state || blocked_failure)
-        && evidence.complete
-        && evidence.fresh_until.as_deref().is_some_and(|fresh_until| {
-            OffsetDateTime::parse(fresh_until, &Rfc3339)
-                .is_ok_and(|fresh_until| fresh_until >= assessment_at)
-        })
+    });
+    (admissible_state && evidence.complete && record_is_current) || bounded_failure_receipt
 }
 
 fn planned_claim_subject_matches(expected_subject: &str, atom: &EvidenceAtom) -> bool {
@@ -5658,10 +5875,23 @@ pub fn grounded_draft_digest(draft: &GroundedDraft) -> String {
     format!("sha256:{digest}")
 }
 
+#[cfg(test)]
 fn validate_message_review(
     draft: &GroundedDraft,
     review: &MessageReview,
 ) -> Result<(), AgentRuntimeError> {
+    let issues = message_review_feedback(draft, review)?;
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::InvalidFinal(issues.join(" ")))
+    }
+}
+
+fn message_review_feedback(
+    draft: &GroundedDraft,
+    review: &MessageReview,
+) -> Result<Vec<String>, AgentRuntimeError> {
     if review.draft_digest != grounded_draft_digest(draft)
         || review.message_digest != message_digest(&draft.message)
         || review.claim_reviews.len() != draft.claims.len()
@@ -5730,11 +5960,7 @@ fn validate_message_review(
     if !review.behavioral.evidence_boundary_correct {
         issues.push("Separate observations, inferences, and unknowns correctly.");
     }
-    if issues.is_empty() {
-        Ok(())
-    } else {
-        Err(AgentRuntimeError::InvalidFinal(issues.join(" ")))
-    }
+    Ok(issues.into_iter().map(str::to_owned).collect())
 }
 
 /// Validates that a research plan is bounded, executable, and internally referential.
@@ -5830,12 +6056,27 @@ pub fn validate_plan(
         ));
     }
     if let Some(offer) = &plan.follow_through_offer {
+        if offer.follow_through.authorization_excerpt.is_some() {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "an unaccepted proactive follow-through offer cannot carry operator authorization"
+                    .into(),
+            ));
+        }
         let mut offered_plan = plan.clone();
         offered_plan.follow_through = Some(offer.follow_through.clone());
         offered_plan.follow_through_offer = None;
         validate_plan(&offered_plan, available_tools)?;
     }
     if let Some(follow_through) = &plan.follow_through {
+        if follow_through
+            .authorization_excerpt
+            .as_deref()
+            .is_some_and(|excerpt| !bounded(excerpt, MAX_TEXT_BYTES))
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through authorization excerpt is too large".into(),
+            ));
+        }
         if !bounded(&follow_through.commitment_ref, MAX_TEXT_BYTES) {
             return Err(AgentRuntimeError::InvalidFinal(
                 "planned follow-through requires one stable bounded commitment_ref".into(),
@@ -5939,7 +6180,7 @@ fn validate_explicit_follow_through(
     input: &SessionTurnInput,
     plan: Option<&ResearchPlan>,
 ) -> Result<(), AgentRuntimeError> {
-    let route = session
+    let legacy_route = session
         .events
         .iter()
         .rev()
@@ -5950,40 +6191,79 @@ fn validate_explicit_follow_through(
                 ..
             } if request_id == &input.request_id => Some(*future_observation),
             _ => None,
+        });
+    let operator_message = session
+        .messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == SessionMessageRole::User
+                && message.message_ref == format!("operator:{}", input.request_id)
         })
         .ok_or_else(|| {
             AgentRuntimeError::InvalidRequest(
-                "operator follow-through validation requires a durable semantic route".into(),
+                "operator follow-through validation requires the durable operator message".into(),
             )
         })?;
-    match (
-        route,
-        plan.is_some_and(|plan| plan.follow_through.is_some()),
-        plan.is_some_and(|plan| plan.follow_through_offer.is_some()),
-    ) {
-        (FutureObservationDisposition::Delegated, false, _) => Err(
-            AgentRuntimeError::InvalidFinal(
-                "the semantic route records delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
-                    .into(),
-            ),
-        ),
-        (
-            FutureObservationDisposition::Refused | FutureObservationDisposition::None,
-            true,
-            _,
-        ) => Err(AgentRuntimeError::InvalidFinal(
-            "the semantic route does not authorize future observation. Remove follow_through and finish the current bounded work; do not invent a timer, monitor, or later assistant update"
-                .into(),
-        )),
-        (FutureObservationDisposition::Delegated, _, true)
-        | (FutureObservationDisposition::Refused, _, true) => Err(
-            AgentRuntimeError::InvalidFinal(
-                "a proactive follow-through offer is allowed only when the operator did not already delegate or explicitly request refusal of future observation"
-                    .into(),
-            ),
-        ),
-        _ => Ok(()),
+    let Some(plan) = plan else {
+        if legacy_route == Some(FutureObservationDisposition::Delegated) {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "the durable legacy route requires one bounded follow-through plan".into(),
+            ));
+        }
+        return Ok(());
+    };
+    if legacy_route == Some(FutureObservationDisposition::Delegated)
+        && plan.follow_through.is_none()
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the durable legacy route requires one bounded follow-through plan".into(),
+        ));
     }
+    if let Some(follow_through) = &plan.follow_through {
+        let excerpt_authorized =
+            follow_through
+                .authorization_excerpt
+                .as_deref()
+                .is_some_and(|excerpt| {
+                    bounded(excerpt, MAX_TEXT_BYTES) && operator_message.text.contains(excerpt)
+                });
+        let legacy_authorized = matches!(
+            legacy_route,
+            Some(FutureObservationDisposition::Delegated | FutureObservationDisposition::Inherited)
+        );
+        let legacy_refused = matches!(
+            legacy_route,
+            Some(FutureObservationDisposition::Refused | FutureObservationDisposition::None)
+        );
+        if legacy_refused || (!excerpt_authorized && !legacy_authorized) {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "durable follow-through requires one exact bounded authorization excerpt from the newest operator message"
+                    .into(),
+            ));
+        }
+    }
+    if plan.follow_through_offer.is_some()
+        && matches!(
+            legacy_route,
+            Some(FutureObservationDisposition::Delegated | FutureObservationDisposition::Refused)
+        )
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the durable legacy route already records a future-observation decision".into(),
+        ));
+    }
+    if plan
+        .follow_through_offer
+        .as_ref()
+        .is_some_and(|offer| offer.follow_through.authorization_excerpt.is_some())
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "an unaccepted proactive follow-through offer cannot carry operator authorization"
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_plan_completion(
@@ -7834,6 +8114,30 @@ mod tests {
         )
     }
 
+    fn session_for_unrouted_request(request_id: &str, message: &str) -> AgentSession {
+        let mut current = session();
+        current.messages.clear();
+        apply_session_events(
+            &current,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:30Z".into(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref: format!("operator:{request_id}"),
+                        actor_ref: "user:1".into(),
+                        text: message.into(),
+                        received_at: "2026-07-31T00:00:30Z".into(),
+                    },
+                },
+            }],
+        )
+        .expect("the test operator request should be durably queued without semantic routing")
+    }
+
     fn session_for_request_intent(
         request_id: &str,
         lane: ExecutionLane,
@@ -8534,6 +8838,7 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
+            authorization_excerpt: None,
         }
     }
 
@@ -8718,6 +9023,15 @@ mod tests {
         decisions: Mutex<VecDeque<SessionModelDecision>>,
     }
 
+    struct UnavailableReviewModel {
+        decisions: Mutex<VecDeque<SessionModelDecision>>,
+    }
+
+    struct UnavailablePresentationModel {
+        decisions: Mutex<VecDeque<SessionModelDecision>>,
+        reviews: AtomicUsize,
+    }
+
     struct PremiseConversationModel {
         decisions: Mutex<VecDeque<SessionModelDecision>>,
     }
@@ -8772,50 +9086,6 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Copy)]
-    enum FallbackReviewMode {
-        Supported,
-        Rejected,
-        Malformed,
-        Unavailable,
-    }
-
-    struct FallbackReviewModel {
-        mode: FallbackReviewMode,
-    }
-
-    #[async_trait]
-    impl SessionAgentModel for FallbackReviewModel {
-        async fn advance(
-            &self,
-            _turn: SessionModelTurn,
-        ) -> Result<SessionModelDecision, AgentRuntimeError> {
-            Err(AgentRuntimeError::ModelStepLimit)
-        }
-
-        async fn review_message(
-            &self,
-            turn: ClaimReviewTurn,
-        ) -> Result<MessageReview, AgentRuntimeError> {
-            match self.mode {
-                FallbackReviewMode::Supported => Ok(supported_message_review(turn)),
-                FallbackReviewMode::Rejected => {
-                    let mut review = supported_message_review(turn);
-                    review.behavioral.right_sized = false;
-                    Ok(review)
-                }
-                FallbackReviewMode::Malformed => {
-                    let mut review = supported_message_review(turn);
-                    review.draft_digest = "sha256:wrong-draft".into();
-                    Ok(review)
-                }
-                FallbackReviewMode::Unavailable => Err(AgentRuntimeError::ModelUnavailable(
-                    "presentation review unavailable".into(),
-                )),
-            }
-        }
-    }
-
     async fn accepted_repair_fallback_outcome(
         session: &AgentSession,
         input: &SessionTurnInput,
@@ -8825,13 +9095,11 @@ mod tests {
         events: Vec<SessionEventRecord>,
         journal: &dyn SessionJournal,
     ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
-        let model = FallbackReviewModel {
-            mode: FallbackReviewMode::Supported,
-        };
         repair_fallback_outcome(
             RepairFallbackRuntime {
-                model: &model,
                 journal,
+                proactive_followup_offers_enabled: false,
+                failure_stage: "deterministic fallback",
             },
             session,
             input,
@@ -8864,9 +9132,133 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn unrouted_conversation_uses_one_research_phase_without_tools() {
+        let request_id = "request:unrouted-conversation";
+        let message = "I like the new setup too.".to_string();
+        let research_draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: message.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:conversation".into(),
+                planned_claim_ref: None,
+                text: message,
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
+                draft: research_draft,
+            }])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            session_for_unrouted_request(request_id, "How are you feeling about this setup?"),
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("direct conversation should not require a separate route");
+
+        let SessionTurnOutcome::PendingDelivery { lane, events, .. } = outcome else {
+            panic!("direct conversation should be ready for delivery")
+        };
+        assert_eq!(lane, ExecutionLane::Converse);
+        assert!(!events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::RouteAccepted { .. }
+                | SessionEvent::PlanEstablished { .. }
+                | SessionEvent::ToolInvoked { .. }
+        )));
+        assert!(
+            model
+                .decisions
+                .lock()
+                .expect("decision script poisoned")
+                .is_empty()
+        );
+    }
+
+    #[async_trait]
+    impl SessionAgentModel for UnavailableReviewModel {
+        async fn advance(
+            &self,
+            _turn: SessionModelTurn,
+        ) -> Result<SessionModelDecision, AgentRuntimeError> {
+            self.decisions
+                .lock()
+                .expect("decision script poisoned")
+                .pop_front()
+                .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn review_message(
+            &self,
+            _turn: ClaimReviewTurn,
+        ) -> Result<MessageReview, AgentRuntimeError> {
+            Err(AgentRuntimeError::ModelUnavailable(
+                "independent review is unavailable".into(),
+            ))
+        }
+    }
+
+    #[async_trait]
+    impl SessionAgentModel for UnavailablePresentationModel {
+        async fn advance(
+            &self,
+            _turn: SessionModelTurn,
+        ) -> Result<SessionModelDecision, AgentRuntimeError> {
+            self.decisions
+                .lock()
+                .expect("decision script poisoned")
+                .pop_front()
+                .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn present(
+            &self,
+            _turn: SessionPresentationTurn,
+        ) -> Result<GroundedDraft, AgentRuntimeError> {
+            Err(AgentRuntimeError::ModelUnavailable(
+                "the initial presenter is unavailable".into(),
+            ))
+        }
+
+        async fn review_message(
+            &self,
+            turn: ClaimReviewTurn,
+        ) -> Result<MessageReview, AgentRuntimeError> {
+            self.reviews.fetch_add(1, Ordering::SeqCst);
+            Ok(supported_message_review(turn))
+        }
+    }
+
     struct RefiningSessionModel {
         decisions: Mutex<VecDeque<SessionModelDecision>>,
         reviews: AtomicUsize,
+        presentations: AtomicUsize,
+        revision: Mutex<Option<GroundedDraft>>,
+        revision_feedback: Mutex<Vec<Vec<String>>>,
     }
 
     #[async_trait]
@@ -8880,6 +9272,26 @@ mod tests {
                 .expect("decision script poisoned")
                 .pop_front()
                 .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn present(
+            &self,
+            turn: SessionPresentationTurn,
+        ) -> Result<GroundedDraft, AgentRuntimeError> {
+            self.presentations.fetch_add(1, Ordering::SeqCst);
+            if turn.review_feedback.is_empty() {
+                return Ok(turn.research_draft);
+            }
+            self.revision_feedback
+                .lock()
+                .expect("presentation feedback receipt poisoned")
+                .push(turn.review_feedback);
+            Ok(self
+                .revision
+                .lock()
+                .expect("presentation revision poisoned")
+                .take()
+                .unwrap_or(turn.research_draft))
         }
 
         async fn review_message(
@@ -8907,6 +9319,7 @@ mod tests {
             if review_number == 0 {
                 claim_reviews[0].verdict = ClaimReviewVerdict::Unsupported;
                 claim_reviews[0].issue = Some("State the observed scope precisely.".into());
+                behavioral.conversational = false;
             } else if review_number == 1 {
                 behavioral.conversational = false;
             }
@@ -8926,6 +9339,10 @@ mod tests {
 
     struct ConnectorTools;
 
+    struct MixedReadTools {
+        calls: Mutex<Vec<String>>,
+    }
+
     #[async_trait]
     impl SessionTools for ConnectorTools {
         fn catalog(&self) -> Vec<ToolDescriptor> {
@@ -8939,6 +9356,36 @@ mod tests {
             _call: &ToolCall,
         ) -> Result<ToolResult, AgentRuntimeError> {
             Ok(observation(true, Some("2026-08-01T00:00:00Z")).result)
+        }
+    }
+
+    #[async_trait]
+    impl SessionTools for MixedReadTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            let connector =
+                healthy_observation_with_tool_outcome("2026-08-01T00:00:00Z").descriptor;
+            let mut graph = connector.clone();
+            graph.tool_id = "graph.read".into();
+            graph.title = "Graph read".into();
+            vec![connector, graph]
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            self.calls
+                .lock()
+                .expect("mixed read call receipt poisoned")
+                .push(call.tool_id.clone());
+            if call.tool_id == "graph.read" {
+                return Err(AgentRuntimeError::InvalidToolCall(
+                    "the bounded graph read is unavailable".into(),
+                ));
+            }
+            Ok(healthy_observation_with_tool_outcome("2026-08-01T00:00:00Z").result)
         }
     }
 
@@ -9805,6 +10252,7 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "graph.read reports decision_grade=true".into(),
+            authorization_excerpt: None,
         });
         let error =
             validate_plan(&invalid, &["connector.read".into(), "graph.read".into()]).unwrap_err();
@@ -9890,6 +10338,7 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
+            authorization_excerpt: None,
         });
         let mut answer = draft();
         assert!(validate_plan_completion(Some(&plan), &answer).is_err());
@@ -9916,6 +10365,7 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
+            authorization_excerpt: None,
         });
         let mut answer = draft();
         let mut commitment = scheduled_commitment();
@@ -9958,6 +10408,7 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
+            authorization_excerpt: None,
         });
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
 
@@ -11457,7 +11908,7 @@ mod tests {
             validate_explicit_follow_through(&delegated, &input, Some(&proposed))
                 .unwrap_err()
                 .to_string()
-                .contains("records delegated future observation")
+                .contains("requires one bounded follow-through")
         );
 
         proposed.follow_through = Some(PlannedFollowThrough {
@@ -11476,12 +11927,58 @@ mod tests {
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
+            authorization_excerpt: None,
         });
         assert!(validate_explicit_follow_through(&delegated, &input, Some(&proposed)).is_ok());
 
         let replayed: AgentSession =
             serde_json::from_slice(&serde_json::to_vec(&delegated).unwrap()).unwrap();
         assert!(validate_explicit_follow_through(&replayed, &input, Some(&proposed)).is_ok());
+    }
+
+    #[test]
+    fn unrouted_follow_through_requires_an_exact_operator_authorization_excerpt() {
+        let request_id = "request:unrouted-follow-through";
+        let request = "Check the connector again in five minutes and tell me what changed.";
+        let current = session_for_unrouted_request(request_id, request);
+        let input = SessionTurnInput {
+            request_id: request_id.into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: None,
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let mut proposed = plan();
+        proposed.follow_through = Some(planned_follow_through());
+
+        assert!(validate_explicit_follow_through(&current, &input, Some(&proposed)).is_err());
+        proposed
+            .follow_through
+            .as_mut()
+            .unwrap()
+            .authorization_excerpt = Some("check something else later".into());
+        assert!(validate_explicit_follow_through(&current, &input, Some(&proposed)).is_err());
+
+        proposed
+            .follow_through
+            .as_mut()
+            .unwrap()
+            .authorization_excerpt = Some("Check the connector again in five minutes".into());
+        assert!(validate_explicit_follow_through(&current, &input, Some(&proposed)).is_ok());
+
+        let mut offered = plan();
+        offered.follow_through_offer = Some(PlannedFollowThroughOffer {
+            kind: ProactiveFollowupKind::RecheckEvidence,
+            follow_through: planned_follow_through(),
+        });
+        assert!(validate_explicit_follow_through(&current, &input, Some(&offered)).is_ok());
+        offered
+            .follow_through_offer
+            .as_mut()
+            .unwrap()
+            .follow_through
+            .authorization_excerpt = Some("Check the connector again in five minutes".into());
+        assert!(validate_explicit_follow_through(&current, &input, Some(&offered)).is_err());
     }
 
     #[test]
@@ -11937,13 +12434,11 @@ mod tests {
         };
         let plan = wake_research_plan(&awakened, &trigger).unwrap();
         let observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
-        let model = FallbackReviewModel {
-            mode: FallbackReviewMode::Unavailable,
-        };
         let outcome = repair_fallback_outcome(
             RepairFallbackRuntime {
-                model: &model,
                 journal: &NoopSessionJournal,
+                proactive_followup_offers_enabled: false,
+                failure_stage: "deterministic fallback",
             },
             &awakened,
             &SessionTurnInput {
@@ -12208,7 +12703,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn presentation_review_repairs_unsupported_and_unhelpful_drafts() {
+    async fn presentation_review_revises_once_without_reentering_research() {
+        let mut revised = draft();
+        revised.claims[0].text =
+            "Connector alpha is healthy in the current provider observation.".into();
+        revised.message = revised
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect::<String>();
         let model = RefiningSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan { plan: plan() },
@@ -12220,11 +12723,12 @@ mod tests {
                         input: json!({"connector_ref": "connector:alpha"}),
                     }],
                 },
-                SessionModelDecision::Finish { draft: draft() },
-                SessionModelDecision::Finish { draft: draft() },
-                SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::ResearchComplete { draft: draft() },
             ])),
             reviews: AtomicUsize::new(0),
+            presentations: AtomicUsize::new(0),
+            revision: Mutex::new(Some(revised.clone())),
+            revision_feedback: Mutex::new(Vec::new()),
         };
 
         let outcome = run_session_turn(
@@ -12242,11 +12746,286 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(matches!(
-            outcome,
-            SessionTurnOutcome::PendingDelivery { .. }
-        ));
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
+            panic!("the revised presentation should be ready for delivery")
+        };
+        assert_eq!(markdown, revised.message);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            model
+                .revision_feedback
+                .lock()
+                .expect("presentation feedback receipt poisoned")
+                .as_slice(),
+            [vec![
+                "State the observed scope precisely.".to_string(),
+                "Rewrite the response as coherent conversational prose.".to_string(),
+            ]],
+            "the revision must receive each ordered review defect unchanged",
+        );
+        assert!(
+            model
+                .decisions
+                .lock()
+                .expect("decision script poisoned")
+                .is_empty(),
+            "review feedback must not request another research decision"
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_and_failed_reads_survive_one_presentation_revision() {
+        let request_id = "request:mixed-read-revision";
+        let mut mixed_plan = plan();
+        mixed_plan.selected_tools.push("graph.read".into());
+        mixed_plan.claims[0]
+            .source_candidates
+            .push("graph.read".into());
+
+        let failed_atom =
+            format!("evidence://agent-tool-outcome/session:1/{request_id}/call:graph#tool-outcome");
+        let failure_summary =
+            "The bounded graph.read invocation failed before it returned domain evidence.";
+        let coverage_notice =
+            render_coverage_boundary(CoverageBoundaryKind::BoundedReadsIncomplete).to_owned();
+        let mut research_draft = draft();
+        research_draft.state = FinalState::Partial;
+        research_draft.coverage_notice = Some(coverage_notice.clone());
+        research_draft.claims.push(GroundedClaim {
+            claim_ref: "claim:failed-graph-read".into(),
+            planned_claim_ref: None,
+            text: format!("\n\ngraph.read: {failure_summary}"),
+            required_for_answer: true,
+            content: ClaimContent::Observation {
+                atom_refs: vec![failed_atom.clone()],
+            },
+        });
+        research_draft.claims.push(GroundedClaim {
+            claim_ref: "claim:mixed-coverage".into(),
+            planned_claim_ref: None,
+            text: format!("\n\n{coverage_notice}"),
+            required_for_answer: true,
+            content: ClaimContent::CoverageBoundary {
+                boundary: CoverageBoundaryKind::BoundedReadsIncomplete,
+            },
+        });
+        research_draft.message = research_draft
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+
+        let mut revised = research_draft.clone();
+        revised.claims[0].text = "Connector alpha is healthy in the source that responded.".into();
+        revised.message = revised
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        let model = RefiningSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: mixed_plan },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![
+                        ToolCall {
+                            call_id: "call:connector".into(),
+                            tool_id: "connector.read".into(),
+                            purpose: "Read the current connector state.".into(),
+                            input: json!({"connector_ref": "connector:alpha"}),
+                        },
+                        ToolCall {
+                            call_id: "call:graph".into(),
+                            tool_id: "graph.read".into(),
+                            purpose: "Read the supporting graph state.".into(),
+                            input: json!({"connector_ref": "connector:alpha"}),
+                        },
+                    ],
+                },
+                SessionModelDecision::ResearchComplete {
+                    draft: research_draft,
+                },
+            ])),
+            reviews: AtomicUsize::new(0),
+            presentations: AtomicUsize::new(0),
+            revision: Mutex::new(Some(revised)),
+            revision_feedback: Mutex::new(Vec::new()),
+        };
+        let tools = MixedReadTools {
+            calls: Mutex::new(Vec::new()),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &tools,
+            session_for_unrouted_request(
+                request_id,
+                "Check the connector and graph, then give me the useful result even if one source fails.",
+            ),
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("one failed read must not erase the successful observation");
+
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            evidence_atom_refs,
+            events,
+            ..
+        } = outcome
+        else {
+            panic!("the mixed result should be ready for delivery")
+        };
+        assert_eq!(final_state, FinalState::Partial);
+        assert!(markdown.contains("Connector alpha is healthy"));
+        assert!(markdown.contains("graph.read"));
+        assert!(markdown.contains(failure_summary));
+        assert!(evidence_atom_refs.contains(&"atom:status".into()));
+        assert!(evidence_atom_refs.contains(&failed_atom));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::ToolInvoked { .. }))
+                .count(),
+            2
+        );
+        assert_eq!(
+            tools
+                .calls
+                .lock()
+                .expect("mixed read receipt poisoned")
+                .as_slice(),
+            ["connector.read", "graph.read"]
+        );
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
+        assert!(
+            model
+                .decisions
+                .lock()
+                .expect("decision script poisoned")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_review_delivers_the_committed_evidence_fallback() {
+        let model = UnavailableReviewModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:review-fallback".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Read connector alpha before presentation.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::ResearchComplete { draft: draft() },
+            ])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &RecoveringWakeTools,
+            session_for_request("request:review-fallback", ExecutionLane::Investigate),
+            SessionTurnInput {
+                request_id: "request:review-fallback".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("review availability must not erase a committed observation");
+
+        let SessionTurnOutcome::PendingDelivery {
+            markdown,
+            final_state,
+            evidence_atom_refs,
+            ..
+        } = outcome
+        else {
+            panic!("review fallback cannot request approval")
+        };
+        assert_eq!(final_state, FinalState::Partial);
+        assert!(markdown.contains("connector.read:"));
+        assert!(!evidence_atom_refs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unavailable_initial_presenter_never_exposes_the_research_draft() {
+        let request_id = "request:initial-presenter-unavailable";
+        let sentinel = "RAW RESEARCH ARTIFACT MUST NOT BE DELIVERED";
+        let research_draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: sentinel.into(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:raw-research".into(),
+                planned_claim_ref: None,
+                text: sentinel.into(),
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = UnavailablePresentationModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
+                draft: research_draft,
+            }])),
+            reviews: AtomicUsize::new(0),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            session_for_unrouted_request(request_id, "Give me the useful answer."),
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("presenter unavailability must produce the deterministic fallback");
+
+        let SessionTurnOutcome::PendingDelivery {
+            markdown,
+            final_state,
+            ..
+        } = outcome
+        else {
+            panic!("the deterministic presenter fallback must be visible")
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(!markdown.contains(sentinel));
+        assert!(markdown.contains("initial presentation"));
+        assert_eq!(
+            model.reviews.load(Ordering::SeqCst),
+            0,
+            "the raw research artifact must not reach independent review"
+        );
     }
 
     #[tokio::test]
@@ -12430,7 +13209,7 @@ mod tests {
         assert_eq!(lane, ExecutionLane::Converse);
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("couldn't obtain current evidence"));
+        assert!(markdown.contains("stage ended before any capability returned current evidence"));
     }
 
     #[tokio::test]
@@ -12610,6 +13389,9 @@ mod tests {
                 SessionModelDecision::Finish { draft: safe },
             ])),
             reviews: AtomicUsize::new(0),
+            presentations: AtomicUsize::new(0),
+            revision: Mutex::new(None),
+            revision_feedback: Mutex::new(Vec::new()),
         };
 
         let outcome = run_session_turn(
@@ -12633,7 +13415,7 @@ mod tests {
             markdown,
             "I need a current observation before I can answer that honestly."
         );
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -12999,7 +13781,7 @@ mod tests {
             panic!("a current-state fallback should be visible");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("couldn't obtain current evidence"));
+        assert!(markdown.contains("stage ended before any capability returned current evidence"));
     }
 
     #[tokio::test]
@@ -13040,7 +13822,7 @@ mod tests {
             panic!("an unsupported operating answer should be visible");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("couldn't obtain current evidence"));
+        assert!(markdown.contains("stage ended before any capability returned current evidence"));
     }
 
     #[tokio::test]
@@ -13093,7 +13875,7 @@ mod tests {
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("upstream request timed out"));
         assert!(markdown.contains("The source read failed"));
-        assert!(!markdown.contains("couldn't obtain current evidence"));
+        assert!(!markdown.contains("stage ended before any capability returned current evidence"));
 
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
         supported.result.evidence[0].evidence_ref = "evidence:other".into();
@@ -13287,7 +14069,7 @@ mod tests {
         };
         assert_eq!(final_state, FinalState::Blocked);
         assert!(!markdown.contains("recovering"));
-        assert!(markdown.contains("couldn't obtain current evidence"));
+        assert!(markdown.contains("stage ended before any capability returned current evidence"));
         assert!(evidence_atom_refs.is_empty());
     }
 
@@ -13407,7 +14189,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn visible_repair_fallback_requires_digest_bound_presentation_review() {
+    async fn visible_repair_fallback_preserves_committed_evidence_without_another_model_gate() {
         let mut exact = session();
         exact.messages[0].text = "Give me exactly four sentences.".into();
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
@@ -13430,42 +14212,21 @@ mod tests {
             requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
-        for mode in [
-            FallbackReviewMode::Rejected,
-            FallbackReviewMode::Malformed,
-            FallbackReviewMode::Unavailable,
-        ] {
-            let model = FallbackReviewModel { mode };
-            assert_eq!(
-                repair_fallback_outcome(
-                    RepairFallbackRuntime {
-                        model: &model,
-                        journal: &NoopSessionJournal,
-                    },
-                    &exact,
-                    &input,
-                    None,
-                    std::slice::from_ref(&supported),
-                    test_turn_time(),
-                    Vec::new(),
-                )
-                .await
-                .expect_err("visible fallback must fail closed when review is not accepted"),
-                AgentRuntimeError::PresentationRepairLimit
-            );
-        }
-
-        let outcome = accepted_repair_fallback_outcome(
+        let outcome = repair_fallback_outcome(
+            RepairFallbackRuntime {
+                journal: &NoopSessionJournal,
+                proactive_followup_offers_enabled: false,
+                failure_stage: "deterministic fallback",
+            },
             &exact,
             &input,
             None,
-            &[supported],
+            std::slice::from_ref(&supported),
             test_turn_time(),
             Vec::new(),
-            &NoopSessionJournal,
         )
         .await
-        .expect("a conforming digest-bound fallback review should remain deliverable");
+        .expect("a deterministic evidence fallback must not require another model call");
         let SessionTurnOutcome::PendingDelivery {
             final_state,
             evidence_atom_refs,

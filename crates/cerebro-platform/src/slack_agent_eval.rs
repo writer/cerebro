@@ -22,9 +22,9 @@ use cerebro_agent_runtime::{
         AGENT_SESSION_EVENT_V2, AgentSession, ClaimReviewTurn, Commitment, CommitmentStatus,
         DeliveryDisposition, EvidenceAtomization, MessageReview, SessionAgentModel, SessionEvent,
         SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
-        SessionModelTurn, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        WorkOwner, apply_session_events, evidence_atoms_from_json, message_digest,
-        run_session_turn_at, session_turn_request_text,
+        SessionModelTurn, SessionPresentationTurn, SessionTools, SessionTurnInput,
+        SessionTurnOutcome, SessionTurnTrigger, WorkOwner, apply_session_events,
+        evidence_atoms_from_json, message_digest, run_session_turn_at, session_turn_request_text,
     },
 };
 use hmac::{Hmac, Mac, digest::KeyInit};
@@ -1167,7 +1167,7 @@ impl AgentModel for MeasuredModel {
                 .expect("presentation repair receipt poisoned")
                 .push(turn.repair_feedback.clone());
         }
-        self.inner.present(turn).await
+        AgentModel::present(self.inner.as_ref(), turn).await
     }
 
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
@@ -1213,6 +1213,24 @@ impl SessionAgentModel for MeasuredModel {
                 .push(turn.repair_feedback.clone());
         }
         self.inner.advance(turn).await
+    }
+
+    async fn present(
+        &self,
+        turn: SessionPresentationTurn,
+    ) -> Result<cerebro_agent_runtime::session::GroundedDraft, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
+        *self
+            .presentation_attempts
+            .lock()
+            .expect("presentation counter poisoned") += 1;
+        if !turn.review_feedback.is_empty() {
+            self.presentation_repair_feedback
+                .lock()
+                .expect("presentation repair receipt poisoned")
+                .push(turn.review_feedback.clone());
+        }
+        SessionAgentModel::present(self.inner.as_ref(), turn).await
     }
 
     async fn review_message(
