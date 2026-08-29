@@ -46,7 +46,7 @@ jobs:
       # exist and as duplicate key ... pg_type_typname_nsp_index from racing
       # CREATE TABLE IF NOT EXISTS.
       - name: Run Postgres integration tests
-        run: go test ./internal/statestore/postgres ./internal/findings ./cmd/cerebro -run '(Postgres|Closeout|Tombstone|TenantScoped|CloudflareZoneProtection|IdentityMFA|ProjectsTombstone|WorkspaceScope)' -count=1 -p 1 -v
+        run: go test ./internal/statestore/postgres ./internal/findings ./cmd/cerebro -run '(Postgres|Closeout|Tombstone|TenantScoped|CloudflareZoneProtection|IdentityMFA|ProjectsTombstone|WorkspaceScope|FilterParity)' -count=1 -p 1 -v
 
   slack-wake-postgres:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration')
