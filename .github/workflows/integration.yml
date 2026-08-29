@@ -39,8 +39,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # -p 1 is load-bearing: these packages share one Postgres service, and
+      # resetTombstoneSchema drops findings and its sibling tables. Running the
+      # package binaries concurrently lets one package drop the schema while
+      # another is using it, which surfaces as relation "findings" does not
+      # exist and as duplicate key ... pg_type_typname_nsp_index from racing
+      # CREATE TABLE IF NOT EXISTS.
       - name: Run Postgres integration tests
-        run: go test ./internal/statestore/postgres ./internal/findings ./cmd/cerebro -run '(Postgres|Closeout|Tombstone|TenantScoped|CloudflareZoneProtection|IdentityMFA|ProjectsTombstone)' -count=1 -v
+        run: go test ./internal/statestore/postgres ./internal/findings ./cmd/cerebro -run '(Postgres|Closeout|Tombstone|TenantScoped|CloudflareZoneProtection|IdentityMFA|ProjectsTombstone|WorkspaceScope)' -count=1 -p 1 -v
 
   slack-wake-postgres:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration')
