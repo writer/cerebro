@@ -211,9 +211,9 @@ func (c *ProjectionClient) recordSourceCollection(ctx context.Context, manifest 
 		StartedAtUnixMS:       manifest.StartedAtUnixMS,
 		CompletedAtUnixMS:     manifest.CompletedAtUnixMS,
 		Status:                manifest.Status,
-		IncompletenessReasons: append([]string(nil), manifest.IncompletenessReasons...),
-		ExpectedFamilyIDs:     append([]string(nil), manifest.ExpectedFamilyIDs...),
-		ObservedFamilyIDs:     append([]string(nil), manifest.ObservedFamilyIDs...),
+		IncompletenessReasons: stringListRequest(manifest.IncompletenessReasons),
+		ExpectedFamilyIDs:     stringListRequest(manifest.ExpectedFamilyIDs),
+		ObservedFamilyIDs:     stringListRequest(manifest.ObservedFamilyIDs),
 		PagesRead:             manifest.PagesRead,
 		RecordsScanned:        manifest.RecordsScanned,
 		RecordsAccepted:       manifest.RecordsAccepted,
@@ -468,11 +468,20 @@ func cloneAttributes(values map[string]string) map[string]string {
 	return result
 }
 
+// stringListRequest keeps an optional string list encoding as [] rather than
+// null. Every such field on the Rust projection API is a `#[serde(default)]
+// Vec<String>`, which accepts an absent field or [] but rejects null, and axum
+// reports that rejection as 422 Unprocessable Entity.
+func stringListRequest(values []string) []string {
+	result := make([]string, 0, len(values))
+	return append(result, values...)
+}
+
 func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta {
 	result := legacyProjectionDelta{
 		Entities:          make([]legacyProjectedEntity, 0, len(delta.Entities)),
 		Links:             make([]legacyProjectedLink, 0, len(delta.Links)),
-		EntityRetractions: append([]string(nil), delta.EntityRetractions...),
+		EntityRetractions: stringListRequest(delta.EntityRetractions),
 		LinkRetractions:   make([]legacyProjectedLink, 0, len(delta.LinkRetractions)),
 		CleanupRequests:   make([]legacyCleanupRequest, 0, len(delta.CleanupRequests)),
 	}
@@ -507,8 +516,8 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 			SourceID:     cleanup.SourceID,
 			RuntimeID:    cleanup.RuntimeID,
 			FindingID:    cleanup.FindingID,
-			EntityTypes:  append([]string(nil), cleanup.EntityTypes...),
-			URNPrefixes:  append([]string(nil), cleanup.URNPrefixes...),
+			EntityTypes:  stringListRequest(cleanup.EntityTypes),
+			URNPrefixes:  stringListRequest(cleanup.URNPrefixes),
 			OnlyIsolated: cleanup.OnlyIsolated,
 			Limit:        cleanup.Limit,
 			DryRun:       cleanup.DryRun,
