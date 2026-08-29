@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -264,6 +265,63 @@ func TestAppendLogProjectorRecordsCollectionManifest(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("RecordSourceCollection() error = %v", err)
+	}
+}
+
+// The Rust handlers declare these lists as `#[serde(default)] Vec<String>`,
+// which accepts an absent field or [] but rejects null. A nil Go slice marshals
+// to null, so an empty list has to reach the wire as [] or the request is
+// rejected with 422 Unprocessable Entity.
+func TestProjectionClientEncodesEmptyStringListsAsArrays(t *testing.T) {
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(sourceCollectionResponse{
+			Recorded:       true,
+			ManifestDigest: strings.Repeat("b", 64),
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+
+	// A complete collection must carry no incompleteness reasons, so the common
+	// success path always encodes at least one empty list.
+	err = NewAppendLogProjector(nil, client).RecordSourceCollection(context.Background(), ports.SourceCollectionManifest{
+		CollectionID:      "collection-1",
+		TenantID:          "tenant-a",
+		SourceID:          "box",
+		RuntimeID:         "box-runtime",
+		StartedAtUnixMS:   100,
+		CompletedAtUnixMS: 200,
+		Status:            "complete",
+	})
+	if err != nil {
+		t.Fatalf("RecordSourceCollection() error = %v", err)
+	}
+
+	for _, field := range []string{"incompleteness_reasons", "expected_family_ids", "observed_family_ids"} {
+		if strings.Contains(string(body), `"`+field+`":null`) {
+			t.Fatalf("%s encoded as null, want []: %s", field, body)
+		}
+		if !strings.Contains(string(body), `"`+field+`":[]`) {
+			t.Fatalf("%s missing empty array encoding: %s", field, body)
+		}
+	}
+}
+
+func TestLegacyDeltaRequestEncodesEmptyRetractionsAsArray(t *testing.T) {
+	body, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{}))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if strings.Contains(string(body), `"entity_retractions":null`) {
+		t.Fatalf("entity_retractions encoded as null, want []: %s", body)
+	}
+	if !strings.Contains(string(body), `"entity_retractions":[]`) {
+		t.Fatalf("entity_retractions missing empty array encoding: %s", body)
 	}
 }
 
