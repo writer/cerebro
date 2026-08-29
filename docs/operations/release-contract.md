@@ -296,9 +296,9 @@ Suggested flow:
 
 ## Stable release procedure
 
-1. Select a green Candidate Build run for a commit on `main`.
+1. Select a green Candidate Build run for a commit on `main`. Candidate Build succeeding is not sufficient on its own: the smoke workflow additionally requires `ci.yml`, `rust-graph-replacement.yml`, and `rust-only-candidate.yml` to have concluded `success` for that exact head SHA. Those run in parallel and finish at different times, so confirm all three before continuing.
 2. Deploy `ghcr.io/writer/cerebro@sha256:<candidate-digest>` to the canary environment.
-3. Run readiness, graph, source, and version checks and save the smoke receipt at a durable URL.
+3. Run readiness, graph, source, and version checks and save the smoke receipt at a durable URL. The usual source is a `workflow_dispatch` of `Ephemeral Cerebro` with `image_source=published`, whose run URL becomes the smoke receipt. Pass `candidate_sha` as the **full 40-character SHA**; an abbreviated SHA fails checkout with `A branch or tag with the name '<sha>' could not be found`.
 4. Complete every section in the release notes template. Name migration order, downgrade limits, configuration changes, and the rollback digest.
 5. Start the Stable Release workflow with the candidate run ID, `vMAJOR.MINOR.PATCH` tag, completed notes, and smoke receipt URL.
 6. Approve the `stable-release` environment after checking the candidate receipt, smoke receipt, and release notes.
