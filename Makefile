@@ -39,12 +39,19 @@ GO_TEST_SHARD_WEIGHTS ?= scripts/go_package_test_weights.json
 GO_TEST_SHARD_DEFAULT_WEIGHT ?= 1
 GO_RACE_SHARD_WEIGHTS ?= scripts/go_package_race_weights.json
 GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
-BUF := GOFLAGS= GOTOOLCHAIN=go1.26.6 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+# Pinned to the toolchain directive in go.mod. Anything that type-checks
+# repository sources must both build and RUN under this toolchain: the
+# go/packages loader shells out to `go list`, and it refuses to process
+# sources when the ambient go is newer than the analysis packages it was
+# built against.
+GO_TOOLCHAIN := go1.26.6
+PINNED_GO := GOFLAGS= GOTOOLCHAIN=$(GO_TOOLCHAIN)
+BUF := $(PINNED_GO) go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 CONNECTRPC_CODEGEN_REV := 8b3c3b05d3b54af547477a9e3b3a77d62f68e229
 CONNECTRPC_CODEGEN_ROOT := tmp/connectrpc-codegen
 CONNECTRPC_CODEGEN := $(CONNECTRPC_CODEGEN_ROOT)/bin/protoc-gen-connect-rust
 BUFFA_CODEGEN := $(CONNECTRPC_CODEGEN_ROOT)/bin/protoc-gen-buffa
-GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.6 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+GOVULNCHECK := $(PINNED_GO) go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
@@ -431,7 +438,7 @@ lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
 	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_SOURCE_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.6 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		$(PINNED_GO) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
 proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
@@ -1032,13 +1039,13 @@ pre-commit: ## Run local pre-commit checks.
 check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check connector-contract-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
-	@$(LINTER_BIN) $(APP_PACKAGES)
+	@$(PINNED_GO) $(LINTER_BIN) $(APP_PACKAGES)
 
 check-structural-build: ## Build the custom structural linter.
-	@cd $(LINTER_MODULE) && GOFLAGS= GOTOOLCHAIN=go1.26.6 go build -o $(LINTER_BIN) ./cerebrolint
+	@cd $(LINTER_MODULE) && $(PINNED_GO) go build -o $(LINTER_BIN) ./cerebrolint
 
 check-structural-test: ## Test the custom structural linter.
-	@cd $(LINTER_MODULE) && GOFLAGS= GOTOOLCHAIN=go1.26.6 go test ./...
+	@cd $(LINTER_MODULE) && $(PINNED_GO) go test ./...
 
 check-arch: ## Run architectural guardrail tests.
 	go test ./tools/archtests/...
