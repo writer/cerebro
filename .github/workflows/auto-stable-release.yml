@@ -88,6 +88,7 @@ jobs:
 
       - name: Require exact-head main proofs
         if: steps.candidate.outputs.eligible == 'true'
+        id: proofs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,6 +96,20 @@ jobs:
           PROOF_DEADLINE_SECONDS: "7200"
         run: |
           set -euo pipefail
+          head_of_main() {
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha
+          }
+          mark_superseded() {
+            echo "superseded=true" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Main advanced to $1 before Rust graph qualification; ${CANDIDATE_SHA} will not publish."
+          }
+
+          current_main="$(head_of_main)"
+          if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]; then
+            mark_superseded "${current_main}"
+            exit 0
+          fi
+
           graph_runs="$(
             gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/rust-graph-replacement.yml/runs" \
@@ -102,10 +117,10 @@ jobs:
               --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | length'
           )"
           if [[ "${graph_runs}" == 0 ]]; then
-            current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+            current_main="$(head_of_main)"
             if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]; then
-              echo "ERROR: main advanced to ${current_main} before Rust graph qualification" >&2
-              exit 1
+              mark_superseded "${current_main}"
+              exit 0
             fi
             gh workflow run rust-graph-replacement.yml \
               --repo "${GITHUB_REPOSITORY}" --ref main
@@ -128,6 +143,13 @@ jobs:
                   break
                 fi
                 if [[ "${status}" == completed ]]; then
+                  if [[ "${conclusion}" == cancelled ]]; then
+                    current_main="$(head_of_main)"
+                    if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]; then
+                      mark_superseded "${current_main}"
+                      exit 0
+                    fi
+                  fi
                   echo "ERROR: ${workflow} completed with ${conclusion}: ${url}" >&2
                   exit 1
                 fi
@@ -135,13 +157,18 @@ jobs:
               sleep 20
             done
             if (( SECONDS >= deadline )); then
+              current_main="$(head_of_main)"
+              if [[ "${current_main}" != "${CANDIDATE_SHA}" ]]; then
+                mark_superseded "${current_main}"
+                exit 0
+              fi
               echo "ERROR: timed out waiting for ${workflow} on ${CANDIDATE_SHA}" >&2
               exit 1
             fi
           done
 
       - name: Resolve or dispatch published-image smoke
-        if: steps.candidate.outputs.eligible == 'true'
+        if: steps.candidate.outputs.eligible == 'true' && steps.proofs.outputs.superseded != 'true'
         id: smoke
         shell: bash
         env:
@@ -222,7 +249,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Reserve next stable tag and render notes
-        if: steps.candidate.outputs.eligible == 'true'
+        if: steps.candidate.outputs.eligible == 'true' && steps.proofs.outputs.superseded != 'true'
         id: release
         shell: bash
         env:
@@ -258,7 +285,7 @@ jobs:
           echo "dispatch=true" >> "${GITHUB_OUTPUT}"
 
       - name: Dispatch stable publication
-        if: steps.candidate.outputs.eligible == 'true' && steps.release.outputs.dispatch == 'true'
+        if: steps.candidate.outputs.eligible == 'true' && steps.proofs.outputs.superseded != 'true' && steps.release.outputs.dispatch == 'true'
         id: publication
         shell: bash
         env:
