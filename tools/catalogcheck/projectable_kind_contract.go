@@ -14,9 +14,9 @@ import (
 //
 // The kind's own first segment is the source, which is how shared namespaces
 // work: `asset.data_sensitivity` belongs to the `asset` source whichever cloud
-// connector emits it. So this deliberately does not require the kind to be
-// prefixed with the emitting catalog's id.
-func checkProjectableKind(path, sourceID, kind string) []issue {
+// connector emits it. So this deliberately does not take the emitting catalog's
+// id: the kind alone determines the source.
+func checkProjectableKind(path, kind string) []issue {
 	kind = strings.TrimSpace(kind)
 	if kind == "" {
 		return nil
