@@ -14530,7 +14530,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_finish_freezes_research_before_follow_through_repair() {
+    async fn direct_finish_corrects_once_then_freezes_before_follow_through_repair() {
         let request_id = "request:delegated-direct-finish";
         let request =
             "Stay with Ternwheel until two fresh recovery observations agree, then tell me.";
@@ -14569,6 +14569,9 @@ mod tests {
         delegated_plan.follow_through = Some(planned_follow_through());
         let model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::Finish {
+                    draft: direct_draft.clone(),
+                },
                 SessionModelDecision::Finish {
                     draft: direct_draft,
                 },
@@ -14611,8 +14614,19 @@ mod tests {
         else {
             panic!("the frozen invalid draft should use the deterministic fallback");
         };
-        assert_eq!(lane, ExecutionLane::Converse);
+        assert_eq!(lane, ExecutionLane::Investigate);
         assert!(markdown.contains("presentation revision stage ended"));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    SessionEvent::OperatingObservationCorrectionRequired { .. }
+                ))
+                .count(),
+            1,
+            "the first empty operating completion must receive exactly one research correction"
+        );
         assert!(!events.iter().any(|event| matches!(
             event.event,
             SessionEvent::PlanEstablished { .. } | SessionEvent::ToolInvoked { .. }
