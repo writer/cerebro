@@ -30,12 +30,12 @@ use cerebro_agent_runtime::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
         EvidenceAssertion, EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
-        MessageReview, MissionState, ProactiveFollowupOffer, SemanticEvidenceAtomization,
-        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn,
-        SessionPresentationTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
-        followup_acceptance_draft, grounded_draft_digest, message_digest,
+        MessageReview, MissionState, ProactiveFollowupOffer, ResearchPlan,
+        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionPresentationTurn, SessionStatus, SessionStore, SessionTools,
+        SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger, apply_session_events,
+        evidence_atoms_from_json, followup_acceptance_draft, grounded_draft_digest, message_digest,
         run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
         semantic_evidence_atoms, validate_followup_acceptance,
     },
@@ -3234,8 +3234,9 @@ fn parse_session_research_decision_value(
                     "the first research decision must include at least one read".into(),
                 ));
             }
-            let plan = serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
-                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            let plan: ResearchPlan =
+                serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
+                    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
             if declared_lane != Some(plan.lane) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "the declared lane must match the initial research plan lane".into(),
