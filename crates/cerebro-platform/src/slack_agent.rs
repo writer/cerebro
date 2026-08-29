@@ -2069,7 +2069,7 @@ impl SessionAgentModel for ConfiguredModel {
             )
             .await?;
         let SessionResearchDecision::Continue(decision) =
-            parse_session_research_decision_value(value)?;
+            parse_session_research_decision_value(value, turn.plan.is_none())?;
         Ok(*decision)
     }
 
@@ -2983,11 +2983,12 @@ fn session_initial_decision_schema() -> Value {
         "additionalProperties": false,
         "properties": {
             "decision": {"type": "string", "enum": ["establish_plan", "finish_research"]},
+            "lane": {"type": "string", "enum": ["converse", "lookup", "investigate", "act"]},
             "plan": complete["properties"]["plan"].clone(),
             "calls": complete["properties"]["calls"].clone(),
             "draft": complete["properties"]["draft"].clone(),
         },
-        "required": ["decision", "plan", "calls", "draft"]
+        "required": ["decision", "lane", "plan", "calls", "draft"]
     })
 }
 
@@ -3202,6 +3203,7 @@ enum SessionResearchDecision {
 
 fn parse_session_research_decision_value(
     mut value: Value,
+    initial: bool,
 ) -> Result<SessionResearchDecision, AgentRuntimeError> {
     normalize_embedded_session_object(&mut value, "plan");
     normalize_embedded_session_object(&mut value, "draft");
@@ -3215,6 +3217,16 @@ fn parse_session_research_decision_value(
         .cloned()
         .unwrap_or_else(|| Value::Array(Vec::new()));
     let calls_empty = calls.as_array().is_some_and(Vec::is_empty);
+    let declared_lane = if initial {
+        Some(
+            serde_json::from_value::<ExecutionLane>(
+                value.get("lane").cloned().unwrap_or(Value::Null),
+            )
+            .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?,
+        )
+    } else {
+        None
+    };
     match decision {
         "establish_plan" => {
             if calls_empty {
@@ -3224,6 +3236,11 @@ fn parse_session_research_decision_value(
             }
             let plan = serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
                 .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            if declared_lane != Some(plan.lane) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "the declared lane must match the initial research plan lane".into(),
+                ));
+            }
             let calls = serde_json::from_value(calls)
                 .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
             Ok(SessionResearchDecision::Continue(Box::new(
@@ -3251,7 +3268,10 @@ fn parse_session_research_decision_value(
             let draft = serde_json::from_value(value.get("draft").cloned().unwrap_or(Value::Null))
                 .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
             Ok(SessionResearchDecision::Continue(Box::new(
-                SessionModelDecision::ResearchComplete { draft },
+                SessionModelDecision::ResearchComplete {
+                    draft,
+                    declared_lane,
+                },
             )))
         }
         _ => Err(AgentRuntimeError::InvalidFinal(
@@ -7309,6 +7329,15 @@ mod tests {
             initial_schema["properties"]["decision"]["enum"],
             json!(["establish_plan", "finish_research"])
         );
+        assert_eq!(
+            initial_schema["properties"]["lane"]["enum"],
+            json!(["converse", "lookup", "investigate", "act"])
+        );
+        assert!(
+            initial_schema["required"]
+                .as_array()
+                .is_some_and(|required| required.contains(&json!("lane")))
+        );
         assert!(initial_schema["properties"].get("draft").is_some());
         assert_eq!(
             continue_schema["properties"]["decision"]["enum"],
@@ -7447,33 +7476,125 @@ mod tests {
             "memory_updates": [],
             "presentation_ready": false
         });
-        let decision = parse_session_research_decision_value(json!({
-            "decision": "finish_research",
-            "plan": null,
-            "calls": [],
-            "draft": research_draft
-        }))
+        let decision = parse_session_research_decision_value(
+            json!({
+                "decision": "finish_research",
+                "lane": "converse",
+                "plan": null,
+                "calls": [],
+                "draft": research_draft
+            }),
+            true,
+        )
         .unwrap();
 
         assert!(matches!(
             decision,
             SessionResearchDecision::Continue(decision)
-                if matches!(*decision, SessionModelDecision::ResearchComplete { .. })
+                if matches!(
+                    *decision,
+                    SessionModelDecision::ResearchComplete {
+                        declared_lane: Some(ExecutionLane::Converse),
+                        ..
+                    }
+                )
         ));
         assert!(
-            parse_session_research_decision_value(json!({
-                "decision": "finish_research",
-                "plan": null,
-                "calls": [{
-                    "call_id": "call:late",
-                    "tool_id": "source_runtime.inspect",
-                    "purpose": "This call must be made before presenting.",
-                    "input": {}
-                }],
-                "draft": null
-            }))
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "finish_research",
+                    "lane": "investigate",
+                    "plan": null,
+                    "calls": [{
+                        "call_id": "call:late",
+                        "tool_id": "source_runtime.inspect",
+                        "purpose": "This call must be made before presenting.",
+                        "input": {}
+                    }],
+                    "draft": null
+                }),
+                true
+            )
             .is_err()
         );
+        assert!(
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "finish_research",
+                    "plan": null,
+                    "calls": [],
+                    "draft": null
+                }),
+                true
+            )
+            .is_err(),
+            "the initial research decision must declare its typed lane"
+        );
+    }
+
+    #[test]
+    fn initial_research_lane_must_match_the_coissued_plan() {
+        let plan = json!({
+            "decision": "Read the named source once.",
+            "lane": "investigate",
+            "resolved_entities": ["source:one"],
+            "claims": [{
+                "claim_ref": "planned:one",
+                "question": "What is the current source state?",
+                "required": true,
+                "subject_refs": ["source:one"],
+                "source_candidates": ["source_runtime.inspect"]
+            }],
+            "selected_tools": ["source_runtime.inspect"],
+            "stop_conditions": ["The bounded current state is returned."],
+            "user_visible_work": ["Inspect the named source runtime."],
+            "follow_through": null
+        });
+        let calls = json!([{
+            "call_id": "call:one",
+            "tool_id": "source_runtime.inspect",
+            "purpose": "Read the current state of source:one.",
+            "input": {"source_ref": "source:one"}
+        }]);
+        assert!(
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "establish_plan",
+                    "lane": "lookup",
+                    "plan": plan.clone(),
+                    "calls": calls.clone(),
+                    "draft": null
+                }),
+                true
+            )
+            .is_err()
+        );
+
+        let matching = parse_session_research_decision_value(
+            json!({
+                "decision": "establish_plan",
+                "lane": "investigate",
+                "plan": plan,
+                "calls": calls,
+                "draft": null
+            }),
+            true,
+        )
+        .unwrap();
+        assert!(matches!(
+            matching,
+            SessionResearchDecision::Continue(decision)
+                if matches!(
+                    *decision,
+                    SessionModelDecision::EstablishPlanAndInvoke {
+                        plan: ResearchPlan {
+                            lane: ExecutionLane::Investigate,
+                            ..
+                        },
+                        ..
+                    }
+                )
+        ));
     }
 
     #[test]
