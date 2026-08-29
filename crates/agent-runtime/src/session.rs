@@ -1140,6 +1140,14 @@ pub enum SessionEvent {
         /// Lane whose budget and evidence consequences the runtime enforces.
         lane: ExecutionLane,
     },
+    /// Records the one bounded correction after operating research tried to finish without a
+    /// current observation.
+    OperatingObservationCorrectionRequired {
+        /// Idempotency and correlation identifier for the active turn.
+        request_id: String,
+        /// Accepted operating lane whose observation floor triggered the correction.
+        lane: ExecutionLane,
+    },
     /// Records delivery of one scheduled commitment occurrence to the runtime.
     WakeTriggered {
         /// Turn request created for the occurrence.
@@ -2188,6 +2196,59 @@ fn append_value_atoms(
     }
 }
 
+/// Finds the active unmatched start for one exact request.
+fn active_turn_start_index(events: &[SessionEventRecord], request_id: &str) -> Option<usize> {
+    let started_index = events.iter().rposition(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::TurnStarted {
+                request_id: started,
+            } if started == request_id
+        )
+    })?;
+    let later = &events[started_index + 1..];
+    (!later
+        .iter()
+        .any(|event| matches!(event.event, SessionEvent::TurnStarted { .. }))
+        && !later.iter().any(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::TurnCompleted {
+                    request_id: completed,
+                    ..
+                } if completed == request_id
+            )
+        }))
+    .then_some(started_index)
+}
+
+fn accepted_research_lane_for_request(
+    events: &[SessionEventRecord],
+    request_id: &str,
+) -> Option<ExecutionLane> {
+    events.iter().rev().find_map(|event| match &event.event {
+        SessionEvent::ResearchLaneAccepted {
+            request_id: accepted_request_id,
+            lane,
+        } if accepted_request_id == request_id => Some(*lane),
+        _ => None,
+    })
+}
+
+fn accepted_legacy_lane_for_request(
+    events: &[SessionEventRecord],
+    request_id: &str,
+) -> Option<ExecutionLane> {
+    events.iter().rev().find_map(|event| match &event.event {
+        SessionEvent::RouteAccepted {
+            request_id: accepted_request_id,
+            lane,
+            ..
+        } if accepted_request_id == request_id => Some(*lane),
+        _ => None,
+    })
+}
+
 /// Applies a contiguous event batch to a validated session snapshot.
 ///
 /// The reducer rejects schema, session, timestamp, or sequence mismatches before
@@ -2270,8 +2331,20 @@ pub fn apply_session_events(
                     message.message_ref == format!("operator:{request_id}")
                         && message.role == SessionMessageRole::User
                 });
+                let active_start = active_turn_start_index(&next.events, request_id);
+                let plan_lane = active_start.and_then(|start| {
+                    next.events[start..]
+                        .iter()
+                        .rev()
+                        .find_map(|event| match &event.event {
+                            SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+                            _ => None,
+                        })
+                });
+                let legacy_lane = accepted_legacy_lane_for_request(&next.events, request_id);
                 if !bounded(request_id, MAX_TEXT_BYTES)
                     || source_message.is_none()
+                    || active_start.is_none()
                     || !matches!(
                         lane,
                         ExecutionLane::Converse
@@ -2288,10 +2361,62 @@ pub fn apply_session_events(
                             } if accepted_request_id == request_id
                         )
                     })
+                    || legacy_lane.is_some_and(|accepted| accepted != *lane)
+                    || plan_lane.is_some_and(|accepted| accepted != *lane)
                 {
                     return Err(AgentRuntimeError::InvalidRequest(
                         "accepted research lane identity or lane is invalid".into(),
                     ));
+                }
+            }
+            SessionEvent::OperatingObservationCorrectionRequired { request_id, lane } => {
+                let Some(active_start) = active_turn_start_index(&next.events, request_id) else {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "operating observation correction has no active turn".into(),
+                    ));
+                };
+                if !bounded(request_id, MAX_TEXT_BYTES)
+                    || !is_operating_lane(*lane)
+                    || accepted_research_lane_for_request(&next.events, request_id) != Some(*lane)
+                    || next.events[active_start..].iter().any(|event| {
+                        matches!(
+                            event.event,
+                            SessionEvent::ToolInvoked { .. }
+                                | SessionEvent::EffectStarted { .. }
+                                | SessionEvent::OperatingObservationCorrectionRequired { .. }
+                        )
+                    })
+                {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "operating observation correction is invalid or already recorded".into(),
+                    ));
+                }
+            }
+            SessionEvent::PlanEstablished { plan } => {
+                if let Some((request_id, started_index)) = next
+                    .events
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(index, event)| match &event.event {
+                        SessionEvent::TurnStarted { request_id }
+                            if active_turn_start_index(&next.events, request_id) == Some(index) =>
+                        {
+                            Some((request_id.as_str(), index))
+                        }
+                        _ => None,
+                    })
+                {
+                    let accepted_lane = accepted_research_lane_for_request(
+                        &next.events[started_index..],
+                        request_id,
+                    )
+                    .or_else(|| accepted_legacy_lane_for_request(&next.events, request_id));
+                    if accepted_lane.is_some_and(|lane| lane != plan.lane) {
+                        return Err(AgentRuntimeError::InvalidRequest(
+                            "research plan lane conflicts with the active accepted lane".into(),
+                        ));
+                    }
                 }
             }
             SessionEvent::WakeTriggered {
@@ -2635,7 +2760,7 @@ async fn run_session_turn_recorded_at(
     let host_turn_clock_base =
         validate_host_entry_time(assessment_at, host_entry_at, resumed_turn_clock)?;
     let current_turn_observation_start = if resumed { 0 } else { observations.len() };
-    let mut bound_lane = session
+    let durable_research_lane = session
         .events
         .iter()
         .rev()
@@ -2647,9 +2772,37 @@ async fn run_session_turn_recorded_at(
             }
             _ => None,
         });
-    let mut durable_lane_bound = bound_lane.is_some();
-    let mut empty_operating_completion_corrected =
-        durable_lane_bound && plan.is_none() && bound_lane.is_some_and(is_operating_lane);
+    let mut bound_lane = durable_research_lane.or_else(|| {
+        matches!(trigger, SessionTurnTrigger::Operator)
+            .then_some(input.requested_lane)
+            .flatten()
+    });
+    let mut durable_lane_bound = durable_research_lane.is_some();
+    if let (Some(bound_lane), Some(resumed_plan)) = (bound_lane, plan.as_ref())
+        && resumed_plan.lane != bound_lane
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "the resumed research plan conflicts with the durable request lane".into(),
+        ));
+    }
+    let correction_index = session.events.iter().rposition(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::OperatingObservationCorrectionRequired { request_id, .. }
+                if request_id == &input.request_id
+        )
+    });
+    let correction_requires_feedback = correction_index.is_some_and(|index| {
+        !session.events[index + 1..].iter().any(|event| {
+            matches!(
+                event.event,
+                SessionEvent::PlanEstablished { .. }
+                    | SessionEvent::ToolInvoked { .. }
+                    | SessionEvent::EffectStarted { .. }
+            )
+        })
+    });
+    let mut empty_operating_completion_corrected = correction_index.is_some();
     let mut events = Vec::new();
     if !resumed {
         emit_event(
@@ -2701,8 +2854,10 @@ async fn run_session_turn_recorded_at(
         })
         .collect::<BTreeSet<_>>();
     let mut consumed_approvals = BTreeSet::new();
-    let mut repair_feedback = Vec::new();
-    let mut repairs = 0;
+    let mut repair_feedback = correction_requires_feedback
+        .then(|| vec![EMPTY_OPERATING_RESEARCH_FEEDBACK.into()])
+        .unwrap_or_default();
+    let mut repairs = usize::from(correction_requires_feedback);
     let mut rejected_operating_drafts = BTreeSet::new();
     let mut coissued_plan_calls = None;
     let mut frozen_research_draft: Option<GroundedDraft> = None;
@@ -2881,11 +3036,27 @@ async fn run_session_turn_recorded_at(
                     continue;
                 }
                 bound_lane = Some(completion_lane);
+                if matches!(trigger, SessionTurnTrigger::Operator) && !durable_lane_bound {
+                    emit_accepted_lane(&session, &input, &mut events, completion_lane, journal)
+                        .await?;
+                    durable_lane_bound = true;
+                }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && !empty_operating_completion_corrected
                     && is_operating_lane(completion_lane)
                     && observations[current_turn_observation_start..].is_empty()
                 {
+                    emit_event(
+                        &session,
+                        &input.assessment_at,
+                        &mut events,
+                        SessionEvent::OperatingObservationCorrectionRequired {
+                            request_id: input.request_id.clone(),
+                            lane: completion_lane,
+                        },
+                        journal,
+                    )
+                    .await?;
                     empty_operating_completion_corrected = true;
                     record_operating_repair(
                         &mut repairs,
@@ -2893,11 +3064,6 @@ async fn run_session_turn_recorded_at(
                         EMPTY_OPERATING_RESEARCH_FEEDBACK.into(),
                     );
                     continue;
-                }
-                if matches!(trigger, SessionTurnTrigger::Operator) && !durable_lane_bound {
-                    emit_accepted_lane(&session, &input, &mut events, completion_lane, journal)
-                        .await?;
-                    durable_lane_bound = true;
                 }
                 frozen_research_draft = Some(draft.clone());
                 presentation_revision_used = false;
@@ -2967,6 +3133,11 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
+                if matches!(trigger, SessionTurnTrigger::Operator) && !durable_lane_bound {
+                    emit_accepted_lane(&session, &input, &mut events, proposed.lane, journal)
+                        .await?;
+                    durable_lane_bound = true;
+                }
                 emit_event(
                     &session,
                     &input.assessment_at,
@@ -2977,11 +3148,6 @@ async fn run_session_turn_recorded_at(
                     journal,
                 )
                 .await?;
-                if matches!(trigger, SessionTurnTrigger::Operator) && !durable_lane_bound {
-                    emit_accepted_lane(&session, &input, &mut events, proposed.lane, journal)
-                        .await?;
-                    durable_lane_bound = true;
-                }
                 bound_lane = Some(proposed.lane);
                 plan_progress_index = 0;
                 if matches!(trigger, SessionTurnTrigger::Operator) {
@@ -8472,7 +8638,44 @@ mod tests {
 
     #[test]
     fn accepted_research_lane_is_unique_and_bound_to_the_operator_request() {
-        let accepted = SessionEventRecord {
+        let current = apply_session_events(
+            &session(),
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: "session:1".into(),
+                    sequence: 1,
+                    occurred_at: "2026-07-31T00:00:30Z".into(),
+                    event: SessionEvent::TurnStarted {
+                        request_id: "request:1".into(),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: "session:1".into(),
+                    sequence: 2,
+                    occurred_at: "2026-07-31T00:00:31Z".into(),
+                    event: SessionEvent::ResearchLaneAccepted {
+                        request_id: "request:1".into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                },
+            ],
+        )
+        .expect("the active turn's first research lane should be durable");
+        let duplicate = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: current.session_ref.clone(),
+            sequence: 3,
+            occurred_at: "2026-07-31T00:00:32Z".into(),
+            event: SessionEvent::ResearchLaneAccepted {
+                request_id: "request:1".into(),
+                lane: ExecutionLane::Investigate,
+            },
+        };
+        assert!(apply_session_events(&current, &[duplicate]).is_err());
+
+        let out_of_order = SessionEventRecord {
             schema_version: AGENT_SESSION_EVENT_V2.into(),
             session_ref: "session:1".into(),
             sequence: 1,
@@ -8482,36 +8685,190 @@ mod tests {
                 lane: ExecutionLane::Investigate,
             },
         };
-        let current = apply_session_events(&session(), &[accepted])
-            .expect("the first research lane should be durable");
-        let duplicate = SessionEventRecord {
-            schema_version: AGENT_SESSION_EVENT_V2.into(),
-            session_ref: current.session_ref.clone(),
-            sequence: 2,
-            occurred_at: "2026-07-31T00:00:31Z".into(),
-            event: SessionEvent::ResearchLaneAccepted {
-                request_id: "request:1".into(),
-                lane: ExecutionLane::Investigate,
-            },
-        };
-        assert!(apply_session_events(&current, &[duplicate]).is_err());
+        assert!(apply_session_events(&session(), &[out_of_order]).is_err());
+    }
 
-        for (request_id, lane) in [
-            ("request:missing", ExecutionLane::Investigate),
-            ("request:1", ExecutionLane::Continue),
-        ] {
-            let invalid = SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: "session:1".into(),
-                sequence: 1,
-                occurred_at: "2026-07-31T00:00:30Z".into(),
-                event: SessionEvent::ResearchLaneAccepted {
-                    request_id: request_id.into(),
-                    lane,
-                },
-            };
-            assert!(apply_session_events(&session(), &[invalid]).is_err());
-        }
+    #[test]
+    fn accepted_research_lane_and_active_plan_must_match_in_both_orders() {
+        let record = |sequence, event| SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "session:1".into(),
+            sequence,
+            occurred_at: "2026-07-31T00:00:30Z".into(),
+            event,
+        };
+        let mut lookup_plan = plan();
+        lookup_plan.lane = ExecutionLane::Lookup;
+        assert!(
+            apply_session_events(
+                &session(),
+                &[
+                    record(
+                        1,
+                        SessionEvent::TurnStarted {
+                            request_id: "request:1".into(),
+                        },
+                    ),
+                    record(
+                        2,
+                        SessionEvent::ResearchLaneAccepted {
+                            request_id: "request:1".into(),
+                            lane: ExecutionLane::Investigate,
+                        },
+                    ),
+                    record(
+                        3,
+                        SessionEvent::PlanEstablished {
+                            plan: lookup_plan.clone(),
+                        },
+                    ),
+                ],
+            )
+            .is_err()
+        );
+        assert!(
+            apply_session_events(
+                &session(),
+                &[
+                    record(
+                        1,
+                        SessionEvent::TurnStarted {
+                            request_id: "request:1".into(),
+                        },
+                    ),
+                    record(2, SessionEvent::PlanEstablished { plan: lookup_plan },),
+                    record(
+                        3,
+                        SessionEvent::ResearchLaneAccepted {
+                            request_id: "request:1".into(),
+                            lane: ExecutionLane::Investigate,
+                        },
+                    ),
+                ],
+            )
+            .is_err()
+        );
+        assert!(
+            apply_session_events(
+                &session(),
+                &[
+                    record(
+                        1,
+                        SessionEvent::RouteAccepted {
+                            request_id: "request:1".into(),
+                            lane: ExecutionLane::Lookup,
+                            future_observation: FutureObservationDisposition::None,
+                            future_observation_excerpt: None,
+                        },
+                    ),
+                    record(
+                        2,
+                        SessionEvent::TurnStarted {
+                            request_id: "request:1".into(),
+                        },
+                    ),
+                    record(3, SessionEvent::PlanEstablished { plan: plan() }),
+                ],
+            )
+            .is_err()
+        );
+        assert!(
+            apply_session_events(
+                &session(),
+                &[
+                    record(
+                        1,
+                        SessionEvent::TurnStarted {
+                            request_id: "request:1".into(),
+                        },
+                    ),
+                    record(
+                        2,
+                        SessionEvent::ResearchLaneAccepted {
+                            request_id: "request:1".into(),
+                            lane: ExecutionLane::Investigate,
+                        },
+                    ),
+                    record(
+                        3,
+                        SessionEvent::ToolInvoked {
+                            observation: observation(true, Some("2026-08-01T00:00:00Z")),
+                        },
+                    ),
+                    record(
+                        4,
+                        SessionEvent::OperatingObservationCorrectionRequired {
+                            request_id: "request:1".into(),
+                            lane: ExecutionLane::Investigate,
+                        },
+                    ),
+                ],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn operating_observation_correction_requires_the_bound_active_empty_turn() {
+        let record = |sequence, event| SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "session:1".into(),
+            sequence,
+            occurred_at: "2026-07-31T00:00:30Z".into(),
+            event,
+        };
+        let current = apply_session_events(
+            &session(),
+            &[
+                record(
+                    1,
+                    SessionEvent::TurnStarted {
+                        request_id: "request:1".into(),
+                    },
+                ),
+                record(
+                    2,
+                    SessionEvent::ResearchLaneAccepted {
+                        request_id: "request:1".into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                ),
+                record(
+                    3,
+                    SessionEvent::OperatingObservationCorrectionRequired {
+                        request_id: "request:1".into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                ),
+            ],
+        )
+        .expect("one correction should be durable for an empty active operating turn");
+        assert!(
+            apply_session_events(
+                &current,
+                &[record(
+                    4,
+                    SessionEvent::OperatingObservationCorrectionRequired {
+                        request_id: "request:1".into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                )],
+            )
+            .is_err()
+        );
+        assert!(
+            apply_session_events(
+                &session(),
+                &[record(
+                    1,
+                    SessionEvent::OperatingObservationCorrectionRequired {
+                        request_id: "request:1".into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                )],
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -9560,6 +9917,16 @@ mod tests {
         assert_eq!(
             events
                 .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    SessionEvent::OperatingObservationCorrectionRequired { .. }
+                ))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
                 .filter(|event| matches!(event.event, SessionEvent::ToolInvoked { .. }))
                 .count(),
             1
@@ -9632,6 +9999,16 @@ mod tests {
                 .count(),
             1
         );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    SessionEvent::OperatingObservationCorrectionRequired { .. }
+                ))
+                .count(),
+            1
+        );
         let turns = model.turns.lock().expect("model turn receipt poisoned");
         assert_eq!(turns.len(), 2);
         assert_eq!(
@@ -9641,7 +10018,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resumed_operating_lane_does_not_repeat_the_empty_correction() {
+    async fn resumed_operating_lane_still_records_the_correction_after_a_lane_only_crash() {
         let request_id = "request:resumed-operating-lane";
         let queued = session_for_unrouted_request(request_id, "Inspect the connector state.");
         let resumed = apply_session_events(
@@ -9670,10 +10047,16 @@ mod tests {
         )
         .expect("the interrupted turn should retain its accepted research lane");
         let model = LaneCapturingSessionModel {
-            decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
-                draft: draft(),
-                declared_lane: None,
-            }])),
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: None,
+                },
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: None,
+                },
+            ])),
             turns: Mutex::new(Vec::new()),
         };
 
@@ -9701,10 +10084,96 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.event, SessionEvent::ResearchLaneAccepted { .. }))
         );
+        assert!(events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::OperatingObservationCorrectionRequired { .. }
+        )));
         let turns = model.turns.lock().expect("model turn receipt poisoned");
-        assert_eq!(turns.len(), 1);
+        assert_eq!(turns.len(), 2);
         assert_eq!(turns[0].requested_lane, Some(ExecutionLane::Investigate));
         assert!(turns[0].repair_feedback.is_empty());
+        assert_eq!(
+            turns[1].repair_feedback,
+            [EMPTY_OPERATING_RESEARCH_FEEDBACK.to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn resumed_operating_correction_replays_its_feedback_without_reissuing_the_fact() {
+        let request_id = "request:resumed-operating-correction";
+        let queued = session_for_unrouted_request(request_id, "Inspect the connector state.");
+        let resumed = apply_session_events(
+            &queued,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: queued.session_ref.clone(),
+                    sequence: 2,
+                    occurred_at: "2026-07-31T00:00:31Z".into(),
+                    event: SessionEvent::TurnStarted {
+                        request_id: request_id.into(),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: queued.session_ref.clone(),
+                    sequence: 3,
+                    occurred_at: "2026-07-31T00:00:32Z".into(),
+                    event: SessionEvent::ResearchLaneAccepted {
+                        request_id: request_id.into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: queued.session_ref.clone(),
+                    sequence: 4,
+                    occurred_at: "2026-07-31T00:00:33Z".into(),
+                    event: SessionEvent::OperatingObservationCorrectionRequired {
+                        request_id: request_id.into(),
+                        lane: ExecutionLane::Investigate,
+                    },
+                },
+            ],
+        )
+        .expect("the interrupted correction should be durable");
+        let model = LaneCapturingSessionModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
+                draft: draft(),
+                declared_lane: None,
+            }])),
+            turns: Mutex::new(Vec::new()),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            resumed,
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the resumed corrected turn should finish with its bounded result");
+
+        let SessionTurnOutcome::PendingDelivery { events, lane, .. } = outcome else {
+            panic!("the resumed corrected turn should be ready for delivery");
+        };
+        assert_eq!(lane, ExecutionLane::Investigate);
+        assert!(!events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::OperatingObservationCorrectionRequired { .. }
+        )));
+        let turns = model.turns.lock().expect("model turn receipt poisoned");
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].repair_feedback,
+            [EMPTY_OPERATING_RESEARCH_FEEDBACK.to_string()]
+        );
     }
 
     #[async_trait]
@@ -13709,12 +14178,12 @@ mod tests {
         let result = run_session_turn(
             &model,
             &ConnectorTools,
-            session_for_request("request:1", ExecutionLane::Investigate),
+            session_for_unrouted_request("request:1", "Check connector alpha."),
             SessionTurnInput {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
-                requested_lane: Some(ExecutionLane::Investigate),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13736,11 +14205,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resumed_typed_plan_remains_authoritative_after_an_advisory_route() {
+    async fn legacy_route_binds_the_first_model_lane_across_resume() {
         let mut initial = session();
-        initial.messages[0].message_ref = "operator:request:resumed-route-mismatch".into();
-        let mut investigate_plan = plan();
-        investigate_plan.lane = ExecutionLane::Investigate;
+        let request_id = "request:legacy-route-binding";
+        initial.messages[0].message_ref = format!("operator:{request_id}");
         let resumed = apply_session_events(
             &initial,
             &[
@@ -13750,7 +14218,7 @@ mod tests {
                     sequence: 1,
                     occurred_at: "2026-07-31T00:00:30Z".into(),
                     event: SessionEvent::RouteAccepted {
-                        request_id: "request:resumed-route-mismatch".into(),
+                        request_id: request_id.into(),
                         lane: ExecutionLane::Lookup,
                         future_observation: FutureObservationDisposition::None,
                         future_observation_excerpt: None,
@@ -13762,7 +14230,98 @@ mod tests {
                     sequence: 2,
                     occurred_at: "2026-07-31T00:00:31Z".into(),
                     event: SessionEvent::TurnStarted {
-                        request_id: "request:resumed-route-mismatch".into(),
+                        request_id: request_id.into(),
+                    },
+                },
+            ],
+        )
+        .unwrap();
+        let model = LaneCapturingSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: Some(ExecutionLane::Investigate),
+                },
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: Some(ExecutionLane::Lookup),
+                },
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: Some(ExecutionLane::Lookup),
+                },
+            ])),
+            turns: Mutex::new(Vec::new()),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            resumed,
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Lookup),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the legacy lane should reject a mismatch and accept the matching retry");
+        let SessionTurnOutcome::PendingDelivery { lane, events, .. } = outcome else {
+            panic!("the legacy-bound turn should produce a bounded delivery");
+        };
+        assert_eq!(lane, ExecutionLane::Lookup);
+        assert!(events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::ResearchLaneAccepted {
+                lane: ExecutionLane::Lookup,
+                ..
+            }
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::ResearchLaneAccepted {
+                lane: ExecutionLane::Investigate,
+                ..
+            }
+        )));
+        let turns = model.turns.lock().expect("model turn receipt poisoned");
+        assert_eq!(turns.len(), 3);
+        assert!(
+            turns
+                .iter()
+                .all(|turn| turn.requested_lane == Some(ExecutionLane::Lookup))
+        );
+    }
+
+    #[tokio::test]
+    async fn matching_legacy_plan_resume_persists_the_research_lane_before_continuing() {
+        let mut initial = session();
+        let request_id = "request:legacy-plan-resume";
+        initial.messages[0].message_ref = format!("operator:{request_id}");
+        let resumed = apply_session_events(
+            &initial,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: initial.session_ref.clone(),
+                    sequence: 1,
+                    occurred_at: "2026-07-31T00:00:30Z".into(),
+                    event: SessionEvent::RouteAccepted {
+                        request_id: request_id.into(),
+                        lane: ExecutionLane::Investigate,
+                        future_observation: FutureObservationDisposition::None,
+                        future_observation_excerpt: None,
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: initial.session_ref.clone(),
+                    sequence: 2,
+                    occurred_at: "2026-07-31T00:00:31Z".into(),
+                    event: SessionEvent::TurnStarted {
+                        request_id: request_id.into(),
                     },
                 },
                 SessionEventRecord {
@@ -13770,43 +14329,63 @@ mod tests {
                     session_ref: initial.session_ref.clone(),
                     sequence: 3,
                     occurred_at: "2026-07-31T00:00:32Z".into(),
-                    event: SessionEvent::PlanEstablished {
-                        plan: investigate_plan,
-                    },
+                    event: SessionEvent::PlanEstablished { plan: plan() },
                 },
             ],
         )
-        .unwrap();
-        let model = ScriptedSessionModel {
-            decisions: Mutex::new(VecDeque::new()),
+        .expect("a matching legacy plan should remain replayable");
+        let model = LaneCapturingSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: None,
+                },
+                SessionModelDecision::ResearchComplete {
+                    draft: draft(),
+                    declared_lane: None,
+                },
+            ])),
+            turns: Mutex::new(Vec::new()),
         };
 
-        let result = run_session_turn(
+        let outcome = run_session_turn(
             &model,
             &ConnectorTools,
             resumed,
             SessionTurnInput {
-                request_id: "request:resumed-route-mismatch".into(),
+                request_id: request_id.into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
-                requested_lane: Some(ExecutionLane::Lookup),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
-        .await;
-        let SessionTurnOutcome::PendingDelivery { lane, .. } =
-            result.expect("the durable typed plan should resume independently of route advice")
-        else {
-            panic!("a resumed typed plan should produce a bounded delivery");
+        .await
+        .expect("a matching legacy plan should bind and continue");
+
+        let SessionTurnOutcome::PendingDelivery { lane, events, .. } = outcome else {
+            panic!("the matching resumed plan should produce a bounded delivery");
         };
         assert_eq!(lane, ExecutionLane::Investigate);
+        assert!(matches!(
+            events.first().map(|event| &event.event),
+            Some(SessionEvent::ResearchLaneAccepted {
+                lane: ExecutionLane::Investigate,
+                ..
+            })
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::OperatingObservationCorrectionRequired { .. }
+        )));
     }
 
     #[tokio::test]
-    async fn research_loop_can_finish_social_conversation_after_an_overeager_route() {
-        let mut conversational =
-            session_for_request("request:social-route-recovery", ExecutionLane::Investigate);
-        conversational.messages[0].text = "@Cerebro how ya feeling about your new digs".into();
+    async fn research_loop_can_finish_an_unrouted_social_conversation() {
+        let conversational = session_for_unrouted_request(
+            "request:social-route-recovery",
+            "@Cerebro how ya feeling about your new digs",
+        );
         let message = "Honestly? Pretty good — I have more room to think, use the right tools when they help, and still just talk with you when they don't.".to_string();
         let draft = GroundedDraft {
             state: FinalState::Answered,
@@ -13843,7 +14422,7 @@ mod tests {
                 request_id: "request:social-route-recovery".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
-                requested_lane: Some(ExecutionLane::Investigate),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -15001,6 +15580,12 @@ mod tests {
             input_schema_ref: "schema:input".into(),
             result_schema_ref: "schema:result".into(),
         };
+        let mut act_plan = plan();
+        act_plan.lane = ExecutionLane::Act;
+        act_plan.selected_tools = vec![call.tool_id.clone()];
+        for claim in &mut act_plan.claims {
+            claim.source_candidates = vec![call.tool_id.clone()];
+        }
         let mut resumed_session = session();
         resumed_session.events = vec![
             SessionEventRecord {
@@ -15010,7 +15595,7 @@ mod tests {
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::RouteAccepted {
                     request_id: "request:1".into(),
-                    lane: ExecutionLane::Investigate,
+                    lane: ExecutionLane::Act,
                     future_observation: FutureObservationDisposition::None,
                     future_observation_excerpt: None,
                 },
@@ -15029,13 +15614,23 @@ mod tests {
                 session_ref: resumed_session.session_ref.clone(),
                 sequence: 3,
                 occurred_at: "2026-07-31T00:01:01Z".into(),
-                event: SessionEvent::PlanEstablished { plan: plan() },
+                event: SessionEvent::ResearchLaneAccepted {
+                    request_id: "request:1".into(),
+                    lane: ExecutionLane::Act,
+                },
             },
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: resumed_session.session_ref.clone(),
                 sequence: 4,
                 occurred_at: "2026-07-31T00:01:02Z".into(),
+                event: SessionEvent::PlanEstablished { plan: act_plan },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: resumed_session.session_ref.clone(),
+                sequence: 5,
+                occurred_at: "2026-07-31T00:01:03Z".into(),
                 event: SessionEvent::EffectStarted {
                     call: call.clone(),
                     descriptor: descriptor.clone(),
@@ -15060,7 +15655,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:02:00Z".into(),
-                requested_lane: Some(ExecutionLane::Investigate),
+                requested_lane: Some(ExecutionLane::Act),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
