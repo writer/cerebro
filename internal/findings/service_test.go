@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -275,6 +277,13 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 	s.listFindingsRequests = append(s.listFindingsRequests, request)
 	if s.listFindingsErr != nil {
 		return nil, s.listFindingsErr
+	}
+	if field := unsupportedFindingFilter(request); field != "" {
+		return nil, fmt.Errorf(
+			"stubFindingStore: ListFindings filter %s is set but this stub does not apply it; "+
+				"mirror appendFindingFilterClauses from internal/statestore/postgres in findingMatches before relying on it",
+			field,
+		)
 	}
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
@@ -6532,6 +6541,118 @@ func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.Findi
 	return &cloned
 }
 
+// findingFilterSupport classifies every ports.ListFindingsRequest field for the
+// stub store.
+//
+// A stub that ignores a filter the Postgres store applies makes tests pass that
+// production would fail. That is how workspace scoping regressed: the stub
+// dropped ApplicationWorkspaceID, so no fast test could see that the filter
+// matched none of the durable findings written by Go event rules.
+//
+// Fields are either applied by findingMatches, applied elsewhere in
+// ListFindings, or deliberately unsupported. Anything unsupported is rejected at
+// call time rather than silently dropped. TestFindingFilterSupportCoversRequest
+// fails if a new field is added without being classified here.
+var findingFilterSupport = map[string]string{
+	"TenantID":               "findingMatches",
+	"ApplicationWorkspaceID": "findingMatches",
+	"RuntimeID":              "findingMatches",
+	"RuntimeIDs":             "findingMatches",
+	"FindingID":              "findingMatches",
+	"RuleID":                 "findingMatches",
+	"Severity":               "findingMatches",
+	"Status":                 "findingMatches",
+	"ResourceURN":            "findingMatches",
+	"ResourceURNs":           "findingMatches",
+	"EventID":                "findingMatches",
+	"PolicyID":               "findingMatches",
+	"Framework":              "findingMatches",
+	"FirstObservedFrom":      "findingMatches",
+	"FirstObservedBefore":    "findingMatches",
+	"StatusUpdatedFrom":      "findingMatches",
+	"StatusUpdatedBefore":    "findingMatches",
+	"LastObservedBefore":     "findingMatches",
+	"Limit":                  "ListFindings",
+	"Order":                  "ListFindings",
+	"PriorityOrder":          "ListFindings",
+
+	// Unsupported on purpose. These depend on SQL-side evaluation - a jsonb
+	// containment predicate, and NOW()/due_at arithmetic - and a hand-rolled
+	// approximation here would be a fresh divergence rather than a fix. Tests
+	// needing them belong against the real store.
+	"ProfilePredicate": "",
+	"SLAStatus":        "",
+	"MinAgeDays":       "",
+	"MaxAgeDays":       "",
+}
+
+// unsupportedFindingFilter returns the name of a set request field that the stub
+// does not apply, or "" when the request is fully honoured.
+func unsupportedFindingFilter(request ports.ListFindingsRequest) string {
+	value := reflect.ValueOf(request)
+	structType := value.Type()
+	for i := range structType.NumField() {
+		field := structType.Field(i)
+		fieldValue := value.Field(i)
+		if field.Anonymous && fieldValue.Kind() == reflect.Struct {
+			embedded := fieldValue.Type()
+			for j := range embedded.NumField() {
+				if name := unsupportedSetField(embedded.Field(j).Name, fieldValue.Field(j)); name != "" {
+					return name
+				}
+			}
+			continue
+		}
+		if name := unsupportedSetField(field.Name, fieldValue); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func unsupportedSetField(name string, value reflect.Value) string {
+	if value.IsZero() {
+		return ""
+	}
+	if handler, ok := findingFilterSupport[name]; ok && handler != "" {
+		return ""
+	}
+	return name
+}
+
+func findingEffectiveSeverity(finding *ports.FindingRecord) string {
+	if finding.Attributes != nil {
+		if override := strings.TrimSpace(finding.Attributes[FindingEffectiveSeverityAttribute]); override != "" {
+			return override
+		}
+	}
+	return strings.TrimSpace(finding.Severity)
+}
+
+func trimmedNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+// FindingMatchesForParity exposes the stub store's filter predicate to the
+// Postgres-backed parity test, which lives in package findings_test because
+// internal/statestore/postgres imports this package.
+func FindingMatchesForParity(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
+	return findingMatches(request, finding)
+}
+
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
 	if finding == nil {
 		return false
@@ -6547,8 +6668,11 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 			return false
 		}
 	}
-	if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
-		return false
+	// Mirrors addStringInFilter over normalizedNonEmptyStrings(RuntimeIDs + RuntimeID).
+	if runtimeIDs := trimmedNonEmpty(append(append([]string{}, request.RuntimeIDs...), request.RuntimeID)); len(runtimeIDs) > 0 {
+		if !containsTrimmed(runtimeIDs, finding.RuntimeID) {
+			return false
+		}
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
 		return false
@@ -6556,19 +6680,62 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.RuleID != "" && strings.TrimSpace(finding.RuleID) != strings.TrimSpace(request.RuleID) {
 		return false
 	}
-	if request.Severity != "" && strings.TrimSpace(finding.Severity) != strings.TrimSpace(request.Severity) {
-		return false
+	// Mirrors findingEffectiveSeveritySQL: the attribute override wins over the
+	// column, and the comparison is case-insensitive.
+	if severity := strings.TrimSpace(request.Severity); severity != "" {
+		if !strings.EqualFold(findingEffectiveSeverity(finding), severity) {
+			return false
+		}
 	}
 	if request.Status != "" && strings.TrimSpace(finding.Status) != strings.TrimSpace(request.Status) {
 		return false
 	}
-	if request.ResourceURN != "" && !containsTrimmed(finding.ResourceURNs, request.ResourceURN) {
-		return false
+	// Mirrors addFindingArrayContainsAnyFilter over ResourceURN + ResourceURNs:
+	// the finding matches when it carries ANY of the requested URNs.
+	if urns := trimmedNonEmpty(append([]string{request.ResourceURN}, request.ResourceURNs...)); len(urns) > 0 {
+		matched := false
+		for _, urn := range urns {
+			if containsTrimmed(finding.ResourceURNs, urn) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
 		return false
 	}
 	if request.PolicyID != "" && strings.TrimSpace(finding.PolicyID) != strings.TrimSpace(request.PolicyID) {
+		return false
+	}
+	// Mirrors addFindingFrameworkFilter: case-insensitive match on any control
+	// ref framework name.
+	if framework := strings.TrimSpace(request.Framework); framework != "" {
+		matched := false
+		for _, ref := range finding.ControlRefs {
+			if strings.EqualFold(strings.TrimSpace(ref.FrameworkName), framework) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	// Mirrors addFindingTimeLowerBoundFilter (>=) and
+	// addFindingTimeUpperBoundFilter (<) on first_observed_at / status_updated_at.
+	if from := request.FirstObservedFrom.UTC(); !from.IsZero() && finding.FirstObservedAt.UTC().Before(from) {
+		return false
+	}
+	if before := request.FirstObservedBefore.UTC(); !before.IsZero() && !finding.FirstObservedAt.UTC().Before(before) {
+		return false
+	}
+	if from := request.StatusUpdatedFrom.UTC(); !from.IsZero() && finding.StatusUpdatedAt.UTC().Before(from) {
+		return false
+	}
+	if before := request.StatusUpdatedBefore.UTC(); !before.IsZero() && !finding.StatusUpdatedAt.UTC().Before(before) {
 		return false
 	}
 	if cutoff := request.LastObservedBefore.UTC(); !cutoff.IsZero() && !finding.LastObservedAt.Before(cutoff) {
