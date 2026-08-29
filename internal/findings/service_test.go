@@ -6539,6 +6539,14 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
+	// Mirrors addFindingWorkspaceFilter in the postgres store: a workspace scope
+	// still admits tenant-scoped legacy rows that carry no workspace.
+	if workspace := strings.TrimSpace(request.ApplicationWorkspaceID); workspace != "" {
+		findingWorkspace := strings.TrimSpace(finding.ApplicationWorkspaceID)
+		if findingWorkspace != "" && findingWorkspace != workspace {
+			return false
+		}
+	}
 	if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 		return false
 	}
