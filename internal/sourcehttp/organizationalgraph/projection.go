@@ -461,11 +461,6 @@ func eventTaxonomy(event *cerebrov1.EventEnvelope) (string, string, error) {
 	return source, family, nil
 }
 
-func eventFamily(event *cerebrov1.EventEnvelope) (string, error) {
-	_, family, err := eventTaxonomy(event)
-	return family, err
-}
-
 func observedAtUnixMS(value *timestamppb.Timestamp) (int64, error) {
 	if value == nil || !value.IsValid() {
 		return 0, errors.New("source event occurrence time is required")
