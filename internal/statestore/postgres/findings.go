@@ -1484,7 +1484,7 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	}
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
-	addFindingFilter(&clauses, &args, "application_workspace_id", request.ApplicationWorkspaceID)
+	addFindingWorkspaceFilter(&clauses, &args, request.ApplicationWorkspaceID)
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	if err := appendFindingFilterClauses(&clauses, &args, request); err != nil {
 		return nil, nil, err
@@ -2546,6 +2546,29 @@ func addFindingFilter(clauses *[]string, args *[]any, column string, value strin
 	}
 	*args = append(*args, trimmed)
 	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
+}
+
+// addFindingWorkspaceFilter scopes a list to one application workspace while
+// keeping tenant-scoped legacy rows visible.
+//
+// application_workspace_id was added to findings as a nullable-free column with
+// a ” default, and the durable emit path (findings.upsertFindingWithRiskAndNewness)
+// still never populates it, so every finding written by a Go event rule stores
+// ”. Those rows are scoped to the tenant rather than to any one workspace, so a
+// plain equality filter hid all of them: the whole ListFindings API and the
+// counter-event close lookup returned nothing for them.
+//
+// Re-stamping the rows instead is not available: mergeExistingFindingEvidence
+// rejects an upsert whose workspace differs from the stored one, and
+// (tenant_id, application_workspace_id, fingerprint) is the uniqueness key, so
+// changing the value would mint duplicates rather than update in place.
+func addFindingWorkspaceFilter(clauses *[]string, args *[]any, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	*args = append(*args, trimmed)
+	*clauses = append(*clauses, fmt.Sprintf("(application_workspace_id = $%d OR application_workspace_id = '')", len(*args)))
 }
 
 func addFindingSeverityFilter(clauses *[]string, args *[]any, value string) {
