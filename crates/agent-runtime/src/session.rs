@@ -1571,9 +1571,11 @@ pub trait SessionAgentModel: Send + Sync {
     /// Rewrites visible claim copy without changing the frozen research artifact.
     async fn present(
         &self,
-        turn: SessionPresentationTurn,
+        _turn: SessionPresentationTurn,
     ) -> Result<GroundedDraft, AgentRuntimeError> {
-        Ok(turn.research_draft)
+        Err(AgentRuntimeError::ModelUnavailable(
+            "the presentation model is unavailable".into(),
+        ))
     }
 
     /// Reviews an exact candidate against its declared claims and supplied evidence.
@@ -2773,6 +2775,9 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::EstablishPlanAndInvoke { plan, calls } => {
                 (SessionModelDecision::EstablishPlan { plan }, Some(calls))
             }
+            SessionModelDecision::Finish { draft } if frozen_research_draft.is_none() => {
+                (SessionModelDecision::ResearchComplete { draft }, None)
+            }
             decision => (decision, None),
         };
 
@@ -3859,6 +3864,7 @@ async fn repair_fallback_outcome(
         memory_updates: Vec::new(),
         presentation_ready: true,
     };
+    validate_effect_closure_at(observations, &draft, assessment_at, accepted_at)?;
     let validated =
         validate_grounded_draft_at(session, &draft, observations, assessment_at, accepted_at)?;
     let proactive_followup = if runtime.proactive_followup_offers_enabled {
@@ -9049,6 +9055,13 @@ mod tests {
                 .ok_or(AgentRuntimeError::ModelStepLimit)
         }
 
+        async fn present(
+            &self,
+            turn: SessionPresentationTurn,
+        ) -> Result<GroundedDraft, AgentRuntimeError> {
+            Ok(turn.research_draft)
+        }
+
         async fn review_message(
             &self,
             turn: ClaimReviewTurn,
@@ -9122,6 +9135,13 @@ mod tests {
                 .expect("decision script poisoned")
                 .pop_front()
                 .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn present(
+            &self,
+            turn: SessionPresentationTurn,
+        ) -> Result<GroundedDraft, AgentRuntimeError> {
+            Ok(turn.research_draft)
         }
 
         async fn review_message(
@@ -9210,6 +9230,13 @@ mod tests {
                 .expect("decision script poisoned")
                 .pop_front()
                 .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn present(
+            &self,
+            turn: SessionPresentationTurn,
+        ) -> Result<GroundedDraft, AgentRuntimeError> {
+            Ok(turn.research_draft)
         }
 
         async fn review_message(
@@ -12962,7 +12989,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unavailable_initial_presenter_never_exposes_the_research_draft() {
+    async fn direct_finish_enters_the_fail_closed_presentation_phase() {
         let request_id = "request:initial-presenter-unavailable";
         let sentinel = "RAW RESEARCH ARTIFACT MUST NOT BE DELIVERED";
         let research_draft = GroundedDraft {
@@ -12989,7 +13016,7 @@ mod tests {
             presentation_ready: true,
         };
         let model = UnavailablePresentationModel {
-            decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::Finish {
                 draft: research_draft,
             }])),
             reviews: AtomicUsize::new(0),
@@ -13343,7 +13370,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn presentation_review_rejects_a_current_claim_disguised_as_conversation() {
+    async fn presentation_review_rejection_does_not_reenter_research() {
         let mut current = session_for_request(
             "request:misclassified-current-state",
             ExecutionLane::Converse,
@@ -13411,15 +13438,22 @@ mod tests {
         let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
             panic!("the reviewed boundary should be ready for delivery");
         };
-        assert_eq!(
-            markdown,
-            "I need a current observation before I can answer that honestly."
-        );
+        assert!(markdown.contains("presentation revision stage ended"));
         assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            model
+                .decisions
+                .lock()
+                .expect("decision script poisoned")
+                .len(),
+            2,
+            "the frozen research artifact must not re-enter the research model"
+        );
     }
 
     #[tokio::test]
-    async fn delegated_future_observation_must_enter_the_typed_plan_before_finish() {
+    async fn direct_finish_freezes_research_before_follow_through_repair() {
         let request_id = "request:delegated-direct-finish";
         let request =
             "Stay with Ternwheel until two fresh recovery observations agree, then tell me.";
@@ -13494,21 +13528,28 @@ mod tests {
             lane,
             mission,
             events,
+            markdown,
             ..
         } = outcome
         else {
-            panic!("delegated future work should be ready for delivery");
+            panic!("the frozen invalid draft should use the deterministic fallback");
         };
-        assert_eq!(lane, ExecutionLane::Investigate);
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        assert_eq!(lane, ExecutionLane::Converse);
+        assert!(markdown.contains("presentation revision stage ended"));
+        assert!(!events.iter().any(|event| matches!(
+            event.event,
+            SessionEvent::PlanEstablished { .. } | SessionEvent::ToolInvoked { .. }
+        )));
+        assert!(mission.commitments.is_empty());
+        assert_eq!(
+            model
+                .decisions
+                .lock()
+                .expect("decision script poisoned")
+                .len(),
+            3,
+            "the frozen research artifact must not consume a later plan or tool call"
         );
-        assert!(mission.commitments.iter().any(|commitment| {
-            commitment.commitment_ref == "commitment:scheduled-check"
-                && commitment.status == CommitmentStatus::Waiting
-        }));
     }
 
     #[tokio::test]
@@ -14024,6 +14065,91 @@ mod tests {
         };
         assert!(markdown.contains("The external action failed"));
         assert!(!markdown.contains("did not evaluate the requested condition, execute an action"));
+    }
+
+    #[tokio::test]
+    async fn visible_repair_fallback_requires_effect_readback_before_delivery() {
+        let mut effect = healthy_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        effect.call.tool_id = "connector.update".into();
+        effect.call.purpose = "Update connector alpha.".into();
+        effect.descriptor.tool_id = effect.call.tool_id.clone();
+        effect.descriptor.authority_class = ToolAuthorityClass::Actuate;
+        effect.descriptor.effect_class = ToolEffectClass::ExternalEffect;
+        effect.result.summary = "The provider accepted the connector update.".into();
+        effect.result.data = json!({
+            "verification_expectation": {
+                "target_ref": "connector:alpha",
+                "input_digest": effect.call.input_digest(),
+                "assertions": {"status": "healthy"}
+            }
+        });
+        for evidence in &mut effect.result.evidence {
+            evidence.observed_at = "2026-07-31T00:01:00Z".into();
+            for atom in &mut evidence.atoms {
+                atom.observed_at = "2026-07-31T00:01:00Z".into();
+                if let EvidenceAssertion::ToolOutcome { summary, .. } = &mut atom.assertion {
+                    *summary = effect.result.summary.clone();
+                }
+            }
+        }
+        effect.recorded_at = Some("2026-07-31T00:01:00Z".into());
+
+        let input = SessionTurnInput {
+            request_id: "request:unverified-effect-fallback".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Act),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let accepted_at = OffsetDateTime::parse("2026-07-31T00:01:02Z", &Rfc3339).unwrap();
+
+        let unverified = accepted_repair_fallback_outcome(
+            &session(),
+            &input,
+            None,
+            std::slice::from_ref(&effect),
+            accepted_at,
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await;
+        assert!(matches!(
+            unverified,
+            Err(AgentRuntimeError::UnverifiedEffect)
+        ));
+
+        let mut readback = healthy_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        readback.sequence = 2;
+        readback.call.call_id = "call:readback".into();
+        readback.call.input = effect.call.input.clone();
+        readback.recorded_at = Some("2026-07-31T00:01:01Z".into());
+        for evidence in &mut readback.result.evidence {
+            evidence.evidence_ref = "evidence:readback".into();
+            evidence.observed_at = "2026-07-31T00:01:01Z".into();
+            for atom in &mut evidence.atoms {
+                atom.atom_ref = if matches!(atom.assertion, EvidenceAssertion::ToolOutcome { .. }) {
+                    "evidence:readback#tool-outcome".into()
+                } else {
+                    "atom:readback-status".into()
+                };
+                atom.observed_at = "2026-07-31T00:01:01Z".into();
+            }
+        }
+        let verified = accepted_repair_fallback_outcome(
+            &session(),
+            &input,
+            None,
+            &[effect, readback],
+            accepted_at,
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("a verified effect may preserve its committed fallback evidence");
+        assert!(matches!(
+            verified,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
     }
 
     #[tokio::test]
