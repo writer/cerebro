@@ -325,6 +325,82 @@ func TestLegacyDeltaRequestEncodesEmptyRetractionsAsArray(t *testing.T) {
 	}
 }
 
+// The append-log subject is "<prefix>.<kind>" and Rust reads it back as
+// "<prefix>.<source>.<family>", so the kind carries the taxonomy. A shared
+// namespace such as asset.data_sensitivity belongs to the asset source whichever
+// cloud connector stamped the envelope.
+func TestEventTaxonomyComesFromTheKind(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		envelopeID string
+		kind       string
+		wantSource string
+		wantFamily string
+	}{
+		{name: "matching source", envelopeID: "gcp", kind: "gcp.audit", wantSource: "gcp", wantFamily: "audit"},
+		{name: "shared namespace", envelopeID: "gcp", kind: "asset.data_sensitivity", wantSource: "asset", wantFamily: "data_sensitivity"},
+		{name: "nested family", envelopeID: "github", kind: "github.code.repository", wantSource: "github", wantFamily: "code.repository"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event := projectionEvent()
+			event.SourceId = tt.envelopeID
+			event.Kind = tt.kind
+			source, family, err := eventTaxonomy(event)
+			if err != nil {
+				t.Fatalf("eventTaxonomy() error = %v", err)
+			}
+			if source != tt.wantSource || family != tt.wantFamily {
+				t.Fatalf("eventTaxonomy() = %q/%q, want %q/%q", source, family, tt.wantSource, tt.wantFamily)
+			}
+		})
+	}
+}
+
+func TestEventTaxonomyRejectsKindsWithoutTwoSegments(t *testing.T) {
+	for _, kind := range []string{"", "gcp", "gcp.", ".audit"} {
+		event := projectionEvent()
+		event.Kind = kind
+		if _, _, err := eventTaxonomy(event); err == nil {
+			t.Fatalf("eventTaxonomy(%q) error = nil, want an error", kind)
+		}
+	}
+}
+
+// Production symptom: every gcp sync carrying an asset.data_sensitivity event
+// failed with "does not belong to source", taking the whole run with it.
+func TestAppendLogProjectorProjectsSharedNamespaceKinds(t *testing.T) {
+	var authorityQueries []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			authorityQueries = append(authorityQueries, r.URL.Query().Get("source_id")+"/"+r.URL.Query().Get("family_id"))
+			_ = json.NewEncoder(w).Encode(authorityResponse{
+				TenantID:  r.URL.Query().Get("tenant_id"),
+				SourceID:  r.URL.Query().Get("source_id"),
+				FamilyID:  r.URL.Query().Get("family_id"),
+				Authority: projectionAuthorityRust,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	event := projectionEvent()
+	event.SourceId = "gcp"
+	event.Kind = "asset.data_sensitivity"
+
+	if _, err := NewAppendLogProjector(&sourceProjectorStub{}, client).Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if len(authorityQueries) != 1 || authorityQueries[0] != "asset/data_sensitivity" {
+		t.Fatalf("authority queries = %v, want [asset/data_sensitivity]", authorityQueries)
+	}
+}
+
 func TestProjectionClientReadsExactSourceCollectionManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet ||

@@ -162,7 +162,7 @@ type authorityResponse struct {
 }
 
 func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *cerebrov1.EventEnvelope, delta ports.SourceProjectionDelta) error {
-	familyID, err := eventFamily(event)
+	sourceID, familyID, err := eventTaxonomy(event)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *ce
 	requestBody, err := json.Marshal(legacyProjectionRequest{
 		TenantID:           strings.TrimSpace(event.GetTenantId()),
 		SourceRuntimeID:    runtimeID,
-		SourceID:           strings.TrimSpace(event.GetSourceId()),
+		SourceID:           sourceID,
 		FamilyID:           familyID,
 		EventID:            strings.TrimSpace(event.GetId()),
 		ObservedAtUnixMS:   observedAt,
@@ -328,12 +328,11 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	if _, err := observedAtUnixMS(event.GetOccurredAt()); err != nil {
 		return "", err
 	}
-	familyID, err := eventFamily(event)
+	sourceID, familyID, err := eventTaxonomy(event)
 	if err != nil {
 		return "", err
 	}
 	tenantID := strings.TrimSpace(event.GetTenantId())
-	sourceID := strings.TrimSpace(event.GetSourceId())
 	query := url.Values{
 		"tenant_id": {tenantID},
 		"source_id": {sourceID},
@@ -439,14 +438,32 @@ func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.Event
 	return p.legacy.Project(ctx, event)
 }
 
-func eventFamily(event *cerebrov1.EventEnvelope) (string, error) {
-	sourceID := strings.TrimSpace(event.GetSourceId())
+// eventTaxonomy returns the source and family the append log already encodes for
+// an event.
+//
+// The append-log subject is "<prefix>.<kind>" (see appendlog/jetstream
+// eventSubject), and the Rust consumer reads it back as
+// "<prefix>.<source>.<family>". The kind's own first segment is therefore the
+// source, which is how shared namespaces work: an `asset.data_sensitivity` event
+// emitted by the aws, azure, or gcp connector belongs to the `asset` source on
+// both the subject and in internal/findings, even though the envelope is stamped
+// with the emitting connector's id.
+//
+// Deriving from the envelope's source id instead would disagree with the subject
+// for those kinds, so projection would ask the authority about a (source, family)
+// pair the Rust runtime never recorded.
+func eventTaxonomy(event *cerebrov1.EventEnvelope) (string, string, error) {
 	kind := strings.TrimSpace(event.GetKind())
-	prefix := sourceID + "."
-	if sourceID == "" || !strings.HasPrefix(kind, prefix) || len(kind) == len(prefix) {
-		return "", fmt.Errorf("source event kind %q does not belong to source %q", kind, sourceID)
+	source, family, found := strings.Cut(kind, ".")
+	if !found || source == "" || family == "" {
+		return "", "", fmt.Errorf("source event kind %q does not encode a source and family", kind)
 	}
-	return strings.TrimPrefix(kind, prefix), nil
+	return source, family, nil
+}
+
+func eventFamily(event *cerebrov1.EventEnvelope) (string, error) {
+	_, family, err := eventTaxonomy(event)
+	return family, err
 }
 
 func observedAtUnixMS(value *timestamppb.Timestamp) (int64, error) {
