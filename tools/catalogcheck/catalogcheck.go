@@ -513,7 +513,7 @@ func checkSourceCatalogsWithControlCatalog(root string, controlCatalog *complian
 			if _, ok := projectedKinds[kind]; !ok {
 				issues = append(issues, issue{path: rel, message: fmt.Sprintf("emitted kind %q has no source projector", kind)})
 			}
-			issues = append(issues, checkProjectableKind(rel, spec.GetId(), kind)...)
+			issues = append(issues, checkProjectableKind(rel, kind)...)
 		}
 		for _, contract := range catalog.EventContracts {
 			if _, ok := emittedKinds[contract.Kind]; !ok {
