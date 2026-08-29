@@ -52,6 +52,12 @@ type Registry struct {
 	connectorDefinitionKinds        map[string]map[string]struct{}
 	connectorDefinitionBases        map[string]ProjectFunc
 	connectorDefinitionProjectors   map[string]map[string]ProjectFunc
+
+	// enforceRustAuthority makes this registry refuse every event belonging to
+	// a Rust-authoritative source, ahead of all dispatch paths. Only the
+	// built-in production registry sets it; test oracle registries deliberately
+	// re-bind retired kinds to keep fixture coverage of shared helpers.
+	enforceRustAuthority bool
 }
 
 // NewRegistry constructs an event projection registry.
@@ -302,8 +308,14 @@ func (r *Registry) project(call projectionCall, event *cerebrov1.EventEnvelope) 
 	if r == nil {
 		return nil, nil, nil
 	}
-	r.mu.RLock()
 	kind := strings.TrimSpace(event.GetKind())
+	if sourceID := rustAuthoritativeEventSource(event); r.enforceRustAuthority && sourceID != "" {
+		// Rust owns this source's organizational projection. Fail closed ahead
+		// of every dispatch path, including connector-definition overlays and
+		// event kinds the connector catalog does not declare as families.
+		return nil, nil, fmt.Errorf("projector %q: %w", kind, rustProjectionRequiredError(sourceID))
+	}
+	r.mu.RLock()
 	project := r.projectors[kind]
 	contextProject := r.contextProjectors[kind]
 	connectorProject := r.connectorDefinitionProjectors[kind][strings.TrimSpace(event.GetSourceId())]
