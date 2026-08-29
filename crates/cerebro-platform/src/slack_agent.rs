@@ -30,12 +30,12 @@ use cerebro_agent_runtime::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
         EvidenceAssertion, EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
-        MessageReview, MissionState, ProactiveFollowupOffer, SemanticEvidenceAtomization,
-        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn,
-        SessionPresentationTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
-        followup_acceptance_draft, grounded_draft_digest, message_digest,
+        MessageReview, MissionState, ProactiveFollowupOffer, ResearchPlan,
+        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionPresentationTurn, SessionStatus, SessionStore, SessionTools,
+        SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger, apply_session_events,
+        evidence_atoms_from_json, followup_acceptance_draft, grounded_draft_digest, message_digest,
         run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
         semantic_evidence_atoms, validate_followup_acceptance,
     },
@@ -1351,7 +1351,7 @@ pub(crate) fn replay_completed_session_turn(
         })
         .ok_or_else(|| AgentRuntimeError::InvalidRequest("completed turn has no draft".into()))?;
     let evidence_atom_refs = draft_evidence_refs(&draft);
-    let lane = event_lane(&events);
+    let lane = event_lane(&events, &request.request_id);
     let outcome = session_outcome_to_turn(SessionTurnOutcome::PendingDelivery {
         lane,
         delivery: draft.delivery,
@@ -1446,7 +1446,7 @@ pub(crate) fn replay_pending_session_turn(
         })
         .unwrap_or(started_index);
     let events = session.events[route_index..].to_vec();
-    let lane = event_lane(&events);
+    let lane = event_lane(&events, &request.request_id);
     let evidence_atom_refs = draft_evidence_refs(&pending.draft);
     Ok(session_outcome_to_turn(
         SessionTurnOutcome::PendingDelivery {
@@ -1587,15 +1587,27 @@ pub(crate) fn route_request_from_session(
         });
     let delivered_start = delivered_index.and_then(|end| {
         let request_id = delivered_request_id?;
-        session.events[..=end].iter().rposition(|event| {
-            matches!(
-                &event.event,
-                SessionEvent::RouteAccepted {
-                    request_id: accepted_request_id,
-                    ..
-                } if accepted_request_id == request_id
-            )
-        })
+        session.events[..=end]
+            .iter()
+            .rposition(|event| {
+                matches!(
+                    &event.event,
+                    SessionEvent::RouteAccepted {
+                        request_id: accepted_request_id,
+                        ..
+                    } if accepted_request_id == request_id
+                )
+            })
+            .or_else(|| {
+                session.events[..=end].iter().rposition(|event| {
+                    matches!(
+                        &event.event,
+                        SessionEvent::TurnStarted {
+                            request_id: started_request_id,
+                        } if started_request_id == request_id
+                    )
+                })
+            })
     });
     let delivered_end = match (delivered_index, delivered_request_id) {
         (Some(delivery), Some(request_id)) => session.events[delivery..]
@@ -1616,15 +1628,17 @@ pub(crate) fn route_request_from_session(
         Some(start) => &session.events[start..=delivered_end],
         _ => &session.events[0..0],
     };
-    let latest_delivered_lane =
-        delivered_events
-            .iter()
-            .rev()
-            .find_map(|event| match &event.event {
-                SessionEvent::PlanEstablished { plan } => Some(plan.lane),
-                SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
-                _ => None,
-            });
+    let latest_delivered_lane = delivered_request_id
+        .and_then(|request_id| request_bound_lane(delivered_events, request_id))
+        .or_else(|| {
+            delivered_events
+                .iter()
+                .rev()
+                .find_map(|event| match &event.event {
+                    SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+                    _ => None,
+                })
+        });
     let mission_is_unresolved = !session.mission.open_loops.is_empty()
         || session.mission.commitments.iter().any(|commitment| {
             !matches!(
@@ -1702,7 +1716,7 @@ fn delivered_mission_revision_lane(session: &AgentSession) -> Option<ExecutionLa
             _ => None,
         })
         .collect::<BTreeSet<_>>();
-    let mut routes = BTreeMap::new();
+    let mut lanes = BTreeMap::new();
     let mut delivered_mission: Option<&MissionState> = None;
     let mut revision_lane = None;
     for event in &session.events {
@@ -1710,14 +1724,17 @@ fn delivered_mission_revision_lane(session: &AgentSession) -> Option<ExecutionLa
             SessionEvent::RouteAccepted {
                 request_id, lane, ..
             } => {
-                routes.insert(request_id.as_str(), *lane);
+                lanes.entry(request_id.as_str()).or_insert(*lane);
+            }
+            SessionEvent::ResearchLaneAccepted { request_id, lane } => {
+                lanes.insert(request_id.as_str(), *lane);
             }
             SessionEvent::DraftProduced { request_id, draft }
                 if delivered_requests.contains(request_id.as_str())
                     && delivered_mission != Some(&draft.mission) =>
             {
                 delivered_mission = Some(&draft.mission);
-                revision_lane = routes.get(request_id.as_str()).copied();
+                revision_lane = lanes.get(request_id.as_str()).copied();
             }
             _ => {}
         }
@@ -1758,14 +1775,36 @@ fn pending_wake_turn(
     })
 }
 
-fn event_lane(events: &[SessionEventRecord]) -> ExecutionLane {
+fn request_bound_lane(events: &[SessionEventRecord], request_id: &str) -> Option<ExecutionLane> {
     events
         .iter()
         .rev()
         .find_map(|event| match &event.event {
-            SessionEvent::PlanEstablished { plan } => Some(plan.lane),
-            SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
+            SessionEvent::ResearchLaneAccepted {
+                request_id: accepted_request_id,
+                lane,
+            } if accepted_request_id == request_id => Some(*lane),
             _ => None,
+        })
+        .or_else(|| {
+            events.iter().rev().find_map(|event| match &event.event {
+                SessionEvent::RouteAccepted {
+                    request_id: accepted_request_id,
+                    lane,
+                    ..
+                } if accepted_request_id == request_id => Some(*lane),
+                _ => None,
+            })
+        })
+}
+
+fn event_lane(events: &[SessionEventRecord], request_id: &str) -> ExecutionLane {
+    request_bound_lane(events, request_id)
+        .or_else(|| {
+            events.iter().rev().find_map(|event| match &event.event {
+                SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+                _ => None,
+            })
         })
         .unwrap_or(ExecutionLane::Converse)
 }
@@ -2069,7 +2108,7 @@ impl SessionAgentModel for ConfiguredModel {
             )
             .await?;
         let SessionResearchDecision::Continue(decision) =
-            parse_session_research_decision_value(value)?;
+            parse_session_research_decision_value(value, turn.plan.is_none())?;
         Ok(*decision)
     }
 
@@ -2983,11 +3022,12 @@ fn session_initial_decision_schema() -> Value {
         "additionalProperties": false,
         "properties": {
             "decision": {"type": "string", "enum": ["establish_plan", "finish_research"]},
+            "lane": {"type": "string", "enum": ["converse", "lookup", "investigate", "act"]},
             "plan": complete["properties"]["plan"].clone(),
             "calls": complete["properties"]["calls"].clone(),
             "draft": complete["properties"]["draft"].clone(),
         },
-        "required": ["decision", "plan", "calls", "draft"]
+        "required": ["decision", "lane", "plan", "calls", "draft"]
     })
 }
 
@@ -3202,6 +3242,7 @@ enum SessionResearchDecision {
 
 fn parse_session_research_decision_value(
     mut value: Value,
+    initial: bool,
 ) -> Result<SessionResearchDecision, AgentRuntimeError> {
     normalize_embedded_session_object(&mut value, "plan");
     normalize_embedded_session_object(&mut value, "draft");
@@ -3215,6 +3256,16 @@ fn parse_session_research_decision_value(
         .cloned()
         .unwrap_or_else(|| Value::Array(Vec::new()));
     let calls_empty = calls.as_array().is_some_and(Vec::is_empty);
+    let declared_lane = if initial {
+        Some(
+            serde_json::from_value::<ExecutionLane>(
+                value.get("lane").cloned().unwrap_or(Value::Null),
+            )
+            .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?,
+        )
+    } else {
+        None
+    };
     match decision {
         "establish_plan" => {
             if calls_empty {
@@ -3222,8 +3273,14 @@ fn parse_session_research_decision_value(
                     "the first research decision must include at least one read".into(),
                 ));
             }
-            let plan = serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
-                .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            let plan: ResearchPlan =
+                serde_json::from_value(value.get("plan").cloned().unwrap_or(Value::Null))
+                    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+            if declared_lane != Some(plan.lane) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "the declared lane must match the initial research plan lane".into(),
+                ));
+            }
             let calls = serde_json::from_value(calls)
                 .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
             Ok(SessionResearchDecision::Continue(Box::new(
@@ -3251,7 +3308,10 @@ fn parse_session_research_decision_value(
             let draft = serde_json::from_value(value.get("draft").cloned().unwrap_or(Value::Null))
                 .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
             Ok(SessionResearchDecision::Continue(Box::new(
-                SessionModelDecision::ResearchComplete { draft },
+                SessionModelDecision::ResearchComplete {
+                    draft,
+                    declared_lane,
+                },
             )))
         }
         _ => Err(AgentRuntimeError::InvalidFinal(
@@ -6625,12 +6685,78 @@ mod tests {
         events
     }
 
+    fn unrouted_replay_events(
+        session: &AgentSession,
+        request: &AgentTurnRequest,
+        completed: bool,
+    ) -> Vec<SessionEventRecord> {
+        let mut events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 1,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref: format!("operator:{}", request.request_id),
+                        actor_ref: request.actor_ref.clone(),
+                        text: request.message.clone(),
+                        received_at: request.assessment_at.clone(),
+                    },
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::TurnStarted {
+                    request_id: request.request_id.clone(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::ResearchLaneAccepted {
+                    request_id: request.request_id.clone(),
+                    lane: ExecutionLane::Investigate,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 4,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::DraftProduced {
+                    request_id: request.request_id.clone(),
+                    draft: replay_draft(session),
+                },
+            },
+        ];
+        if completed {
+            events.push(SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 5,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: request.request_id.clone(),
+                    state: FinalState::Answered,
+                },
+            });
+        }
+        events
+    }
+
     #[test]
     fn completed_request_replays_from_immutable_events_after_message_compaction() {
         let request = replay_request();
         let base = new_session(&request).unwrap();
         let mut session =
-            apply_session_events(&base, &replay_events(&base, &request, true)).unwrap();
+            apply_session_events(&base, &unrouted_replay_events(&base, &request, true)).unwrap();
         session.messages.clear();
 
         assert!(matches!(
@@ -6654,7 +6780,7 @@ mod tests {
         let request = replay_request();
         let base = new_session(&request).unwrap();
         let mut session =
-            apply_session_events(&base, &replay_events(&base, &request, false)).unwrap();
+            apply_session_events(&base, &unrouted_replay_events(&base, &request, false)).unwrap();
         session.messages.clear();
 
         assert!(matches!(
@@ -6678,7 +6804,7 @@ mod tests {
         let prior = replay_request();
         let base = new_session(&prior).unwrap();
         let mut session =
-            apply_session_events(&base, &replay_events(&base, &prior, false)).unwrap();
+            apply_session_events(&base, &unrouted_replay_events(&base, &prior, false)).unwrap();
         session = apply_session_events(
             &session,
             &[
@@ -6753,6 +6879,75 @@ mod tests {
         assert_eq!(working.active_lane, Some(ExecutionLane::Investigate));
         assert_eq!(working.requires_current_evidence, Some(true));
         assert!(!working.open_loops.iter().any(|item| item == "caller loop"));
+    }
+
+    #[test]
+    fn delivered_mission_revision_uses_the_research_lane_without_a_legacy_route() {
+        let request = replay_request();
+        let base = new_session(&request).unwrap();
+        let mut events = unrouted_replay_events(&base, &request, false);
+        let revised_mission = events
+            .iter_mut()
+            .find_map(|event| match &mut event.event {
+                SessionEvent::DraftProduced { draft, .. } => {
+                    draft.mission.objective = "Finish the durable investigation.".into();
+                    draft
+                        .mission
+                        .open_loops
+                        .push(cerebro_agent_runtime::session::OpenLoop {
+                            open_loop_ref: "open-loop:research-lane".into(),
+                            summary: "Finish the durable investigation.".into(),
+                            owner: cerebro_agent_runtime::session::WorkOwner::Cerebro,
+                            next_action: Some("Read the remaining current evidence.".into()),
+                            blocked_by: None,
+                        });
+                    Some(draft.mission.clone())
+                }
+                _ => None,
+            })
+            .expect("the replay fixture should contain a draft");
+        let draft_message = events
+            .iter()
+            .find_map(|event| match &event.event {
+                SessionEvent::DraftProduced { draft, .. } => Some(draft.message.clone()),
+                _ => None,
+            })
+            .expect("the replay fixture should contain a draft message");
+        let mut session = apply_session_events(&base, &events).unwrap();
+        session = apply_session_events(
+            &session,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 5,
+                    occurred_at: request.assessment_at.clone(),
+                    event: SessionEvent::DeliveryRecorded {
+                        request_id: request.request_id.clone(),
+                        transport: "slack".into(),
+                        delivery_ref: "slack-message:research-lane".into(),
+                        payload_digest: message_digest(&draft_message),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 6,
+                    occurred_at: request.assessment_at.clone(),
+                    event: SessionEvent::TurnCompleted {
+                        request_id: request.request_id.clone(),
+                        state: FinalState::Answered,
+                    },
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(session.mission, revised_mission);
+        assert_eq!(
+            delivered_mission_revision_lane(&session),
+            Some(ExecutionLane::Investigate)
+        );
     }
 
     #[test]
@@ -7294,7 +7489,8 @@ mod tests {
         assert_eq!(SLACK_SESSION_DECISION_MAX_TOKENS, 4_096);
         assert_eq!(SLACK_CLAIM_REVIEW_MAX_TOKENS, 1_024);
 
-        let decision_schema = session_decision_schema().to_string();
+        let complete_schema = session_decision_schema();
+        let decision_schema = complete_schema.to_string();
         for explanation_id in ALL_STABLE_EXPLANATION_IDS {
             assert!(decision_schema.contains(explanation_id));
         }
@@ -7309,7 +7505,28 @@ mod tests {
             initial_schema["properties"]["decision"]["enum"],
             json!(["establish_plan", "finish_research"])
         );
+        assert_eq!(
+            initial_schema["properties"]["lane"]["enum"],
+            json!(["converse", "lookup", "investigate", "act"])
+        );
+        assert!(
+            initial_schema["required"]
+                .as_array()
+                .is_some_and(|required| required.contains(&json!("lane")))
+        );
         assert!(initial_schema["properties"].get("draft").is_some());
+        assert_eq!(
+            initial_schema["properties"]["plan"],
+            complete_schema["properties"]["plan"]
+        );
+        assert_eq!(
+            initial_schema["properties"]["calls"],
+            complete_schema["properties"]["calls"]
+        );
+        assert_eq!(
+            initial_schema["properties"]["draft"],
+            complete_schema["properties"]["draft"]
+        );
         assert_eq!(
             continue_schema["properties"]["decision"]["enum"],
             json!(["invoke_tools", "finish_research"])
@@ -7324,7 +7541,6 @@ mod tests {
         );
         assert!(!presentation_schema.to_string().contains("mission"));
         assert!(!presentation_schema.to_string().contains("memory_updates"));
-        assert!(initial_schema.to_string().len() < decision_schema.len());
         assert!(continue_schema.to_string().len() < decision_schema.len());
         assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
@@ -7447,33 +7663,125 @@ mod tests {
             "memory_updates": [],
             "presentation_ready": false
         });
-        let decision = parse_session_research_decision_value(json!({
-            "decision": "finish_research",
-            "plan": null,
-            "calls": [],
-            "draft": research_draft
-        }))
+        let decision = parse_session_research_decision_value(
+            json!({
+                "decision": "finish_research",
+                "lane": "converse",
+                "plan": null,
+                "calls": [],
+                "draft": research_draft
+            }),
+            true,
+        )
         .unwrap();
 
         assert!(matches!(
             decision,
             SessionResearchDecision::Continue(decision)
-                if matches!(*decision, SessionModelDecision::ResearchComplete { .. })
+                if matches!(
+                    *decision,
+                    SessionModelDecision::ResearchComplete {
+                        declared_lane: Some(ExecutionLane::Converse),
+                        ..
+                    }
+                )
         ));
         assert!(
-            parse_session_research_decision_value(json!({
-                "decision": "finish_research",
-                "plan": null,
-                "calls": [{
-                    "call_id": "call:late",
-                    "tool_id": "source_runtime.inspect",
-                    "purpose": "This call must be made before presenting.",
-                    "input": {}
-                }],
-                "draft": null
-            }))
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "finish_research",
+                    "lane": "investigate",
+                    "plan": null,
+                    "calls": [{
+                        "call_id": "call:late",
+                        "tool_id": "source_runtime.inspect",
+                        "purpose": "This call must be made before presenting.",
+                        "input": {}
+                    }],
+                    "draft": null
+                }),
+                true
+            )
             .is_err()
         );
+        assert!(
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "finish_research",
+                    "plan": null,
+                    "calls": [],
+                    "draft": null
+                }),
+                true
+            )
+            .is_err(),
+            "the initial research decision must declare its typed lane"
+        );
+    }
+
+    #[test]
+    fn initial_research_lane_must_match_the_coissued_plan() {
+        let plan = json!({
+            "decision": "Read the named source once.",
+            "lane": "investigate",
+            "resolved_entities": ["source:one"],
+            "claims": [{
+                "claim_ref": "planned:one",
+                "question": "What is the current source state?",
+                "required": true,
+                "subject_refs": ["source:one"],
+                "source_candidates": ["source_runtime.inspect"]
+            }],
+            "selected_tools": ["source_runtime.inspect"],
+            "stop_conditions": ["The bounded current state is returned."],
+            "user_visible_work": ["Inspect the named source runtime."],
+            "follow_through": null
+        });
+        let calls = json!([{
+            "call_id": "call:one",
+            "tool_id": "source_runtime.inspect",
+            "purpose": "Read the current state of source:one.",
+            "input": {"source_ref": "source:one"}
+        }]);
+        assert!(
+            parse_session_research_decision_value(
+                json!({
+                    "decision": "establish_plan",
+                    "lane": "lookup",
+                    "plan": plan.clone(),
+                    "calls": calls.clone(),
+                    "draft": null
+                }),
+                true
+            )
+            .is_err()
+        );
+
+        let matching = parse_session_research_decision_value(
+            json!({
+                "decision": "establish_plan",
+                "lane": "investigate",
+                "plan": plan,
+                "calls": calls,
+                "draft": null
+            }),
+            true,
+        )
+        .unwrap();
+        assert!(matches!(
+            matching,
+            SessionResearchDecision::Continue(decision)
+                if matches!(
+                    *decision,
+                    SessionModelDecision::EstablishPlanAndInvoke {
+                        plan: ResearchPlan {
+                            lane: ExecutionLane::Investigate,
+                            ..
+                        },
+                        ..
+                    }
+                )
+        ));
     }
 
     #[test]
