@@ -64,6 +64,59 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
             proof.index("gh workflow run rust-graph-replacement.yml"),
         )
 
+    def test_superseded_candidate_is_skipped_rather_than_failed(self) -> None:
+        workflow = AUTO_WORKFLOW.read_text(encoding="utf-8")
+        proof = workflow.split("      - name: Require exact-head main proofs\n", 1)[1]
+        proof = proof.split(
+            "      - name: Resolve or dispatch published-image smoke\n", 1
+        )[0]
+
+        # A candidate that main has already moved past cannot publish, so the
+        # orchestrator records it and exits clean instead of reddening main.
+        self.assertIn("id: proofs", proof)
+        self.assertIn('echo "superseded=true" >> "${GITHUB_OUTPUT}"', proof)
+        self.assertNotIn("ERROR: main advanced", proof)
+
+        # Supersession is checked before any qualification work is started.
+        self.assertLess(
+            proof.index("mark_superseded"),
+            proof.index('if [[ "${graph_runs}" == 0 ]]'),
+        )
+
+    def test_cancelled_proof_only_counts_as_superseded_when_main_moved(self) -> None:
+        workflow = AUTO_WORKFLOW.read_text(encoding="utf-8")
+        proof = workflow.split("      - name: Require exact-head main proofs\n", 1)[1]
+        proof = proof.split(
+            "      - name: Resolve or dispatch published-image smoke\n", 1
+        )[0]
+        terminal = proof.split('if [[ "${status}" == completed ]]; then', 1)[1]
+
+        # Rust Graph Replacement is keyed on github.ref with cancel-in-progress,
+        # so a newer candidate's dispatch cancels this one's proof run.
+        self.assertIn('if [[ "${conclusion}" == cancelled ]]', terminal)
+        self.assertLess(
+            terminal.index('if [[ "${conclusion}" == cancelled ]]'),
+            terminal.index("ERROR: ${workflow} completed with"),
+        )
+
+        # Any other terminal conclusion, and a cancellation on unmoved main,
+        # still fail closed.
+        self.assertIn("ERROR: ${workflow} completed with ${conclusion}", terminal)
+        self.assertIn("exit 1", terminal)
+
+    def test_publication_steps_are_gated_on_a_live_candidate(self) -> None:
+        workflow = AUTO_WORKFLOW.read_text(encoding="utf-8")
+        gate = "steps.proofs.outputs.superseded != 'true'"
+
+        for step in (
+            "      - name: Resolve or dispatch published-image smoke\n",
+            "      - name: Reserve next stable tag and render notes\n",
+            "      - name: Dispatch stable publication\n",
+        ):
+            guard = workflow.split(step, 1)[1].split("\n", 2)[0]
+            self.assertIn("steps.candidate.outputs.eligible == 'true'", guard, step)
+            self.assertIn(gate, guard, step)
+
     def test_rust_graph_proof_has_a_cold_build_budget(self) -> None:
         workflow = RUST_GRAPH_WORKFLOW.read_text(encoding="utf-8")
         replacement = workflow.split("  replacement:\n", 1)[1]
