@@ -85,10 +85,10 @@ test("acceptance uses the Rust expiry exactly and rejects future or prepared off
     assert.equal(
       await coordinator.beginAcceptance({
         ...acceptanceInput(),
-        operatorText: "summarize this thread",
+        offerRef: `proactive-followup://sha256/${"f".repeat(64)}`,
       }),
       undefined,
-      "ordinary unoffered text must remain an ordinary turn",
+      "an unoffered identity must not create an acceptance claim",
     );
     await store.markDeliveredForTurn(prepared.sourceRequestId, {
       deliveredAt: "2026-08-28T07:00:01.000Z",
@@ -237,7 +237,7 @@ test("the original ingress replays accepting and accepted claims after expiry", 
   }
 });
 
-test("same-action lookup uses the exact claim and newest delivery instead of hash order", async () => {
+test("typed offer lookup selects only the exact delivered offer identity", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-followup-same-action-"));
   try {
     let now = new Date("2026-08-28T07:30:00.000Z");
@@ -278,12 +278,16 @@ test("same-action lookup uses the exact claim and newest delivery instead of has
       });
     }
 
-    const accepting = await coordinator.beginAcceptance(acceptanceInput());
+    const exactAcceptance = {
+      ...acceptanceInput(),
+      offerRef: newer.offer_ref,
+    };
+    const accepting = await coordinator.beginAcceptance(exactAcceptance);
     assert.equal(accepting?.offer.offer_ref, newer.offer_ref);
     now = new Date("2026-08-28T08:00:00.001Z");
-    assert.deepEqual(await coordinator.beginAcceptance(acceptanceInput()), accepting);
+    assert.deepEqual(await coordinator.beginAcceptance(exactAcceptance), accepting);
     assert.equal(await coordinator.beginAcceptance({
-      ...acceptanceInput(),
+      ...exactAcceptance,
       ingressRequestKey: "T:C:thread:event-two",
     }), undefined);
   } finally {
@@ -416,13 +420,13 @@ function offer(
 function acceptanceInput(): {
   actorRef: string;
   ingressRequestKey: string;
-  operatorText: string;
+  offerRef: string;
   threadRef: string;
 } {
   return {
     actorRef: "slack-user://operator",
     ingressRequestKey: "T:C:thread:event-one",
-    operatorText: "  START   this follow-up  ",
+    offerRef: offer().offer_ref,
     threadRef: offer().thread_ref,
   };
 }

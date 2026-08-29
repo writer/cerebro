@@ -15,8 +15,9 @@ export interface SlackIngressEvent {
   botUserId?: string;
   channel: string;
   eventTs: string;
+  followupOfferRef?: string;
   hasThreadContext: boolean;
-  kind: "app_mention" | "message";
+  kind: "app_mention" | "followup_acceptance" | "message";
   teamId: string;
   text: string;
   threadTs: string;
@@ -750,9 +751,48 @@ export function slackIngressRequestKey(event: SlackIngressEvent): string {
 }
 
 function slackIngressEvent(body: unknown): SlackIngressEvent | undefined {
-  if (!isRecord(body) || body.type !== "event_callback" || !isRecord(body.event)) {
+  if (!isRecord(body)) {
     return undefined;
   }
+  if (body.type === "block_actions") {
+    const action = Array.isArray(body.actions) ? body.actions.find(isRecord) : undefined;
+    const team = isRecord(body.team) ? body.team : undefined;
+    const user = isRecord(body.user) ? body.user : undefined;
+    const channel = isRecord(body.channel) ? body.channel : undefined;
+    const message = isRecord(body.message) ? body.message : undefined;
+    const offerRef = action && typeof action.value === "string" ? action.value : undefined;
+    const actionId = action && typeof action.action_id === "string" ? action.action_id : undefined;
+    const messageTs = message && typeof message.ts === "string" ? message.ts : undefined;
+    const threadTs = message && typeof message.thread_ts === "string"
+      ? message.thread_ts
+      : messageTs;
+    const eventTs = action && typeof action.action_ts === "string"
+      ? action.action_ts
+      : undefined;
+    if (
+      action?.type !== "button"
+      || !actionId?.match(/^cerebro\.followup\.[a-f0-9]{32}$/u)
+      || !offerRef?.match(/^proactive-followup:\/\/sha256\/[a-f0-9]{64}$/u)
+      || actionId !== `cerebro.followup.${digest(offerRef).slice(0, 32)}`
+      || typeof team?.id !== "string"
+      || typeof user?.id !== "string"
+      || typeof channel?.id !== "string"
+      || !threadTs
+      || !eventTs
+    ) return undefined;
+    return {
+      channel: channel.id,
+      eventTs,
+      followupOfferRef: offerRef,
+      hasThreadContext: true,
+      kind: "followup_acceptance",
+      teamId: team.id,
+      text: offerRef,
+      threadTs,
+      userId: user.id,
+    };
+  }
+  if (body.type !== "event_callback" || !isRecord(body.event)) return undefined;
   const event = body.event;
   if (event.type !== "app_mention" && event.type !== "message") return undefined;
   const authorization = Array.isArray(body.authorizations)
@@ -811,7 +851,11 @@ function validateIngressEvent(event: SlackIngressEvent): void {
     || !matchesText(event.eventTs)
     || !matchesText(event.userId)
     || (event.botUserId !== undefined && !matchesText(event.botUserId))
-    || (event.kind !== "app_mention" && event.kind !== "message")
+    || !["app_mention", "followup_acceptance", "message"].includes(event.kind)
+    || (event.followupOfferRef !== undefined
+      && !/^proactive-followup:\/\/sha256\/[a-f0-9]{64}$/u.test(event.followupOfferRef))
+    || (event.kind === "followup_acceptance" && event.followupOfferRef === undefined)
+    || (event.kind !== "followup_acceptance" && event.followupOfferRef !== undefined)
     || typeof event.hasThreadContext !== "boolean"
     || typeof event.text !== "string"
     || !event.text.trim()

@@ -26,10 +26,16 @@ export class ProactiveFollowupCoordinator {
     return this.store.markDeliveredForTurn(sourceRequestId, receipt);
   }
 
+  async offerForTurn(sourceRequestId: string): Promise<RustProactiveFollowupOffer | undefined> {
+    return (await this.store.list()).find((record) =>
+      record.sourceRequestId === sourceRequestId
+    )?.offer;
+  }
+
   async beginAcceptance(input: {
     actorRef: string;
     ingressRequestKey: string;
-    operatorText: string;
+    offerRef: string;
     threadRef: string;
   }): Promise<ProactiveFollowupAcceptance | undefined> {
     return this.store.beginAcceptance({

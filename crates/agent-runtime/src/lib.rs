@@ -1706,20 +1706,6 @@ fn validate_route(
             ))
         }
         ExecutionLane::Continue => Ok(()),
-        ExecutionLane::Act
-            if request.effect_authorizations.is_empty()
-                && request
-                    .working_state
-                    .as_ref()
-                    .and_then(|state| state.mission_ref.as_ref())
-                    .is_some()
-                && request.message.split_whitespace().count() <= 3 =>
-        {
-            Err(AgentRuntimeError::InvalidRoute(
-                "a short directive with no exact effect authorization is ambiguous in an active mission. Route continue to advance the retained request; use act only when the newest request identifies the external effect"
-                    .into(),
-            ))
-        }
         ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
             if !decision.requires_current_evidence =>
         {

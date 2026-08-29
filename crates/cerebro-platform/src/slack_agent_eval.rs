@@ -1757,18 +1757,19 @@ impl AgentTools for EvalTools {
         request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        if call.tool_id == "capability.search" {
+        if matches!(
+            call.tool_id.as_str(),
+            "capability.overview" | "capability.search" | "capability.describe"
+        ) {
             self.capability_discovery_events
                 .lock()
                 .expect("evaluation capability discovery receipt poisoned")
                 .push(call.tool_id.clone());
+        }
+        if call.tool_id == "capability.search" {
             return self.search_capabilities(request, call);
         }
         if call.tool_id == "capability.describe" {
-            self.capability_discovery_events
-                .lock()
-                .expect("evaluation capability discovery receipt poisoned")
-                .push(call.tool_id.clone());
             return capability_describe_result(
                 &self.complete_capability_catalog(),
                 &call.input,
@@ -5202,14 +5203,9 @@ fn conversation_behavior_runtime_passed(
                 && succeeded_any(&["source_catalog.inspect", "source_runtime.inspect"])
         }
         ConversationBehavior::CapabilityDiscovery => {
-            capability_discovery_events
-                .iter()
-                .any(|tool_id| tool_id == "capability.search")
-                && succeeded_any(&[
-                    "source_runtime.inspect",
-                    "source_runtime.overview",
-                    "mcp.cerebro.sources.health",
-                ])
+            capability_discovery_events.windows(2).any(|events| {
+                events[0] == "capability.overview" && events[1] == "capability.describe"
+            }) && succeeded("mcp.cerebro.sources.health")
         }
         ConversationBehavior::ReasoningFailureRecovery => {
             succeeded("mcp.cerebro.findings.search")
@@ -7556,6 +7552,44 @@ mod tests {
                 "critique is not reached in this regression".into(),
             ))
         }
+    }
+
+    #[test]
+    fn capability_discovery_requires_overview_before_exact_description_and_execution() {
+        let scenario = ConversationLabScenario {
+            scenario_ref: "synthetic-capability-discovery".into(),
+            fixture_profile: ConversationFixtureProfile::CapabilityDiscovery,
+            behavior: ConversationBehavior::CapabilityDiscovery,
+            mission: "Use one bound provider capability.".into(),
+            operator_brief: "Select the exact provider tool.".into(),
+            initial_message: "Check source health.".into(),
+            seed_history: Vec::new(),
+            operator_turns: Vec::new(),
+        };
+        let observations = vec![EvaluationObservationReceipt {
+            observation_ref: "observation://capability-discovery/provider".into(),
+            source_occurrence_ref: "source-occurrence://capability-discovery/provider".into(),
+            observed_at: "2026-08-28T00:00:00Z".into(),
+            tool_id: "mcp.cerebro.sources.health".into(),
+            subject_ref: None,
+            input_digest: format!("sha256:{}", "a".repeat(64)),
+            summary: "The selected provider capability succeeded.".into(),
+            data: json!({"state": "available"}),
+            state: ToolResultState::Succeeded,
+            complete: true,
+            blocker: None,
+        }];
+
+        assert!(conversation_behavior_runtime_passed(
+            &scenario,
+            &observations,
+            &["capability.overview".into(), "capability.describe".into()],
+        ));
+        assert!(!conversation_behavior_runtime_passed(
+            &scenario,
+            &observations,
+            &["capability.describe".into()],
+        ));
     }
 
     #[test]
