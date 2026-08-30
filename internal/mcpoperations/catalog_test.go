@@ -50,8 +50,8 @@ func TestAssessmentExecutionToolsRequireReadAndWriteScopes(t *testing.T) {
 
 func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 	tasks := TaskTools()
-	if len(tasks) != 10 {
-		t.Fatalf("task tools = %d, want 10", len(tasks))
+	if len(tasks) != 8 {
+		t.Fatalf("task tools = %d, want 8", len(tasks))
 	}
 	for _, operation := range tasks {
 		if operation.Name == "cerebro.action.execute" || operation.Behavior == "execute" {
@@ -59,8 +59,6 @@ func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 		}
 	}
 	for _, name := range []string{
-		"cerebro.health",
-		"cerebro.version",
 		"cerebro.findings.search",
 		"cerebro.assets.search",
 		"cerebro.graph.reason",
@@ -72,6 +70,24 @@ func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 	} {
 		if !IsTaskTool(name) {
 			t.Fatalf("task profile missing %s", name)
+		}
+	}
+}
+
+func TestRuntimeToolsRequireAnExpertOrFullProfile(t *testing.T) {
+	for _, name := range []string{"cerebro.health", "cerebro.version"} {
+		operation, ok := Lookup(name)
+		if !ok || operation.Classification != ClassificationExpert {
+			t.Fatalf("Lookup(%q) = %#v, %t; want expert operation", name, operation, ok)
+		}
+		if IsTaskTool(name) || EnabledForToolsets(name, Toolsets{"task": true}) {
+			t.Fatalf("task profile unexpectedly enables %q", name)
+		}
+		if !EnabledForToolsets(name, Toolsets{"expert": true}) {
+			t.Fatalf("expert profile does not enable %q", name)
+		}
+		if !EnabledForToolsets(name, Toolsets{"full": true}) {
+			t.Fatalf("full profile does not enable %q", name)
 		}
 	}
 }

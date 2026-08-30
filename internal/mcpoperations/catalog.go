@@ -41,8 +41,8 @@ var operationRegistry = buildOperationRegistry()
 
 func buildOperationRegistry() map[string]Operation {
 	operations := []Operation{
-		taskRead("cerebro.health", "runtime", "service health"),
-		taskRead("cerebro.version", "runtime", "build and API version"),
+		expertRead("cerebro.health", "runtime", "service health"),
+		expertRead("cerebro.version", "runtime", "build and API version"),
 		expertRead("cerebro.sources.list", "sources", "source catalog"),
 		expertRead("cerebro.connectors.list", "connectors", "connector certification list"),
 		expertRead("cerebro.sources.check", "sources", "live source check"),

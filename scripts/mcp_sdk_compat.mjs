@@ -29,6 +29,7 @@ const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
   requestInit: {
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Cerebro-MCP-Toolsets": "full",
     },
   },
 });

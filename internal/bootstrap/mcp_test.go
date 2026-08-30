@@ -846,6 +846,7 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+		req.Header.Set("X-Cerebro-MCP-Toolsets", "expert")
 		req.Header.Set("X-Request-ID", "req-mcp-123")
 		resp, err := server.Client().Do(req)
 		if err != nil {

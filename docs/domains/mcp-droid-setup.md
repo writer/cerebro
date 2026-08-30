@@ -22,13 +22,11 @@ Do not advertise or emulate a stateful SSE session on this route. Native Droid u
 
 ## Default tool surface
 
-Requests start with ten task-level tools. Clients can also request the same
+Requests start with eight task-level tools. Clients can also request the same
 surface explicitly with `X-Cerebro-MCP-Toolsets: task`:
 
 | Tool | Result |
 | --- | --- |
-| `cerebro.health` | Service readiness |
-| `cerebro.version` | Running build identity |
 | `cerebro.findings.search` | Findings that match the requested risk or scope |
 | `cerebro.assets.search` | Assets that match the requested identity, type, runtime, or tenant |
 | `cerebro.graph.reason` | Answer grounded in tenant-scoped graph evidence |
@@ -54,6 +52,10 @@ Low-level domain tools remain available through explicit profiles. Use
 `graph`, `risk`, `findings`, or `assessments` for narrower access, or
 `X-Cerebro-MCP-Toolsets: full` for the previous complete tool list. New clients
 should use the default surface instead of `full`.
+
+`cerebro.health` and `cerebro.version` are runtime expert tools. Request
+`expert` or `full` when a client needs service readiness or running-build
+identity; both profiles retain the existing tool names and handlers.
 
 ## Hillclimb the task tools
 
