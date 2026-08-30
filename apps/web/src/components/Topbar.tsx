@@ -32,6 +32,9 @@ const subscribeReadSignatures = (callback: () => void) => {
 };
 
 const getReadSignaturesServerSnapshot = () => "[]";
+const subscribeHydration = () => () => undefined;
+const getHydrationSnapshot = () => true;
+const getHydrationServerSnapshot = () => false;
 
 const persistReadSignatures = (storageKey: string, signatures: string[]) => {
   window.localStorage.setItem(storageKey, JSON.stringify(signatures));
@@ -45,6 +48,11 @@ type ShareStatus = "idle" | "ready" | "copied" | "failed";
 
 export default function Topbar() {
   const topbarRef = useRef<HTMLElement>(null);
+  const identityHydrated = useSyncExternalStore(
+    subscribeHydration,
+    getHydrationSnapshot,
+    getHydrationServerSnapshot,
+  );
   const { apiKey, setApiKey } = useApiKey();
   const { openCommandPalette } = useCommandPalette();
   const { actor, error: userError, loading: userLoading, user } = useCurrentUser();
@@ -75,7 +83,11 @@ export default function Topbar() {
   const clientKeyEnabled = config?.forwardRequestAuth ?? false;
   const canUseClientKey = clientKeyEnabled || !serverAuthConfigured;
   const connected = apiKey || serverAuthConfigured;
-  const identity = identityPosture({ error: userError, loading: userLoading, user });
+  const identity = identityPosture({
+    error: identityHydrated ? userError : null,
+    loading: !identityHydrated || userLoading,
+    user: identityHydrated ? user : null,
+  });
   const effectivePermissions = effectiveAuthorizationPermissionsForUser(user);
   const recognizedRoles = authorizationRoleLabelsForUser(user);
   const authLabel = serverAuthConfigured ? "Server auth" : apiKey ? "API key" : "No API key";
