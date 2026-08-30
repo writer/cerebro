@@ -1,5 +1,20 @@
+//! Pure matching for already tenant-scoped platform events.
+//!
+//! Stream selection and tenant authorization happen outside this module. This
+//! predicate evaluates only the dimensions present in a subscription filter and
+//! does not advance or persist durable cursor state.
+
 use cerebro_platform_sdk::{PlatformEvent, SubscriptionEventFilter};
 
+/// Returns whether an event satisfies every constrained filter dimension.
+///
+/// Values within a dimension are alternatives, while dimensions combine with
+/// logical AND. An empty dimension is a wildcard. If a dimension is constrained
+/// but the event omits the corresponding optional value, matching fails closed.
+///
+/// The predicate intentionally does not compare tenant IDs because the filter
+/// carries no tenant field; callers must select and authorize the tenant-scoped
+/// stream identified by the enclosing subscription before invoking it.
 pub fn event_matches(filter: &SubscriptionEventFilter, event: &PlatformEvent) -> bool {
     (filter.event_kinds.is_empty() || filter.event_kinds.contains(&event.kind))
         && (filter.entity_kinds.is_empty()
