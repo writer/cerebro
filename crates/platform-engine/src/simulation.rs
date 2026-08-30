@@ -1,3 +1,9 @@
+//! Deterministic in-memory projection of bounded graph-topology changes.
+//!
+//! The engine mutates a clone of caller-supplied topology and returns a receipt;
+//! it never writes durable graph state. Topology loading, base-revision binding,
+//! authorization, and assertion evaluation remain outside this module.
+
 use std::collections::BTreeSet;
 
 use cerebro_platform_sdk::{
@@ -8,20 +14,53 @@ use serde::Serialize;
 
 use crate::canonical;
 
+/// Canonically ordered directed relationship in a simulation topology.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct SimulationRelationship {
+    /// Source entity identity.
     pub from_entity_id: EntityId,
+    /// Directed relationship type.
     pub relation: RelationKind,
+    /// Destination entity identity.
     pub to_entity_id: EntityId,
 }
 
+/// Fully materialized tenant topology used as simulation input.
+///
+/// Ordered sets make membership unique and receipt serialization deterministic.
+/// This structure carries no graph revision, so the caller must prove that it
+/// represents [`SimulationRequest::base_revision`] before invoking the engine.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SimulationTopology {
+    /// Tenant asserted to own every entity and relationship.
     pub tenant_id: TenantId,
+    /// Unique entity identities present in the projection.
     pub entities: BTreeSet<EntityId>,
+    /// Unique directed relationships present in the projection.
     pub relationships: BTreeSet<SimulationRelationship>,
 }
 
+/// Applies a request atomically to an in-memory topology clone.
+///
+/// Changes run in request order. Removing an entity also removes every incident
+/// relationship and counts both endpoints as affected; relationship changes
+/// count their two endpoints. The hard affected-entity ceiling is checked after
+/// each change, and exceeding it returns an error rather than a truncated result.
+///
+/// `assertion_results` are included as supplied. This function does not verify
+/// that they are unique, correspond to `request.assertions`, or were evaluated
+/// from the projected topology; the assertion-evaluation boundary owns that
+/// binding. A successful digest covers the complete request, sorted affected
+/// entities, ordered assertion results, and final projected topology.
+///
+/// # Errors
+///
+/// Returns request validation errors, [`SdkError::Invalid`] for a topology from
+/// another tenant, [`SdkError::NotFound`] when a removal target or relationship
+/// endpoint is absent, [`SdkError::Conflict`] when an added relationship already
+/// exists, [`SdkError::OutOfRange`] when the affected-entity ceiling is exceeded
+/// or cannot be represented, or [`SdkError::Backend`] if canonical serialization
+/// fails. The caller-owned topology is unchanged on every error.
 pub fn simulate_topology(
     request: &SimulationRequest,
     topology: &SimulationTopology,
@@ -35,6 +74,9 @@ pub fn simulate_topology(
     let mut affected = BTreeSet::new();
     let max_affected = usize::try_from(request.max_affected_entities)
         .map_err(|_| SdkError::OutOfRange("simulation affected entity limit"))?;
+
+    // Apply sequentially to the private clone so dependent changes see earlier
+    // projected state without exposing a partial result when a later step fails.
     for change in &request.changes {
         match change {
             ProposedChange::RemoveEntity { entity_id } => {
@@ -42,6 +84,9 @@ pub fn simulate_topology(
                     return Err(SdkError::NotFound(format!("simulation entity {entity_id}")));
                 }
                 affected.insert(entity_id.clone());
+
+                // Removing incident edges affects their surviving peer entities
+                // as well as the removed entity itself.
                 projected.relationships.retain(|relationship| {
                     let retained = relationship.from_entity_id != *entity_id
                         && relationship.to_entity_id != *entity_id;
@@ -97,6 +142,9 @@ pub fn simulate_topology(
         }
     }
     let affected_entities = affected.into_iter().collect::<Vec<_>>();
+
+    // BTree-backed topology and affected identities are already canonical; the
+    // request and assertion vectors deliberately retain their semantic order.
     let result_digest =
         canonical::digest(&(request, &affected_entities, &assertion_results, &projected))?;
     Ok(SimulationResult {
