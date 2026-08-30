@@ -133,12 +133,23 @@ pub struct GraphWriteReceipt {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Private current-state material for one tenant projection.
+///
+/// The assertion map is authoritative for the three derived identity indexes;
+/// those indexes are rebuilt together whenever assertions change. Ordered maps
+/// make read order and conflict discovery deterministic.
 struct TenantGraph {
+    /// Saturating in-memory accepted-write revision.
     revision: u64,
+    /// Current entities keyed by stable identity.
     entities: BTreeMap<EntityId, Entity>,
+    /// Current assertions keyed by deterministic assertion identity.
     assertions: BTreeMap<AssertionId, GraphAssertion>,
+    /// Confirmed provider identity to canonical identity mapping.
     confirmed_identity_bindings: BTreeMap<EntityId, EntityId>,
+    /// Confirmed normalized claim to canonical identity mapping.
     confirmed_identity_claims: BTreeMap<(IdentityClaimKind, String), EntityId>,
+    /// Canonical identities backed by authoritative employee-ID evidence.
     anchored_canonical_identities: BTreeSet<EntityId>,
 }
 
@@ -158,8 +169,26 @@ impl OrganizationalGraph {
         Self::default()
     }
 
-    /// Applies a validated delta atomically. The candidate tenant graph is
-    /// fully checked before current state is mutated.
+    /// Applies a sealed-model delta atomically to one tenant's current projection.
+    ///
+    /// Entity-only deltas validate stable identity and update entities directly.
+    /// Deltas containing assertion upserts or retractions build a complete
+    /// candidate assertion map, validate endpoint existence and retraction
+    /// ownership, rebuild every identity index, and only then replace current
+    /// assertion state. Entities are upserted but never removed by this method.
+    ///
+    /// Missing retraction targets are idempotent no-ops and are not counted in the
+    /// receipt. Counts reflect submitted upserts and actual removals, not semantic
+    /// changes from prior values. Every accepted delta advances the in-memory
+    /// revision with saturating arithmetic; revision overflow remains pinned at
+    /// `u64::MAX` rather than returning an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphError::EntityConflict`] for stable-identity drift,
+    /// [`GraphError::MissingEntity`] for an assertion with an absent endpoint,
+    /// [`GraphError::RetractionSourceMismatch`] for a cross-runtime retraction,
+    /// or an identity-index conflict. No tenant state is mutated on error.
     pub fn apply(&mut self, delta: GraphDelta) -> Result<GraphWriteReceipt, GraphError> {
         let (collection, entities, assertions, retractions, delta_digest) = delta.into_components();
         let tenant_id = collection.tenant_id().clone();
@@ -176,6 +205,8 @@ impl OrganizationalGraph {
         }
 
         if assertions.is_empty() && retractions.is_empty() {
+            // The identity indexes depend only on assertions, so an entity-only
+            // delta can commit without rebuilding them.
             let graph = self.tenants.entry(tenant_id.clone()).or_default();
             for entity in entities {
                 graph.entities.insert(entity.id().clone(), entity);
@@ -211,6 +242,8 @@ impl OrganizationalGraph {
                 candidate_assertions.remove(retraction.assertion_id());
                 retracted += 1;
             }
+            // Missing targets are replay-safe no-ops; a receipt counts only
+            // assertions that were present and actually removed.
         }
 
         // Rebuild every identity index from the complete candidate assertion
@@ -230,6 +263,9 @@ impl OrganizationalGraph {
         graph.confirmed_identity_bindings = identity_candidate.confirmed_identity_bindings;
         graph.confirmed_identity_claims = identity_candidate.confirmed_identity_claims;
         graph.anchored_canonical_identities = identity_candidate.anchored_canonical_identities;
+
+        // Saturation keeps this in-memory projection total, but persistence must
+        // treat a pinned maximum revision as an operational exhaustion state.
         graph.revision = graph.revision.saturating_add(1);
         let receipt = GraphWriteReceipt {
             tenant_id: tenant_id.clone(),
@@ -242,11 +278,14 @@ impl OrganizationalGraph {
         Ok(receipt)
     }
 
+    /// Requires both assertion endpoints in current or same-delta entity state.
     fn validate_assertion_entities(
         current: Option<&TenantGraph>,
         incoming_entity_ids: &BTreeSet<&EntityId>,
         assertion: &GraphAssertion,
     ) -> Result<(), GraphError> {
+        // Both relationship and identity-binding assertions have exactly two
+        // entity endpoints, allowing one closed existence rule for both families.
         let endpoints: [&EntityId; 2] = match assertion {
             GraphAssertion::Relationship(value) => [value.from(), value.to()],
             GraphAssertion::IdentityBinding(value) => {
@@ -265,6 +304,18 @@ impl OrganizationalGraph {
 }
 
 impl TenantGraph {
+    /// Reconstructs all confirmed identity indexes from candidate assertions.
+    ///
+    /// Processing occurs in three passes. First, every confirmed provider
+    /// identity is bound to at most one canonical identity and authoritative
+    /// employee-ID bindings establish anchors and any supplied claims. Second,
+    /// verified-email claims require an existing authoritative anchor while human
+    /// decisions may contribute an explicit claim. Third, existing-claim matches
+    /// must resolve to a claim established by an earlier pass for the same canonical identity.
+    ///
+    /// Agent proposals do not establish anchors or claims. Proposed/rejected
+    /// bindings are excluded entirely. Indexes are cleared before rebuilding, so
+    /// callers must use this method only on a private candidate graph.
     fn rebuild_identity_indexes(&mut self) -> Result<(), GraphError> {
         self.confirmed_identity_bindings.clear();
         self.confirmed_identity_claims.clear();
@@ -283,6 +334,8 @@ impl TenantGraph {
             })
             .collect::<Vec<_>>();
 
+        // Provider identities are unique across all confirmed methods. The
+        // authoritative method also seeds canonical anchors before email checks.
         for binding in &confirmed {
             if let Some(existing) = self
                 .confirmed_identity_bindings
@@ -306,6 +359,8 @@ impl TenantGraph {
             }
         }
 
+        // Verified email may strengthen only an already anchored canonical
+        // identity; a human decision may introduce an explicit reviewed claim.
         for binding in &confirmed {
             match binding.method() {
                 IdentityResolutionMethod::VerifiedEmail => {
@@ -330,6 +385,7 @@ impl TenantGraph {
             }
         }
 
+        // Existing-claim matching consumes, but never creates, claim authority.
         for binding in &confirmed {
             if binding.method() != IdentityResolutionMethod::ExistingClaimMatch {
                 continue;
@@ -353,6 +409,10 @@ impl TenantGraph {
         Ok(())
     }
 
+    /// Adds an optional normalized claim with one-canonical-identity semantics.
+    ///
+    /// Repeating the same claim-to-identity binding is idempotent. Reusing the
+    /// claim for another canonical identity fails the entire candidate rebuild.
     fn bind_claim(
         &mut self,
         binding: &cerebro_organizational_model::IdentityBindingAssertion,
