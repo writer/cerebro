@@ -28,20 +28,24 @@ use cerebro_agent_runtime::{
     ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
-        ALL_STABLE_EXPLANATION_IDS, AgentSession, AttentionReview, BehavioralReview, ClaimContent,
-        ClaimReview, ClaimReviewTurn, ClaimReviewVerdict, DeliveryDisposition, EvidenceAssertion,
-        EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES, MessageReview,
+        ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimContent, DeliveryDisposition,
+        EvidenceAssertion, EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
         MissionState, ProactiveFollowupOffer, ResearchPlan, SemanticEvidenceAtomization,
         SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
         SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelRejection,
-        SessionModelRejectionClass, SessionModelTurn, SessionPresentationTurn, SessionStatus,
-        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft,
-        grounded_draft_digest, message_digest, run_session_turn_recorded,
-        run_session_turn_recorded_with_followup_offers, semantic_evidence_atoms,
-        validate_followup_acceptance,
+        SessionModelRejectionClass, SessionModelTurn, SessionStatus, SessionStore, SessionTools,
+        SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger, apply_session_events,
+        evidence_atoms_from_json, followup_acceptance_draft, message_digest,
+        run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
+        semantic_evidence_atoms, validate_followup_acceptance,
     },
     validate_agent_turn_request,
+};
+
+#[cfg(test)]
+use cerebro_agent_runtime::session::{
+    AttentionReview, BehavioralReview, ClaimReview, ClaimReviewTurn, ClaimReviewVerdict,
+    MessageReview, grounded_draft_digest,
 };
 use cerebro_organizational_model::TenantId;
 use cerebro_organizational_store::{Neo4jProjector, PostgresLedger, SourceRuntimeObservation};
@@ -64,8 +68,8 @@ use super::slack_mrkdwn::render_slack_mrkdwn;
 mod prompts;
 
 use prompts::{
-    claim_review_instructions, critic_instructions, model_instructions, presentation_instructions,
-    route_instructions, session_instructions, session_presentation_instructions,
+    critic_instructions, model_instructions, presentation_instructions, route_instructions,
+    session_instructions,
 };
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
@@ -80,11 +84,9 @@ const ROUTE_DECISION_TOOL: &str = "submit_route_decision";
 const OPERATING_DECISION_TOOL: &str = "submit_operating_decision";
 const PRESENTATION_DECISION_TOOL: &str = "submit_slack_presentation";
 const CRITIQUE_DECISION_TOOL: &str = "submit_critique_decision";
-const SESSION_PLAN_AND_READ_TOOL: &str = "start_session_research";
-const SESSION_READ_TOOL: &str = "continue_session_research";
-const SESSION_FINISH_TOOL: &str = "finish_session_research";
-const SESSION_PRESENTATION_TOOL: &str = "submit_session_presentation";
-const CLAIM_REVIEW_TOOL: &str = "submit_claim_reviews";
+const SESSION_START_TOOL: &str = "start_agent_work";
+const SESSION_CONTINUE_TOOL: &str = "continue_agent_work";
+const SESSION_FINISH_TOOL: &str = "finish_agent_turn";
 const SESSION_MODEL_ATTEMPTS: usize = 2;
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
@@ -100,7 +102,6 @@ const OPERATOR_TURN_LEASE_SECONDS: i64 = 1_000;
 const MAX_ACCEPTANCE_CLOCK_DELAY_SECONDS: i64 = 900;
 const SLACK_ROUTE_MAX_TOKENS: i32 = 768;
 const SLACK_SESSION_DECISION_MAX_TOKENS: i32 = 4_096;
-const SLACK_CLAIM_REVIEW_MAX_TOKENS: i32 = 1_024;
 
 #[derive(Clone)]
 struct StructuredToolContract {
@@ -1966,32 +1967,6 @@ impl ConfiguredModel {
         }
     }
 
-    async fn complete_session_structured(
-        &self,
-        instructions: &str,
-        payload: Value,
-        max_tokens: i32,
-        decision_tool: &str,
-        decision_schema: Value,
-    ) -> Result<Value, AgentRuntimeError> {
-        retry_session_model_call(|| async {
-            match self {
-                Self::AmazonBedrock(model) => {
-                    model
-                        .complete_structured(
-                            instructions,
-                            payload.clone(),
-                            max_tokens,
-                            decision_tool,
-                            decision_schema.clone(),
-                        )
-                        .await
-                }
-            }
-        })
-        .await
-    }
-
     async fn complete_session_choice(
         &self,
         instructions: &str,
@@ -2057,84 +2032,16 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
             "turn_request": cerebro_agent_runtime::AGENT_TURN_REQUEST_V1,
             "turn_result": cerebro_agent_runtime::AGENT_TURN_RESULT_V1,
         },
-        "stages": [
-            {
-                "decision_schema": route_decision_schema(),
-                "decision_tool": ROUTE_DECISION_TOOL,
-                "instructions": route_instructions(),
-                "max_tokens": SLACK_ROUTE_MAX_TOKENS,
-                "stage": "route",
+        "agent_loop": {
+            "decision_contracts": {
+                "continue": structured_choice_contract_value(&agent_loop_contracts(false)),
+                "initial": structured_choice_contract_value(&agent_loop_contracts(true)),
             },
-            {
-                "decision_schema": model_decision_schema(),
-                "decision_tool": OPERATING_DECISION_TOOL,
-                "instructions": model_instructions(),
-                "max_tokens": DECISION_MAX_TOKENS,
-                "stage": "operate",
-            },
-            {
-                "decision_schema": presentation_decision_schema(),
-                "decision_tool": PRESENTATION_DECISION_TOOL,
-                "instructions": presentation_instructions(),
-                "max_tokens": PRESENTATION_MAX_TOKENS,
-                "stage": "present",
-            },
-            {
-                "decision_schema": critique_decision_schema(),
-                "decision_tool": CRITIQUE_DECISION_TOOL,
-                "instructions": critic_instructions(),
-                "max_tokens": CRITIC_MAX_TOKENS,
-                "stage": "critique",
-            },
-            {
-                "decision_contracts": {
-                    "continue": structured_choice_contract_value(&session_research_contracts(false)),
-                    "initial": structured_choice_contract_value(&session_research_contracts(true)),
-                },
-                "instructions": session_instructions(),
-                "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
-                "stage": "session_research",
-            },
-            {
-                "decision_schema_template": session_presentation_schema(1),
-                "runtime_cardinality": "exact frozen claim count",
-                "decision_tool": SESSION_PRESENTATION_TOOL,
-                "instructions": session_presentation_instructions(),
-                "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
-                "stage": "session_presentation",
-            },
-            {
-                "decision_schema_template": claim_review_schema(1),
-                "runtime_cardinality": "exact frozen claim count",
-                "decision_tool": CLAIM_REVIEW_TOOL,
-                "instructions": claim_review_instructions(),
-                "max_tokens": SLACK_CLAIM_REVIEW_MAX_TOKENS,
-                "stage": "claim_review",
-            },
-        ],
+            "instructions": session_instructions(),
+            "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
+        },
     });
     sha256_digest(&public_config.to_string())
-}
-
-impl ConfiguredModel {
-    async fn present_session_turn(
-        &self,
-        turn: &SessionPresentationTurn,
-    ) -> Result<GroundedDraft, AgentRuntimeError> {
-        let schema = session_presentation_schema(turn.research_draft.claims.len());
-        let contract_digest = sha256_digest(&schema.to_string());
-        let value = self
-            .complete_session_structured(
-                session_presentation_instructions(),
-                session_presentation_payload(turn),
-                SLACK_SESSION_DECISION_MAX_TOKENS,
-                SESSION_PRESENTATION_TOOL,
-                schema,
-            )
-            .await
-            .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
-        apply_session_presentation_value(&turn.research_draft, value, &contract_digest)
-    }
 }
 
 #[async_trait]
@@ -2144,7 +2051,7 @@ impl SessionAgentModel for ConfiguredModel {
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError> {
         let initial = turn.plan.is_none();
-        let contracts = session_research_contracts(initial);
+        let contracts = agent_loop_contracts(initial);
         let contract_digest = structured_choice_contract_digest(&contracts);
         let selection = self
             .complete_session_choice(
@@ -2155,33 +2062,7 @@ impl SessionAgentModel for ConfiguredModel {
             )
             .await
             .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
-        parse_session_research_choice(selection, &turn)
-    }
-
-    async fn present(
-        &self,
-        turn: SessionPresentationTurn,
-    ) -> Result<GroundedDraft, AgentRuntimeError> {
-        self.present_session_turn(&turn).await
-    }
-
-    async fn review_message(
-        &self,
-        turn: ClaimReviewTurn,
-    ) -> Result<MessageReview, AgentRuntimeError> {
-        let schema = claim_review_schema(turn.draft.claims.len());
-        let contract_digest = sha256_digest(&schema.to_string());
-        let value = self
-            .complete_session_structured(
-                claim_review_instructions(),
-                claim_review_payload(&turn),
-                SLACK_CLAIM_REVIEW_MAX_TOKENS,
-                CLAIM_REVIEW_TOOL,
-                schema,
-            )
-            .await
-            .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
-        apply_claim_review_value(&turn, value, &contract_digest)
+        parse_agent_loop_choice(selection, &turn)
     }
 }
 
@@ -3208,6 +3089,7 @@ fn session_decision_schema() -> Value {
     })
 }
 
+#[cfg(test)]
 fn session_presentation_schema(claim_count: usize) -> Value {
     json!({
         "type": "object",
@@ -3249,7 +3131,7 @@ fn nonempty_session_calls(complete: &Value) -> Value {
     calls
 }
 
-fn research_draft_schema(complete: &Value) -> Value {
+fn agent_final_draft_schema(complete: &Value) -> Value {
     let mut draft = non_null_session_branch(complete, "draft");
     if let Some(properties) = draft["properties"].as_object_mut() {
         properties.remove("message");
@@ -3261,12 +3143,12 @@ fn research_draft_schema(complete: &Value) -> Value {
     draft
 }
 
-fn session_research_contracts(initial: bool) -> Vec<StructuredToolContract> {
+fn agent_loop_contracts(initial: bool) -> Vec<StructuredToolContract> {
     let complete = session_decision_schema();
-    let draft = research_draft_schema(&complete);
+    let draft = agent_final_draft_schema(&complete);
     let finish = StructuredToolContract {
         name: SESSION_FINISH_TOOL,
-        description: "Finish research with the complete typed research artifact.",
+        description: "Return the complete final Slack answer from the current agent loop.",
         schema: if initial {
             json!({
                 "type": "object",
@@ -3289,8 +3171,8 @@ fn session_research_contracts(initial: bool) -> Vec<StructuredToolContract> {
     let calls = nonempty_session_calls(&complete);
     let research = if initial {
         StructuredToolContract {
-            name: SESSION_PLAN_AND_READ_TOOL,
-            description: "Establish one typed operating plan and issue its first useful reads.",
+            name: SESSION_START_TOOL,
+            description: "Start one bounded plan and issue its first useful tool calls.",
             schema: json!({
                 "type": "object",
                 "additionalProperties": false,
@@ -3304,8 +3186,8 @@ fn session_research_contracts(initial: bool) -> Vec<StructuredToolContract> {
         }
     } else {
         StructuredToolContract {
-            name: SESSION_READ_TOOL,
-            description: "Continue the active research plan with the next useful reads.",
+            name: SESSION_CONTINUE_TOOL,
+            description: "Continue the active agent loop with the next useful tool calls.",
             schema: json!({
                 "type": "object",
                 "additionalProperties": false,
@@ -3317,6 +3199,7 @@ fn session_research_contracts(initial: bool) -> Vec<StructuredToolContract> {
     vec![research, finish]
 }
 
+#[cfg(test)]
 fn claim_review_schema(claim_count: usize) -> Value {
     json!({
         "type": "object",
@@ -3480,7 +3363,7 @@ enum SessionResearchDecision {
     Continue(Box<SessionModelDecision>),
 }
 
-fn parse_session_research_choice(
+fn parse_agent_loop_choice(
     selection: StructuredToolSelection,
     turn: &SessionModelTurn,
 ) -> Result<SessionModelDecision, AgentRuntimeError> {
@@ -3520,7 +3403,7 @@ fn parse_session_research_choice(
     let schema_rejection =
         || model_stage_rejection(SessionModelRejectionClass::SchemaDecode, &contract_digest);
     match (initial, name.as_str()) {
-        (true, SESSION_PLAN_AND_READ_TOOL) => {
+        (true, SESSION_START_TOOL) => {
             let mut selected: StartResearch =
                 serde_json::from_value(input).map_err(|_| schema_rejection())?;
             if selected.calls.is_empty() {
@@ -3538,7 +3421,7 @@ fn parse_session_research_choice(
                 calls: selected.calls,
             })
         }
-        (false, SESSION_READ_TOOL) => {
+        (false, SESSION_CONTINUE_TOOL) => {
             let selected: ContinueResearch =
                 serde_json::from_value(input).map_err(|_| schema_rejection())?;
             if selected.calls.is_empty() {
@@ -3726,6 +3609,7 @@ fn parse_session_research_decision_value(
     }
 }
 
+#[cfg(test)]
 fn apply_session_presentation_value(
     research_draft: &GroundedDraft,
     value: Value,
@@ -3759,6 +3643,7 @@ fn apply_session_presentation_value(
     Ok(draft)
 }
 
+#[cfg(test)]
 fn apply_claim_review_value(
     turn: &ClaimReviewTurn,
     value: Value,
@@ -3961,19 +3846,6 @@ fn session_turn_payload(turn: &SessionModelTurn) -> Value {
     })
 }
 
-fn session_presentation_payload(turn: &SessionPresentationTurn) -> Value {
-    let (current_operator_message, _) =
-        split_session_messages(&turn.research.session.messages, &turn.research.trigger);
-    json!({
-        "current_operator_message": current_operator_message.map(current_operator_message_value),
-        "research_draft": &turn.research_draft,
-        "prior_claim_texts": turn.prior_presentation.as_ref().map(|draft| {
-            draft.claims.iter().map(|claim| claim.text.as_str()).collect::<Vec<_>>()
-        }),
-        "review_feedback": &turn.review_feedback,
-    })
-}
-
 fn split_session_messages<'a>(
     messages: &'a [SessionMessage],
     trigger: &SessionTurnTrigger,
@@ -4068,19 +3940,6 @@ fn tagged_context_value<T: Serialize>(item: &T, context_kind: &str) -> Value {
         }),
     }
 }
-fn claim_review_payload(turn: &ClaimReviewTurn) -> Value {
-    let (current_operator_message, _) =
-        split_session_messages(&turn.session.messages, &turn.trigger);
-    json!({
-        "current_operator_message": current_operator_message.map(current_operator_message_value),
-        "draft": &turn.draft,
-        "observations": &turn.observations,
-        "prior_commitment_checkpoint": &turn.prior_commitment_checkpoint,
-        "wake_assessment": &turn.wake_assessment,
-        "turn_trigger": &turn.trigger,
-    })
-}
-
 fn presentation_turn_payload(turn: &PresentationTurn) -> Value {
     json!({
         "completed_answer": &turn.draft,
@@ -7960,8 +7819,6 @@ mod tests {
     fn live_model_contract_is_compact_and_rust_keeps_structural_authority() {
         assert_eq!(SLACK_ROUTE_MAX_TOKENS, 768);
         assert_eq!(SLACK_SESSION_DECISION_MAX_TOKENS, 4_096);
-        assert_eq!(SLACK_CLAIM_REVIEW_MAX_TOKENS, 1_024);
-
         let complete_schema = session_decision_schema();
         let decision_schema = complete_schema.to_string();
         for explanation_id in ALL_STABLE_EXPLANATION_IDS {
@@ -7971,21 +7828,21 @@ mod tests {
         assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
 
-        let initial_contracts = session_research_contracts(true);
-        let continue_contracts = session_research_contracts(false);
+        let initial_contracts = agent_loop_contracts(true);
+        let continue_contracts = agent_loop_contracts(false);
         assert_eq!(
             initial_contracts
                 .iter()
                 .map(|contract| contract.name)
                 .collect::<Vec<_>>(),
-            vec![SESSION_PLAN_AND_READ_TOOL, SESSION_FINISH_TOOL]
+            vec![SESSION_START_TOOL, SESSION_FINISH_TOOL]
         );
         assert_eq!(
             continue_contracts
                 .iter()
                 .map(|contract| contract.name)
                 .collect::<Vec<_>>(),
-            vec![SESSION_READ_TOOL, SESSION_FINISH_TOOL]
+            vec![SESSION_CONTINUE_TOOL, SESSION_FINISH_TOOL]
         );
         let initial_read = &initial_contracts[0].schema;
         let initial_finish = &initial_contracts[1].schema;
@@ -8016,33 +7873,7 @@ mod tests {
         );
         assert_eq!(property_names(continue_read), vec!["calls"]);
         assert_eq!(property_names(continue_finish), vec!["draft"]);
-        let presentation_schema = session_presentation_schema(2);
-        assert_eq!(property_names(&presentation_schema), vec!["claim_texts"]);
-        assert_eq!(
-            presentation_schema["properties"]["claim_texts"]["minItems"],
-            2
-        );
-        assert_eq!(
-            presentation_schema["properties"]["claim_texts"]["maxItems"],
-            2
-        );
-        let review_schema = claim_review_schema(2);
-        assert!(review_schema["properties"].get("draft_digest").is_none());
-        assert!(review_schema["properties"].get("message_digest").is_none());
-        assert!(
-            review_schema["properties"]["claim_reviews"]["items"]["properties"]
-                .get("claim_ref")
-                .is_none()
-        );
-        assert!(
-            review_schema["properties"]["attention"]["properties"]
-                .get("delivery")
-                .is_none()
-        );
-        assert!(!presentation_schema.to_string().contains("mission"));
-        assert!(!presentation_schema.to_string().contains("memory_updates"));
         assert!(continue_read.to_string().len() < decision_schema.len());
-        assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
             !built_in_capability_catalog()
                 .iter()
@@ -8571,7 +8402,7 @@ mod tests {
 
     #[test]
     fn bedrock_research_choice_requires_one_recognized_active_contract() {
-        let contracts = session_research_contracts(true);
+        let contracts = agent_loop_contracts(true);
         let contract_digest = structured_choice_contract_digest(&contracts);
         let turn = initial_session_model_turn("Check the current source state.");
         let input = json!({
@@ -8601,7 +8432,7 @@ mod tests {
         });
         let tool_use = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
             .tool_use_id("tool-use-research")
-            .name(SESSION_PLAN_AND_READ_TOOL)
+            .name(SESSION_START_TOOL)
             .input(json_to_document(&input).unwrap())
             .build()
             .unwrap();
@@ -8612,7 +8443,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            parse_session_research_choice(selection, &turn).unwrap(),
+            parse_agent_loop_choice(selection, &turn).unwrap(),
             SessionModelDecision::EstablishPlanAndInvoke { plan, calls }
                 if plan.lane == ExecutionLane::Investigate && calls.len() == 1
         ));
@@ -8646,10 +8477,10 @@ mod tests {
 
     #[test]
     fn initial_research_binds_redundant_plan_fields_before_runtime_admission() {
-        let contracts = session_research_contracts(true);
+        let contracts = agent_loop_contracts(true);
         let turn = initial_session_model_turn("Check the current source state.");
         let selection = StructuredToolSelection {
-            name: SESSION_PLAN_AND_READ_TOOL.into(),
+            name: SESSION_START_TOOL.into(),
             input: json!({
                 "lane": "investigate",
                 "plan": {
@@ -8680,7 +8511,7 @@ mod tests {
         };
 
         let SessionModelDecision::EstablishPlanAndInvoke { plan, calls } =
-            parse_session_research_choice(selection, &turn).unwrap()
+            parse_agent_loop_choice(selection, &turn).unwrap()
         else {
             panic!("expected the initial operating decision");
         };
@@ -8695,7 +8526,7 @@ mod tests {
 
     #[test]
     fn converse_finish_binds_mission_and_newest_message_identity_in_rust() {
-        let contracts = session_research_contracts(true);
+        let contracts = agent_loop_contracts(true);
         let turn = initial_session_model_turn("How are you feeling about the new setup?");
         let selection = StructuredToolSelection {
             name: SESSION_FINISH_TOOL.into(),
@@ -8737,7 +8568,7 @@ mod tests {
         let SessionModelDecision::ResearchComplete {
             draft,
             declared_lane,
-        } = parse_session_research_choice(selection, &turn).unwrap()
+        } = parse_agent_loop_choice(selection, &turn).unwrap()
         else {
             panic!("expected the direct conversation artifact");
         };

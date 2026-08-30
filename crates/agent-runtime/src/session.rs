@@ -975,7 +975,7 @@ pub struct GroundedClaim {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-/// Model-produced response candidate that must pass deterministic and critic review.
+/// Model-produced final answer that must pass deterministic runtime admission.
 pub struct GroundedDraft {
     /// Claimed terminal or non-terminal state of this turn.
     pub state: FinalState,
@@ -1066,15 +1066,15 @@ pub enum SessionModelDecision {
         /// Calls to validate and execute under runtime authority checks.
         calls: Vec<ToolCall>,
     },
-    /// Freeze the completed research artifact before presentation begins.
+    /// Legacy final-candidate shape accepted from older adapters and normalized inside the loop.
     ResearchComplete {
-        /// Grounded candidate whose operating state and provenance are immutable in presentation.
+        /// Grounded candidate admitted through the same final boundary as [`Self::Finish`].
         draft: GroundedDraft,
         /// Lane declared by the first research decision; later completions inherit the plan lane.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         declared_lane: Option<ExecutionLane>,
     },
-    /// Stop model iteration and submit a draft for validation and review.
+    /// Stop model iteration and submit one final answer for deterministic runtime admission.
     Finish {
         /// Candidate grounded response and next mission state.
         draft: GroundedDraft,
@@ -1089,11 +1089,11 @@ pub enum SessionModelStage {
     ResearchInitial,
     /// Research decision made with an active plan.
     ResearchContinue,
-    /// First visible rendering of a frozen research artifact.
+    /// Legacy event marker retained for replay compatibility; the current loop does not emit it.
     PresentationInitial,
-    /// Sole visible-copy revision after deterministic or independent review feedback.
+    /// Legacy event marker retained for replay compatibility; the current loop does not emit it.
     PresentationRevision,
-    /// Independent review of one exact visible candidate.
+    /// Legacy event marker retained for replay compatibility; the current loop does not emit it.
     Review,
 }
 
@@ -1109,11 +1109,11 @@ pub enum SessionModelRejectionClass {
     SchemaDecode,
     /// Rust rejected a decoded candidate against the active plan, lane, evidence, or effect state.
     RuntimeValidation,
-    /// Presentation returned a different number of visible claims than the frozen artifact.
+    /// Legacy presentation rejection retained for replay compatibility.
     FrozenClaimCardinality,
-    /// The independent review did not cover the exact frozen claim set.
+    /// Legacy review rejection retained for replay compatibility.
     ReviewBinding,
-    /// The sole revision repeated the exact rejected visible message.
+    /// Legacy revision rejection retained for replay compatibility.
     UnchangedRevision,
 }
 
@@ -1470,7 +1470,7 @@ pub struct SessionModelTurn {
 }
 
 #[derive(Clone, Debug, Serialize)]
-/// Immutable research output supplied to the presentation-only model phase.
+/// Legacy presentation input retained for adapter source compatibility.
 pub struct SessionPresentationTurn {
     /// Complete research context, including the accumulated observation ledger.
     pub research: SessionModelTurn,
@@ -1616,7 +1616,7 @@ pub enum ClaimReviewVerdict {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-/// Critic result for one [`GroundedClaim`].
+/// Legacy critic result retained for adapter source compatibility.
 pub struct ClaimReview {
     /// Claim identifier copied from the reviewed draft.
     pub claim_ref: String,
@@ -1628,7 +1628,7 @@ pub struct ClaimReview {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-/// Critic checks for response quality that deterministic provenance cannot establish.
+/// Legacy critic checks retained for adapter source compatibility.
 pub struct BehavioralReview {
     /// Whether the draft directly addresses the newest operator request.
     pub answers_newest_request: bool,
@@ -1654,7 +1654,7 @@ pub struct AttentionReview {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-/// Complete critic response bound to the exact candidate message.
+/// Legacy critic response retained for adapter source compatibility.
 pub struct MessageReview {
     /// SHA-256 digest of the complete typed draft, including every claim and provenance field.
     pub draft_digest: String,
@@ -1671,7 +1671,7 @@ pub struct MessageReview {
 }
 
 #[derive(Clone, Debug, Serialize)]
-/// Exact evidence and state supplied to the model critic.
+/// Legacy critic input retained for adapter source compatibility.
 pub struct ClaimReviewTurn {
     /// Current validated session snapshot.
     pub session: AgentSession,
@@ -1688,29 +1688,33 @@ pub struct ClaimReviewTurn {
 }
 
 #[async_trait]
-/// Model boundary for planning, tool selection, drafting, and independent critique.
+/// Model boundary for one continuous plan, tool, and final-answer loop.
 pub trait SessionAgentModel: Send + Sync {
-    /// Advances one bounded loop iteration without directly executing effects.
+    /// Selects the next bounded tool action or proposes the final answer.
     async fn advance(
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError>;
 
-    /// Rewrites visible claim copy without changing the frozen research artifact.
+    /// Legacy adapter hook retained for source compatibility; the session loop never calls it.
     async fn present(
         &self,
         _turn: SessionPresentationTurn,
     ) -> Result<GroundedDraft, AgentRuntimeError> {
         Err(AgentRuntimeError::ModelUnavailable(
-            "the presentation model is unavailable".into(),
+            "the legacy presentation hook is disabled".into(),
         ))
     }
 
-    /// Reviews an exact candidate against its declared claims and supplied evidence.
+    /// Legacy adapter hook retained for source compatibility; the session loop never calls it.
     async fn review_message(
         &self,
-        turn: ClaimReviewTurn,
-    ) -> Result<MessageReview, AgentRuntimeError>;
+        _turn: ClaimReviewTurn,
+    ) -> Result<MessageReview, AgentRuntimeError> {
+        Err(AgentRuntimeError::ModelUnavailable(
+            "the legacy review hook is disabled".into(),
+        ))
+    }
 }
 
 #[async_trait]
@@ -3010,10 +3014,6 @@ async fn run_session_turn_recorded_at(
     let mut model_stage_rejection_ordinals =
         ModelStageRejectionOrdinals::from_session(&session, &input.request_id);
     let mut coissued_plan_calls: Option<(SessionModelStage, Vec<ToolCall>)> = None;
-    let mut frozen_research_draft: Option<GroundedDraft> = None;
-    let mut pending_presentation_revision: Option<(GroundedDraft, Vec<String>)> = None;
-    let mut presentation_revision_used = false;
-    let mut review_attempted = false;
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
@@ -3022,7 +3022,7 @@ async fn run_session_turn_recorded_at(
                 RepairFallbackRuntime {
                     journal,
                     proactive_followup_offers_enabled,
-                    failure_stage: "research repair",
+                    failure_stage: "agent loop repair",
                     bound_lane,
                 },
                 &session,
@@ -3034,114 +3034,30 @@ async fn run_session_turn_recorded_at(
             )
             .await;
         }
-        let model_turn = SessionModelTurn {
-            session: session.clone(),
-            trigger: trigger.clone(),
-            assessment_at: input.assessment_at.clone(),
-            requested_lane: bound_lane.or(input.requested_lane),
-            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-            wake_assessment: build_wake_assessment(
-                &session,
-                &trigger,
-                prior_commitment_checkpoint.as_ref(),
-                &observations,
-                assessment_at,
-            ),
-            plan: plan.clone(),
-            available_tools: available_tools.clone(),
-            observations: observations.clone(),
-            repair_feedback: repair_feedback.clone(),
-        };
         let mut decision_stage = research_model_stage(plan.as_ref());
-        let decision = if let Some((prior_presentation, review_feedback)) =
-            pending_presentation_revision.take()
-        {
-            decision_stage = SessionModelStage::PresentationRevision;
-            let prior_message_digest = message_digest(&prior_presentation.message);
-            let research_draft = frozen_research_draft
-                .clone()
-                .expect("presentation revision requires a frozen research draft");
-            let draft = match model
-                .present(SessionPresentationTurn {
-                    research: model_turn.clone(),
-                    research_draft,
-                    prior_presentation: Some(prior_presentation),
-                    review_feedback,
-                })
-                .await
-            {
-                Ok(draft) => draft,
-                Err(error) => {
-                    let rejection =
-                        classify_model_stage_error(error, SessionModelStage::PresentationRevision);
-                    emit_model_stage_rejection(
-                        &session,
-                        &input,
-                        &mut events,
-                        SessionModelStage::PresentationRevision,
-                        &rejection,
-                        &mut model_stage_rejection_ordinals,
-                        journal,
-                    )
-                    .await?;
-                    let accepted_at =
-                        elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
-                    return repair_fallback_outcome(
-                        RepairFallbackRuntime {
-                            journal,
-                            proactive_followup_offers_enabled,
-                            failure_stage: "presentation revision",
-                            bound_lane,
-                        },
-                        &session,
-                        &input,
-                        plan.as_ref(),
-                        &observations,
-                        accepted_at,
-                        events,
-                    )
-                    .await;
-                }
-            };
-            if message_digest(&draft.message) == prior_message_digest {
-                let rejection = runtime_stage_rejection(
-                    SessionModelStage::PresentationRevision,
-                    SessionModelRejectionClass::UnchangedRevision,
-                );
-                emit_model_stage_rejection(
-                    &session,
-                    &input,
-                    &mut events,
-                    SessionModelStage::PresentationRevision,
-                    &rejection,
-                    &mut model_stage_rejection_ordinals,
-                    journal,
-                )
-                .await?;
-                let accepted_at =
-                    elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
-                return repair_fallback_outcome(
-                    RepairFallbackRuntime {
-                        journal,
-                        proactive_followup_offers_enabled,
-                        failure_stage: "presentation revision",
-                        bound_lane,
-                    },
-                    &session,
-                    &input,
-                    plan.as_ref(),
-                    &observations,
-                    accepted_at,
-                    events,
-                )
-                .await;
-            }
-            SessionModelDecision::Finish { draft }
-        } else if let Some((originating_stage, calls)) = coissued_plan_calls.take() {
+        let decision = if let Some((originating_stage, calls)) = coissued_plan_calls.take() {
             decision_stage = originating_stage;
             SessionModelDecision::InvokeTools { calls }
         } else {
-            match model.advance(model_turn.clone()).await {
+            let model_turn = SessionModelTurn {
+                session: session.clone(),
+                trigger: trigger.clone(),
+                assessment_at: input.assessment_at.clone(),
+                requested_lane: bound_lane.or(input.requested_lane),
+                prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                wake_assessment: build_wake_assessment(
+                    &session,
+                    &trigger,
+                    prior_commitment_checkpoint.as_ref(),
+                    &observations,
+                    assessment_at,
+                ),
+                plan: plan.clone(),
+                available_tools: available_tools.clone(),
+                observations: observations.clone(),
+                repair_feedback: repair_feedback.clone(),
+            };
+            match model.advance(model_turn).await {
                 Ok(decision) => decision,
                 Err(AgentRuntimeError::ModelStageRejected(rejection)) => {
                     emit_model_stage_rejection(
@@ -3156,7 +3072,7 @@ async fn run_session_turn_recorded_at(
                     .await?;
                     repairs += 1;
                     repair_feedback = vec![
-                        "The prior stage choice did not satisfy its typed research contract. Select exactly one available research action and provide only that action's required fields."
+                        "The prior loop choice did not satisfy its contract. Select one available tool action or return one complete final answer."
                             .into(),
                     ];
                     continue;
@@ -3203,7 +3119,7 @@ async fn run_session_turn_recorded_at(
                         RepairFallbackRuntime {
                             journal,
                             proactive_followup_offers_enabled,
-                            failure_stage: "research model",
+                            failure_stage: "agent loop model",
                             bound_lane,
                         },
                         &session,
@@ -3251,7 +3167,7 @@ async fn run_session_turn_recorded_at(
                     Some((decision_stage, calls)),
                 )
             }
-            SessionModelDecision::Finish { draft } if frozen_research_draft.is_none() => (
+            SessionModelDecision::Finish { draft } => (
                 SessionModelDecision::ResearchComplete {
                     draft,
                     declared_lane: bound_lane,
@@ -3382,54 +3298,7 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
-                frozen_research_draft = Some(draft.clone());
-                presentation_revision_used = false;
-                review_attempted = false;
-                let presented = match model
-                    .present(SessionPresentationTurn {
-                        research: model_turn,
-                        research_draft: draft.clone(),
-                        prior_presentation: None,
-                        review_feedback: Vec::new(),
-                    })
-                    .await
-                {
-                    Ok(presented) => presented,
-                    Err(error) => {
-                        let rejection = classify_model_stage_error(
-                            error,
-                            SessionModelStage::PresentationInitial,
-                        );
-                        emit_model_stage_rejection(
-                            &session,
-                            &input,
-                            &mut events,
-                            SessionModelStage::PresentationInitial,
-                            &rejection,
-                            &mut model_stage_rejection_ordinals,
-                            journal,
-                        )
-                        .await?;
-                        let accepted_at =
-                            elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
-                        return repair_fallback_outcome(
-                            RepairFallbackRuntime {
-                                journal,
-                                proactive_followup_offers_enabled,
-                                failure_stage: "initial presentation",
-                                bound_lane,
-                            },
-                            &session,
-                            &input,
-                            plan.as_ref(),
-                            &observations,
-                            accepted_at,
-                            events,
-                        )
-                        .await;
-                    }
-                };
-                SessionModelDecision::Finish { draft: presented }
+                SessionModelDecision::Finish { draft }
             }
             decision => decision,
         };
@@ -3801,64 +3670,6 @@ async fn run_session_turn_recorded_at(
             SessionModelDecision::Finish { mut draft } => {
                 let accepted_at =
                     elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
-                macro_rules! repair_presentation_or_research {
-                    (feedback: $feedback:expr) => {{
-                        let feedback: Vec<String> = $feedback;
-                        if frozen_research_draft.is_some() {
-                            if !presentation_revision_used {
-                                presentation_revision_used = true;
-                                pending_presentation_revision = Some((draft.clone(), feedback));
-                                continue;
-                            }
-                            return repair_fallback_outcome(
-                                RepairFallbackRuntime {
-                                    journal,
-                                    proactive_followup_offers_enabled,
-                                    failure_stage: "presentation revision",
-                                    bound_lane,
-                                },
-                                &session,
-                                &input,
-                                plan.as_ref(),
-                                &observations,
-                                accepted_at,
-                                events,
-                            )
-                            .await;
-                        }
-                        record_draft_repair(
-                            &mut rejected_operating_drafts,
-                            &draft,
-                            &mut repairs,
-                            &mut repair_feedback,
-                            feedback.join(" "),
-                        );
-                        continue;
-                    }};
-                    ($reason:expr) => {{
-                        repair_presentation_or_research!(feedback: vec![$reason]);
-                    }};
-                }
-                if let Some(research_draft) = frozen_research_draft.as_ref()
-                    && let Err(error) = validate_presentation_boundary(research_draft, &draft)
-                {
-                    let stage = presentation_stage(presentation_revision_used);
-                    let rejection = runtime_stage_rejection(
-                        stage,
-                        SessionModelRejectionClass::RuntimeValidation,
-                    );
-                    emit_model_stage_rejection(
-                        &session,
-                        &input,
-                        &mut events,
-                        stage,
-                        &rejection,
-                        &mut model_stage_rejection_ordinals,
-                        journal,
-                    )
-                    .await?;
-                    repair_presentation_or_research!(error.to_string());
-                }
                 normalize_message_from_grounded_claims(&mut draft);
                 let validated = match validate_grounded_draft_at(
                     &session,
@@ -3869,145 +3680,55 @@ async fn run_session_turn_recorded_at(
                 ) {
                     Ok(validated) => validated,
                     Err(error) => {
-                        let stage = presentation_stage(presentation_revision_used);
                         let rejection = runtime_stage_rejection(
-                            stage,
+                            decision_stage,
                             SessionModelRejectionClass::RuntimeValidation,
                         );
                         emit_model_stage_rejection(
                             &session,
                             &input,
                             &mut events,
-                            stage,
+                            decision_stage,
                             &rejection,
                             &mut model_stage_rejection_ordinals,
                             journal,
                         )
                         .await?;
-                        repair_presentation_or_research!(error.to_string());
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            error.to_string(),
+                        );
+                        continue;
                     }
                 };
                 if let Err(error) =
                     validate_effect_closure_at(&observations, &draft, assessment_at, accepted_at)
                 {
-                    let stage = presentation_stage(presentation_revision_used);
                     let rejection = runtime_stage_rejection(
-                        stage,
+                        decision_stage,
                         SessionModelRejectionClass::RuntimeValidation,
                     );
                     emit_model_stage_rejection(
                         &session,
                         &input,
                         &mut events,
-                        stage,
+                        decision_stage,
                         &rejection,
                         &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if !review_attempted {
-                    review_attempted = true;
-                    let review = match model
-                        .review_message(ClaimReviewTurn {
-                            session: session.clone(),
-                            trigger: trigger.clone(),
-                            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                            wake_assessment: build_wake_assessment(
-                                &session,
-                                &trigger,
-                                prior_commitment_checkpoint.as_ref(),
-                                &observations,
-                                assessment_at,
-                            ),
-                            draft: draft.clone(),
-                            observations: observations.clone(),
-                        })
-                        .await
-                    {
-                        Ok(review) => review,
-                        Err(error) => {
-                            let rejection =
-                                classify_model_stage_error(error, SessionModelStage::Review);
-                            emit_model_stage_rejection(
-                                &session,
-                                &input,
-                                &mut events,
-                                SessionModelStage::Review,
-                                &rejection,
-                                &mut model_stage_rejection_ordinals,
-                                journal,
-                            )
-                            .await?;
-                            return repair_fallback_outcome(
-                                RepairFallbackRuntime {
-                                    journal,
-                                    proactive_followup_offers_enabled,
-                                    failure_stage: "independent review",
-                                    bound_lane,
-                                },
-                                &session,
-                                &input,
-                                plan.as_ref(),
-                                &observations,
-                                accepted_at,
-                                events,
-                            )
-                            .await;
-                        }
-                    };
-                    let feedback = match message_review_feedback(&draft, &review) {
-                        Ok(feedback) => feedback,
-                        Err(_) => {
-                            let rejection = runtime_stage_rejection(
-                                SessionModelStage::Review,
-                                SessionModelRejectionClass::ReviewBinding,
-                            );
-                            emit_model_stage_rejection(
-                                &session,
-                                &input,
-                                &mut events,
-                                SessionModelStage::Review,
-                                &rejection,
-                                &mut model_stage_rejection_ordinals,
-                                journal,
-                            )
-                            .await?;
-                            return repair_fallback_outcome(
-                                RepairFallbackRuntime {
-                                    journal,
-                                    proactive_followup_offers_enabled,
-                                    failure_stage: "independent review",
-                                    bound_lane,
-                                },
-                                &session,
-                                &input,
-                                plan.as_ref(),
-                                &observations,
-                                accepted_at,
-                                events,
-                            )
-                            .await;
-                        }
-                    };
-                    if !feedback.is_empty() {
-                        let rejection = runtime_stage_rejection(
-                            SessionModelStage::Review,
-                            SessionModelRejectionClass::RuntimeValidation,
-                        );
-                        emit_model_stage_rejection(
-                            &session,
-                            &input,
-                            &mut events,
-                            SessionModelStage::Review,
-                            &rejection,
-                            &mut model_stage_rejection_ordinals,
-                            journal,
-                        )
-                        .await?;
-                        repair_presentation_or_research!(feedback: feedback);
-                    }
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
+                    continue;
                 }
                 let proactive_followup = if proactive_followup_offers_enabled {
                     materialize_proactive_followup_offer(
@@ -4066,7 +3787,7 @@ async fn run_session_turn_recorded_at(
                 unreachable!("coissued plan calls are normalized before decision execution")
             }
             SessionModelDecision::ResearchComplete { .. } => {
-                unreachable!("research completion is normalized before presentation")
+                unreachable!("legacy completion is normalized before final admission")
             }
         }
     }
@@ -4075,7 +3796,7 @@ async fn run_session_turn_recorded_at(
         RepairFallbackRuntime {
             journal,
             proactive_followup_offers_enabled,
-            failure_stage: "research step budget",
+            failure_stage: "agent loop step budget",
             bound_lane,
         },
         &session,
@@ -5591,54 +5312,6 @@ fn prepare_and_validate_research_draft(
     validate_effect_closure_at(observations, draft, assessment_at, accepted_at)
 }
 
-fn validate_presentation_boundary(
-    research: &GroundedDraft,
-    presented: &GroundedDraft,
-) -> Result<(), AgentRuntimeError> {
-    if research.state != presented.state
-        || research.delivery != presented.delivery
-        || research.coverage_notice != presented.coverage_notice
-        || research.question != presented.question
-        || research.mission != presented.mission
-        || research.memory_updates != presented.memory_updates
-        || !presented.presentation_ready
-        || research.claims.len() != presented.claims.len()
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "presentation may rewrite visible claim copy only; research state, delivery, coverage, mission, memory, and claim bases are immutable"
-                .into(),
-        ));
-    }
-    let research_claims = research
-        .claims
-        .iter()
-        .map(|claim| (claim.claim_ref.as_str(), claim))
-        .collect::<BTreeMap<_, _>>();
-    let mut seen = BTreeSet::new();
-    for claim in &presented.claims {
-        let Some(source) = research_claims.get(claim.claim_ref.as_str()) else {
-            return Err(AgentRuntimeError::InvalidFinal(
-                "presentation introduced a claim outside the frozen research artifact".into(),
-            ));
-        };
-        if !seen.insert(claim.claim_ref.as_str())
-            || source.planned_claim_ref != claim.planned_claim_ref
-            || source.required_for_answer != claim.required_for_answer
-            || source.content != claim.content
-        {
-            return Err(AgentRuntimeError::InvalidFinal(
-                "presentation changed or repeated an immutable research claim basis".into(),
-            ));
-        }
-    }
-    if seen.len() != research_claims.len() {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "presentation omitted an immutable research claim".into(),
-        ));
-    }
-    Ok(())
-}
-
 fn canonicalize_routine_silent_wake(
     session: &AgentSession,
     trigger: &SessionTurnTrigger,
@@ -6358,14 +6031,6 @@ impl ModelStageRejectionOrdinals {
     }
 }
 
-fn presentation_stage(revision_used: bool) -> SessionModelStage {
-    if revision_used {
-        SessionModelStage::PresentationRevision
-    } else {
-        SessionModelStage::PresentationInitial
-    }
-}
-
 fn runtime_stage_rejection(
     stage: SessionModelStage,
     class: SessionModelRejectionClass,
@@ -6373,19 +6038,6 @@ fn runtime_stage_rejection(
     SessionModelRejection {
         class,
         contract_digest: runtime_stage_contract_digest(stage),
-    }
-}
-
-fn classify_model_stage_error(
-    error: AgentRuntimeError,
-    stage: SessionModelStage,
-) -> SessionModelRejection {
-    match error {
-        AgentRuntimeError::ModelStageRejected(rejection) => rejection,
-        AgentRuntimeError::ModelUnavailable(_) => {
-            runtime_stage_rejection(stage, SessionModelRejectionClass::AdapterUnavailable)
-        }
-        _ => runtime_stage_rejection(stage, SessionModelRejectionClass::RuntimeValidation),
     }
 }
 
@@ -7001,6 +6653,7 @@ fn validate_message_review(
     }
 }
 
+#[cfg(test)]
 fn message_review_feedback(
     draft: &GroundedDraft,
     review: &MessageReview,
@@ -12665,7 +12318,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_loop_plans_reads_reviews_and_prepares_delivery() {
+    async fn one_agent_loop_plans_reads_and_commits_delivery() {
         let mut candidate = draft();
         candidate.message = format!("Unreviewed prefix. {}", candidate.message);
         let mut progress_plan = plan();
@@ -14702,7 +14355,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn presentation_review_revises_once_without_reentering_research() {
+    async fn one_agent_loop_commits_without_presenter_or_reviewer_calls() {
         let mut revised = draft();
         revised.claims[0].text =
             "Connector alpha is healthy in the current provider observation.".into();
@@ -14749,22 +14402,19 @@ mod tests {
         .unwrap();
 
         let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
-            panic!("the revised presentation should be ready for delivery")
+            panic!("the agent loop answer should be ready for delivery")
         };
-        assert_eq!(markdown, revised.message);
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
-        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
+        assert_eq!(markdown, draft().message);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 0);
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 0);
         assert_eq!(
             model
                 .revision_feedback
                 .lock()
                 .expect("presentation feedback receipt poisoned")
                 .as_slice(),
-            [vec![
-                "State the observed scope precisely.".to_string(),
-                "Rewrite the response as coherent conversational prose.".to_string(),
-            ]],
-            "the revision must receive each ordered review defect unchanged",
+            &[] as &[Vec<String>],
+            "the agent loop must not enter a separate presentation revision",
         );
         assert!(
             model
@@ -14772,12 +14422,12 @@ mod tests {
                 .lock()
                 .expect("decision script poisoned")
                 .is_empty(),
-            "review feedback must not request another research decision"
+            "the final answer must end the same model-native loop"
         );
     }
 
     #[tokio::test]
-    async fn successful_and_failed_reads_survive_one_presentation_revision() {
+    async fn successful_and_failed_reads_survive_one_agent_loop() {
         let request_id = "request:mixed-read-revision";
         let mut mixed_plan = plan();
         mixed_plan.selected_tools.push("graph.read".into());
@@ -14910,8 +14560,8 @@ mod tests {
                 .as_slice(),
             ["connector.read", "graph.read"]
         );
-        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 0);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 0);
         assert!(
             model
                 .decisions
@@ -14922,7 +14572,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unavailable_review_delivers_the_committed_evidence_fallback() {
+    async fn unavailable_legacy_review_does_not_interrupt_the_agent_loop() {
         let model = UnavailableReviewModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan { plan: plan() },
@@ -14954,7 +14604,7 @@ mod tests {
             },
         )
         .await
-        .expect("review availability must not erase a committed observation");
+        .expect("the agent loop must not depend on a separate review model");
 
         let SessionTurnOutcome::PendingDelivery {
             markdown,
@@ -14963,15 +14613,15 @@ mod tests {
             ..
         } = outcome
         else {
-            panic!("review fallback cannot request approval")
+            panic!("the final answer should be ready for delivery")
         };
-        assert_eq!(final_state, FinalState::Partial);
-        assert!(markdown.contains("connector.read:"));
+        assert_eq!(final_state, FinalState::Answered);
+        assert_eq!(markdown, draft().message);
         assert!(!evidence_atom_refs.is_empty());
     }
 
     #[tokio::test]
-    async fn direct_finish_enters_the_fail_closed_presentation_phase() {
+    async fn direct_finish_commits_without_legacy_presentation_or_review() {
         let request_id = "request:initial-presenter-unavailable";
         let sentinel = "RAW RESEARCH ARTIFACT MUST NOT BE DELIVERED";
         let research_draft = GroundedDraft {
@@ -15017,7 +14667,7 @@ mod tests {
             },
         )
         .await
-        .expect("presenter unavailability must produce the deterministic fallback");
+        .expect("the final answer must not depend on a separate presenter");
 
         let SessionTurnOutcome::PendingDelivery {
             markdown,
@@ -15025,15 +14675,14 @@ mod tests {
             ..
         } = outcome
         else {
-            panic!("the deterministic presenter fallback must be visible")
+            panic!("the direct final answer must be visible")
         };
-        assert_eq!(final_state, FinalState::Blocked);
-        assert!(!markdown.contains(sentinel));
-        assert!(markdown.contains("initial presentation"));
+        assert_eq!(final_state, FinalState::Answered);
+        assert_eq!(markdown, sentinel);
         assert_eq!(
             model.reviews.load(Ordering::SeqCst),
             0,
-            "the raw research artifact must not reach independent review"
+            "the final answer must not enter an independent review stage"
         );
     }
 
@@ -15462,7 +15111,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn presentation_review_rejection_does_not_reenter_research() {
+    async fn invalid_final_answer_reenters_the_same_agent_loop() {
         let mut current = session_for_request(
             "request:misclassified-current-state",
             ExecutionLane::Converse,
@@ -15491,14 +15140,18 @@ mod tests {
             memory_updates: Vec::new(),
             presentation_ready: true,
         };
-        let unsupported = make_draft(
+        let mut unsupported = make_draft(
             "claim:unsupported",
             "Atlas is currently green and the deployment passed.",
         );
+        unsupported.claims[0].content = ClaimContent::Observation {
+            atom_refs: vec!["atom:missing-current-state".into()],
+        };
         let safe = make_draft(
             "claim:safe-boundary",
             "I need a current observation before I can answer that honestly.",
         );
+        let safe_message = safe.message.clone();
         let model = RefiningSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::Finish { draft: unsupported },
@@ -15528,19 +15181,19 @@ mod tests {
         .await
         .unwrap();
         let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
-            panic!("the reviewed boundary should be ready for delivery");
+            panic!("the repaired final answer should be ready for delivery");
         };
-        assert!(markdown.contains("presentation revision stage ended"));
-        assert_eq!(model.reviews.load(Ordering::SeqCst), 1);
-        assert_eq!(model.presentations.load(Ordering::SeqCst), 2);
+        assert_eq!(markdown, safe_message);
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 0);
+        assert_eq!(model.presentations.load(Ordering::SeqCst), 0);
         assert_eq!(
             model
                 .decisions
                 .lock()
                 .expect("decision script poisoned")
                 .len(),
-            2,
-            "the frozen research artifact must not re-enter the research model"
+            1,
+            "one deterministic repair must remain inside the same agent loop"
         );
     }
 
