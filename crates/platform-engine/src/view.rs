@@ -1,3 +1,9 @@
+//! Assembly of successful materialized-view refresh receipts.
+//!
+//! This module validates and binds an already-computed query result. It does not
+//! execute the view query, schedule refreshes, persist rows or receipts, or
+//! authenticate access to the tenant graph.
+
 use cerebro_platform_sdk::{
     GraphRevision, MaterializedViewDefinition, MaterializedViewSnapshot, QueryResult, SdkError,
     ViewRefreshState,
@@ -5,6 +11,23 @@ use cerebro_platform_sdk::{
 
 use crate::canonical;
 
+/// Validates a complete query result and produces a `Current` refresh receipt.
+///
+/// The result must belong to the definition tenant, must not be truncated, and
+/// must fit the definition's row ceiling. This function does not prove that the
+/// result was produced by `definition.query`; the query execution boundary must
+/// carry that binding into this call.
+///
+/// The receipt digest covers the view identity, caller-supplied definition
+/// digest, and complete query result. It intentionally excludes refresh time and
+/// lifecycle state, so operational timing does not change content identity.
+///
+/// # Errors
+///
+/// Returns definition validation errors, [`SdkError::Invalid`] for a result from
+/// another tenant, [`SdkError::OutOfRange`] for a truncated or oversized result,
+/// zero graph revision, or unrepresentable row count, and [`SdkError::Backend`]
+/// if canonical serialization fails.
 pub fn materialize_view(
     definition: &MaterializedViewDefinition,
     result: &QueryResult,
@@ -17,6 +40,9 @@ pub fn materialize_view(
     if result.truncated || result.matches.len() > definition.max_rows as usize {
         return Err(SdkError::OutOfRange("materialized view rows"));
     }
+
+    // QueryResult uses a wire-level integer; the receipt tightens it to the
+    // non-zero graph revision contract before publishing a successful state.
     let graph_revision = GraphRevision::new(result.graph_revision)?;
     let row_count = u32::try_from(result.matches.len())
         .map_err(|_| SdkError::OutOfRange("materialized view rows"))?;
@@ -27,6 +53,9 @@ pub fn materialize_view(
         row_count,
         state: ViewRefreshState::Current,
         refreshed_at_unix_millis,
+
+        // The definition digest is trusted input here. Definition assembly must
+        // recompute and verify it before this content binding is authoritative.
         result_digest: canonical::digest(&(
             &definition.view_id,
             &definition.definition_digest,
