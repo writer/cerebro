@@ -120,7 +120,7 @@ wall-clock gate. To reproduce the bounded 10,000-input smoke locally:
 
 ```bash
 rustup toolchain install nightly-2026-06-09 --profile minimal
-cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.1 --locked
+cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.2 --locked
 make rust-validator-fuzz-smoke
 ```
 
