@@ -1,8 +1,17 @@
+//! Small portable SHA-256 implementation used by native and Wasm builds.
+//!
+//! The kernel needs only one-shot hashing of already bounded inputs. Keeping the
+//! compression routine local makes the content commitment identical across host
+//! targets without adding runtime state or platform services.
+
+/// Returns the 32-byte SHA-256 digest of one bounded byte slice.
 pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
+    /// SHA-256 initial hash values defined by the standard.
     const INITIAL: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
     ];
+    /// SHA-256 per-round constants defined by the standard.
     const ROUND: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
         0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
@@ -15,6 +24,8 @@ pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
         0xc67178f2,
     ];
+    // Append one marker bit, enough zero padding, and the original 64-bit
+    // big-endian bit length so the total is an exact number of 512-bit blocks.
     let bit_length = (input.len() as u64).wrapping_mul(8);
     let padded_length = (input.len() + 9).div_ceil(64) * 64;
     let mut padded = Vec::with_capacity(padded_length);
@@ -24,6 +35,8 @@ pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
     padded.extend_from_slice(&bit_length.to_be_bytes());
     let mut state = INITIAL;
     for chunk in padded.chunks_exact(64) {
+        // The first sixteen words are the block; the rest form the SHA-256
+        // message schedule through the two lowercase sigma functions.
         let mut words = [0_u32; 64];
         for (index, bytes) in chunk.chunks_exact(4).enumerate() {
             words[index] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
@@ -40,6 +53,8 @@ pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
                 .wrapping_add(words[index - 7])
                 .wrapping_add(s1);
         }
+        // Work on a copy of the accumulated state for exactly 64 compression
+        // rounds, using wrapping arithmetic required by SHA-256.
         let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
         for index in 0..64 {
             let sum1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
@@ -61,10 +76,12 @@ pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
             b = a;
             a = temporary1.wrapping_add(temporary2);
         }
+        // Feed the compressed block back into the running hash state.
         for (slot, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
             *slot = slot.wrapping_add(value);
         }
     }
+    // Serialize each state word in network order to the standard 256-bit result.
     let mut output = [0_u8; 32];
     for (chunk, value) in output.chunks_exact_mut(4).zip(state) {
         chunk.copy_from_slice(&value.to_be_bytes());
