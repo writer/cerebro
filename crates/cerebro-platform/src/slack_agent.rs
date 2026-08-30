@@ -12,9 +12,9 @@ use aws_config::{BehaviorVersion, retry::RetryConfig};
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     types::{
-        ContentBlock, ConversationRole, InferenceConfiguration, Message, SpecificToolChoice,
-        SystemContentBlock, Tool, ToolChoice, ToolConfiguration, ToolInputSchema,
-        ToolSpecification,
+        AnyToolChoice, ContentBlock, ConversationRole, InferenceConfiguration, Message,
+        SpecificToolChoice, SystemContentBlock, Tool, ToolChoice, ToolConfiguration,
+        ToolInputSchema, ToolSpecification,
     },
 };
 use aws_smithy_types::{Document, Number};
@@ -28,16 +28,18 @@ use cerebro_agent_runtime::{
     ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
-        ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
-        EvidenceAssertion, EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
-        MessageReview, MissionState, ProactiveFollowupOffer, ResearchPlan,
-        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
-        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
-        SessionModelTurn, SessionPresentationTurn, SessionStatus, SessionStore, SessionTools,
-        SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger, apply_session_events,
-        evidence_atoms_from_json, followup_acceptance_draft, grounded_draft_digest, message_digest,
-        run_session_turn_recorded, run_session_turn_recorded_with_followup_offers,
-        semantic_evidence_atoms, validate_followup_acceptance,
+        ALL_STABLE_EXPLANATION_IDS, AgentSession, AttentionReview, BehavioralReview, ClaimReview,
+        ClaimReviewTurn, ClaimReviewVerdict, DeliveryDisposition, EvidenceAssertion, EvidenceAtom,
+        EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES, MessageReview, MissionState,
+        ProactiveFollowupOffer, ResearchPlan, SemanticEvidenceAtomization,
+        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
+        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelRejection,
+        SessionModelRejectionClass, SessionModelTurn, SessionPresentationTurn, SessionStatus,
+        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
+        apply_session_events, evidence_atoms_from_json, followup_acceptance_draft,
+        grounded_draft_digest, message_digest, run_session_turn_recorded,
+        run_session_turn_recorded_with_followup_offers, semantic_evidence_atoms,
+        validate_followup_acceptance,
     },
     validate_agent_turn_request,
 };
@@ -78,7 +80,9 @@ const ROUTE_DECISION_TOOL: &str = "submit_route_decision";
 const OPERATING_DECISION_TOOL: &str = "submit_operating_decision";
 const PRESENTATION_DECISION_TOOL: &str = "submit_slack_presentation";
 const CRITIQUE_DECISION_TOOL: &str = "submit_critique_decision";
-const SESSION_DECISION_TOOL: &str = "submit_session_decision";
+const SESSION_PLAN_AND_READ_TOOL: &str = "start_session_research";
+const SESSION_READ_TOOL: &str = "continue_session_research";
+const SESSION_FINISH_TOOL: &str = "finish_session_research";
 const SESSION_PRESENTATION_TOOL: &str = "submit_session_presentation";
 const CLAIM_REVIEW_TOOL: &str = "submit_claim_reviews";
 const SESSION_MODEL_ATTEMPTS: usize = 2;
@@ -97,6 +101,20 @@ const MAX_ACCEPTANCE_CLOCK_DELAY_SECONDS: i64 = 900;
 const SLACK_ROUTE_MAX_TOKENS: i32 = 768;
 const SLACK_SESSION_DECISION_MAX_TOKENS: i32 = 4_096;
 const SLACK_CLAIM_REVIEW_MAX_TOKENS: i32 = 1_024;
+
+#[derive(Clone)]
+struct StructuredToolContract {
+    name: &'static str,
+    description: &'static str,
+    schema: Value,
+}
+
+#[derive(Debug)]
+struct StructuredToolSelection {
+    name: String,
+    input: Value,
+    contract_digest: String,
+}
 
 pub struct SlackAgentService {
     model: Arc<ConfiguredModel>,
@@ -1973,6 +1991,30 @@ impl ConfiguredModel {
         })
         .await
     }
+
+    async fn complete_session_choice(
+        &self,
+        instructions: &str,
+        payload: Value,
+        max_tokens: i32,
+        contracts: Vec<StructuredToolContract>,
+    ) -> Result<StructuredToolSelection, AgentRuntimeError> {
+        retry_session_model_call(|| async {
+            match self {
+                Self::AmazonBedrock(model) => {
+                    model
+                        .complete_structured_choice(
+                            instructions,
+                            payload.clone(),
+                            max_tokens,
+                            &contracts,
+                        )
+                        .await
+                }
+            }
+        })
+        .await
+    }
 }
 
 async fn retry_session_model_call<T, F, Fut>(mut operation: F) -> Result<T, AgentRuntimeError>
@@ -2045,24 +2087,25 @@ fn model_config_sha256(provider: &str, model_id: &str) -> String {
                 "stage": "critique",
             },
             {
-                "decision_schemas": {
-                    "continue": session_continue_decision_schema(),
-                    "initial": session_initial_decision_schema(),
+                "decision_contracts": {
+                    "continue": structured_choice_contract_value(&session_research_contracts(false)),
+                    "initial": structured_choice_contract_value(&session_research_contracts(true)),
                 },
-                "decision_tool": SESSION_DECISION_TOOL,
                 "instructions": session_instructions(),
                 "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
                 "stage": "session_research",
             },
             {
-                "decision_schema": session_presentation_schema(),
+                "decision_schema_template": session_presentation_schema(1),
+                "runtime_cardinality": "exact frozen claim count",
                 "decision_tool": SESSION_PRESENTATION_TOOL,
                 "instructions": session_presentation_instructions(),
                 "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
                 "stage": "session_presentation",
             },
             {
-                "decision_schema": claim_review_schema(),
+                "decision_schema_template": claim_review_schema(1),
+                "runtime_cardinality": "exact frozen claim count",
                 "decision_tool": CLAIM_REVIEW_TOOL,
                 "instructions": claim_review_instructions(),
                 "max_tokens": SLACK_CLAIM_REVIEW_MAX_TOKENS,
@@ -2078,16 +2121,19 @@ impl ConfiguredModel {
         &self,
         turn: &SessionPresentationTurn,
     ) -> Result<GroundedDraft, AgentRuntimeError> {
+        let schema = session_presentation_schema(turn.research_draft.claims.len());
+        let contract_digest = sha256_digest(&schema.to_string());
         let value = self
             .complete_session_structured(
                 session_presentation_instructions(),
                 session_presentation_payload(turn),
                 SLACK_SESSION_DECISION_MAX_TOKENS,
                 SESSION_PRESENTATION_TOOL,
-                session_presentation_schema(),
+                schema,
             )
-            .await?;
-        apply_session_presentation_value(&turn.research_draft, value)
+            .await
+            .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
+        apply_session_presentation_value(&turn.research_draft, value, &contract_digest)
     }
 }
 
@@ -2097,19 +2143,19 @@ impl SessionAgentModel for ConfiguredModel {
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError> {
-        let decision_schema = session_decision_schema_for_turn(&turn);
-        let value = self
-            .complete_session_structured(
+        let initial = turn.plan.is_none();
+        let contracts = session_research_contracts(initial);
+        let contract_digest = structured_choice_contract_digest(&contracts);
+        let selection = self
+            .complete_session_choice(
                 session_instructions(),
                 session_turn_payload(&turn),
                 SLACK_SESSION_DECISION_MAX_TOKENS,
-                SESSION_DECISION_TOOL,
-                decision_schema,
+                contracts,
             )
-            .await?;
-        let SessionResearchDecision::Continue(decision) =
-            parse_session_research_decision_value(value, turn.plan.is_none())?;
-        Ok(*decision)
+            .await
+            .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
+        parse_session_research_choice(selection, initial)
     }
 
     async fn present(
@@ -2123,16 +2169,19 @@ impl SessionAgentModel for ConfiguredModel {
         &self,
         turn: ClaimReviewTurn,
     ) -> Result<MessageReview, AgentRuntimeError> {
+        let schema = claim_review_schema(turn.draft.claims.len());
+        let contract_digest = sha256_digest(&schema.to_string());
         let value = self
             .complete_session_structured(
                 claim_review_instructions(),
                 claim_review_payload(&turn),
                 SLACK_CLAIM_REVIEW_MAX_TOKENS,
                 CLAIM_REVIEW_TOOL,
-                claim_review_schema(),
+                schema,
             )
-            .await?;
-        parse_message_review_value(value)
+            .await
+            .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
+        apply_claim_review_value(&turn, value, &contract_digest)
     }
 }
 
@@ -2235,6 +2284,80 @@ impl BedrockModel {
             ));
         }
         Ok(value)
+    }
+
+    async fn complete_structured_choice(
+        &self,
+        instructions: &str,
+        payload: Value,
+        max_tokens: i32,
+        contracts: &[StructuredToolContract],
+    ) -> Result<StructuredToolSelection, AgentRuntimeError> {
+        validate_generation_budget(max_tokens)?;
+        if contracts.is_empty() {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "a structured model choice requires at least one contract".into(),
+            ));
+        }
+        let contract_digest = structured_choice_contract_digest(contracts);
+        let message = Message::builder()
+            .role(ConversationRole::User)
+            .content(ContentBlock::Text(payload.to_string()))
+            .build()
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        let tools = contracts
+            .iter()
+            .map(|contract| {
+                ToolSpecification::builder()
+                    .name(contract.name)
+                    .description(contract.description)
+                    .input_schema(ToolInputSchema::Json(json_to_document(&contract.schema)?))
+                    .build()
+                    .map(Tool::ToolSpec)
+                    .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let tool_configuration = ToolConfiguration::builder()
+            .set_tools(Some(tools))
+            .tool_choice(ToolChoice::Any(AnyToolChoice::builder().build()))
+            .build()
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        let response = self
+            .client
+            .converse()
+            .model_id(&self.model)
+            .messages(message)
+            .system(SystemContentBlock::Text(instructions.into()))
+            .inference_config(
+                InferenceConfiguration::builder()
+                    .max_tokens(max_tokens)
+                    .build(),
+            )
+            .tool_config(tool_configuration)
+            .send()
+            .await
+            .map_err(|error| {
+                let detail = error
+                    .as_service_error()
+                    .map_or_else(|| format!("{error:?}"), |service| format!("{service:?}"));
+                AgentRuntimeError::ModelUnavailable(format!("Bedrock request failed: {detail}"))
+            })?;
+        let content = response
+            .output()
+            .and_then(|output| output.as_message().ok())
+            .map(|message| message.content())
+            .ok_or_else(|| {
+                AgentRuntimeError::ModelUnavailable("Bedrock returned no message content".into())
+            })?;
+        let selection = bedrock_structured_choice_output(content, contracts, &contract_digest)?;
+        let encoded = serde_json::to_vec(&selection.input)
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        if encoded.len() > MAX_MODEL_RESPONSE_BYTES {
+            return Err(AgentRuntimeError::ModelUnavailable(
+                "Bedrock response exceeded the size limit".into(),
+            ));
+        }
+        Ok(selection)
     }
 }
 
@@ -2528,6 +2651,76 @@ fn bedrock_structured_output(
         value = document_to_json(revised_decision.input())?;
     }
     Ok(value)
+}
+
+fn structured_choice_contract_digest(contracts: &[StructuredToolContract]) -> String {
+    let contract = Value::Array(
+        contracts
+            .iter()
+            .map(|contract| {
+                json!({
+                    "description": contract.description,
+                    "name": contract.name,
+                    "schema": contract.schema,
+                })
+            })
+            .collect(),
+    );
+    sha256_digest(&contract.to_string())
+}
+
+fn model_stage_rejection(
+    class: SessionModelRejectionClass,
+    contract_digest: &str,
+) -> AgentRuntimeError {
+    AgentRuntimeError::ModelStageRejected(SessionModelRejection {
+        class,
+        contract_digest: contract_digest.to_owned(),
+    })
+}
+
+fn model_stage_adapter_error(error: AgentRuntimeError, contract_digest: &str) -> AgentRuntimeError {
+    match error {
+        AgentRuntimeError::ModelStageRejected(_) => error,
+        _ => model_stage_rejection(
+            SessionModelRejectionClass::AdapterUnavailable,
+            contract_digest,
+        ),
+    }
+}
+
+fn bedrock_structured_choice_output(
+    content: &[ContentBlock],
+    contracts: &[StructuredToolContract],
+    contract_digest: &str,
+) -> Result<StructuredToolSelection, AgentRuntimeError> {
+    let tool_uses = content
+        .iter()
+        .filter_map(|block| block.as_tool_use().ok())
+        .collect::<Vec<_>>();
+    let [tool_use] = tool_uses.as_slice() else {
+        return Err(model_stage_rejection(
+            SessionModelRejectionClass::MissingOrAmbiguousTool,
+            contract_digest,
+        ));
+    };
+    if !contracts
+        .iter()
+        .any(|contract| contract.name == tool_use.name())
+    {
+        return Err(model_stage_rejection(
+            SessionModelRejectionClass::MissingOrAmbiguousTool,
+            contract_digest,
+        ));
+    }
+    let input = document_to_json(tool_use.input()).map_err(|_| {
+        model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+    })?;
+    Ok(StructuredToolSelection {
+        name: tool_use.name().to_owned(),
+        input,
+        contract_digest: contract_digest.to_owned(),
+    })
 }
 
 fn json_to_document(value: &Value) -> Result<Document, AgentRuntimeError> {
@@ -3015,87 +3208,132 @@ fn session_decision_schema() -> Value {
     })
 }
 
-fn session_initial_decision_schema() -> Value {
-    let complete = session_decision_schema();
+fn session_presentation_schema(claim_count: usize) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
-            "decision": {"type": "string", "enum": ["establish_plan", "finish_research"]},
-            "lane": {"type": "string", "enum": ["converse", "lookup", "investigate", "act"]},
-            "plan": complete["properties"]["plan"].clone(),
-            "calls": complete["properties"]["calls"].clone(),
-            "draft": complete["properties"]["draft"].clone(),
-        },
-        "required": ["decision", "lane", "plan", "calls", "draft"]
-    })
-}
-
-fn session_continue_decision_schema() -> Value {
-    let complete = session_decision_schema();
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-            "decision": {"type": "string", "enum": ["invoke_tools", "finish_research"]},
-            "calls": complete["properties"]["calls"].clone(),
-            "draft": complete["properties"]["draft"].clone(),
-        },
-        "required": ["decision", "calls", "draft"]
-    })
-}
-
-fn session_presentation_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-            "claims": {
+            "claim_texts": {
                 "type": "array",
-                "minItems": 1,
-                "maxItems": 32,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "claim_ref": {"type": "string", "minLength": 1},
-                        "text": {"type": "string", "minLength": 1, "maxLength": 16384}
-                    },
-                    "required": ["claim_ref", "text"]
-                }
+                "minItems": claim_count,
+                "maxItems": claim_count,
+                "items": {"type": "string", "minLength": 1, "maxLength": 16384}
             }
         },
-        "required": ["claims"]
+        "required": ["claim_texts"]
     })
 }
 
-fn session_decision_schema_for_turn(turn: &SessionModelTurn) -> Value {
-    if turn.plan.is_none() {
-        session_initial_decision_schema()
-    } else {
-        session_continue_decision_schema()
-    }
+fn structured_choice_contract_value(contracts: &[StructuredToolContract]) -> Value {
+    Value::Array(
+        contracts
+            .iter()
+            .map(|contract| {
+                json!({
+                    "description": contract.description,
+                    "name": contract.name,
+                    "schema": contract.schema,
+                })
+            })
+            .collect(),
+    )
 }
 
-fn claim_review_schema() -> Value {
+fn non_null_session_branch(complete: &Value, field: &str) -> Value {
+    complete["properties"][field]["oneOf"][0].clone()
+}
+
+fn nonempty_session_calls(complete: &Value) -> Value {
+    let mut calls = complete["properties"]["calls"].clone();
+    calls["minItems"] = Value::from(1);
+    calls
+}
+
+fn research_draft_schema(complete: &Value) -> Value {
+    let mut draft = non_null_session_branch(complete, "draft");
+    if let Some(properties) = draft["properties"].as_object_mut() {
+        properties.remove("message");
+        properties.remove("presentation_ready");
+    }
+    if let Some(required) = draft["required"].as_array_mut() {
+        required.retain(|field| field != "message" && field != "presentation_ready");
+    }
+    draft
+}
+
+fn session_research_contracts(initial: bool) -> Vec<StructuredToolContract> {
+    let complete = session_decision_schema();
+    let draft = research_draft_schema(&complete);
+    let finish = StructuredToolContract {
+        name: SESSION_FINISH_TOOL,
+        description: "Finish research with the complete typed research artifact.",
+        schema: if initial {
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "lane": {"type": "string", "enum": ["converse", "lookup", "investigate", "act"]},
+                    "draft": draft,
+                },
+                "required": ["lane", "draft"]
+            })
+        } else {
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {"draft": draft},
+                "required": ["draft"]
+            })
+        },
+    };
+    let calls = nonempty_session_calls(&complete);
+    let research = if initial {
+        StructuredToolContract {
+            name: SESSION_PLAN_AND_READ_TOOL,
+            description: "Establish one typed operating plan and issue its first useful reads.",
+            schema: json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "lane": {"type": "string", "enum": ["lookup", "investigate", "act"]},
+                    "plan": non_null_session_branch(&complete, "plan"),
+                    "calls": calls,
+                },
+                "required": ["lane", "plan", "calls"]
+            }),
+        }
+    } else {
+        StructuredToolContract {
+            name: SESSION_READ_TOOL,
+            description: "Continue the active research plan with the next useful reads.",
+            schema: json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {"calls": calls},
+                "required": ["calls"]
+            }),
+        }
+    };
+    vec![research, finish]
+}
+
+fn claim_review_schema(claim_count: usize) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
-            "draft_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-            "message_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
             "claim_reviews": {
                 "type": "array",
-                "maxItems": 32,
+                "minItems": claim_count,
+                "maxItems": claim_count,
                 "items": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "claim_ref": {"type": "string", "minLength": 1},
                         "verdict": {"type": "string", "enum": ["supported", "unsupported"]},
                         "issue": {"type": ["string", "null"]}
                     },
-                    "required": ["claim_ref", "verdict", "issue"]
+                    "required": ["verdict", "issue"]
                 }
             },
             "undeclared_material": {
@@ -3107,10 +3345,9 @@ fn claim_review_schema() -> Value {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "delivery": {"type": "string", "enum": ["visible", "silent"]},
                     "reason": {"type": "string", "minLength": 1}
                 },
-                "required": ["delivery", "reason"]
+                "required": ["reason"]
             },
             "behavioral": {
                 "type": "object",
@@ -3131,10 +3368,11 @@ fn claim_review_schema() -> Value {
                 ]
             }
         },
-        "required": ["draft_digest", "message_digest", "claim_reviews", "undeclared_material", "attention", "behavioral"]
+        "required": ["claim_reviews", "undeclared_material", "attention", "behavioral"]
     })
 }
 
+#[cfg(test)]
 fn parse_message_review_value(mut value: Value) -> Result<MessageReview, AgentRuntimeError> {
     if let Some(attention) = value
         .as_object_mut()
@@ -3153,6 +3391,7 @@ fn parse_message_review_value(mut value: Value) -> Result<MessageReview, AgentRu
         .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
 }
 
+#[cfg(test)]
 fn parse_first_embedded_object(encoded: &str) -> Option<Value> {
     let start = encoded.find('{')?;
     let mut depth = 0_u32;
@@ -3235,11 +3474,130 @@ fn parse_session_decision_value(
         .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 enum SessionResearchDecision {
     Continue(Box<SessionModelDecision>),
 }
 
+fn parse_session_research_choice(
+    selection: StructuredToolSelection,
+    initial: bool,
+) -> Result<SessionModelDecision, AgentRuntimeError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct StartResearch {
+        lane: ExecutionLane,
+        plan: ResearchPlan,
+        calls: Vec<cerebro_agent_runtime::ToolCall>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ContinueResearch {
+        calls: Vec<cerebro_agent_runtime::ToolCall>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct InitialFinish {
+        lane: ExecutionLane,
+        draft: Value,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ContinueFinish {
+        draft: Value,
+    }
+
+    let StructuredToolSelection {
+        name,
+        input,
+        contract_digest,
+    } = selection;
+    let schema_rejection =
+        || model_stage_rejection(SessionModelRejectionClass::SchemaDecode, &contract_digest);
+    match (initial, name.as_str()) {
+        (true, SESSION_PLAN_AND_READ_TOOL) => {
+            let selected: StartResearch =
+                serde_json::from_value(input).map_err(|_| schema_rejection())?;
+            if selected.calls.is_empty() || selected.lane != selected.plan.lane {
+                return Err(model_stage_rejection(
+                    SessionModelRejectionClass::RuntimeValidation,
+                    &contract_digest,
+                ));
+            }
+            Ok(SessionModelDecision::EstablishPlanAndInvoke {
+                plan: selected.plan,
+                calls: selected.calls,
+            })
+        }
+        (false, SESSION_READ_TOOL) => {
+            let selected: ContinueResearch =
+                serde_json::from_value(input).map_err(|_| schema_rejection())?;
+            if selected.calls.is_empty() {
+                return Err(model_stage_rejection(
+                    SessionModelRejectionClass::RuntimeValidation,
+                    &contract_digest,
+                ));
+            }
+            Ok(SessionModelDecision::InvokeTools {
+                calls: selected.calls,
+            })
+        }
+        (true, SESSION_FINISH_TOOL) => {
+            let selected: InitialFinish =
+                serde_json::from_value(input).map_err(|_| schema_rejection())?;
+            let draft = decode_research_draft(selected.draft, &contract_digest)?;
+            Ok(SessionModelDecision::ResearchComplete {
+                draft,
+                declared_lane: Some(selected.lane),
+            })
+        }
+        (false, SESSION_FINISH_TOOL) => {
+            let selected: ContinueFinish =
+                serde_json::from_value(input).map_err(|_| schema_rejection())?;
+            let draft = decode_research_draft(selected.draft, &contract_digest)?;
+            Ok(SessionModelDecision::ResearchComplete {
+                draft,
+                declared_lane: None,
+            })
+        }
+        _ => Err(model_stage_rejection(
+            SessionModelRejectionClass::MissingOrAmbiguousTool,
+            &contract_digest,
+        )),
+    }
+}
+
+fn decode_research_draft(
+    mut value: Value,
+    contract_digest: &str,
+) -> Result<GroundedDraft, AgentRuntimeError> {
+    let message = value
+        .get("claims")
+        .and_then(Value::as_array)
+        .and_then(|claims| {
+            claims
+                .iter()
+                .map(|claim| claim.get("text").and_then(Value::as_str))
+                .collect::<Option<String>>()
+        })
+        .ok_or_else(|| {
+            model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+        })?;
+    let object = value.as_object_mut().ok_or_else(|| {
+        model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+    })?;
+    object.insert("message".into(), Value::String(message));
+    object.insert("presentation_ready".into(), Value::Bool(false));
+    serde_json::from_value(value).map_err(|_| {
+        model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+    })
+}
+
+#[cfg(test)]
 fn parse_session_research_decision_value(
     mut value: Value,
     initial: bool,
@@ -3323,51 +3681,27 @@ fn parse_session_research_decision_value(
 fn apply_session_presentation_value(
     research_draft: &GroundedDraft,
     value: Value,
+    contract_digest: &str,
 ) -> Result<GroundedDraft, AgentRuntimeError> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
-    struct PresentedClaim {
-        claim_ref: String,
-        text: String,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
     struct PresentedClaims {
-        claims: Vec<PresentedClaim>,
+        claim_texts: Vec<String>,
     }
 
-    let presented: PresentedClaims = serde_json::from_value(value)
-        .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
-    let original = research_draft
-        .claims
-        .iter()
-        .map(|claim| (claim.claim_ref.as_str(), claim))
-        .collect::<BTreeMap<_, _>>();
-    let mut seen = BTreeSet::new();
-    let mut claims = Vec::with_capacity(presented.claims.len());
-    for presented in presented.claims {
-        let source = original.get(presented.claim_ref.as_str()).ok_or_else(|| {
-            AgentRuntimeError::InvalidFinal(
-                "presentation referenced a claim outside the frozen research draft".into(),
-            )
-        })?;
-        if !seen.insert(presented.claim_ref.clone()) {
-            return Err(AgentRuntimeError::InvalidFinal(
-                "presentation repeated a frozen research claim".into(),
-            ));
-        }
-        let mut claim = (*source).clone();
-        claim.text = presented.text;
-        claims.push(claim);
-    }
-    if seen.len() != original.len() {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "presentation omitted a frozen research claim".into(),
+    let presented: PresentedClaims = serde_json::from_value(value).map_err(|_| {
+        model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+    })?;
+    if presented.claim_texts.len() != research_draft.claims.len() {
+        return Err(model_stage_rejection(
+            SessionModelRejectionClass::FrozenClaimCardinality,
+            contract_digest,
         ));
     }
     let mut draft = research_draft.clone();
-    draft.claims = claims;
+    for (claim, text) in draft.claims.iter_mut().zip(presented.claim_texts) {
+        claim.text = text;
+    }
     draft.message = draft
         .claims
         .iter()
@@ -3377,6 +3711,75 @@ fn apply_session_presentation_value(
     Ok(draft)
 }
 
+fn apply_claim_review_value(
+    turn: &ClaimReviewTurn,
+    value: Value,
+    contract_digest: &str,
+) -> Result<MessageReview, AgentRuntimeError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct PositionalClaimReview {
+        verdict: ClaimReviewVerdict,
+        issue: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct AttentionJudgment {
+        reason: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct PositionalMessageReview {
+        claim_reviews: Vec<PositionalClaimReview>,
+        undeclared_material: Vec<String>,
+        attention: AttentionJudgment,
+        behavioral: BehavioralReview,
+    }
+
+    let positional: PositionalMessageReview = serde_json::from_value(value).map_err(|_| {
+        model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
+    })?;
+    if positional.claim_reviews.len() != turn.draft.claims.len()
+        || positional.claim_reviews.iter().any(|review| {
+            match (&review.verdict, review.issue.as_deref()) {
+                (ClaimReviewVerdict::Supported, None) => false,
+                (ClaimReviewVerdict::Unsupported, Some(issue)) => issue.trim().is_empty(),
+                _ => true,
+            }
+        })
+    {
+        return Err(model_stage_rejection(
+            SessionModelRejectionClass::ReviewBinding,
+            contract_digest,
+        ));
+    }
+    let claim_reviews = turn
+        .draft
+        .claims
+        .iter()
+        .zip(positional.claim_reviews)
+        .map(|(claim, review)| ClaimReview {
+            claim_ref: claim.claim_ref.clone(),
+            verdict: review.verdict,
+            issue: review.issue,
+        })
+        .collect();
+    Ok(MessageReview {
+        draft_digest: grounded_draft_digest(&turn.draft),
+        message_digest: message_digest(&turn.draft.message),
+        claim_reviews,
+        undeclared_material: positional.undeclared_material,
+        attention: AttentionReview {
+            delivery: turn.draft.delivery,
+            reason: positional.attention.reason,
+        },
+        behavioral: positional.behavioral,
+    })
+}
+
+#[cfg(test)]
 fn normalize_embedded_session_object(value: &mut Value, field: &str) {
     let Some(encoded) = value
         .as_object_mut()
@@ -3396,6 +3799,7 @@ fn normalize_embedded_session_object(value: &mut Value, field: &str) {
     }
 }
 
+#[cfg(test)]
 fn normalize_grounded_claim_aliases(value: &mut Value) {
     let Some(claims) = value
         .get_mut("draft")
@@ -3510,10 +3914,14 @@ fn session_turn_payload(turn: &SessionModelTurn) -> Value {
 }
 
 fn session_presentation_payload(turn: &SessionPresentationTurn) -> Value {
+    let (current_operator_message, _) =
+        split_session_messages(&turn.research.session.messages, &turn.research.trigger);
     json!({
-        "research": session_turn_payload(&turn.research),
+        "current_operator_message": current_operator_message.map(current_operator_message_value),
         "research_draft": &turn.research_draft,
-        "prior_presentation": &turn.prior_presentation,
+        "prior_claim_texts": turn.prior_presentation.as_ref().map(|draft| {
+            draft.claims.iter().map(|claim| claim.text.as_str()).collect::<Vec<_>>()
+        }),
         "review_feedback": &turn.review_feedback,
     })
 }
@@ -3613,23 +4021,15 @@ fn tagged_context_value<T: Serialize>(item: &T, context_kind: &str) -> Value {
     }
 }
 fn claim_review_payload(turn: &ClaimReviewTurn) -> Value {
+    let (current_operator_message, _) =
+        split_session_messages(&turn.session.messages, &turn.trigger);
     json!({
+        "current_operator_message": current_operator_message.map(current_operator_message_value),
         "draft": &turn.draft,
-        "draft_digest": grounded_draft_digest(&turn.draft),
-        "message_digest": format!(
-            "sha256:{}",
-            Sha256::digest(turn.draft.message.as_bytes())
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        ),
         "observations": &turn.observations,
         "prior_commitment_checkpoint": &turn.prior_commitment_checkpoint,
         "wake_assessment": &turn.wake_assessment,
         "turn_trigger": &turn.trigger,
-        "operator_messages": turn.session.messages.iter().filter(|message| {
-            message.role == cerebro_agent_runtime::session::SessionMessageRole::User
-        }).collect::<Vec<_>>(),
     })
 }
 
@@ -7498,50 +7898,77 @@ mod tests {
         assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
 
-        let initial_schema = session_initial_decision_schema();
-        let continue_schema = session_continue_decision_schema();
-        let presentation_schema = session_presentation_schema();
+        let initial_contracts = session_research_contracts(true);
+        let continue_contracts = session_research_contracts(false);
         assert_eq!(
-            initial_schema["properties"]["decision"]["enum"],
-            json!(["establish_plan", "finish_research"])
+            initial_contracts
+                .iter()
+                .map(|contract| contract.name)
+                .collect::<Vec<_>>(),
+            vec![SESSION_PLAN_AND_READ_TOOL, SESSION_FINISH_TOOL]
         );
         assert_eq!(
-            initial_schema["properties"]["lane"]["enum"],
-            json!(["converse", "lookup", "investigate", "act"])
+            continue_contracts
+                .iter()
+                .map(|contract| contract.name)
+                .collect::<Vec<_>>(),
+            vec![SESSION_READ_TOOL, SESSION_FINISH_TOOL]
+        );
+        let initial_read = &initial_contracts[0].schema;
+        let initial_finish = &initial_contracts[1].schema;
+        let continue_read = &continue_contracts[0].schema;
+        let continue_finish = &continue_contracts[1].schema;
+        let property_names = |schema: &Value| {
+            let mut names = schema["properties"]
+                .as_object()
+                .expect("the stage contract has object properties")
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(property_names(initial_read), vec!["calls", "lane", "plan"]);
+        assert_eq!(initial_read["properties"]["calls"]["minItems"], 1);
+        assert_eq!(property_names(initial_finish), vec!["draft", "lane"]);
+        assert!(
+            initial_finish["properties"]["draft"]["properties"]
+                .get("message")
+                .is_none()
         );
         assert!(
-            initial_schema["required"]
-                .as_array()
-                .is_some_and(|required| required.contains(&json!("lane")))
+            initial_finish["properties"]["draft"]["properties"]
+                .get("presentation_ready")
+                .is_none()
         );
-        assert!(initial_schema["properties"].get("draft").is_some());
+        assert_eq!(property_names(continue_read), vec!["calls"]);
+        assert_eq!(property_names(continue_finish), vec!["draft"]);
+        let presentation_schema = session_presentation_schema(2);
+        assert_eq!(property_names(&presentation_schema), vec!["claim_texts"]);
         assert_eq!(
-            initial_schema["properties"]["plan"],
-            complete_schema["properties"]["plan"]
-        );
-        assert_eq!(
-            initial_schema["properties"]["calls"],
-            complete_schema["properties"]["calls"]
-        );
-        assert_eq!(
-            initial_schema["properties"]["draft"],
-            complete_schema["properties"]["draft"]
+            presentation_schema["properties"]["claim_texts"]["minItems"],
+            2
         );
         assert_eq!(
-            continue_schema["properties"]["decision"]["enum"],
-            json!(["invoke_tools", "finish_research"])
+            presentation_schema["properties"]["claim_texts"]["maxItems"],
+            2
         );
-        assert!(continue_schema["properties"].get("plan").is_none());
-        assert!(continue_schema["properties"].get("draft").is_some());
-        assert_eq!(
-            presentation_schema["properties"]
-                .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["claims".into()])
+        let review_schema = claim_review_schema(2);
+        assert!(review_schema["properties"].get("draft_digest").is_none());
+        assert!(review_schema["properties"].get("message_digest").is_none());
+        assert!(
+            review_schema["properties"]["claim_reviews"]["items"]["properties"]
+                .get("claim_ref")
+                .is_none()
+        );
+        assert!(
+            review_schema["properties"]["attention"]["properties"]
+                .get("delivery")
+                .is_none()
         );
         assert!(!presentation_schema.to_string().contains("mission"));
         assert!(!presentation_schema.to_string().contains("memory_updates"));
-        assert!(continue_schema.to_string().len() < decision_schema.len());
+        assert!(continue_read.to_string().len() < decision_schema.len());
         assert!(presentation_schema.to_string().len() < decision_schema.len());
         assert!(
             !built_in_capability_catalog()
@@ -7606,11 +8033,9 @@ mod tests {
         let presented = apply_session_presentation_value(
             &research_draft,
             json!({
-                "claims": [{
-                    "claim_ref": "claim:one",
-                    "text": "The current read is complete, so the bounded check passed."
-                }]
+                "claim_texts": ["The current read is complete, so the bounded check passed."]
             }),
+            &sha256_digest(&session_presentation_schema(1).to_string()),
         )
         .unwrap();
 
@@ -7628,10 +8053,84 @@ mod tests {
         assert!(
             apply_session_presentation_value(
                 &research_draft,
-                json!({"claims": [{"claim_ref": "claim:other", "text": "Invented."}]})
+                json!({"claim_texts": ["First.", "Invented."]}),
+                &sha256_digest(&session_presentation_schema(1).to_string()),
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn positional_review_injects_exact_rust_owned_bindings() {
+        let request = replay_request();
+        let session = new_session(&request).unwrap();
+        let mut draft = replay_draft(&session);
+        draft.claims = vec![cerebro_agent_runtime::session::GroundedClaim {
+            claim_ref: "claim:one".into(),
+            planned_claim_ref: None,
+            text: "The durable event retains the request identity.".into(),
+            required_for_answer: true,
+            content: cerebro_agent_runtime::session::ClaimContent::StableExplanation {
+                explanation_id:
+                    cerebro_agent_runtime::session::StableExplanationId::EvidenceAuthorityBoundary,
+            },
+        }];
+        draft.message = draft.claims[0].text.clone();
+        let turn = ClaimReviewTurn {
+            session,
+            trigger: SessionTurnTrigger::Operator,
+            prior_commitment_checkpoint: None,
+            wake_assessment: None,
+            draft: draft.clone(),
+            observations: Vec::new(),
+        };
+        let schema = claim_review_schema(1);
+        let review = apply_claim_review_value(
+            &turn,
+            json!({
+                "claim_reviews": [{"verdict": "supported", "issue": null}],
+                "undeclared_material": [],
+                "attention": {"reason": "Deliver the direct answer."},
+                "behavioral": {
+                    "answers_newest_request": true,
+                    "conversational": true,
+                    "owns_follow_through": true,
+                    "right_sized": true,
+                    "evidence_boundary_correct": true
+                }
+            }),
+            &sha256_digest(&schema.to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(review.draft_digest, grounded_draft_digest(&draft));
+        assert_eq!(review.message_digest, message_digest(&draft.message));
+        assert_eq!(review.claim_reviews[0].claim_ref, "claim:one");
+        assert_eq!(review.attention.delivery, draft.delivery);
+        assert!(matches!(
+            apply_claim_review_value(
+                &turn,
+                json!({
+                    "claim_reviews": [],
+                    "undeclared_material": [],
+                    "attention": {"reason": "Deliver."},
+                    "behavioral": {
+                        "answers_newest_request": true,
+                        "conversational": true,
+                        "owns_follow_through": true,
+                        "right_sized": true,
+                        "evidence_boundary_correct": true
+                    }
+                }),
+                &sha256_digest(&schema.to_string()),
+            ),
+            Err(AgentRuntimeError::ModelStageRejected(
+                SessionModelRejection {
+                    class: SessionModelRejectionClass::ReviewBinding,
+                    ..
+                }
+            ))
+        ));
     }
 
     #[test]
@@ -7995,6 +8494,80 @@ mod tests {
             .unwrap(),
             disagreeing_decision
         );
+    }
+
+    #[test]
+    fn bedrock_research_choice_requires_one_recognized_active_contract() {
+        let contracts = session_research_contracts(true);
+        let contract_digest = structured_choice_contract_digest(&contracts);
+        let input = json!({
+            "lane": "investigate",
+            "plan": {
+                "decision": "Read one current source state.",
+                "lane": "investigate",
+                "resolved_entities": ["source:one"],
+                "claims": [{
+                    "claim_ref": "planned:one",
+                    "question": "What is the current source state?",
+                    "required": true,
+                    "subject_refs": ["source:one"],
+                    "source_candidates": ["source_runtime.inspect"]
+                }],
+                "selected_tools": ["source_runtime.inspect"],
+                "stop_conditions": ["The current state is returned."],
+                "user_visible_work": ["Read the current source state."],
+                "follow_through": null
+            },
+            "calls": [{
+                "call_id": "call:one",
+                "tool_id": "source_runtime.inspect",
+                "purpose": "Read source:one.",
+                "input": {"source_ref": "source:one"}
+            }]
+        });
+        let tool_use = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
+            .tool_use_id("tool-use-research")
+            .name(SESSION_PLAN_AND_READ_TOOL)
+            .input(json_to_document(&input).unwrap())
+            .build()
+            .unwrap();
+        let selection = bedrock_structured_choice_output(
+            &[ContentBlock::ToolUse(tool_use.clone())],
+            &contracts,
+            &contract_digest,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_session_research_choice(selection, true).unwrap(),
+            SessionModelDecision::EstablishPlanAndInvoke { plan, calls }
+                if plan.lane == ExecutionLane::Investigate && calls.len() == 1
+        ));
+
+        let missing =
+            bedrock_structured_choice_output(&[], &contracts, &contract_digest).unwrap_err();
+        assert!(matches!(
+            missing,
+            AgentRuntimeError::ModelStageRejected(SessionModelRejection {
+                class: SessionModelRejectionClass::MissingOrAmbiguousTool,
+                ..
+            })
+        ));
+        let duplicate = bedrock_structured_choice_output(
+            &[
+                ContentBlock::ToolUse(tool_use.clone()),
+                ContentBlock::ToolUse(tool_use),
+            ],
+            &contracts,
+            &contract_digest,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            duplicate,
+            AgentRuntimeError::ModelStageRejected(SessionModelRejection {
+                class: SessionModelRejectionClass::MissingOrAmbiguousTool,
+                ..
+            })
+        ));
     }
 
     #[test]
