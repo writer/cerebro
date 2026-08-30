@@ -1,3 +1,11 @@
+//! Closed, credential-free wire contracts for externally produced events.
+//!
+//! The common envelope binds a producer, tenant, subject, sequence, evidence
+//! quality, payload family, optional chain predecessor, and detached signature
+//! metadata. Validation is fail-closed and bounded, but signature trust, tenant
+//! authentication, replay admission, durable append, and projection remain host
+//! responsibilities.
+
 use serde::{Deserialize, Serialize};
 
 mod envelope;
@@ -48,6 +56,7 @@ pub const EXTERNAL_EVENT_ATTRIBUTE_KEYS: &[&str] = &[
 /// Maximum bytes accepted in one external-event operational metadata value.
 pub const MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES: usize = 256;
 
+// Private bounds are shared across envelope and family payload validators.
 const SIGNING_DOMAIN_V1: &str = "cerebro.external-event-signature/v1";
 const MAX_ID_BYTES: usize = 256;
 const MAX_TEXT_BYTES: usize = 1_024;
@@ -61,19 +70,31 @@ const MAX_SESSION_LEASE_MS: u64 = 60 * 60 * 1_000;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WireContractFamily {
+    /// Agent execution activity and stage transitions.
     AgentActivity,
+    /// Endpoint posture and observation telemetry.
     EndpointTelemetry,
+    /// Bounded endpoint session authorization lease.
     EndpointSessionLease,
+    /// Threat intelligence observation and promotion evidence.
     ThreatIntelligence,
+    /// Outcome of a requested remediation action.
     RemediationOutcome,
+    /// Point-in-time metric value with evidence.
     MetricSnapshot,
+    /// Finding emitted by an external scanner.
     ScannerFinding,
+    /// Declarative connector capabilities and object families.
     ConnectorManifest,
+    /// Agent capability advertisement.
     AgentCapability,
 }
 
 impl WireContractFamily {
     /// Returns the only payload schema admitted for this family in v1.
+    ///
+    /// This closed mapping prevents an envelope from pairing a recognized family
+    /// with a different or producer-selected schema.
     pub const fn schema_ref(self) -> &'static str {
         match self {
             Self::AgentActivity => AGENT_ACTIVITY_SCHEMA_V1,
