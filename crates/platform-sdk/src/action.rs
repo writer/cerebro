@@ -1,3 +1,11 @@
+//! Content-addressed action proposals, durable operation snapshots, and receipts.
+//!
+//! Action contracts bind a finding and approval to an exact proposed external
+//! effect, then track claim, provider observation, execution, reconciliation,
+//! and independent verification evidence. The SDK validates stored shape and
+//! cross-field authority invariants; adapters still own actor authorization,
+//! provider authenticity, durable transitions, idempotency, and execution.
+
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::collections::BTreeSet;
 
@@ -6,67 +14,133 @@ use crate::{
     OpaqueId, SdkError, TenantId, VerificationId, VerificationReceipt,
 };
 
+// Domain-separate proposal JSON from other SHA-256-addressed platform values.
 const ACTION_PROPOSAL_DIGEST_SCHEMA: &str = "cerebro.action-proposal.v1";
+
+/// Maximum duration of one action-executor claim lease: five minutes.
 pub const MAX_ACTION_CLAIM_LEASE_MS: u64 = 5 * 60 * 1_000;
 
+/// Durable lifecycle state of an action operation.
+///
+/// This enum names observable snapshots, not a transition graph. The platform
+/// engine owns allowed forward transitions; [`ActionOperation::validate`] checks
+/// that evidence present in a stored snapshot is compatible with its state.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionState {
+    /// Proposal is admitted but has no approval or execution evidence.
     Proposed,
+    /// Proposal has completed pre-execution simulation without approval evidence.
     Simulated,
+    /// Proposal is awaiting an independent approval decision.
     WaitingForApproval,
+    /// Exact proposal digest has an independent approval receipt.
     Approved,
+    /// An executor holds a bounded claim lease.
     Claimed,
+    /// Claimed executor is preparing or performing provider work.
     Executing,
+    /// Provider accepted the operation and returned current observation evidence.
     Dispatched,
+    /// Dispatch may have occurred but its outcome cannot yet be established.
     OutcomeUnknown,
+    /// Expected effect was observed after dispatch.
     Completed,
+    /// Expected effect was established through reconciliation without current dispatch evidence.
     Reconciled,
+    /// Independent verification confirmed the observed effect.
     Verified,
+    /// Operation reached a definite failure state without successful verification.
     Failed,
+    /// Effect was rolled back and any earlier verification is stale.
     RolledBack,
 }
 
+/// Independent verification status attached to an action operation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationState {
+    /// No terminal independent verification outcome is attached.
     Pending,
+    /// Attached receipt independently confirms the intended effect.
     Verified,
+    /// Verification rejected the intended effect.
     Rejected,
+    /// Earlier verification no longer represents current state.
     Stale,
 }
 
+/// One expected post-action state used for execution verification.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionEffect {
+    /// Stable identity of the resource expected to change.
     pub target_id: OpaqueId,
+    /// Bounded machine-readable effect kind.
     pub effect_kind: String,
+    /// Digest of the authoritative state expected after execution.
     pub expected_state_digest: ContentDigest,
 }
 
+/// Immutable, content-addressed proposal for one external action.
+///
+/// The proposal binds the exact finding validation, graph revision, action
+/// definition, ordered expected effects, rollback reference, idempotency key,
+/// simulation, verification plan, proposer, and validity interval. Expected
+/// effect order contributes to the digest even though duplicate target/kind
+/// pairs are rejected.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionProposal {
+    /// Stable identity shared by every snapshot and receipt for the operation.
     pub operation_id: ActionOperationId,
+    /// Tenant whose finding and action target are in scope.
     pub tenant_id: TenantId,
+    /// Finding that motivates the action.
     pub finding_id: OpaqueId,
+    /// Exact finding revision admitted for action.
     pub finding_revision_digest: ContentDigest,
+    /// Digest of the independent finding-validation receipt.
     pub finding_validation_receipt_digest: ContentDigest,
+    /// Non-zero graph revision on which the proposal is based.
     pub graph_revision: GraphRevision,
+    /// Non-empty action kind, preserved exactly after validation.
     pub action_kind: String,
+    /// Digest of the executable action definition.
     pub action_definition_digest: ContentDigest,
+    /// Primary provider or graph target of the action.
     pub target_id: OpaqueId,
+    /// Non-empty ordered expected effects, bounded to 100 entries.
     pub expected_effects: Vec<ActionEffect>,
+    /// Stable reference to the separately authorized rollback operation.
     pub rollback_ref: OpaqueId,
+    /// Caller-selected key used by durable execution to suppress duplicate effects.
     pub idempotency_key: OpaqueId,
+    /// Digest of the successful pre-execution simulation.
     pub simulation_digest: ContentDigest,
+    /// Digest of the independent verification plan.
     pub verification_plan_digest: ContentDigest,
+    /// Actor that proposed the action.
     pub proposed_by: ActorId,
+    /// Non-zero Unix-millisecond proposal time.
     pub proposed_at_unix_ms: u64,
+    /// Exclusive Unix-millisecond expiration time for approval and claim.
     pub proposal_expires_at_unix_ms: u64,
+    /// Schema-tagged digest of every preceding proposal field.
     pub proposal_digest: ContentDigest,
 }
 
 impl ActionProposal {
+    /// Computes the schema-tagged digest of the proposal's semantic fields.
+    ///
+    /// [`Self::proposal_digest`] is excluded to avoid recursive content
+    /// addressing. Vector order is preserved. This method serializes fields as
+    /// supplied and does not validate action kind, effects, or timestamps.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Backend`] if JSON serialization fails.
     pub fn computed_digest(&self) -> Result<ContentDigest, SdkError> {
+        // A dedicated material type freezes serialized field order and excludes
+        // the digest field from its own hash input.
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
             schema: &'static str,
@@ -116,11 +190,38 @@ impl ActionProposal {
             })
     }
 
+    /// Replaces the stored proposal digest with [`Self::computed_digest`].
+    ///
+    /// This helper does not call [`Self::validate`]; callers must validate the
+    /// resulting proposal before using it as durable authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Backend`] if digest serialization fails.
     pub fn bind_computed_digest(&mut self) -> Result<(), SdkError> {
         self.proposal_digest = self.computed_digest()?;
         Ok(())
     }
 
+    /// Validates proposal bounds, effect identity, timing, and content digest.
+    ///
+    /// `action_kind` must be non-empty, unpadded, and at most 128 bytes.
+    /// `effect_kind` additionally permits only ASCII alphanumerics plus
+    /// `-`, `_`, `.`, `:`, and `/`. Expected effects contain one to 100 entries
+    /// and cannot repeat a target/kind pair. The expiration is exclusive and
+    /// must be later than the non-zero proposal time.
+    ///
+    /// This check does not authorize the proposer, validate the referenced
+    /// finding receipt, prove the action/simulation/verification definitions,
+    /// or reserve the idempotency key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Invalid`] for malformed kinds or a mismatched digest,
+    /// [`SdkError::TooLong`] for an action kind over 128 bytes,
+    /// [`SdkError::OutOfRange`] for invalid effect count or validity interval,
+    /// [`SdkError::Conflict`] for a duplicate effect target/kind pair, or
+    /// [`SdkError::Backend`] if digest serialization fails.
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.action_kind.trim() != self.action_kind || self.action_kind.is_empty() {
             return Err(SdkError::Invalid("action kind"));
@@ -161,44 +262,105 @@ impl ActionProposal {
     }
 }
 
+/// Validated durable snapshot of one action operation.
+///
+/// Optional fields form evidence groups rather than independent flags: claims,
+/// current provider receipts, execution observations, and verification receipts
+/// must be internally complete and compatible with [`Self::state`]. Historical
+/// terminal records may carry only `external_receipt_ref` for provider evidence.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionOperation {
+    /// Immutable proposal whose digest approvals and receipts bind.
     pub proposal: ActionProposal,
+    /// Observable lifecycle state for this snapshot.
     pub state: ActionState,
+    /// Non-zero optimistic-concurrency version.
     pub version: u64,
+    /// Independent approval bound to the exact proposal digest.
     pub approval_receipt: Option<DecisionReceipt>,
+    /// Worker identity holding the current claim lease.
     pub claimed_by: Option<OpaqueId>,
+    /// Inclusive Unix-millisecond claim start.
     pub claimed_at_unix_ms: Option<u64>,
+    /// Exclusive Unix-millisecond claim expiration.
     pub claim_expires_at_unix_ms: Option<u64>,
+    /// Actor attributed to provider dispatch or observed execution.
     pub executor_actor_id: Option<ActorId>,
+    /// Digest of current provider receipt content.
     pub provider_receipt_digest: Option<ContentDigest>,
+    /// Bounded machine-readable provider status.
     pub provider_status: Option<String>,
+    /// Unix-millisecond time at which current provider state was observed.
     pub provider_observed_at_unix_ms: Option<u64>,
+    /// Unix-millisecond time at which the intended effect was observed.
     pub executed_at_unix_ms: Option<u64>,
+    /// Stable provider receipt reference, including the historical-only form.
     pub external_receipt_ref: Option<OpaqueId>,
+    /// Digest of authoritative state observed after execution.
     pub observed_effect_digest: Option<ContentDigest>,
+    /// Current independent-verification classification.
     pub verification_state: VerificationState,
+    /// Independent receipt attached only when verified evidence is present.
     pub verification_receipt: Option<ActionVerificationReceipt>,
 }
 
+/// Operation-bound wrapper around an independent verification receipt.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionVerificationReceipt {
+    /// Operation whose effect was verified.
     pub operation_id: ActionOperationId,
+    /// Exact immutable proposal that authorized execution.
     pub proposal_digest: ContentDigest,
+    /// Exact observed-effect digest being verified.
     pub observed_effect_digest: ContentDigest,
+    /// Independent actor and source-revision evidence.
     pub receipt: VerificationReceipt,
 }
 
+/// Compact action state receipt returned by reconciliation.
+///
+/// This structure has no standalone validator. The producing adapter must bind
+/// its execution digest and optional verification receipt to a validated durable
+/// operation snapshot before returning it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionReceipt {
+    /// Stable operation identity.
     pub operation_id: ActionOperationId,
+    /// Durable operation state represented by the receipt.
     pub state: ActionState,
+    /// Non-zero operation version represented by the receipt.
     pub version: u64,
+    /// Digest of the execution receipt or reconciled execution material.
     pub execution_receipt_digest: ContentDigest,
+    /// Independent verification evidence, when present.
     pub verification_receipt: Option<ActionVerificationReceipt>,
 }
 
 impl ActionOperation {
+    /// Validates proposal authority evidence and the operation-state snapshot.
+    ///
+    /// Validation enforces a non-zero version, independent in-window approval,
+    /// all-or-none claim fields with a lease no longer than five minutes,
+    /// coherent current or historical provider evidence, ordered execution
+    /// timestamps, and operation-bound independent verification. It then applies
+    /// the exact evidence matrix documented by [`ActionState`].
+    ///
+    /// `Failed` intentionally admits any otherwise coherent pre-verification
+    /// evidence combination with `Pending` or `Rejected` verification. A
+    /// `RolledBack` snapshot requires `Stale`; when it retains a verification
+    /// receipt, execution evidence must also remain present. Historical external
+    /// receipt references are readable only in `Completed`, `Verified`, `Failed`,
+    /// or `RolledBack` states.
+    ///
+    /// This is snapshot validation, not a transition check. It does not verify
+    /// provider receipt content, authorize actors, compare `claimed_by` with the
+    /// executor actor, or prove that the version follows a previous snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns proposal validation errors, [`SdkError::OutOfRange`] for version
+    /// zero, or [`SdkError::Invalid`] for incompatible approval, claim, provider,
+    /// execution, verification, or state evidence.
     pub fn validate(&self) -> Result<(), SdkError> {
         self.proposal.validate()?;
         if self.version == 0 {
@@ -212,6 +374,9 @@ impl ActionOperation {
         } else {
             false
         };
+
+        // Claim metadata is one atomic evidence group. Its interval begins no
+        // earlier than approval and stays within proposal validity and lease cap.
         let has_claim = match (
             &self.claimed_by,
             self.claimed_at_unix_ms,
@@ -234,6 +399,9 @@ impl ActionOperation {
             }
             _ => return Err(SdkError::Invalid("action operation claimant")),
         };
+
+        // Current provider evidence is all-or-none with the stable external
+        // reference. A lone reference is accepted only as a legacy durable form.
         let (has_provider_receipt, has_legacy_external_receipt) = match (
             &self.external_receipt_ref,
             &self.provider_receipt_digest,
@@ -258,6 +426,9 @@ impl ActionOperation {
             }
             _ => return Err(SdkError::Invalid("action provider receipt")),
         };
+
+        // Execution time and observed effect digest are inseparable and cannot
+        // predate either the claim or a current provider observation.
         let has_execution = match (self.executed_at_unix_ms, &self.observed_effect_digest) {
             (None, None) => false,
             (Some(executed_at), Some(_)) => {
@@ -285,6 +456,9 @@ impl ActionOperation {
         } else {
             false
         };
+
+        // Compare presence groups exactly for normal states. Fields outside the
+        // groups, such as executor_actor_id, retain their separately checked role.
         let exact =
             |approval, claim, provider_receipt, execution, verification, verification_state| {
                 has_approval == approval
@@ -336,6 +510,9 @@ impl ActionOperation {
                     && (!has_verification || has_execution)
             }
         };
+
+        // Legacy receipt references must never appear on pre-execution states;
+        // this prevents the compatibility path from admitting new authority.
         let legacy_external_receipt_allowed = !has_legacy_external_receipt
             || matches!(
                 self.state,
@@ -351,6 +528,10 @@ impl ActionOperation {
     }
 }
 
+/// Checks the bounded provider-status vocabulary admitted into durable state.
+///
+/// Status is non-empty, unpadded, at most 64 bytes, and limited to ASCII
+/// alphanumerics plus `-`, `_`, and `.`.
 fn valid_provider_status(status: &str) -> bool {
     !status.is_empty()
         && status.len() <= 64
@@ -360,6 +541,13 @@ fn valid_provider_status(status: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
 }
 
+/// Checks approval binding, actor separation, and proposal-validity timing.
+///
+/// [`DecisionReceipt::authorizes`] supplies the affirmative decision, non-zero
+/// decision time, and exact proposal-digest comparison. This helper additionally
+/// rejects self-approval and requires the decision in the inclusive-proposal,
+/// exclusive-expiration interval. It does not establish approver authorization
+/// or receipt authenticity.
 pub(crate) fn approval_authorizes(operation: &ActionOperation, receipt: &DecisionReceipt) -> bool {
     receipt.authorizes(operation.proposal.proposal_digest.as_str())
         && receipt.decided_by != operation.proposal.proposed_by
@@ -367,6 +555,13 @@ pub(crate) fn approval_authorizes(operation: &ActionOperation, receipt: &Decisio
         && receipt.decided_at_unix_ms < operation.proposal.proposal_expires_at_unix_ms
 }
 
+/// Checks that independent verification confirms this operation's exact effect.
+///
+/// The wrapper must bind operation, proposal, and observed-effect digests. The
+/// nested receipt must name the recorded executor, use a verifier distinct from
+/// proposer and approver, occur strictly after execution, and independently
+/// confirm an effective source-revision change with evidence. Authenticity and
+/// verifier authorization remain importing-boundary responsibilities.
 pub(crate) fn verification_confirms(
     operation: &ActionOperation,
     receipt: &ActionVerificationReceipt,
@@ -386,6 +581,7 @@ pub(crate) fn verification_confirms(
         && receipt.receipt.independently_confirms_effect()
 }
 
+/// Strict wire form for one expected effect before typed-ID parsing.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredActionEffect {
@@ -394,6 +590,7 @@ struct StoredActionEffect {
     expected_state_digest: String,
 }
 
+/// Strict wire form for an action proposal before digest-valid domain admission.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredActionProposal {
@@ -417,6 +614,7 @@ struct StoredActionProposal {
     proposal_digest: String,
 }
 
+/// Strict nested approval form used to reject unknown unsigned fields.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredDecisionReceipt {
@@ -427,6 +625,7 @@ struct StoredDecisionReceipt {
     decided_at_unix_ms: u64,
 }
 
+/// Strict nested independent-verification form before actor and ID parsing.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredVerificationReceipt {
@@ -440,6 +639,7 @@ struct StoredVerificationReceipt {
     verified_at_unix_ms: u64,
 }
 
+/// Strict operation-bound verification wrapper used during admission.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredActionVerificationReceipt {
@@ -449,6 +649,10 @@ struct StoredActionVerificationReceipt {
     receipt: StoredVerificationReceipt,
 }
 
+/// Strict wire form for a complete durable operation snapshot.
+///
+/// Keeping every nested form under `deny_unknown_fields` prevents unbound wire
+/// extensions from being ignored before proposal digest and state validation.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredActionOperation {
@@ -473,6 +677,7 @@ struct StoredActionOperation {
 impl TryFrom<StoredActionOperation> for ActionOperation {
     type Error = SdkError;
 
+    /// Parses every optional evidence group, then validates the complete snapshot.
     fn try_from(stored: StoredActionOperation) -> Result<Self, Self::Error> {
         let operation = Self {
             proposal: stored.proposal.try_into()?,
@@ -512,6 +717,7 @@ impl TryFrom<StoredActionOperation> for ActionOperation {
 impl TryFrom<StoredActionProposal> for ActionProposal {
     type Error = SdkError;
 
+    /// Parses typed proposal fields and admits only a digest-valid proposal.
     fn try_from(stored: StoredActionProposal) -> Result<Self, Self::Error> {
         let proposal = Self {
             operation_id: ActionOperationId::parse(stored.operation_id)?,
@@ -548,6 +754,10 @@ impl TryFrom<StoredActionProposal> for ActionProposal {
 impl TryFrom<StoredActionEffect> for ActionEffect {
     type Error = SdkError;
 
+    /// Parses effect identity and expected-state digest.
+    ///
+    /// Effect-kind syntax is validated by the enclosing proposal so duplicate
+    /// detection can run over the complete collection.
     fn try_from(stored: StoredActionEffect) -> Result<Self, Self::Error> {
         Ok(Self {
             target_id: OpaqueId::parse(stored.target_id)?,
@@ -560,6 +770,7 @@ impl TryFrom<StoredActionEffect> for ActionEffect {
 impl TryFrom<StoredDecisionReceipt> for DecisionReceipt {
     type Error = SdkError;
 
+    /// Parses approval identities while retaining fields for proposal binding.
     fn try_from(stored: StoredDecisionReceipt) -> Result<Self, Self::Error> {
         Ok(Self {
             decision_id: DecisionId::parse(stored.decision_id)
@@ -575,6 +786,10 @@ impl TryFrom<StoredDecisionReceipt> for DecisionReceipt {
 impl TryFrom<StoredActionVerificationReceipt> for ActionVerificationReceipt {
     type Error = SdkError;
 
+    /// Parses the operation-bound verification wrapper.
+    ///
+    /// Cross-field and independence checks run when the enclosing operation is
+    /// validated rather than during construction of this nested value.
     fn try_from(stored: StoredActionVerificationReceipt) -> Result<Self, Self::Error> {
         Ok(Self {
             operation_id: ActionOperationId::parse(stored.operation_id)?,
@@ -588,6 +803,10 @@ impl TryFrom<StoredActionVerificationReceipt> for ActionVerificationReceipt {
 impl TryFrom<StoredVerificationReceipt> for VerificationReceipt {
     type Error = SdkError;
 
+    /// Parses typed verification identities while preserving source evidence.
+    ///
+    /// [`VerificationReceipt::independently_confirms_effect`] is evaluated by
+    /// [`verification_confirms`] after operation bindings are available.
     fn try_from(stored: StoredVerificationReceipt) -> Result<Self, Self::Error> {
         Ok(Self {
             verification_id: VerificationId::parse(stored.verification_id)
@@ -603,11 +822,13 @@ impl TryFrom<StoredVerificationReceipt> for VerificationReceipt {
     }
 }
 
+/// Parses an actor ID and maps its lower-level error to the action wire contract.
 fn parse_actor_id(value: String) -> Result<ActorId, SdkError> {
     ActorId::parse(value).map_err(|_| SdkError::Invalid("action actor id"))
 }
 
 impl<'de> Deserialize<'de> for ActionOperation {
+    /// Decodes only strict, typed, state-valid operation snapshots.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -619,6 +840,7 @@ impl<'de> Deserialize<'de> for ActionOperation {
 }
 
 impl<'de> Deserialize<'de> for ActionProposal {
+    /// Decodes only strict, typed, digest-valid proposals.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
