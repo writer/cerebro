@@ -938,6 +938,8 @@ pub enum AgentRuntimeError {
     InvalidToolCall(String),
     /// A required model stage could not produce a decision.
     ModelUnavailable(String),
+    /// A model response violated one typed stage contract.
+    ModelStageRejected(session::SessionModelRejection),
     /// The operating loop exhausted [`MAX_MODEL_STEPS`].
     ModelStepLimit,
     /// Invalid operating decisions exhausted [`MAX_OPERATING_REPAIRS`].
@@ -986,6 +988,11 @@ impl fmt::Display for AgentRuntimeError {
             Self::ModelUnavailable(reason) => {
                 write!(formatter, "the agent model is unavailable: {reason}")
             }
+            Self::ModelStageRejected(rejection) => write!(
+                formatter,
+                "the model stage rejected a {:?} response under {}",
+                rejection.class, rejection.contract_digest
+            ),
             Self::ModelStepLimit => formatter.write_str("the model exceeded the turn step limit"),
             Self::OperatingRepairLimit => {
                 formatter.write_str("the operating decision repair loop exceeded its bounded limit")
