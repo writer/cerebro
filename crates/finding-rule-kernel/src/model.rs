@@ -1,3 +1,9 @@
+//! Closed request, response, and error records for finding-rule evaluation.
+//!
+//! Public request fields are host-admitted context rather than provider
+//! credentials. Crate-private response fields retain their established JSON
+//! names for compatibility with the finding lifecycle consumer.
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -85,59 +91,91 @@ pub struct EvaluationEnvelope {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Internal lifecycle instruction emitted by a rule decision.
 pub(crate) enum Action {
+    /// Event does not change finding state.
     None,
+    /// Open or recur a finding with the returned record.
     Open,
+    /// Close the finding selected by the returned anchor.
     Close,
+    /// Return only the stable anchor of an already-open finding.
     OpenAnchor,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Compatibility projection of one framework control reference.
 pub(crate) struct ControlRef {
+    /// Display name of the control framework.
     pub(crate) framework_name: String,
+    /// Framework-native control identifier.
     pub(crate) control_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Lifecycle-compatible finding body emitted by the Rust authority.
+///
+/// Explicit serialized names preserve the established Go-facing finding wire
+/// contract while Rust fields remain idiomatic within the kernel.
 pub(crate) struct FindingRecord {
+    /// Stable finding identity, currently equal to the fingerprint.
     #[serde(rename = "ID")]
     pub(crate) id: String,
+    /// Deterministic rule-and-resource recurrence key.
     #[serde(rename = "Fingerprint")]
     pub(crate) fingerprint: String,
+    /// Tenant owning every resource and event in the finding.
     #[serde(rename = "TenantID")]
     pub(crate) tenant_id: String,
+    /// Trusted runtime that evaluated the event.
     #[serde(rename = "RuntimeID")]
     pub(crate) runtime_id: String,
+    /// Exact catalog rule that produced the decision.
     #[serde(rename = "RuleID")]
     pub(crate) rule_id: String,
+    /// Stable operator-facing finding title.
     #[serde(rename = "Title")]
     pub(crate) title: String,
+    /// Rule-defined severity label.
     #[serde(rename = "Severity")]
     pub(crate) severity: String,
+    /// Lifecycle status represented by this record.
     #[serde(rename = "Status")]
     pub(crate) status: String,
+    /// Event-specific operator summary.
     #[serde(rename = "Summary")]
     pub(crate) summary: String,
+    /// Stable tenant-scoped resources implicated by the finding.
     #[serde(rename = "ResourceURNs")]
     pub(crate) resource_urns: Vec<String>,
+    /// Replayed events supporting this occurrence.
     #[serde(rename = "EventIDs")]
     pub(crate) event_ids: Vec<String>,
+    /// Policy identities observed in provider payloads, when applicable.
     #[serde(rename = "ObservedPolicyIDs")]
     pub(crate) observed_policy_ids: Option<Vec<String>>,
+    /// Primary policy identifier for policy-backed findings.
     #[serde(rename = "PolicyID")]
     pub(crate) policy_id: String,
+    /// Primary policy display name.
     #[serde(rename = "PolicyName")]
     pub(crate) policy_name: String,
+    /// Stable check identifier within the rule.
     #[serde(rename = "CheckID")]
     pub(crate) check_id: String,
+    /// Operator-facing check name.
     #[serde(rename = "CheckName")]
     pub(crate) check_name: String,
+    /// Control mappings declared by the rule definition.
     #[serde(rename = "ControlRefs")]
     pub(crate) control_refs: Vec<ControlRef>,
+    /// Bounded rule and event details retained for lifecycle use.
     #[serde(rename = "Attributes")]
     pub(crate) attributes: BTreeMap<String, String>,
+    /// Normalized time of the first supporting observation.
     #[serde(rename = "FirstObservedAt")]
     pub(crate) first_observed_at: String,
+    /// Normalized time of the latest supporting observation.
     #[serde(rename = "LastObservedAt")]
     pub(crate) last_observed_at: String,
 }
@@ -155,9 +193,12 @@ pub struct EvaluationResponse {
     pub input_digest: String,
     /// Digest of the decision fields.
     pub decision_digest: String,
+    /// Lifecycle instruction consumed by the host, serialized into the receipt.
     pub(crate) action: Action,
+    /// Stable selection key for close and open-anchor operations.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub(crate) anchor: String,
+    /// Finding content present only when the rule opens or recurs a finding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) finding: Option<FindingRecord>,
 }
