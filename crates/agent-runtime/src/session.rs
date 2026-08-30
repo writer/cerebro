@@ -1083,6 +1083,52 @@ pub enum SessionModelDecision {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Model boundary whose bounded contract rejected one provider response or runtime candidate.
+pub enum SessionModelStage {
+    /// First research decision, before a plan exists.
+    ResearchInitial,
+    /// Research decision made with an active plan.
+    ResearchContinue,
+    /// First visible rendering of a frozen research artifact.
+    PresentationInitial,
+    /// Sole visible-copy revision after deterministic or independent review feedback.
+    PresentationRevision,
+    /// Independent review of one exact visible candidate.
+    Review,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+/// Bounded reason a model-stage contract rejected a response without retaining provider output.
+pub enum SessionModelRejectionClass {
+    /// The configured provider or adapter did not return a usable response.
+    AdapterUnavailable,
+    /// The provider selected zero, multiple, or an unknown stage decision tool.
+    MissingOrAmbiguousTool,
+    /// The selected tool input could not be decoded into its typed stage result.
+    SchemaDecode,
+    /// Rust rejected a decoded candidate against the active plan, lane, evidence, or effect state.
+    RuntimeValidation,
+    /// Presentation returned a different number of visible claims than the frozen artifact.
+    FrozenClaimCardinality,
+    /// The independent review did not cover the exact frozen claim set.
+    ReviewBinding,
+    /// The sole revision repeated the exact rejected visible message.
+    UnchangedRevision,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+/// Typed provider-contract rejection returned to the runtime for durable stage attribution.
+pub struct SessionModelRejection {
+    /// Stable bounded rejection category; raw provider output is never retained.
+    pub class: SessionModelRejectionClass,
+    /// SHA-256 digest of the exact provider-facing stage contract.
+    pub contract_digest: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 /// Participant role retained in durable conversation history.
 pub enum SessionMessageRole {
     /// Message previously delivered by the agent.
@@ -1147,6 +1193,19 @@ pub enum SessionEvent {
         request_id: String,
         /// Accepted operating lane whose observation floor triggered the correction.
         lane: ExecutionLane,
+    },
+    /// Records one bounded model-stage rejection without persisting provider output or prompts.
+    ModelStageRejected {
+        /// Idempotency and correlation identifier for the active turn.
+        request_id: String,
+        /// Exact phase whose provider or runtime contract rejected the candidate.
+        stage: SessionModelStage,
+        /// Stable machine-readable rejection category.
+        class: SessionModelRejectionClass,
+        /// One-based rejection attempt within the current turn.
+        attempt: u8,
+        /// SHA-256 digest of the exact stage contract used for the rejected candidate.
+        contract_digest: String,
     },
     /// Records delivery of one scheduled commitment occurrence to the runtime.
     WakeTriggered {
@@ -2392,6 +2451,26 @@ pub fn apply_session_events(
                     ));
                 }
             }
+            SessionEvent::ModelStageRejected {
+                request_id,
+                stage: _,
+                class: _,
+                attempt,
+                contract_digest,
+            } => {
+                let has_active_turn = active_turn_start_index(&next.events, request_id).is_some();
+                if !bounded(request_id, MAX_TEXT_BYTES)
+                    || !has_active_turn
+                    || !(1..=u8::try_from(MAX_MODEL_REPAIRS + 1).unwrap_or(u8::MAX))
+                        .contains(attempt)
+                    || !valid_model_contract_digest(contract_digest)
+                {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "model stage rejection identity, attempt, or contract digest is invalid"
+                            .into(),
+                    ));
+                }
+            }
             SessionEvent::PlanEstablished { plan } => {
                 if let Some((request_id, started_index)) = next
                     .events
@@ -2921,7 +3000,19 @@ async fn run_session_turn_recorded_at(
                 .await
             {
                 Ok(draft) => draft,
-                Err(_) => {
+                Err(error) => {
+                    let rejection =
+                        classify_model_stage_error(error, SessionModelStage::PresentationRevision);
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        SessionModelStage::PresentationRevision,
+                        &rejection,
+                        1,
+                        journal,
+                    )
+                    .await?;
                     let accepted_at =
                         elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
@@ -2942,6 +3033,20 @@ async fn run_session_turn_recorded_at(
                 }
             };
             if message_digest(&draft.message) == prior_message_digest {
+                let rejection = runtime_stage_rejection(
+                    SessionModelStage::PresentationRevision,
+                    SessionModelRejectionClass::UnchangedRevision,
+                );
+                emit_model_stage_rejection(
+                    &session,
+                    &input,
+                    &mut events,
+                    SessionModelStage::PresentationRevision,
+                    &rejection,
+                    1,
+                    journal,
+                )
+                .await?;
                 let accepted_at =
                     elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                 return repair_fallback_outcome(
@@ -2966,7 +3071,49 @@ async fn run_session_turn_recorded_at(
         } else {
             match model.advance(model_turn.clone()).await {
                 Ok(decision) => decision,
+                Err(AgentRuntimeError::ModelStageRejected(rejection)) => {
+                    let stage = if plan.is_none() {
+                        SessionModelStage::ResearchInitial
+                    } else {
+                        SessionModelStage::ResearchContinue
+                    };
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        repairs + 1,
+                        journal,
+                    )
+                    .await?;
+                    repairs += 1;
+                    repair_feedback = vec![
+                        "The prior stage choice did not satisfy its typed research contract. Select exactly one available research action and provide only that action's required fields."
+                            .into(),
+                    ];
+                    continue;
+                }
                 Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                    let stage = if plan.is_none() {
+                        SessionModelStage::ResearchInitial
+                    } else {
+                        SessionModelStage::ResearchContinue
+                    };
+                    let rejection = runtime_stage_rejection(
+                        stage,
+                        SessionModelRejectionClass::RuntimeValidation,
+                    );
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        repairs + 1,
+                        journal,
+                    )
+                    .await?;
                     repairs += 1;
                     repair_feedback = vec![format!(
                         "The prior decision did not match the session contract: {reason}"
@@ -2974,6 +3121,25 @@ async fn run_session_turn_recorded_at(
                     continue;
                 }
                 Err(_) => {
+                    let stage = if plan.is_none() {
+                        SessionModelStage::ResearchInitial
+                    } else {
+                        SessionModelStage::ResearchContinue
+                    };
+                    let rejection = runtime_stage_rejection(
+                        stage,
+                        SessionModelRejectionClass::AdapterUnavailable,
+                    );
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        repairs + 1,
+                        journal,
+                    )
+                    .await?;
                     let accepted_at =
                         elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                     return repair_fallback_outcome(
@@ -3011,7 +3177,7 @@ async fn run_session_turn_recorded_at(
 
         let decision = match decision {
             SessionModelDecision::ResearchComplete {
-                draft,
+                mut draft,
                 declared_lane,
             } => {
                 let plan_lane = plan.as_ref().map(|plan| plan.lane);
@@ -3067,6 +3233,50 @@ async fn run_session_turn_recorded_at(
                     );
                     continue;
                 }
+                let accepted_at =
+                    elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                if let Err(error) = prepare_and_validate_research_draft(
+                    ResearchDraftRuntime {
+                        session: &session,
+                        input: &input,
+                        trigger: &trigger,
+                        plan: plan.as_ref(),
+                        observations: &observations,
+                    },
+                    current_turn_observation_start,
+                    assessment_at,
+                    accepted_at,
+                    bound_lane,
+                    &mut draft,
+                ) {
+                    let stage = if plan.is_none() {
+                        SessionModelStage::ResearchInitial
+                    } else {
+                        SessionModelStage::ResearchContinue
+                    };
+                    let rejection = runtime_stage_rejection(
+                        stage,
+                        SessionModelRejectionClass::RuntimeValidation,
+                    );
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        repairs + 1,
+                        journal,
+                    )
+                    .await?;
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
+                    continue;
+                }
                 frozen_research_draft = Some(draft.clone());
                 presentation_revision_used = false;
                 review_attempted = false;
@@ -3080,7 +3290,21 @@ async fn run_session_turn_recorded_at(
                     .await
                 {
                     Ok(presented) => presented,
-                    Err(_) => {
+                    Err(error) => {
+                        let rejection = classify_model_stage_error(
+                            error,
+                            SessionModelStage::PresentationInitial,
+                        );
+                        emit_model_stage_rejection(
+                            &session,
+                            &input,
+                            &mut events,
+                            SessionModelStage::PresentationInitial,
+                            &rejection,
+                            1,
+                            journal,
+                        )
+                        .await?;
                         let accepted_at =
                             elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
                         return repair_fallback_outcome(
@@ -3408,113 +3632,24 @@ async fn run_session_turn_recorded_at(
                 if let Some(research_draft) = frozen_research_draft.as_ref()
                     && let Err(error) = validate_presentation_boundary(research_draft, &draft)
                 {
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if matches!(trigger, SessionTurnTrigger::Operator)
-                    && let Err(error) =
-                        validate_explicit_follow_through(&session, &input, plan.as_ref())
-                {
+                    let stage = presentation_stage(presentation_revision_used);
+                    let rejection = runtime_stage_rejection(
+                        stage,
+                        SessionModelRejectionClass::RuntimeValidation,
+                    );
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        1,
+                        journal,
+                    )
+                    .await?;
                     repair_presentation_or_research!(error.to_string());
                 }
                 normalize_message_from_grounded_claims(&mut draft);
-                let effective_lane = turn_outcome_lane(&input, plan.as_ref(), bound_lane);
-                let planned_operating_lane = plan.is_some()
-                    && matches!(
-                        effective_lane,
-                        ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
-                    );
-                if matches!(trigger, SessionTurnTrigger::Operator)
-                    && plan.is_none()
-                    && observations.len() > current_turn_observation_start
-                {
-                    repair_presentation_or_research!(
-                        "A tool observation cannot be presented without the typed plan that authorized it. Establish the plan before using tools."
-                            .into()
-                    );
-                }
-                if matches!(trigger, SessionTurnTrigger::Operator)
-                    && draft.state == FinalState::Answered
-                    && planned_operating_lane
-                    && plan.as_ref().is_some_and(|plan| {
-                        !current_required_claims_have_same_turn_evidence(
-                            plan,
-                            &draft,
-                            &observations[current_turn_observation_start..],
-                            assessment_at,
-                        )
-                    })
-                {
-                    let partial_evidence_covers_every_required_claim =
-                        plan.as_ref().is_some_and(|plan| {
-                            current_required_claims_have_same_turn_evidence_for_state(
-                                plan,
-                                &draft,
-                                &observations[current_turn_observation_start..],
-                                assessment_at,
-                                FinalState::Partial,
-                            )
-                        });
-                    if partial_evidence_covers_every_required_claim {
-                        draft.state = FinalState::Partial;
-                    } else {
-                        repair_presentation_or_research!(
-                            "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
-                                .into()
-                        );
-                    }
-                }
-                materialize_planned_follow_through(
-                    &session,
-                    &trigger,
-                    plan.as_ref(),
-                    assessment_at,
-                    &mut draft,
-                )?;
-                if !matches!(trigger, SessionTurnTrigger::Operator)
-                    || plan
-                        .as_ref()
-                        .is_none_or(|plan| plan.follow_through.is_none())
-                {
-                    normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
-                }
-                if let Err(error) = validate_planned_follow_through_viability(
-                    plan.as_ref(),
-                    &observations,
-                    assessment_at,
-                ) {
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if let Err(error) = validate_commitment_baselines(
-                    &session,
-                    &draft,
-                    plan.as_ref(),
-                    &observations,
-                    assessment_at,
-                ) {
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if let Err(error) = canonicalize_routine_silent_wake(
-                    &session,
-                    &trigger,
-                    plan.as_ref(),
-                    &observations,
-                    assessment_at,
-                    &mut draft,
-                ) {
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if let Err(error) = validate_wake_completion(
-                    &session,
-                    &draft,
-                    &trigger,
-                    assessment_at,
-                    &observations,
-                ) {
-                    repair_presentation_or_research!(error.to_string());
-                }
-                if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
-                    repair_presentation_or_research!(error.to_string());
-                }
                 let validated = match validate_grounded_draft_at(
                     &session,
                     &draft,
@@ -3524,12 +3659,42 @@ async fn run_session_turn_recorded_at(
                 ) {
                     Ok(validated) => validated,
                     Err(error) => {
+                        let stage = presentation_stage(presentation_revision_used);
+                        let rejection = runtime_stage_rejection(
+                            stage,
+                            SessionModelRejectionClass::RuntimeValidation,
+                        );
+                        emit_model_stage_rejection(
+                            &session,
+                            &input,
+                            &mut events,
+                            stage,
+                            &rejection,
+                            1,
+                            journal,
+                        )
+                        .await?;
                         repair_presentation_or_research!(error.to_string());
                     }
                 };
                 if let Err(error) =
                     validate_effect_closure_at(&observations, &draft, assessment_at, accepted_at)
                 {
+                    let stage = presentation_stage(presentation_revision_used);
+                    let rejection = runtime_stage_rejection(
+                        stage,
+                        SessionModelRejectionClass::RuntimeValidation,
+                    );
+                    emit_model_stage_rejection(
+                        &session,
+                        &input,
+                        &mut events,
+                        stage,
+                        &rejection,
+                        1,
+                        journal,
+                    )
+                    .await?;
                     repair_presentation_or_research!(error.to_string());
                 }
                 if !review_attempted {
@@ -3552,7 +3717,19 @@ async fn run_session_turn_recorded_at(
                         .await
                     {
                         Ok(review) => review,
-                        Err(_) => {
+                        Err(error) => {
+                            let rejection =
+                                classify_model_stage_error(error, SessionModelStage::Review);
+                            emit_model_stage_rejection(
+                                &session,
+                                &input,
+                                &mut events,
+                                SessionModelStage::Review,
+                                &rejection,
+                                1,
+                                journal,
+                            )
+                            .await?;
                             return repair_fallback_outcome(
                                 RepairFallbackRuntime {
                                     journal,
@@ -3573,6 +3750,20 @@ async fn run_session_turn_recorded_at(
                     let feedback = match message_review_feedback(&draft, &review) {
                         Ok(feedback) => feedback,
                         Err(_) => {
+                            let rejection = runtime_stage_rejection(
+                                SessionModelStage::Review,
+                                SessionModelRejectionClass::ReviewBinding,
+                            );
+                            emit_model_stage_rejection(
+                                &session,
+                                &input,
+                                &mut events,
+                                SessionModelStage::Review,
+                                &rejection,
+                                1,
+                                journal,
+                            )
+                            .await?;
                             return repair_fallback_outcome(
                                 RepairFallbackRuntime {
                                     journal,
@@ -3591,6 +3782,20 @@ async fn run_session_turn_recorded_at(
                         }
                     };
                     if !feedback.is_empty() {
+                        let rejection = runtime_stage_rejection(
+                            SessionModelStage::Review,
+                            SessionModelRejectionClass::RuntimeValidation,
+                        );
+                        emit_model_stage_rejection(
+                            &session,
+                            &input,
+                            &mut events,
+                            SessionModelStage::Review,
+                            &rejection,
+                            1,
+                            journal,
+                        )
+                        .await?;
                         repair_presentation_or_research!(feedback: feedback);
                     }
                 }
@@ -5088,6 +5293,94 @@ fn normalize_message_from_grounded_claims(draft: &mut GroundedDraft) {
         .collect();
 }
 
+struct ResearchDraftRuntime<'a> {
+    session: &'a AgentSession,
+    input: &'a SessionTurnInput,
+    trigger: &'a SessionTurnTrigger,
+    plan: Option<&'a ResearchPlan>,
+    observations: &'a [ToolObservation],
+}
+
+fn prepare_and_validate_research_draft(
+    runtime: ResearchDraftRuntime<'_>,
+    current_turn_observation_start: usize,
+    assessment_at: OffsetDateTime,
+    accepted_at: OffsetDateTime,
+    bound_lane: Option<ExecutionLane>,
+    draft: &mut GroundedDraft,
+) -> Result<(), AgentRuntimeError> {
+    let ResearchDraftRuntime {
+        session,
+        input,
+        trigger,
+        plan,
+        observations,
+    } = runtime;
+    if matches!(trigger, SessionTurnTrigger::Operator) {
+        validate_explicit_follow_through(session, input, plan)?;
+    }
+    normalize_message_from_grounded_claims(draft);
+    draft.presentation_ready = true;
+    let effective_lane = turn_outcome_lane(input, plan, bound_lane);
+    let planned_operating_lane = plan.is_some()
+        && matches!(
+            effective_lane,
+            ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
+        );
+    if matches!(trigger, SessionTurnTrigger::Operator)
+        && plan.is_none()
+        && observations.len() > current_turn_observation_start
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "A tool observation cannot be completed without the typed plan that authorized it. Establish the plan before using tools."
+                .into(),
+        ));
+    }
+    if matches!(trigger, SessionTurnTrigger::Operator)
+        && draft.state == FinalState::Answered
+        && planned_operating_lane
+        && plan.is_some_and(|plan| {
+            !current_required_claims_have_same_turn_evidence(
+                plan,
+                draft,
+                &observations[current_turn_observation_start..],
+                assessment_at,
+            )
+        })
+    {
+        let partial_evidence_covers_every_required_claim = plan.is_some_and(|plan| {
+            current_required_claims_have_same_turn_evidence_for_state(
+                plan,
+                draft,
+                &observations[current_turn_observation_start..],
+                assessment_at,
+                FinalState::Partial,
+            )
+        });
+        if partial_evidence_covers_every_required_claim {
+            draft.state = FinalState::Partial;
+        } else {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
+                    .into(),
+            ));
+        }
+    }
+    materialize_planned_follow_through(session, trigger, plan, assessment_at, draft)?;
+    if !matches!(trigger, SessionTurnTrigger::Operator)
+        || plan.is_none_or(|plan| plan.follow_through.is_none())
+    {
+        normalize_redundant_baseline_alerts(session, draft, observations);
+    }
+    validate_planned_follow_through_viability(plan, observations, assessment_at)?;
+    validate_commitment_baselines(session, draft, plan, observations, assessment_at)?;
+    canonicalize_routine_silent_wake(session, trigger, plan, observations, assessment_at, draft)?;
+    validate_wake_completion(session, draft, trigger, assessment_at, observations)?;
+    validate_plan_completion(plan, draft)?;
+    validate_grounded_draft_at(session, draft, observations, assessment_at, accepted_at)?;
+    validate_effect_closure_at(observations, draft, assessment_at, accepted_at)
+}
+
 fn validate_presentation_boundary(
     research: &GroundedDraft,
     presented: &GroundedDraft,
@@ -5754,6 +6047,100 @@ fn record_operating_repair(
 ) {
     *repairs += 1;
     *repair_feedback = vec![feedback];
+}
+
+fn runtime_stage_contract_digest(stage: SessionModelStage) -> String {
+    let stage = match stage {
+        SessionModelStage::ResearchInitial => "research_initial",
+        SessionModelStage::ResearchContinue => "research_continue",
+        SessionModelStage::PresentationInitial => "presentation_initial",
+        SessionModelStage::PresentationRevision => "presentation_revision",
+        SessionModelStage::Review => "review",
+    };
+    let digest = Sha256::digest(format!("agent-session-runtime-stage/v1:{stage}").as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sha256:{digest}")
+}
+
+fn valid_model_contract_digest(contract_digest: &str) -> bool {
+    contract_digest
+        .strip_prefix("sha256:")
+        .is_some_and(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+}
+
+fn presentation_stage(revision_used: bool) -> SessionModelStage {
+    if revision_used {
+        SessionModelStage::PresentationRevision
+    } else {
+        SessionModelStage::PresentationInitial
+    }
+}
+
+fn runtime_stage_rejection(
+    stage: SessionModelStage,
+    class: SessionModelRejectionClass,
+) -> SessionModelRejection {
+    SessionModelRejection {
+        class,
+        contract_digest: runtime_stage_contract_digest(stage),
+    }
+}
+
+fn classify_model_stage_error(
+    error: AgentRuntimeError,
+    stage: SessionModelStage,
+) -> SessionModelRejection {
+    match error {
+        AgentRuntimeError::ModelStageRejected(rejection) => rejection,
+        AgentRuntimeError::ModelUnavailable(_) => {
+            runtime_stage_rejection(stage, SessionModelRejectionClass::AdapterUnavailable)
+        }
+        _ => runtime_stage_rejection(stage, SessionModelRejectionClass::RuntimeValidation),
+    }
+}
+
+async fn emit_model_stage_rejection(
+    session: &AgentSession,
+    input: &SessionTurnInput,
+    events: &mut Vec<SessionEventRecord>,
+    stage: SessionModelStage,
+    rejection: &SessionModelRejection,
+    attempt: usize,
+    journal: &dyn SessionJournal,
+) -> Result<(), AgentRuntimeError> {
+    let attempt = u8::try_from(attempt).map_err(|_| {
+        AgentRuntimeError::InvalidFinal(
+            "model stage rejection attempt exceeds the bounded audit contract".into(),
+        )
+    })?;
+    if !(1..=u8::try_from(MAX_MODEL_REPAIRS + 1).unwrap_or(u8::MAX)).contains(&attempt)
+        || !valid_model_contract_digest(&rejection.contract_digest)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "model stage rejection attempt or contract digest is invalid".into(),
+        ));
+    }
+    emit_event(
+        session,
+        &input.assessment_at,
+        events,
+        SessionEvent::ModelStageRejected {
+            request_id: input.request_id.clone(),
+            stage,
+            class: rejection.class,
+            attempt,
+            contract_digest: rejection.contract_digest.clone(),
+        },
+        journal,
+    )
+    .await
 }
 
 fn record_draft_repair(
@@ -8691,6 +9078,74 @@ mod tests {
     }
 
     #[test]
+    fn model_stage_rejections_are_bounded_audit_only_replay_facts() {
+        let original = session();
+        let record = |sequence, event| SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: original.session_ref.clone(),
+            sequence,
+            occurred_at: "2026-07-31T00:00:30Z".into(),
+            event,
+        };
+        let replayed = apply_session_events(
+            &original,
+            &[
+                record(
+                    1,
+                    SessionEvent::TurnStarted {
+                        request_id: "request:1".into(),
+                    },
+                ),
+                record(
+                    2,
+                    SessionEvent::ModelStageRejected {
+                        request_id: "request:1".into(),
+                        stage: SessionModelStage::ResearchInitial,
+                        class: SessionModelRejectionClass::MissingOrAmbiguousTool,
+                        attempt: 1,
+                        contract_digest: format!("sha256:{}", "a".repeat(64)),
+                    },
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(replayed.mission, original.mission);
+        assert_eq!(
+            replayed.effect_authorizations,
+            original.effect_authorizations
+        );
+        assert_eq!(replayed.pending_delivery, original.pending_delivery);
+        assert_eq!(replayed.memories, original.memories);
+        assert!(matches!(
+            replayed.events.last().map(|record| &record.event),
+            Some(SessionEvent::ModelStageRejected {
+                stage: SessionModelStage::ResearchInitial,
+                class: SessionModelRejectionClass::MissingOrAmbiguousTool,
+                attempt: 1,
+                ..
+            })
+        ));
+        let encoded = serde_json::to_string(replayed.events.last().unwrap()).unwrap();
+        assert!(!encoded.contains("provider_output"));
+        assert!(!encoded.contains("repair_feedback"));
+
+        for (attempt, digest) in [(0, format!("sha256:{}", "a".repeat(64))), (1, "bad".into())] {
+            let invalid = record(
+                3,
+                SessionEvent::ModelStageRejected {
+                    request_id: "request:1".into(),
+                    stage: SessionModelStage::ResearchContinue,
+                    class: SessionModelRejectionClass::SchemaDecode,
+                    attempt,
+                    contract_digest: digest,
+                },
+            );
+            assert!(apply_session_events(&replayed, &[invalid]).is_err());
+        }
+    }
+
+    #[test]
     fn accepted_research_lane_and_active_plan_must_match_in_both_orders() {
         let record = |sequence, event| SessionEventRecord {
             schema_version: AGENT_SESSION_EVENT_V2.into(),
@@ -9325,6 +9780,31 @@ mod tests {
         }
     }
 
+    fn bounded_blocked_draft() -> GroundedDraft {
+        let coverage_notice =
+            "No current authoritative observation is available after the bounded research attempt."
+                .to_string();
+        GroundedDraft {
+            state: FinalState::Blocked,
+            delivery: DeliveryDisposition::Visible,
+            message: coverage_notice.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:bounded-coverage".into(),
+                planned_claim_ref: None,
+                text: coverage_notice.clone(),
+                required_for_answer: true,
+                content: ClaimContent::CoverageBoundary {
+                    boundary: CoverageBoundaryKind::NoCurrentAuthoritativeObservation,
+                },
+            }],
+            coverage_notice: Some(coverage_notice),
+            question: None,
+            mission: mission(),
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        }
+    }
+
     fn scheduled_commitment() -> Commitment {
         Commitment {
             commitment_ref: "commitment:scheduled-check".into(),
@@ -9954,7 +10434,7 @@ mod tests {
                     declared_lane: Some(ExecutionLane::Investigate),
                 },
                 SessionModelDecision::ResearchComplete {
-                    draft: draft(),
+                    draft: bounded_blocked_draft(),
                     declared_lane: Some(ExecutionLane::Investigate),
                 },
             ])),
@@ -10012,7 +10492,15 @@ mod tests {
             1
         );
         let turns = model.turns.lock().expect("model turn receipt poisoned");
-        assert_eq!(turns.len(), 2);
+        assert_eq!(
+            turns.len(),
+            2,
+            "unexpected research feedback: {:?}",
+            turns
+                .iter()
+                .map(|turn| &turn.repair_feedback)
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             turns[1].repair_feedback,
             [EMPTY_OPERATING_RESEARCH_FEEDBACK.to_string()]
@@ -10055,7 +10543,7 @@ mod tests {
                     declared_lane: None,
                 },
                 SessionModelDecision::ResearchComplete {
-                    draft: draft(),
+                    draft: bounded_blocked_draft(),
                     declared_lane: None,
                 },
             ])),
@@ -10091,7 +10579,15 @@ mod tests {
             SessionEvent::OperatingObservationCorrectionRequired { .. }
         )));
         let turns = model.turns.lock().expect("model turn receipt poisoned");
-        assert_eq!(turns.len(), 2);
+        assert_eq!(
+            turns.len(),
+            2,
+            "unexpected research feedback: {:?}",
+            turns
+                .iter()
+                .map(|turn| &turn.repair_feedback)
+                .collect::<Vec<_>>()
+        );
         assert_eq!(turns[0].requested_lane, Some(ExecutionLane::Investigate));
         assert!(turns[0].repair_feedback.is_empty());
         assert_eq!(
@@ -10141,7 +10637,7 @@ mod tests {
         .expect("the interrupted correction should be durable");
         let model = LaneCapturingSessionModel {
             decisions: Mutex::new(VecDeque::from([SessionModelDecision::ResearchComplete {
-                draft: draft(),
+                draft: bounded_blocked_draft(),
                 declared_lane: None,
             }])),
             turns: Mutex::new(Vec::new()),
@@ -13875,7 +14371,10 @@ mod tests {
             panic!("the mixed result should be ready for delivery")
         };
         assert_eq!(final_state, FinalState::Partial);
-        assert!(markdown.contains("Connector alpha is healthy"));
+        assert!(
+            markdown.contains("Connector alpha is healthy"),
+            "unexpected delivery: {markdown}"
+        );
         assert!(markdown.contains("graph.read"));
         assert!(markdown.contains(failure_summary));
         assert!(evidence_atom_refs.contains(&"atom:status".into()));
@@ -14249,7 +14748,7 @@ mod tests {
                     declared_lane: Some(ExecutionLane::Lookup),
                 },
                 SessionModelDecision::ResearchComplete {
-                    draft: draft(),
+                    draft: bounded_blocked_draft(),
                     declared_lane: Some(ExecutionLane::Lookup),
                 },
             ])),
@@ -14530,7 +15029,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_finish_corrects_once_then_freezes_before_follow_through_repair() {
+    async fn invalid_direct_finish_reenters_research_before_presentation_and_reads() {
         let request_id = "request:delegated-direct-finish";
         let request =
             "Stay with Ternwheel until two fresh recovery observations agree, then tell me.";
@@ -14567,7 +15066,14 @@ mod tests {
         };
         let mut delegated_plan = plan();
         delegated_plan.follow_through = Some(planned_follow_through());
-        let model = ScriptedSessionModel {
+        delegated_plan
+            .follow_through
+            .as_mut()
+            .expect("delegated follow-through")
+            .attention_policy
+            .acceptance_all[0]
+            .equals = json!("recovering");
+        let model = LaneCapturingSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::Finish {
                     draft: direct_draft.clone(),
@@ -14575,10 +15081,8 @@ mod tests {
                 SessionModelDecision::Finish {
                     draft: direct_draft,
                 },
-                SessionModelDecision::EstablishPlan {
+                SessionModelDecision::EstablishPlanAndInvoke {
                     plan: delegated_plan,
-                },
-                SessionModelDecision::InvokeTools {
                     calls: vec![ToolCall {
                         call_id: "call:delegated-baseline".into(),
                         tool_id: "connector.read".into(),
@@ -14588,6 +15092,7 @@ mod tests {
                 },
                 SessionModelDecision::Finish { draft: draft() },
             ])),
+            turns: Mutex::new(Vec::new()),
         };
 
         let outcome = run_session_turn(
@@ -14612,10 +15117,9 @@ mod tests {
             ..
         } = outcome
         else {
-            panic!("the frozen invalid draft should use the deterministic fallback");
+            panic!("the corrected research should be ready for delivery");
         };
         assert_eq!(lane, ExecutionLane::Investigate);
-        assert!(markdown.contains("presentation revision stage ended"));
         assert_eq!(
             events
                 .iter()
@@ -14627,19 +15131,47 @@ mod tests {
             1,
             "the first empty operating completion must receive exactly one research correction"
         );
-        assert!(!events.iter().any(|event| matches!(
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::ToolInvoked { .. }))
+                .count(),
+            1,
+            "the corrected operating research must execute its admitted read"
+        );
+        assert!(
+            markdown.contains("Connector alpha is healthy"),
+            "unexpected delivery: {markdown}; research feedback: {:?}",
+            model
+                .turns
+                .lock()
+                .expect("model turn receipt poisoned")
+                .iter()
+                .map(|turn| &turn.repair_feedback)
+                .collect::<Vec<_>>()
+        );
+        assert!(events.iter().any(|event| matches!(
             event.event,
-            SessionEvent::PlanEstablished { .. } | SessionEvent::ToolInvoked { .. }
+            SessionEvent::ModelStageRejected {
+                stage: SessionModelStage::ResearchInitial,
+                class: SessionModelRejectionClass::RuntimeValidation,
+                ..
+            }
         )));
-        assert!(mission.commitments.is_empty());
+        assert!(!mission.commitments.is_empty());
         assert_eq!(
             model
                 .decisions
                 .lock()
                 .expect("decision script poisoned")
                 .len(),
-            3,
-            "the frozen research artifact must not consume a later plan or tool call"
+            0,
+            "the research phase must consume the exact correction, plan, read, and finish sequence"
         );
     }
 
