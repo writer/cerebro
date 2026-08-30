@@ -1,70 +1,150 @@
+//! Pure forward state transitions for validated action-operation snapshots.
+//!
+//! The engine applies one command to a clone, increments its optimistic version,
+//! and validates the resulting evidence matrix. It does not authorize the caller,
+//! read a clock, reserve an idempotency key, contact a provider, execute rollback,
+//! or atomically persist the returned snapshot.
+
 use cerebro_platform_sdk::{
     ActionOperation, ActionState, ActionVerificationReceipt, ActorId, ContentDigest,
     DecisionReceipt, MAX_ACTION_CLAIM_LEASE_MS, OpaqueId, SdkError, VerificationState,
 };
 use serde::Serialize;
 
+/// Requested state-machine event and the evidence supplied with it.
+///
+/// Commands are transition inputs, not authority records. The surrounding
+/// service must authenticate the actor, validate provider evidence, and commit
+/// the resulting version atomically before exposing the new state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum ActionCommand {
+    /// Records completion of the proposal's already-bound simulation.
     RecordSimulation,
+    /// Moves a simulated proposal into the approval queue.
     RequestApproval,
+    /// Attaches an independent decision receipt to the exact proposal digest.
     RecordApproval {
+        /// Approval receipt validated with the resulting operation snapshot.
         receipt: DecisionReceipt,
     },
+    /// Acquires the first bounded execution lease for an approved operation.
     Claim {
+        /// Worker identity that owns dispatch coordination for the lease.
         worker_id: OpaqueId,
+        /// Inclusive Unix-millisecond lease start.
         claimed_at_unix_ms: u64,
+        /// Exclusive Unix-millisecond lease expiration.
         claim_expires_at_unix_ms: u64,
     },
     /// Extends the dispatch lease before execution starts. Once execution
     /// starts, uncertain outcomes must use reconciliation instead of takeover.
     RenewClaim {
+        /// Observation time, before current expiry, at which renewal is requested.
         renewed_at_unix_ms: u64,
+        /// Later exclusive expiry, still inside proposal and absolute lease bounds.
         claim_expires_at_unix_ms: u64,
     },
     /// Returns an unstarted Action to the approved queue after its dispatch
     /// lease expires so another executor can claim it.
     ReleaseExpiredClaim {
+        /// Caller-supplied time proving the current lease has expired.
         observed_at_unix_ms: u64,
     },
+    /// Marks the point after which an expired claim cannot be reassigned safely.
     StartExecution {
+        /// Caller-supplied start time inside the active claim interval.
         started_at_unix_ms: u64,
     },
+    /// Attaches the first complete provider-dispatch observation.
     RecordProviderReceipt {
+        /// Stable provider receipt identity.
         external_receipt_ref: OpaqueId,
+        /// Digest of exact provider receipt content.
         provider_receipt_digest: ContentDigest,
+        /// Bounded machine-readable provider status.
         provider_status: String,
+        /// Actor attributed to provider dispatch.
         executor_actor_id: ActorId,
+        /// Unix-millisecond provider observation time.
         observed_at_unix_ms: u64,
     },
+    /// Replaces mutable provider observation fields with a strictly newer sample.
     ObserveProviderReceipt {
+        /// Digest of the newer provider receipt content.
         provider_receipt_digest: ContentDigest,
+        /// Bounded machine-readable status in the newer sample.
         provider_status: String,
+        /// Actor that obtained the observation; currently not retained in state.
         reconciler_actor_id: ActorId,
+        /// Unix-millisecond sample time, strictly later than the previous sample.
         observed_at_unix_ms: u64,
     },
+    /// Records that execution may have escaped without a trustworthy outcome.
     MarkOutcomeUnknown,
+    /// Records an observed effect and complete successful provider evidence.
     Complete {
+        /// Stable provider receipt identity.
         external_receipt_ref: OpaqueId,
+        /// Digest of final provider receipt content.
         provider_receipt_digest: ContentDigest,
+        /// Digest of authoritative state observed after the effect.
         observed_effect_digest: ContentDigest,
+        /// Actor attributed to execution.
         executor_actor_id: ActorId,
+        /// Unix-millisecond effect observation time.
         executed_at_unix_ms: u64,
     },
+    /// Resolves an uncertain outcome from authoritative observed state.
     Reconcile {
+        /// Digest of authoritative state observed during reconciliation.
         observed_effect_digest: ContentDigest,
+        /// Actor attributed to the original or reconciled execution.
         executor_actor_id: ActorId,
+        /// Unix-millisecond effect observation time.
         executed_at_unix_ms: u64,
     },
+    /// Attaches independent verification of a completed or reconciled effect.
     Verify {
+        /// Operation-bound independent verification evidence.
         receipt: ActionVerificationReceipt,
     },
+    /// Records a terminal negative verification without attaching a positive receipt.
     RejectVerification,
+    /// Marks an eligible unverified operation failed while preserving evidence.
     Fail,
+    /// Marks a completed or terminal operation rolled back and verification stale.
+    ///
+    /// This command records state only; it does not execute or validate the
+    /// rollback operation referenced by the proposal.
     RollBack,
 }
 
+/// Applies one allowed command to an immutable operation snapshot.
+///
+/// The input is validated before optimistic-version comparison. On success the
+/// command changes a cloned snapshot, increments its version exactly once with
+/// overflow protection, validates the full resulting state, and returns it. The
+/// caller-owned input is unchanged on every path.
+///
+/// Claim acquisition begins no earlier than approval, ends inside proposal
+/// validity, and lasts at most [`MAX_ACTION_CLAIM_LEASE_MS`]. Renewal must occur
+/// before current expiry and extend it, while final snapshot validation also
+/// keeps total time from the original claim start within that maximum. Starting
+/// execution must occur before lease expiry; later provider observation and
+/// completion may outlive the lease because takeover is no longer safe.
+///
+/// Timestamps are caller-supplied and compared only with stored action times.
+/// This function has no clock and cannot establish that a command occurred "now."
+/// `expected_version` is an optimistic token, not an atomic write: persistence
+/// must compare-and-store the returned version in one durable operation.
+///
+/// # Errors
+///
+/// Returns input or resulting-operation validation errors,
+/// [`SdkError::Conflict`] for a stale version, timing conflict, or unsupported
+/// state/command pair, [`SdkError::Invalid`] for malformed command evidence, or
+/// [`SdkError::OutOfRange`] if the version increment overflows.
 pub fn transition_action(
     operation: &ActionOperation,
     expected_version: u64,
@@ -76,6 +156,9 @@ pub fn transition_action(
             "stale action operation version".to_owned(),
         ));
     }
+
+    // Work on a private clone so a rejected command cannot leak partial evidence
+    // into the caller's durable snapshot.
     let mut next = operation.clone();
     match (&operation.state, command) {
         (ActionState::Proposed, ActionCommand::RecordSimulation) => {
@@ -163,6 +246,9 @@ pub fn transition_action(
                     "action execution claim expired before execution started".to_owned(),
                 ));
             }
+
+            // The start time is a transition precondition rather than durable
+            // evidence; subsequent observations are ordered from the claim.
             next.state = ActionState::Executing;
         }
         (ActionState::Executing, ActionCommand::MarkOutcomeUnknown) => {
@@ -202,6 +288,9 @@ pub fn transition_action(
                     "action provider observation did not advance".to_owned(),
                 ));
             }
+
+            // The reconciler actor is deliberately not persisted by the current
+            // operation contract; service audit records must retain that actor.
             next.provider_receipt_digest = Some(provider_receipt_digest);
             next.provider_status = Some(provider_status);
             next.provider_observed_at_unix_ms = Some(observed_at_unix_ms);
@@ -219,6 +308,9 @@ pub fn transition_action(
             if Some(executed_at_unix_ms) < operation.claimed_at_unix_ms {
                 return Err(SdkError::Invalid("action execution receipt"));
             }
+
+            // A synchronous provider path may return dispatch and effect evidence
+            // together, so this arm constructs the full current receipt group.
             next.state = ActionState::Completed;
             next.executor_actor_id = Some(executor_actor_id);
             next.provider_receipt_digest = Some(provider_receipt_digest);
@@ -246,6 +338,9 @@ pub fn transition_action(
             {
                 return Err(SdkError::Invalid("action execution receipt"));
             }
+
+            // Completion cannot switch provider receipt identity or executor; it
+            // may update receipt content to the final successful observation.
             next.state = ActionState::Completed;
             next.provider_receipt_digest = Some(provider_receipt_digest);
             next.provider_status = Some("succeeded".to_owned());
@@ -264,6 +359,9 @@ pub fn transition_action(
             if Some(executed_at_unix_ms) < operation.claimed_at_unix_ms {
                 return Err(SdkError::Invalid("action execution receipt"));
             }
+
+            // Reconciliation records authoritative effect evidence without
+            // fabricating provider receipt fields that were never observed.
             next.state = ActionState::Reconciled;
             next.executor_actor_id = Some(executor_actor_id);
             next.executed_at_unix_ms = Some(executed_at_unix_ms);
@@ -291,6 +389,8 @@ pub fn transition_action(
             | ActionState::Reconciled,
             ActionCommand::Fail,
         ) => {
+            // Failure preserves every coherent evidence group accumulated so far
+            // for diagnosis and later rollback decisions.
             next.state = ActionState::Failed;
         }
         (
@@ -300,6 +400,8 @@ pub fn transition_action(
             | ActionState::Failed,
             ActionCommand::RollBack,
         ) => {
+            // Rollback execution and authorization occur outside this pure state
+            // marker; retaining receipts preserves the historical audit trail.
             next.state = ActionState::RolledBack;
             next.verification_state = VerificationState::Stale;
         }
@@ -309,10 +411,16 @@ pub fn transition_action(
             ));
         }
     }
+
+    // Version changes even for same-state commands such as claim renewal and a
+    // newer provider observation, giving persistence one concurrency token.
     next.version = next
         .version
         .checked_add(1)
         .ok_or(SdkError::OutOfRange("action operation version"))?;
+
+    // Central snapshot validation closes partial-evidence gaps left by individual
+    // transition arms and checks receipt bindings before the result can escape.
     next.validate()?;
     Ok(next)
 }
