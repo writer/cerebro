@@ -1,3 +1,9 @@
+//! Deterministic digesting and packaging for incident snapshots.
+//!
+//! The engine binds manifest fields and exact payload bytes into digests. It
+//! does not canonicalize payload content, create or verify signatures, enforce
+//! byte-size limits, persist packages, or authorize their disclosure.
+
 use cerebro_platform_sdk::{
     ContentDigest, GraphRevision, IncidentSnapshot, IncidentSnapshotId, IncidentSnapshotManifest,
     OpaqueId, SdkError, TenantId,
@@ -6,6 +12,10 @@ use serde::Serialize;
 
 use crate::canonical;
 
+/// Manifest fields included in the content digest, excluding the digest itself.
+///
+/// Slices preserve caller order, so reordering or retaining duplicate references
+/// changes the digest even when the referenced value set is otherwise equal.
 #[derive(Serialize)]
 struct ManifestMaterial<'a> {
     snapshot_id: &'a IncidentSnapshotId,
@@ -19,6 +29,15 @@ struct ManifestMaterial<'a> {
     verification_receipt_digests: &'a [ContentDigest],
 }
 
+/// Computes the canonical digest of all semantic manifest fields.
+///
+/// This function deliberately excludes [`IncidentSnapshotManifest::manifest_digest`]
+/// to avoid a recursive content address. It does not call manifest validation,
+/// so callers accepting untrusted material must validate shape separately.
+///
+/// # Errors
+///
+/// Returns [`SdkError::Backend`] if canonical serialization fails.
 pub fn incident_manifest_digest(
     manifest: &IncidentSnapshotManifest,
 ) -> Result<ContentDigest, SdkError> {
@@ -35,6 +54,23 @@ pub fn incident_manifest_digest(
     })
 }
 
+/// Verifies a manifest digest and packages exact payload and signature bytes.
+///
+/// The manifest is shape-validated before its digest is recomputed. The payload
+/// digest is always computed by this function, then the assembled snapshot is
+/// checked for non-empty payload and signature. The signature is accepted as
+/// opaque bytes: no algorithm, signer, or cryptographic verification occurs.
+///
+/// Because the manifest contains neither payload digest nor signature, callers
+/// that require one signed envelope must define and verify that binding outside
+/// this packaging function.
+///
+/// # Errors
+///
+/// Returns manifest validation errors, [`SdkError::Invalid`] when the supplied
+/// manifest digest does not match its semantic fields, [`SdkError::Empty`] for
+/// an empty payload or signature, or [`SdkError::Backend`] if canonical manifest
+/// serialization fails.
 pub fn package_incident_snapshot(
     manifest: IncidentSnapshotManifest,
     canonical_payload: Vec<u8>,
@@ -44,6 +80,9 @@ pub fn package_incident_snapshot(
     if incident_manifest_digest(&manifest)? != manifest.manifest_digest {
         return Err(SdkError::Invalid("incident snapshot manifest digest"));
     }
+
+    // Hash the exact bytes supplied by the caller; no serialization or content
+    // normalization is applied at this boundary.
     let snapshot = IncidentSnapshot {
         payload_digest: ContentDigest::of_bytes(&canonical_payload),
         manifest,
