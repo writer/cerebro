@@ -40,7 +40,9 @@ use std::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+/// Maximum UTF-8 byte length of every sealed identifier type.
 const MAX_ID_BYTES: usize = 256;
+/// Maximum UTF-8 byte length of labels and other validated free text.
 const MAX_TEXT_BYTES: usize = 1_024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -98,6 +100,9 @@ impl fmt::Display for ModelError {
 impl Error for ModelError {}
 
 macro_rules! id_type {
+    // Generate opaque string newtypes with one shared admission path. Keeping
+    // fields private ensures serialization can expose only previously validated
+    // identifiers and prevents deserialization from bypassing the constructor.
     ($name:ident, $field:literal) => {
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
@@ -142,9 +147,13 @@ id_type!(AssertionId, "assertion id");
 id_type!(CanonicalIdentityId, "canonical identity id");
 
 fn validate_identifier(value: String, field: &'static str) -> Result<String, ModelError> {
+    // Check emptiness separately so operators receive the actionable required-
+    // field class instead of the broader syntax class.
     if value.is_empty() {
         return Err(ModelError::Empty(field));
     }
+    // ASCII-only identifiers have stable bytewise ordering and require no
+    // Unicode normalization before hashing or persistence.
     if value.trim() != value
         || value.len() > MAX_ID_BYTES
         || !value
@@ -157,6 +166,8 @@ fn validate_identifier(value: String, field: &'static str) -> Result<String, Mod
 }
 
 fn validate_text(value: String, field: &'static str) -> Result<String, ModelError> {
+    // Whitespace-only content is absent, while otherwise untrimmed content is a
+    // syntax error. Measure the original UTF-8 bytes after those shape checks.
     if value.trim().is_empty() {
         return Err(ModelError::Empty(field));
     }
@@ -406,6 +417,8 @@ impl Entity {
         label: impl Into<String>,
     ) -> Result<Self, ModelError> {
         let provider_id = validate_text(provider_id.into(), "provider id")?;
+        // Length-prefixed hashing below makes these identity components
+        // unambiguous even when individual values contain shared delimiters.
         let id = EntityId::parse(deterministic_id(
             "entity",
             &[
@@ -491,6 +504,9 @@ impl Entity {
     /// different tenant are never accepted as aliases. Every other entity gets
     /// a deterministic key derived from its sealed tenant and entity ID.
     pub fn agent_key(&self) -> String {
+        // Prefer existing product URNs in a fixed namespace order, but only when
+        // their embedded tenant exactly matches this sealed entity. The suffix
+        // remains provider-defined presentation data, not native graph identity.
         for property in ["resource_urn", "entity_urn", "urn"] {
             if let Some(value) = self.properties.get(property)
                 && value
@@ -691,6 +707,8 @@ impl CollectionReceipt {
         completeness: CollectionCompleteness,
         observed_at_unix_ms: i64,
     ) -> Result<Self, ModelError> {
+        // Zero and negative timestamps cannot represent a completed source
+        // observation and are rejected before a receipt capability is created.
         if observed_at_unix_ms <= 0 {
             return Err(ModelError::Invalid("collection observed time"));
         }
@@ -864,6 +882,9 @@ impl AssertionProvenance {
         producer: impl Into<String>,
         producer_version: impl Into<String>,
     ) -> Result<Self, ModelError> {
+        // The first observation establishes all collection coordinates. Retain
+        // caller order because each observation remains direct evidence rather
+        // than a set that this constructor normalizes or deduplicates.
         let first = observations.first().ok_or(ModelError::EvidenceRequired)?;
         if observations.iter().any(|item| {
             item.tenant_id != first.tenant_id
@@ -1064,6 +1085,9 @@ impl RelationKind {
 
     /// Returns whether this relation admits the supplied endpoint kinds.
     pub fn accepts(self, from: &EntityKind, to: &EntityKind) -> bool {
+        // This is the closed endpoint schema shared by constructors and typed
+        // query validation. Arms expressed as exclusions also admit future kinds
+        // unless those kinds are added to the excluded set.
         use EntityKind::*;
         match self {
             Self::MemberOf => matches!(from, Identity | Person) && matches!(to, Group | Team),
@@ -1181,6 +1205,8 @@ impl RelationKind {
 }
 
 fn entity_application_workspace_id(entity: &Entity) -> &str {
+    // Absence is represented by the empty string. Relationship admission below
+    // therefore permits two unscoped endpoints but never a scoped/unscoped pair.
     entity
         .properties()
         .get("application_workspace_id")
@@ -1223,17 +1249,24 @@ impl RelationshipAssertion {
         provenance: AssertionProvenance,
         observed_at_unix_ms: i64,
     ) -> Result<Self, ModelError> {
+        // Tenant agreement binds both endpoints and every provenance observation
+        // before relation-specific semantics are considered.
         if from.tenant_id != to.tenant_id || from.tenant_id != *provenance.tenant_id() {
             return Err(ModelError::TenantMismatch);
         }
         let from_workspace = entity_application_workspace_id(from);
         let to_workspace = entity_application_workspace_id(to);
+        // Workspace equality prevents a semantic edge from bridging two trusted
+        // application workspaces even when tenant and endpoint kinds are valid.
         if !relation.accepts(&from.kind, &to.kind)
             || observed_at_unix_ms <= 0
             || from_workspace != to_workspace
         {
             return Err(ModelError::InvalidRelationship);
         }
+        // Observation time and presentation data do not affect stable assertion
+        // identity. The source runtime separates independent evidence owners for
+        // the same tenant, endpoints, and relation.
         let id = AssertionId::parse(deterministic_id(
             "assertion",
             &[
@@ -1362,6 +1395,8 @@ impl IdentityClaim {
     /// Returns [`ModelError::Invalid`] unless the value contains non-empty
     /// local and dotted-domain parts, or another text-validation error.
     pub fn verified_email(value: impl Into<String>) -> Result<Self, ModelError> {
+        // This is deliberately minimal correlation validation, not RFC mailbox
+        // parsing. Lowercasing makes the entire admitted claim deterministic.
         let value = validate_text(value.into(), "verified email")?.to_lowercase();
         let (local, domain) = value
             .split_once('@')
@@ -1435,18 +1470,24 @@ impl IdentityBindingAssertion {
         provenance: AssertionProvenance,
         observed_at_unix_ms: i64,
     ) -> Result<Self, ModelError> {
+        // Endpoint wrappers already prove the required provider-identity and
+        // canonical-person kinds; this block binds tenant, evidence, and time.
         if provider.entity().tenant_id != canonical.entity().tenant_id
             || provider.entity().tenant_id != *provenance.tenant_id()
             || observed_at_unix_ms <= 0
         {
             return Err(ModelError::InvalidIdentityBinding);
         }
+        // An agent may nominate a candidate but cannot become the authority that
+        // confirms it through this constructor.
         if method == IdentityResolutionMethod::AgentProposal
             && state == IdentityBindingState::Confirmed
         {
             return Err(ModelError::InvalidIdentityBinding);
         }
         if state == IdentityBindingState::Confirmed {
+            // Automated confirmation requires the claim kind appropriate to the
+            // selected method. Human decisions may confirm with or without one.
             let valid_claim = matches!(
                 (method, claim.as_ref().map(IdentityClaim::kind)),
                 (
@@ -1467,6 +1508,8 @@ impl IdentityBindingAssertion {
                 EntityAuthority::Provider { provider_kind, .. } => provider_kind,
                 EntityAuthority::Canonical => return Err(ModelError::InvalidIdentityBinding),
             };
+            // Workforce-ID and directly verified-email authority is currently
+            // restricted to the two admitted Okta identity kind spellings.
             if matches!(
                 method,
                 IdentityResolutionMethod::AuthoritativeEmployeeId
@@ -1476,6 +1519,8 @@ impl IdentityBindingAssertion {
                 return Err(ModelError::InvalidIdentityBinding);
             }
             if method == IdentityResolutionMethod::AuthoritativeEmployeeId {
+                // Authoritative employee IDs select the canonical person itself;
+                // they cannot confirm an arbitrary canonical endpoint.
                 let claim = claim.as_ref().ok_or(ModelError::InvalidIdentityBinding)?;
                 let expected = CanonicalIdentity::for_claim(
                     provider.entity().tenant_id.clone(),
@@ -1492,6 +1537,9 @@ impl IdentityBindingAssertion {
             EntityAuthority::Canonical => return Err(ModelError::InvalidIdentityBinding),
         };
         let claim_value = claim.as_ref().map(IdentityClaim::value).unwrap_or("");
+        // Method, decision state, and observation time are absent from identity,
+        // so changing them does not create a parallel assertion ID. Claim value
+        // separates distinct correlations.
         let id = AssertionId::parse(deterministic_id(
             "identity-binding",
             &[
@@ -1702,17 +1750,22 @@ impl GraphDelta {
 /// [`Authoritative`]. Duplicate identical values are idempotent; conflicting
 /// values with the same stable ID are rejected.
 pub struct GraphDeltaBuilder<Mode> {
+    /// Collection capability and tenant/runtime coordinates for every addition.
     collection: CollectionReceipt,
+    /// Insertion-ordered values, sorted only when the delta is sealed.
     entities: Vec<Entity>,
+    /// Stable-ID index used to distinguish idempotent from conflicting replay.
     entity_indexes: HashMap<EntityId, usize>,
     assertions: Vec<GraphAssertion>,
     assertion_indexes: HashMap<AssertionId, usize>,
     retractions: Vec<Retraction>,
     retraction_indexes: HashMap<AssertionId, usize>,
+    /// Compile-time capability; carries no runtime data into the delta.
     _mode: std::marker::PhantomData<Mode>,
 }
 
 impl<Mode> GraphDeltaBuilder<Mode> {
+    /// Creates empty staging indexes from a validated collection capability.
     fn new(collection: CollectionReceipt) -> Self {
         Self {
             collection,
@@ -1738,6 +1791,8 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         if entity.tenant_id != self.collection.tenant_id {
             return Err(ModelError::TenantMismatch);
         }
+        // Stable-ID replay is accepted only when the complete sealed value is
+        // identical; changed presentation data must arrive in another delta.
         if let Some(index) = self.entity_indexes.get(&entity.id).copied() {
             if self.entities[index] != entity {
                 return Err(ModelError::DuplicateEntity);
@@ -1760,11 +1815,15 @@ impl<Mode> GraphDeltaBuilder<Mode> {
     /// coordinates, or [`ModelError::DuplicateAssertion`] when the same ID has
     /// conflicting data.
     pub fn add_assertion(&mut self, assertion: GraphAssertion) -> Result<(), ModelError> {
+        // The collection authorizes one tenant and runtime. Observation-level
+        // collection coordinates remain preserved inside assertion provenance.
         if assertion.tenant_id() != &self.collection.tenant_id
             || assertion.provenance().source_runtime_id() != &self.collection.source_runtime_id
         {
             return Err(ModelError::TenantMismatch);
         }
+        // Equal stable IDs with unequal evidence or state are conflicting within
+        // one atomic delta rather than last-writer-wins updates.
         if let Some(index) = self.assertion_indexes.get(assertion.id()).copied() {
             if self.assertions[index] != assertion {
                 return Err(ModelError::DuplicateAssertion);
@@ -1779,6 +1838,8 @@ impl<Mode> GraphDeltaBuilder<Mode> {
 
     /// Sorts admitted values and returns a delta with a deterministic digest.
     pub fn build(mut self) -> GraphDelta {
+        // HashMap insertion order never reaches durable output. Sort every member
+        // class by stable identity before computing the membership commitment.
         self.entities
             .sort_unstable_by(|left, right| left.id.cmp(&right.id));
         self.assertions
@@ -1819,6 +1880,8 @@ impl GraphDeltaBuilder<Authoritative> {
             assertion_id,
             reason: validate_text(reason.into(), "retraction reason")?,
         };
+        // Repeating a retraction is an intentional last-reason-wins update within
+        // the builder; final ordering remains independent of insertion order.
         if let Some(index) = self
             .retraction_indexes
             .get(&retraction.assertion_id)
@@ -1835,6 +1898,9 @@ impl GraphDeltaBuilder<Authoritative> {
 }
 
 fn deterministic_id(prefix: &str, parts: &[&str]) -> String {
+    // Length-prefix each component to prevent concatenation ambiguity. The
+    // printable prefix separates model namespaces, while 128 digest bits keep
+    // the resulting ID compact enough for the identifier contract.
     let mut hasher = Sha256::new();
     for part in parts {
         hasher.update((part.len() as u64).to_be_bytes());
@@ -1854,6 +1920,9 @@ fn delta_digest(
     assertions: &[GraphAssertion],
     retractions: &[Retraction],
 ) -> String {
+    // This is a membership digest: it commits collection tenant/runtime/ID and
+    // sorted member identities. Mutable entity content, assertion evidence,
+    // retraction reasons, scope, completeness, and observation time are excluded.
     let mut hasher = Sha256::new();
     hasher.update(collection.tenant_id.as_str());
     hasher.update(collection.source_runtime_id.as_str());
@@ -1875,6 +1944,8 @@ fn delta_digest(
 }
 
 fn append_hex(encoded: &mut String, bytes: &[u8]) {
+    // Manual lowercase encoding avoids formatting allocation inside identity and
+    // digest construction and fixes one canonical hexadecimal representation.
     const HEX: &[u8; 16] = b"0123456789abcdef";
     for byte in bytes {
         encoded.push(HEX[(byte >> 4) as usize] as char);
