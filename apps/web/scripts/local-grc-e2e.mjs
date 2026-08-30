@@ -21,6 +21,11 @@ const defaultTimeoutMs = 15 * 60_000;
 const cleanupReserveMs = 30_000;
 const proxyCacheTtlMs = 1_000;
 const proxyCacheStaleMs = 60_000;
+export const localApiQueryCacheEnvironment = Object.freeze({
+  CEREBRO_CACHE_MODE: "memory",
+  CEREBRO_CACHE_MAX_ENTRIES: "16",
+  CEREBRO_CACHE_MAX_PAYLOAD_BYTES: String(8 * 1024 * 1024),
+});
 const perfFirstMs = 5_000;
 const perfCachedMs = 1_000;
 const tenantID = "e2e-local";
@@ -42,6 +47,10 @@ let apiBase;
 let webBase;
 let delayRelay = null;
 const proxyCacheProbeOptions = { cache: "default" };
+export const liveUpstreamProbeOptions = Object.freeze({
+  cache: "default",
+  headers: Object.freeze({ "cache-control": "no-cache" }),
+});
 const adminURN = `urn:cerebro:${tenantID}:identity:privileged`;
 let workDir;
 let logDir;
@@ -303,6 +312,7 @@ async function main(options) {
   backendProcess = await handoffLoopbackReservation(apiReservation, () => spawnLogged("cerebro-api", apiBinary, ["serve"], {
     env: portableChildEnvironment(process.env, {
       CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
+      ...localApiQueryCacheEnvironment,
       CEREBRO_STATE_STORE_DRIVER: "postgres",
       CEREBRO_POSTGRES_DSN: postgresDSN,
       CEREBRO_GRAPH_STORE_DRIVER: "neo4j",
@@ -328,6 +338,11 @@ async function main(options) {
   step("validating backend GRC endpoints");
   assertChildHealthy(backendProcess, "Cerebro API");
   await validateRegisteredOpenAPIRoutes(rustGraphBase, rustGraphSharedSecret);
+  await waitFor("backend GRC readiness", async () => {
+    const dashboard = await requestJSON(`${apiBase}/grc/dashboard?tenant_id=${tenantID}&limit=100`);
+    expect(dashboard.status === 200, `dashboard readiness status ${dashboard.status}`);
+    expect(dashboard.json.summary?.open_findings === 3, "dashboard fixture not ready");
+  }, Math.min(60_000, remainingValidationMs()), backendProcess);
   await validateBackend();
   assertChildHealthy(backendProcess, "Cerebro API");
 
@@ -966,21 +981,24 @@ async function validateProxyCache() {
 
   const secondDashboard = await requestJSON(dashboardUrl, proxyCacheProbeOptions);
   expect(secondDashboard.status === 200, `proxy dashboard second status ${secondDashboard.status}`);
-  expect(secondDashboard.headers.get("x-cerebro-cache") === "hit", `proxy dashboard second cache ${secondDashboard.headers.get("x-cerebro-cache")}`);
-  expect(secondDashboard.json.summary.evidence_items === 3, "proxy dashboard cached payload mismatch");
-  expect(secondDashboard.durationMs < perfCachedMs, `dashboard cached request took ${secondDashboard.durationMs}ms`);
+  expect(secondDashboard.headers.get("x-cerebro-cache") === "miss", `proxy dashboard second cache ${secondDashboard.headers.get("x-cerebro-cache")}`);
+  expect(secondDashboard.headers.get("x-cerebro-upstream-cache") === "hit", `proxy dashboard upstream cache ${secondDashboard.headers.get("x-cerebro-upstream-cache")}`);
+  expect(secondDashboard.json.summary.evidence_items === 3, "proxy dashboard payload mismatch");
+  expect(secondDashboard.durationMs < perfCachedMs, `dashboard upstream-cached request took ${secondDashboard.durationMs}ms`);
 
   const impactUrl = `${webBase}/api/cerebro/grc/entities/${encodeURIComponent(adminURN)}/impact?tenant_id=${tenantID}&limit=10&cache_probe=${Date.now()}`;
-  const firstImpact = await requestJSON(impactUrl, proxyCacheProbeOptions);
+  const firstImpact = await requestJSON(impactUrl, liveUpstreamProbeOptions);
   expect(firstImpact.status === 200, `proxy impact first status ${firstImpact.status}`);
   expect(firstImpact.headers.get("x-cerebro-cache") === "miss", `proxy impact first cache ${firstImpact.headers.get("x-cerebro-cache")}`);
+  expect(firstImpact.headers.get("x-cerebro-upstream-cache") === "bypass", `proxy impact first upstream cache ${firstImpact.headers.get("x-cerebro-upstream-cache")}`);
   expect(firstImpact.json.graph.root.urn === adminURN, "proxy impact root mismatch");
   expect(firstImpact.durationMs < perfFirstMs, `impact first request took ${firstImpact.durationMs}ms`);
 
-  const secondImpact = await requestJSON(impactUrl, proxyCacheProbeOptions);
+  const secondImpact = await requestJSON(impactUrl, liveUpstreamProbeOptions);
   expect(secondImpact.status === 200, `proxy impact second status ${secondImpact.status}`);
-  expect(secondImpact.headers.get("x-cerebro-cache") === "hit", `proxy impact second cache ${secondImpact.headers.get("x-cerebro-cache")}`);
-  expect(secondImpact.durationMs < perfCachedMs, `impact cached request took ${secondImpact.durationMs}ms`);
+  expect(secondImpact.headers.get("x-cerebro-cache") === "miss", `proxy impact second cache ${secondImpact.headers.get("x-cerebro-cache")}`);
+  expect(secondImpact.headers.get("x-cerebro-upstream-cache") === "bypass", `proxy impact second upstream cache ${secondImpact.headers.get("x-cerebro-upstream-cache")}`);
+  expect(secondImpact.durationMs < perfFirstMs, `impact live request took ${secondImpact.durationMs}ms`);
 }
 
 async function validateConcurrentProxyRequests() {
@@ -1106,26 +1124,32 @@ async function validateFailureModes() {
 
   const staleImpactUrl = `${webBase}/api/cerebro/grc/entities/${encodeURIComponent(adminURN)}/impact?tenant_id=${tenantID}&limit=10&cache_probe=graph-stale-${Date.now()}`;
   const staleDashboardUrl = `${webBase}/api/cerebro/grc/dashboard?tenant_id=${tenantID}&limit=100&cache_probe=api-stale-${Date.now()}`;
-  const warmImpact = await requestJSON(staleImpactUrl, proxyCacheProbeOptions);
+  const warmImpact = await requestJSON(staleImpactUrl, liveUpstreamProbeOptions);
   expect(warmImpact.status === 200, `warm impact status ${warmImpact.status}`);
   expect(warmImpact.headers.get("x-cerebro-cache") === "miss", `warm impact cache ${warmImpact.headers.get("x-cerebro-cache")}`);
+  expect(warmImpact.headers.get("x-cerebro-upstream-cache") === "bypass", `warm impact upstream cache ${warmImpact.headers.get("x-cerebro-upstream-cache")}`);
   const warmDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
   expect(warmDashboard.status === 200, `warm dashboard status ${warmDashboard.status}`);
   await abortableSleep(proxyCacheTtlMs + 500, activeRunControl?.signal, "proxy cache expiry");
   await stopChild(rustGraphProcess);
   rustGraphProcess = null;
-  const staleImpact = await requestJSON(staleImpactUrl, proxyCacheProbeOptions);
-  expect(staleImpact.status === 200, `stale impact status ${staleImpact.status}`);
-  expect(staleImpact.headers.get("x-cerebro-cache") === "stale", `stale impact cache ${staleImpact.headers.get("x-cerebro-cache")}`);
-  expect(staleImpact.headers.get("warning")?.includes("stale"), "stale impact missing warning header");
-  expect(staleImpact.json.graph.root.urn === adminURN, "stale impact payload mismatch");
+  const unavailableImpact = await request(staleImpactUrl, liveUpstreamProbeOptions);
+  expect(unavailableImpact.status === 503, `unavailable impact status ${unavailableImpact.status}`);
+  expect(unavailableImpact.body === "Service Unavailable\n", `unavailable impact body ${unavailableImpact.body}`);
+  expect(unavailableImpact.headers.get("content-type") === "text/plain; charset=utf-8", `unavailable impact content type ${unavailableImpact.headers.get("content-type")}`);
+  expect(unavailableImpact.headers.get("x-cerebro-cache") === "miss", `unavailable impact cache ${unavailableImpact.headers.get("x-cerebro-cache")}`);
+  expect(unavailableImpact.headers.get("x-cerebro-web-cache") === "miss", `unavailable impact web cache ${unavailableImpact.headers.get("x-cerebro-web-cache")}`);
+  expect(unavailableImpact.headers.get("x-cerebro-upstream-cache") === "bypass", `unavailable impact upstream cache ${unavailableImpact.headers.get("x-cerebro-upstream-cache")}`);
+  expect(unavailableImpact.headers.get("cache-control") === "private, max-age=0, must-revalidate", `unavailable impact cache control ${unavailableImpact.headers.get("cache-control")}`);
+  expect(unavailableImpact.headers.get("warning") === null, "unavailable impact returned a warning");
+  expect(unavailableImpact.headers.get("retry-after") === null, "unavailable impact returned a retry delay");
 
   await stopChild(backendProcess);
   backendProcess = null;
-  const staleDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
-  expect(staleDashboard.status === 200, `stale dashboard status ${staleDashboard.status}`);
-  expect(staleDashboard.headers.get("x-cerebro-cache") === "stale", `stale dashboard cache ${staleDashboard.headers.get("x-cerebro-cache")}`);
-  expect(staleDashboard.json.summary.open_findings === 3, "stale dashboard payload mismatch");
+  const unavailableDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
+  expect(unavailableDashboard.status === 502, `unavailable dashboard status ${unavailableDashboard.status}`);
+  expect(unavailableDashboard.headers.get("x-cerebro-cache") !== "stale", `unavailable dashboard cache ${unavailableDashboard.headers.get("x-cerebro-cache")}`);
+  expect(!unavailableDashboard.headers.get("warning")?.includes("stale"), "unavailable dashboard returned a stale warning");
 
   const nonCacheableDown = await request(`${webBase}/api/cerebro/health`);
   expect(nonCacheableDown.status === 502, `non-cacheable backend-down status ${nonCacheableDown.status}`);

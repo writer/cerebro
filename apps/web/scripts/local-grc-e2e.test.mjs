@@ -15,6 +15,8 @@ import {
   createRunControl,
   handoffLoopbackReservation,
   internalLoopbackPort,
+  liveUpstreamProbeOptions,
+  localApiQueryCacheEnvironment,
   localRelayPath,
   openAPIRouteProbePaths,
   parseArgs,
@@ -86,6 +88,31 @@ describe("real-service E2E isolation", () => {
       HOME: "/tmp/example-home",
       PATH: "/usr/bin",
     });
+  });
+
+  it("provisions a bounded in-memory query cache for proxy cache assertions", () => {
+    expect(localApiQueryCacheEnvironment).toEqual({
+      CEREBRO_CACHE_MODE: "memory",
+      CEREBRO_CACHE_MAX_ENTRIES: "16",
+      CEREBRO_CACHE_MAX_PAYLOAD_BYTES: "8388608",
+    });
+  });
+
+  it("keeps live graph probes out of both cache layers", () => {
+    expect(liveUpstreamProbeOptions).toEqual({
+      cache: "default",
+      headers: { "cache-control": "no-cache" },
+    });
+  });
+
+  it("waits for backend GRC startup jobs before asserting fixture responses", async () => {
+    const runnerPath = fileURLToPath(new URL("./local-grc-e2e.mjs", import.meta.url));
+    const runner = await readFile(runnerPath, "utf8");
+    const readiness = runner.indexOf('await waitFor("backend GRC readiness"');
+    const validation = runner.indexOf("await validateBackend();");
+
+    expect(readiness).toBeGreaterThan(-1);
+    expect(validation).toBeGreaterThan(readiness);
   });
 
   it("accepts only a single loopback Docker endpoint", () => {

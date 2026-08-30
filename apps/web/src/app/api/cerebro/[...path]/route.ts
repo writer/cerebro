@@ -181,8 +181,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       headers["content-type"] = "text/plain";
     }
     if (cacheKey) {
-      writeCerebroProxyCache(cacheKey, response, body, headers);
-      if (!background) span.increment("proxy.cache.write.count");
+      const cacheWritten = writeCerebroProxyCache(path, cacheKey, response, body, headers);
+      if (cacheWritten && !background) span.increment("proxy.cache.write.count");
     }
     return {
       body,
