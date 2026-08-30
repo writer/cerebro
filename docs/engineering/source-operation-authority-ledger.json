@@ -1,0 +1,87 @@
+{
+  "schema_version": "cerebro.source-operation-authority/v1",
+  "revision": 1,
+  "inventory": {
+    "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
+    "family_count": 4399,
+    "pull_family_count": 4389,
+    "push_family_count": 10
+  },
+  "defaults": {
+    "pull": {
+      "state": "compatibility",
+      "credential_owner": "go_trusted_runtime_host",
+      "network_owner": "go_trusted_runtime_host",
+      "operations": {
+        "check": "go_source_runtime",
+        "discover": "go_source_runtime",
+        "read_page": "go_source_runtime",
+        "push_admit": "not_applicable",
+        "append": "go_source_runtime",
+        "project": "go_source_runtime",
+        "checkpoint_commit": "go_source_runtime_store",
+        "product_read": "organizational_projection"
+      }
+    },
+    "push": {
+      "state": "compatibility",
+      "credential_owner": "authenticated_push_admission",
+      "network_owner": "authenticated_push_transport",
+      "operations": {
+        "check": "not_applicable",
+        "discover": "not_applicable",
+        "read_page": "not_applicable",
+        "push_admit": "go_source_push_admission",
+        "append": "go_source_runtime",
+        "project": "go_source_runtime",
+        "checkpoint_commit": "not_applicable",
+        "product_read": "organizational_projection"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "mode": "pull",
+      "source_id": "azure",
+      "family_id": "authorization_policy",
+      "state": "shadow_disabled",
+      "credential_owner": "go_trusted_runtime_host",
+      "network_owner": "go_trusted_runtime_host",
+      "operations": {
+        "check": "go_source_runtime",
+        "discover": "go_source_runtime",
+        "read_page": "go_source_runtime",
+        "push_admit": "not_applicable",
+        "append": "go_source_runtime",
+        "project": "go_source_runtime",
+        "checkpoint_commit": "go_source_runtime_store",
+        "product_read": "organizational_projection"
+      },
+      "candidate_kernel": {
+        "runtime": "credential_free_rust_worker",
+        "credential_free": true,
+        "network_allowed": false,
+        "plan_id": "source-plan-v1:azure:authorization_policy",
+        "provider_kernel": "azure.authorization_policy",
+        "event_kind": "azure.authorization_policy",
+        "schema_ref": "azure/authorization_policy/v1",
+        "implementation_evidence": [
+          {
+            "path": "crates/source-runtime-next/src/source_execution/azure_authorization_policy.rs",
+            "required_markers": [
+              "AzureAuthorizationPolicyAdapter",
+              "source-plan-v1:azure:authorization_policy"
+            ]
+          },
+          {
+            "path": "crates/source-runtime-next/src/source_execution/contract.rs",
+            "required_markers": [
+              "azure.authorization_policy",
+              "azure/authorization_policy/v1"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

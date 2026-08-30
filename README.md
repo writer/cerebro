@@ -130,6 +130,8 @@ Current authority map:
 
 Surfaces not listed as Rust-authoritative remain Go-compatible or bridged until their validation gates pass. Do not infer full Rust replacement from the product demo alone.
 
+Exact pull and push operation owners, catalog inventory binding, and disabled Rust candidates are machine-checked in [Source operation authority](docs/engineering/source-operation-authority.md).
+
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
 The Go compatibility runtime uses the `go1.26.6` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
@@ -167,6 +169,7 @@ make rust-clippy
 make rust-test
 make projection-parity-test
 make source-fixture-check
+make source-operation-authority-check
 make mcp-contract-check
 make mcp-sdk-compat
 make openapi-check
