@@ -2453,16 +2453,32 @@ pub fn apply_session_events(
             }
             SessionEvent::ModelStageRejected {
                 request_id,
-                stage: _,
+                stage,
                 class: _,
                 attempt,
                 contract_digest,
             } => {
                 let has_active_turn = active_turn_start_index(&next.events, request_id).is_some();
+                let expected_attempt = next
+                    .events
+                    .iter()
+                    .rev()
+                    .find_map(|record| match &record.event {
+                        SessionEvent::ModelStageRejected {
+                            request_id: prior_request_id,
+                            stage: prior_stage,
+                            attempt,
+                            ..
+                        } if prior_request_id == request_id && prior_stage == stage => {
+                            attempt.checked_add(1)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or(1);
                 if !bounded(request_id, MAX_TEXT_BYTES)
                     || !has_active_turn
-                    || !(1..=u8::try_from(MAX_MODEL_REPAIRS + 1).unwrap_or(u8::MAX))
-                        .contains(attempt)
+                    || *attempt != expected_attempt
+                    || usize::from(*attempt) > MAX_SESSION_STEPS
                     || !valid_model_contract_digest(contract_digest)
                 {
                     return Err(AgentRuntimeError::InvalidRequest(
@@ -2940,7 +2956,9 @@ async fn run_session_turn_recorded_at(
     };
     let mut repairs = usize::from(correction_requires_feedback);
     let mut rejected_operating_drafts = BTreeSet::new();
-    let mut coissued_plan_calls = None;
+    let mut model_stage_rejection_ordinals =
+        ModelStageRejectionOrdinals::from_session(&session, &input.request_id);
+    let mut coissued_plan_calls: Option<(SessionModelStage, Vec<ToolCall>)> = None;
     let mut frozen_research_draft: Option<GroundedDraft> = None;
     let mut pending_presentation_revision: Option<(GroundedDraft, Vec<String>)> = None;
     let mut presentation_revision_used = false;
@@ -2983,9 +3001,11 @@ async fn run_session_turn_recorded_at(
             observations: observations.clone(),
             repair_feedback: repair_feedback.clone(),
         };
+        let mut decision_stage = research_model_stage(plan.as_ref());
         let decision = if let Some((prior_presentation, review_feedback)) =
             pending_presentation_revision.take()
         {
+            decision_stage = SessionModelStage::PresentationRevision;
             let prior_message_digest = message_digest(&prior_presentation.message);
             let research_draft = frozen_research_draft
                 .clone()
@@ -3009,7 +3029,7 @@ async fn run_session_turn_recorded_at(
                         &mut events,
                         SessionModelStage::PresentationRevision,
                         &rejection,
-                        1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3043,7 +3063,7 @@ async fn run_session_turn_recorded_at(
                     &mut events,
                     SessionModelStage::PresentationRevision,
                     &rejection,
-                    1,
+                    &mut model_stage_rejection_ordinals,
                     journal,
                 )
                 .await?;
@@ -3066,24 +3086,20 @@ async fn run_session_turn_recorded_at(
                 .await;
             }
             SessionModelDecision::Finish { draft }
-        } else if let Some(calls) = coissued_plan_calls.take() {
+        } else if let Some((originating_stage, calls)) = coissued_plan_calls.take() {
+            decision_stage = originating_stage;
             SessionModelDecision::InvokeTools { calls }
         } else {
             match model.advance(model_turn.clone()).await {
                 Ok(decision) => decision,
                 Err(AgentRuntimeError::ModelStageRejected(rejection)) => {
-                    let stage = if plan.is_none() {
-                        SessionModelStage::ResearchInitial
-                    } else {
-                        SessionModelStage::ResearchContinue
-                    };
                     emit_model_stage_rejection(
                         &session,
                         &input,
                         &mut events,
-                        stage,
+                        decision_stage,
                         &rejection,
-                        repairs + 1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3095,22 +3111,17 @@ async fn run_session_turn_recorded_at(
                     continue;
                 }
                 Err(AgentRuntimeError::InvalidFinal(reason)) => {
-                    let stage = if plan.is_none() {
-                        SessionModelStage::ResearchInitial
-                    } else {
-                        SessionModelStage::ResearchContinue
-                    };
                     let rejection = runtime_stage_rejection(
-                        stage,
+                        decision_stage,
                         SessionModelRejectionClass::RuntimeValidation,
                     );
                     emit_model_stage_rejection(
                         &session,
                         &input,
                         &mut events,
-                        stage,
+                        decision_stage,
                         &rejection,
-                        repairs + 1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3121,22 +3132,17 @@ async fn run_session_turn_recorded_at(
                     continue;
                 }
                 Err(_) => {
-                    let stage = if plan.is_none() {
-                        SessionModelStage::ResearchInitial
-                    } else {
-                        SessionModelStage::ResearchContinue
-                    };
                     let rejection = runtime_stage_rejection(
-                        stage,
+                        decision_stage,
                         SessionModelRejectionClass::AdapterUnavailable,
                     );
                     emit_model_stage_rejection(
                         &session,
                         &input,
                         &mut events,
-                        stage,
+                        decision_stage,
                         &rejection,
-                        repairs + 1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3162,9 +3168,10 @@ async fn run_session_turn_recorded_at(
         };
 
         let (decision, plan_calls) = match decision {
-            SessionModelDecision::EstablishPlanAndInvoke { plan, calls } => {
-                (SessionModelDecision::EstablishPlan { plan }, Some(calls))
-            }
+            SessionModelDecision::EstablishPlanAndInvoke { plan, calls } => (
+                SessionModelDecision::EstablishPlan { plan },
+                Some((decision_stage, calls)),
+            ),
             SessionModelDecision::Finish { draft } if frozen_research_draft.is_none() => (
                 SessionModelDecision::ResearchComplete {
                     draft,
@@ -3189,7 +3196,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3209,7 +3217,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3265,11 +3274,7 @@ async fn run_session_turn_recorded_at(
                     bound_lane,
                     &mut draft,
                 ) {
-                    let stage = if plan.is_none() {
-                        SessionModelStage::ResearchInitial
-                    } else {
-                        SessionModelStage::ResearchContinue
-                    };
+                    let stage = decision_stage;
                     let rejection = runtime_stage_rejection(
                         stage,
                         SessionModelRejectionClass::RuntimeValidation,
@@ -3280,7 +3285,7 @@ async fn run_session_turn_recorded_at(
                         &mut events,
                         stage,
                         &rejection,
-                        repairs + 1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3317,7 +3322,7 @@ async fn run_session_turn_recorded_at(
                             &mut events,
                             SessionModelStage::PresentationInitial,
                             &rejection,
-                            1,
+                            &mut model_stage_rejection_ordinals,
                             journal,
                         )
                         .await?;
@@ -3353,7 +3358,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3372,7 +3378,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3388,7 +3395,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3405,7 +3413,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3452,8 +3461,10 @@ async fn run_session_turn_recorded_at(
                 plan = Some(proposed);
                 repairs = 0;
                 repair_feedback.clear();
-                if let Some(calls) = plan_calls.filter(|calls| !calls.is_empty()) {
-                    coissued_plan_calls = Some(calls);
+                if let Some((originating_stage, calls)) =
+                    plan_calls.filter(|(_, calls)| !calls.is_empty())
+                {
+                    coissued_plan_calls = Some((originating_stage, calls));
                 }
             }
             SessionModelDecision::InvokeTools { calls } => {
@@ -3463,7 +3474,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3473,12 +3485,32 @@ async fn run_session_turn_recorded_at(
                     .await?;
                     continue;
                 };
-                if let Some(expanded) = expand_plan_for_read_calls(
+                let expanded = match expand_plan_for_read_calls(
                     &established,
                     &calls,
                     &descriptors,
                     &available_tool_ids,
-                )? {
+                ) {
+                    Ok(expanded) => expanded,
+                    Err(error) => {
+                        record_research_runtime_rejection(
+                            ResearchRuntimeRejection {
+                                session: &session,
+                                input: &input,
+                                events: &mut events,
+                                stage: decision_stage,
+                                ordinals: &mut model_stage_rejection_ordinals,
+                                journal,
+                            },
+                            &mut repairs,
+                            &mut repair_feedback,
+                            error.to_string(),
+                        )
+                        .await?;
+                        continue;
+                    }
+                };
+                if let Some(expanded) = expanded {
                     emit_event(
                         &session,
                         &input.assessment_at,
@@ -3504,7 +3536,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3529,7 +3562,8 @@ async fn run_session_turn_recorded_at(
                             session: &session,
                             input: &input,
                             events: &mut events,
-                            stage: research_model_stage(plan.as_ref()),
+                            stage: decision_stage,
+                            ordinals: &mut model_stage_rejection_ordinals,
                             journal,
                         },
                         &mut repairs,
@@ -3727,7 +3761,7 @@ async fn run_session_turn_recorded_at(
                         &mut events,
                         stage,
                         &rejection,
-                        1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3754,7 +3788,7 @@ async fn run_session_turn_recorded_at(
                             &mut events,
                             stage,
                             &rejection,
-                            1,
+                            &mut model_stage_rejection_ordinals,
                             journal,
                         )
                         .await?;
@@ -3775,7 +3809,7 @@ async fn run_session_turn_recorded_at(
                         &mut events,
                         stage,
                         &rejection,
-                        1,
+                        &mut model_stage_rejection_ordinals,
                         journal,
                     )
                     .await?;
@@ -3810,7 +3844,7 @@ async fn run_session_turn_recorded_at(
                                 &mut events,
                                 SessionModelStage::Review,
                                 &rejection,
-                                1,
+                                &mut model_stage_rejection_ordinals,
                                 journal,
                             )
                             .await?;
@@ -3844,7 +3878,7 @@ async fn run_session_turn_recorded_at(
                                 &mut events,
                                 SessionModelStage::Review,
                                 &rejection,
-                                1,
+                                &mut model_stage_rejection_ordinals,
                                 journal,
                             )
                             .await?;
@@ -3876,7 +3910,7 @@ async fn run_session_turn_recorded_at(
                             &mut events,
                             SessionModelStage::Review,
                             &rejection,
-                            1,
+                            &mut model_stage_rejection_ordinals,
                             journal,
                         )
                         .await?;
@@ -6181,6 +6215,57 @@ fn valid_model_contract_digest(contract_digest: &str) -> bool {
         })
 }
 
+const MODEL_STAGE_COUNT: usize = 5;
+
+fn model_stage_index(stage: SessionModelStage) -> usize {
+    match stage {
+        SessionModelStage::ResearchInitial => 0,
+        SessionModelStage::ResearchContinue => 1,
+        SessionModelStage::PresentationInitial => 2,
+        SessionModelStage::PresentationRevision => 3,
+        SessionModelStage::Review => 4,
+    }
+}
+
+struct ModelStageRejectionOrdinals {
+    last: [u8; MODEL_STAGE_COUNT],
+}
+
+impl ModelStageRejectionOrdinals {
+    fn from_session(session: &AgentSession, request_id: &str) -> Self {
+        let mut last = [0; MODEL_STAGE_COUNT];
+        for record in &session.events {
+            if let SessionEvent::ModelStageRejected {
+                request_id: rejected_request_id,
+                stage,
+                attempt,
+                ..
+            } = &record.event
+                && rejected_request_id == request_id
+            {
+                last[model_stage_index(*stage)] = *attempt;
+            }
+        }
+        Self { last }
+    }
+
+    fn next(&mut self, stage: SessionModelStage) -> Result<u8, AgentRuntimeError> {
+        let current = &mut self.last[model_stage_index(stage)];
+        let next = current.checked_add(1).ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "model stage rejection ordinal exceeds the bounded audit contract".into(),
+            )
+        })?;
+        if usize::from(next) > MAX_SESSION_STEPS {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "model stage rejection ordinal exceeds the bounded turn step limit".into(),
+            ));
+        }
+        *current = next;
+        Ok(next)
+    }
+}
+
 fn presentation_stage(revision_used: bool) -> SessionModelStage {
     if revision_used {
         SessionModelStage::PresentationRevision
@@ -6218,21 +6303,15 @@ async fn emit_model_stage_rejection(
     events: &mut Vec<SessionEventRecord>,
     stage: SessionModelStage,
     rejection: &SessionModelRejection,
-    attempt: usize,
+    ordinals: &mut ModelStageRejectionOrdinals,
     journal: &dyn SessionJournal,
 ) -> Result<(), AgentRuntimeError> {
-    let attempt = u8::try_from(attempt).map_err(|_| {
-        AgentRuntimeError::InvalidFinal(
-            "model stage rejection attempt exceeds the bounded audit contract".into(),
-        )
-    })?;
-    if !(1..=u8::try_from(MAX_MODEL_REPAIRS + 1).unwrap_or(u8::MAX)).contains(&attempt)
-        || !valid_model_contract_digest(&rejection.contract_digest)
-    {
+    if !valid_model_contract_digest(&rejection.contract_digest) {
         return Err(AgentRuntimeError::InvalidFinal(
-            "model stage rejection attempt or contract digest is invalid".into(),
+            "model stage rejection contract digest is invalid".into(),
         ));
     }
+    let attempt = ordinals.next(stage)?;
     emit_event(
         session,
         &input.assessment_at,
@@ -6254,6 +6333,7 @@ struct ResearchRuntimeRejection<'a> {
     input: &'a SessionTurnInput,
     events: &'a mut Vec<SessionEventRecord>,
     stage: SessionModelStage,
+    ordinals: &'a mut ModelStageRejectionOrdinals,
     journal: &'a dyn SessionJournal,
 }
 
@@ -6271,7 +6351,7 @@ async fn record_research_runtime_rejection(
         runtime.events,
         runtime.stage,
         &rejection,
-        *repairs + 1,
+        runtime.ordinals,
         runtime.journal,
     )
     .await?;
@@ -9266,7 +9346,11 @@ mod tests {
         assert!(!encoded.contains("provider_output"));
         assert!(!encoded.contains("repair_feedback"));
 
-        for (attempt, digest) in [(0, format!("sha256:{}", "a".repeat(64))), (1, "bad".into())] {
+        for (attempt, digest) in [
+            (0, format!("sha256:{}", "a".repeat(64))),
+            (1, "bad".into()),
+            (2, format!("sha256:{}", "a".repeat(64))),
+        ] {
             let invalid = record(
                 3,
                 SessionEvent::ModelStageRejected {
@@ -10957,6 +11041,8 @@ mod tests {
 
     struct ConnectorTools;
 
+    struct SaturatedReadTools;
+
     struct MixedReadTools {
         calls: Mutex<Vec<String>>,
     }
@@ -10974,6 +11060,32 @@ mod tests {
             _call: &ToolCall,
         ) -> Result<ToolResult, AgentRuntimeError> {
             Ok(observation(true, Some("2026-08-01T00:00:00Z")).result)
+        }
+    }
+
+    #[async_trait]
+    impl SessionTools for SaturatedReadTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            let template = observation(true, Some("2026-08-01T00:00:00Z")).descriptor;
+            (0..=ExecutionLane::Investigate
+                .budget()
+                .max_selected_capabilities)
+                .map(|index| {
+                    let mut descriptor = template.clone();
+                    descriptor.tool_id = format!("connector.read.{index}");
+                    descriptor.title = format!("Connector read {index}");
+                    descriptor
+                })
+                .collect()
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            panic!("runtime-invalid call {} must not be invoked", call.tool_id)
         }
     }
 
@@ -15392,6 +15504,143 @@ mod tests {
         assert_eq!(replayed.pending_delivery, started.pending_delivery);
         let encoded = serde_json::to_string(&events[first_rejection]).unwrap();
         assert!(!encoded.contains("missing.read"));
+        assert!(!encoded.contains("repair_feedback"));
+    }
+
+    #[tokio::test]
+    async fn deferred_initial_read_rejection_keeps_stage_and_monotonic_ordinal() {
+        let request_id = "request:deferred-initial-read-rejection";
+        let current = session_for_unrouted_request(
+            request_id,
+            "Check the current connector estate and report the supported result.",
+        );
+        let tools = SaturatedReadTools;
+        let catalog = tools.catalog();
+        let selected_count = ExecutionLane::Investigate
+            .budget()
+            .max_selected_capabilities;
+        let selected_tools = catalog
+            .iter()
+            .take(selected_count)
+            .map(|descriptor| descriptor.tool_id.clone())
+            .collect::<Vec<_>>();
+        let extra_tool = catalog
+            .get(selected_count)
+            .expect("the catalog contains one extra bounded read")
+            .tool_id
+            .clone();
+        let available_tool_ids = catalog
+            .iter()
+            .map(|descriptor| descriptor.tool_id.clone())
+            .collect::<Vec<_>>();
+
+        let mut saturated_plan = plan();
+        saturated_plan.selected_tools.clone_from(&selected_tools);
+        saturated_plan.claims[0]
+            .source_candidates
+            .clone_from(&selected_tools);
+        assert!(validate_plan(&saturated_plan, &available_tool_ids).is_ok());
+
+        let extra_call = ToolCall {
+            call_id: "call:extra-read".into(),
+            tool_id: extra_tool.clone(),
+            purpose: "Read one additional current connector source.".into(),
+            input: json!({"connector_ref": "connector:alpha"}),
+        };
+        let mut invalid_plan = saturated_plan.clone();
+        invalid_plan.selected_tools[0] = "missing.read".into();
+        invalid_plan.claims[0].source_candidates[0] = "missing.read".into();
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlanAndInvoke {
+                    plan: invalid_plan,
+                    calls: vec![extra_call.clone()],
+                },
+                SessionModelDecision::EstablishPlanAndInvoke {
+                    plan: saturated_plan,
+                    calls: vec![extra_call.clone()],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![extra_call.clone()],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![extra_call.clone()],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![extra_call],
+                },
+            ])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &tools,
+            current.clone(),
+            SessionTurnInput {
+                request_id: request_id.into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("bounded invalid extra reads should terminate in the safe fallback");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            events,
+            ..
+        } = outcome
+        else {
+            panic!("invalid read expansion cannot acquire effect authority");
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(!events.iter().any(|record| matches!(
+            record.event,
+            SessionEvent::ToolInvoked { .. } | SessionEvent::EffectStarted { .. }
+        )));
+
+        let rejections = events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, record)| match &record.event {
+                SessionEvent::ModelStageRejected {
+                    stage,
+                    class,
+                    attempt,
+                    contract_digest,
+                    ..
+                } => Some((index, *stage, *class, *attempt, contract_digest.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rejections
+                .iter()
+                .map(|(_, stage, _, attempt, _)| (*stage, *attempt))
+                .collect::<Vec<_>>(),
+            vec![
+                (SessionModelStage::ResearchInitial, 1),
+                (SessionModelStage::ResearchInitial, 2),
+                (SessionModelStage::ResearchContinue, 1),
+                (SessionModelStage::ResearchContinue, 2),
+                (SessionModelStage::ResearchContinue, 3),
+            ]
+        );
+        assert!(rejections.iter().all(|(_, stage, class, _, digest)| {
+            *class == SessionModelRejectionClass::RuntimeValidation
+                && *digest == runtime_stage_contract_digest(*stage)
+        }));
+
+        let second_initial_index = rejections[1].0;
+        let before = apply_session_events(&current, &events[..second_initial_index]).unwrap();
+        let after = apply_session_events(&current, &events[..=second_initial_index]).unwrap();
+        assert_eq!(after.mission, before.mission);
+        assert_eq!(after.memories, before.memories);
+        assert_eq!(after.effect_authorizations, before.effect_authorizations);
+        assert_eq!(after.pending_delivery, before.pending_delivery);
+        let encoded = serde_json::to_string(&events[second_initial_index]).unwrap();
+        assert!(!encoded.contains(&extra_tool));
         assert!(!encoded.contains("repair_feedback"));
     }
 
