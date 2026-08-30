@@ -1,5 +1,30 @@
+//! Preflight validation for bounded analysis-plugin execution.
+//!
+//! This module compares a manifest and measured usage with platform resource
+//! policy. Artifact loading, digest verification, capability authorization, ABI
+//! negotiation, isolation, and runtime metering belong to the execution host.
+
 use cerebro_platform_sdk::{AnalysisPluginManifest, ResourceBudget, ResourceUsage, SdkError};
 
+/// Validates manifest memory/time ceilings and observed usage against a budget.
+///
+/// Manifest memory and execution-time limits must fit within the corresponding
+/// platform budget, while observed plugin memory and time must fit both the
+/// manifest and platform limits. [`ResourceUsage::validate`] also enforces every
+/// non-plugin budget dimension represented in `usage`.
+///
+/// Input and output byte limits are validated as non-zero manifest values but
+/// are not represented by [`ResourceUsage`] and therefore are not metered here.
+/// The host must enforce them before passing bytes into or out of the sandbox.
+/// This function also does not prove the artifact's zero-import or deterministic
+/// properties; manifest validation only requires those declarations to be true.
+///
+/// # Errors
+///
+/// Returns manifest validation errors, or [`SdkError::OutOfRange`] when a
+/// manifest ceiling exceeds platform policy or any measured usage exceeds its
+/// applicable ceiling. Usage validation errors are deliberately collapsed to
+/// the plugin-execution budget category at this boundary.
 pub fn validate_plugin_execution(
     manifest: &AnalysisPluginManifest,
     budget: &ResourceBudget,
