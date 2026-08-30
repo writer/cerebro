@@ -3,6 +3,7 @@
 .PHONY: release-train-test
 .PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check fixture-oracle-generate fixture-oracle-check
+.PHONY: source-operation-authority-check
 .PHONY: slack-agent-rust-eval
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
 .PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-manifest-update policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check compliance-demo compliance-demo-check web-route-bugbash rust-product-demo rust-product-demo-check secure-business-demo security-operator-benchmark github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
@@ -807,6 +808,9 @@ contracts-check: ## Run contract and compatibility checks with a final summary.
 rust-migration-ledger-check: ## Verify the raw-Cypher compatibility ledger against the code.
 	python3 scripts/rust_migration_ledger_check.py
 
+source-operation-authority-check: ## Verify source-family operation authority and catalog inventory binding.
+	go run ./tools/sourceoperationauthoritycheck
+
 changed-check: ## Run validation selected from changed paths.
 	python3 scripts/changed_checks.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --run
 
@@ -1036,7 +1040,7 @@ hooks: ## Install repository git hooks.
 pre-commit: ## Run local pre-commit checks.
 	./scripts/pre_commit_checks.sh
 
-check: build test script-test sdk-test lint proto-lint proto-generate-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check connector-contract-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
+check: build test script-test sdk-test lint proto-lint proto-generate-check source-operation-authority-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check connector-contract-check docs-drift-check check-structural check-structural-test check-arch ## Run the main local validation suite.
 
 check-structural: check-structural-build ## Run custom structural lints.
 	@$(PINNED_GO) $(LINTER_BIN) $(APP_PACKAGES)
@@ -1052,4 +1056,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny rust-migration-ledger-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check agent-docs-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny rust-migration-ledger-check source-operation-authority-check graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check agent-docs-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
