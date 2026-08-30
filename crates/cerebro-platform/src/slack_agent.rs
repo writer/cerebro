@@ -28,10 +28,10 @@ use cerebro_agent_runtime::{
     ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
-        ALL_STABLE_EXPLANATION_IDS, AgentSession, AttentionReview, BehavioralReview, ClaimReview,
-        ClaimReviewTurn, ClaimReviewVerdict, DeliveryDisposition, EvidenceAssertion, EvidenceAtom,
-        EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES, MessageReview, MissionState,
-        ProactiveFollowupOffer, ResearchPlan, SemanticEvidenceAtomization,
+        ALL_STABLE_EXPLANATION_IDS, AgentSession, AttentionReview, BehavioralReview, ClaimContent,
+        ClaimReview, ClaimReviewTurn, ClaimReviewVerdict, DeliveryDisposition, EvidenceAssertion,
+        EvidenceAtom, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES, MessageReview,
+        MissionState, ProactiveFollowupOffer, ResearchPlan, SemanticEvidenceAtomization,
         SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
         SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelRejection,
         SessionModelRejectionClass, SessionModelTurn, SessionPresentationTurn, SessionStatus,
@@ -2155,7 +2155,7 @@ impl SessionAgentModel for ConfiguredModel {
             )
             .await
             .map_err(|error| model_stage_adapter_error(error, &contract_digest))?;
-        parse_session_research_choice(selection, initial)
+        parse_session_research_choice(selection, &turn)
     }
 
     async fn present(
@@ -3482,7 +3482,7 @@ enum SessionResearchDecision {
 
 fn parse_session_research_choice(
     selection: StructuredToolSelection,
-    initial: bool,
+    turn: &SessionModelTurn,
 ) -> Result<SessionModelDecision, AgentRuntimeError> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -3516,18 +3516,23 @@ fn parse_session_research_choice(
         input,
         contract_digest,
     } = selection;
+    let initial = turn.plan.is_none();
     let schema_rejection =
         || model_stage_rejection(SessionModelRejectionClass::SchemaDecode, &contract_digest);
     match (initial, name.as_str()) {
         (true, SESSION_PLAN_AND_READ_TOOL) => {
-            let selected: StartResearch =
+            let mut selected: StartResearch =
                 serde_json::from_value(input).map_err(|_| schema_rejection())?;
-            if selected.calls.is_empty() || selected.lane != selected.plan.lane {
+            if selected.calls.is_empty() {
                 return Err(model_stage_rejection(
                     SessionModelRejectionClass::RuntimeValidation,
                     &contract_digest,
                 ));
             }
+            // The top-level lane is the model's single typed authority choice. Bind the
+            // nested plan to it instead of asking the provider to echo the same enum twice.
+            selected.plan.lane = selected.lane;
+            normalize_model_plan_cross_references(&mut selected.plan);
             Ok(SessionModelDecision::EstablishPlanAndInvoke {
                 plan: selected.plan,
                 calls: selected.calls,
@@ -3549,7 +3554,8 @@ fn parse_session_research_choice(
         (true, SESSION_FINISH_TOOL) => {
             let selected: InitialFinish =
                 serde_json::from_value(input).map_err(|_| schema_rejection())?;
-            let draft = decode_research_draft(selected.draft, &contract_digest)?;
+            let draft =
+                decode_research_draft(selected.draft, &contract_digest, turn, Some(selected.lane))?;
             Ok(SessionModelDecision::ResearchComplete {
                 draft,
                 declared_lane: Some(selected.lane),
@@ -3558,7 +3564,7 @@ fn parse_session_research_choice(
         (false, SESSION_FINISH_TOOL) => {
             let selected: ContinueFinish =
                 serde_json::from_value(input).map_err(|_| schema_rejection())?;
-            let draft = decode_research_draft(selected.draft, &contract_digest)?;
+            let draft = decode_research_draft(selected.draft, &contract_digest, turn, None)?;
             Ok(SessionModelDecision::ResearchComplete {
                 draft,
                 declared_lane: None,
@@ -3571,9 +3577,22 @@ fn parse_session_research_choice(
     }
 }
 
+fn normalize_model_plan_cross_references(plan: &mut ResearchPlan) {
+    for claim in &mut plan.claims {
+        if claim.subject_refs.is_empty() {
+            claim.subject_refs.clone_from(&plan.resolved_entities);
+        }
+        if claim.source_candidates.is_empty() {
+            claim.source_candidates.clone_from(&plan.selected_tools);
+        }
+    }
+}
+
 fn decode_research_draft(
     mut value: Value,
     contract_digest: &str,
+    turn: &SessionModelTurn,
+    declared_lane: Option<ExecutionLane>,
 ) -> Result<GroundedDraft, AgentRuntimeError> {
     let message = value
         .get("claims")
@@ -3592,9 +3611,38 @@ fn decode_research_draft(
     })?;
     object.insert("message".into(), Value::String(message));
     object.insert("presentation_ready".into(), Value::Bool(false));
-    serde_json::from_value(value).map_err(|_| {
+    let mut draft: GroundedDraft = serde_json::from_value(value).map_err(|_| {
         model_stage_rejection(SessionModelRejectionClass::SchemaDecode, contract_digest)
-    })
+    })?;
+    if turn.plan.is_none() && declared_lane == Some(ExecutionLane::Converse) {
+        // Conversation does not revise durable operating work. Rust owns the current
+        // mission identity and the exact newest-message sequence used for synthesis.
+        draft.mission.clone_from(&turn.session.mission);
+        let newest_operator_sequence = turn
+            .session
+            .messages
+            .iter()
+            .rposition(|message| message.role == SessionMessageRole::User)
+            .map(|index| (index + 1) as u64)
+            .ok_or_else(|| {
+                model_stage_rejection(
+                    SessionModelRejectionClass::RuntimeValidation,
+                    contract_digest,
+                )
+            })?;
+        for claim in &mut draft.claims {
+            if let ClaimContent::ConversationalSynthesis {
+                source_message_sequences,
+                source_atom_refs,
+            } = &mut claim.content
+            {
+                source_message_sequences.clear();
+                source_message_sequences.push(newest_operator_sequence);
+                source_atom_refs.clear();
+            }
+        }
+    }
+    Ok(draft)
 }
 
 #[cfg(test)]
@@ -7003,6 +7051,31 @@ mod tests {
         }
     }
 
+    fn initial_session_model_turn(message: &str) -> SessionModelTurn {
+        let mut request = replay_request();
+        request.message = message.into();
+        let mut session = new_session(&request).unwrap();
+        session.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: format!("operator:{}", request.request_id),
+            actor_ref: request.actor_ref.clone(),
+            text: request.message.clone(),
+            received_at: request.assessment_at.clone(),
+        });
+        SessionModelTurn {
+            session,
+            trigger: SessionTurnTrigger::Operator,
+            assessment_at: request.assessment_at,
+            requested_lane: None,
+            prior_commitment_checkpoint: None,
+            wake_assessment: None,
+            plan: None,
+            available_tools: Vec::new(),
+            observations: Vec::new(),
+            repair_feedback: Vec::new(),
+        }
+    }
+
     fn replay_draft(session: &AgentSession) -> cerebro_agent_runtime::session::GroundedDraft {
         cerebro_agent_runtime::session::GroundedDraft {
             state: FinalState::Answered,
@@ -8500,6 +8573,7 @@ mod tests {
     fn bedrock_research_choice_requires_one_recognized_active_contract() {
         let contracts = session_research_contracts(true);
         let contract_digest = structured_choice_contract_digest(&contracts);
+        let turn = initial_session_model_turn("Check the current source state.");
         let input = json!({
             "lane": "investigate",
             "plan": {
@@ -8538,7 +8612,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            parse_session_research_choice(selection, true).unwrap(),
+            parse_session_research_choice(selection, &turn).unwrap(),
             SessionModelDecision::EstablishPlanAndInvoke { plan, calls }
                 if plan.lane == ExecutionLane::Investigate && calls.len() == 1
         ));
@@ -8568,6 +8642,116 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn initial_research_binds_redundant_plan_fields_before_runtime_admission() {
+        let contracts = session_research_contracts(true);
+        let turn = initial_session_model_turn("Check the current source state.");
+        let selection = StructuredToolSelection {
+            name: SESSION_PLAN_AND_READ_TOOL.into(),
+            input: json!({
+                "lane": "investigate",
+                "plan": {
+                    "decision": "Read one current source state.",
+                    "lane": "lookup",
+                    "resolved_entities": ["source:one"],
+                    "claims": [{
+                        "claim_ref": "planned:one",
+                        "question": "What is the current source state?",
+                        "required": true,
+                        "subject_refs": [],
+                        "source_candidates": []
+                    }],
+                    "selected_tools": ["source_runtime.inspect"],
+                    "stop_conditions": ["The current state is returned."],
+                    "user_visible_work": ["Read the current source state."],
+                    "follow_through": null,
+                    "follow_through_offer": null
+                },
+                "calls": [{
+                    "call_id": "call:one",
+                    "tool_id": "source_runtime.inspect",
+                    "purpose": "Read source:one.",
+                    "input": {"source_ref": "source:one"}
+                }]
+            }),
+            contract_digest: structured_choice_contract_digest(&contracts),
+        };
+
+        let SessionModelDecision::EstablishPlanAndInvoke { plan, calls } =
+            parse_session_research_choice(selection, &turn).unwrap()
+        else {
+            panic!("expected the initial operating decision");
+        };
+        assert_eq!(plan.lane, ExecutionLane::Investigate);
+        assert_eq!(plan.claims[0].subject_refs, vec!["source:one"]);
+        assert_eq!(
+            plan.claims[0].source_candidates,
+            vec!["source_runtime.inspect"]
+        );
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn converse_finish_binds_mission_and_newest_message_identity_in_rust() {
+        let contracts = session_research_contracts(true);
+        let turn = initial_session_model_turn("How are you feeling about the new setup?");
+        let selection = StructuredToolSelection {
+            name: SESSION_FINISH_TOOL.into(),
+            input: json!({
+                "lane": "converse",
+                "draft": {
+                    "state": "answered",
+                    "delivery": "visible",
+                    "claims": [{
+                        "claim_ref": "claim:conversation",
+                        "planned_claim_ref": null,
+                        "text": "It feels much better; the next useful proof is a real operating turn.",
+                        "required_for_answer": true,
+                        "content": {
+                            "basis": "conversational_synthesis",
+                            "source_message_sequences": [999],
+                            "source_atom_refs": ["untrusted:model-echo"]
+                        }
+                    }],
+                    "coverage_notice": null,
+                    "question": null,
+                    "mission": {
+                        "mission_ref": "model:must-not-replace-mission",
+                        "objective": "Replace the durable mission.",
+                        "desired_outcome": "Wrong mission",
+                        "resolved_scope": [],
+                        "scope_assumptions": [],
+                        "acceptance_criteria": [],
+                        "commitments": [],
+                        "open_loops": [],
+                        "status": "completed"
+                    },
+                    "memory_updates": []
+                }
+            }),
+            contract_digest: structured_choice_contract_digest(&contracts),
+        };
+
+        let SessionModelDecision::ResearchComplete {
+            draft,
+            declared_lane,
+        } = parse_session_research_choice(selection, &turn).unwrap()
+        else {
+            panic!("expected the direct conversation artifact");
+        };
+        assert_eq!(declared_lane, Some(ExecutionLane::Converse));
+        assert_eq!(draft.mission, turn.session.mission);
+        let ClaimContent::ConversationalSynthesis {
+            source_message_sequences,
+            source_atom_refs,
+        } = &draft.claims[0].content
+        else {
+            panic!("expected conversational synthesis grounding");
+        };
+        assert_eq!(source_message_sequences, &[1]);
+        assert!(source_atom_refs.is_empty());
     }
 
     #[test]
