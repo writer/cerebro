@@ -6,6 +6,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 DETERMINISTIC_WORKFLOW = ROOT / ".github" / "workflows" / "deterministic-review.yml"
 EPHEMERAL_WORKFLOW = ROOT / ".github" / "workflows" / "ephemeral-cerebro.yml"
+CODEQL_WORKFLOW = ROOT / ".github" / "workflows" / "codeql.yml"
+LEAK_CHECK_WORKFLOW = ROOT / ".github" / "workflows" / "leak-check.yml"
+SECRET_SCAN_WORKFLOW = ROOT / ".github" / "workflows" / "secret-scan.yml"
+SEMGREP_WORKFLOW = ROOT / ".github" / "workflows" / "semgrep.yml"
 PRE_PUSH_HOOK = ROOT / ".githooks" / "pre-push"
 GO_SETUP = ROOT / ".github" / "actions" / "setup-go-cached" / "action.yml"
 RUST_SETUP = ROOT / ".github" / "actions" / "setup-rust-cached" / "action.yml"
@@ -18,6 +22,12 @@ class CIDeliveryControlTests(unittest.TestCase):
         cls.ci = CI_WORKFLOW.read_text(encoding="utf-8")
         cls.deterministic = DETERMINISTIC_WORKFLOW.read_text(encoding="utf-8")
         cls.ephemeral = EPHEMERAL_WORKFLOW.read_text(encoding="utf-8")
+        cls.security_workflows = {
+            "CodeQL": CODEQL_WORKFLOW.read_text(encoding="utf-8"),
+            "Leak Check": LEAK_CHECK_WORKFLOW.read_text(encoding="utf-8"),
+            "Secret Scan": SECRET_SCAN_WORKFLOW.read_text(encoding="utf-8"),
+            "Semgrep": SEMGREP_WORKFLOW.read_text(encoding="utf-8"),
+        }
         cls.pre_push = PRE_PUSH_HOOK.read_text(encoding="utf-8")
         cls.go_setup = GO_SETUP.read_text(encoding="utf-8")
         cls.rust_setup = RUST_SETUP.read_text(encoding="utf-8")
@@ -50,6 +60,18 @@ class CIDeliveryControlTests(unittest.TestCase):
             "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
             self.ephemeral,
         )
+
+    def test_security_workflows_cancel_only_superseded_pull_requests(self):
+        group = (
+            "group: ${{ github.workflow }}-"
+            "${{ github.event.pull_request.number || github.ref }}"
+        )
+        cancellation = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+        for workflow_name, workflow in self.security_workflows.items():
+            with self.subTest(workflow=workflow_name):
+                self.assertIn(group, workflow)
+                self.assertIn(cancellation, workflow)
+                self.assertNotIn("cancel-in-progress: true", workflow)
 
     def test_pre_push_defaults_to_changed_checks_and_keeps_full_verify_opt_in(self):
         self.assertIn('CEREBRO_PRE_PUSH_FULL_VERIFY:-', self.pre_push)
