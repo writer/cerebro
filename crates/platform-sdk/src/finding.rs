@@ -1,39 +1,85 @@
+//! Content-addressed validation receipts that gate action proposals from findings.
+//!
+//! A receipt binds one finding revision, graph revision, policy definition,
+//! ordered evidence set, validator, decision, and validity window. Validation is
+//! deterministic and transport-safe, but policy evaluation, evidence admission,
+//! actor authorization, and durable receipt storage happen outside this module.
+
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{ActionProposal, ActorId, ContentDigest, GraphRevision, OpaqueId, SdkError, TenantId};
 
+// Domain-separate this receipt from other JSON values hashed with SHA-256.
 const FINDING_VALIDATION_DIGEST_SCHEMA: &str = "cerebro.finding-validation.v1";
 
+/// Binary outcome assigned by the finding-validation authority.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingValidationDecision {
+    /// Evidence and policy established the finding as confirmed.
     Confirmed,
+    /// Evidence or policy rejected the finding.
     Rejected,
 }
 
+/// Self-validating receipt for one policy decision over one finding revision.
+///
+/// Evidence digests are a canonical set encoded as a strictly increasing vector
+/// of one to 100 values. Current receipts require a non-empty policy ID when
+/// authorizing an action. Historical receipts that predate Rust policy binding
+/// remain deserializable with an empty policy ID but are intentionally barred
+/// from action authorization.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FindingValidationReceipt {
+    /// Tenant whose finding, graph revision, and policy were evaluated.
     pub tenant_id: TenantId,
+    /// Stable identity of the validated finding.
     pub finding_id: OpaqueId,
+    /// Digest of the exact finding revision that was evaluated.
     pub finding_revision_digest: ContentDigest,
+    /// Non-zero graph revision used during validation.
     pub graph_revision: GraphRevision,
+    /// Stable policy identity, omitted on the wire only for historical receipts.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub policy_id: String,
+    /// Digest of the exact policy definition applied.
     pub policy_definition_digest: ContentDigest,
+    /// Confirmed or rejected validation outcome.
     pub decision: FindingValidationDecision,
+    /// Strictly sorted, duplicate-free evidence content digests.
     pub evidence_digests: Vec<ContentDigest>,
+    /// Actor that issued the validation decision.
     pub validated_by: ActorId,
+    /// Non-zero Unix-millisecond validation time.
     pub validated_at_unix_ms: u64,
+    /// Exclusive Unix-millisecond expiration time.
     pub expires_at_unix_ms: u64,
+    /// SHA-256 digest of the schema-tagged receipt material.
     pub receipt_digest: ContentDigest,
 }
 
 impl FindingValidationReceipt {
+    /// Computes the schema-tagged digest for the receipt's semantic fields.
+    ///
+    /// The stored [`Self::receipt_digest`] is excluded to avoid recursive
+    /// content addressing. A non-empty policy ID selects the current material;
+    /// an empty ID selects the historical layout that omitted the field. Vector
+    /// order is preserved, so callers should validate canonical evidence order
+    /// before treating the digest as an authoritative receipt identity.
+    ///
+    /// This method serializes fields as supplied and does not otherwise validate
+    /// the receipt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Backend`] if JSON serialization fails.
     pub fn computed_digest(&self) -> Result<ContentDigest, SdkError> {
         if self.policy_id.is_empty() {
             return self.computed_legacy_digest();
         }
 
+        // A dedicated struct freezes field order and prevents receipt_digest
+        // from accidentally entering its own hash material.
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
             schema: &'static str,
@@ -72,6 +118,10 @@ impl FindingValidationReceipt {
         })
     }
 
+    /// Computes the digest layout used before receipts carried a policy ID.
+    ///
+    /// The schema tag remains the same for wire compatibility; omission of the
+    /// `policy_id` field is what distinguishes the historical digest material.
     fn computed_legacy_digest(&self) -> Result<ContentDigest, SdkError> {
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
@@ -109,11 +159,38 @@ impl FindingValidationReceipt {
         })
     }
 
+    /// Replaces the stored digest with [`Self::computed_digest`].
+    ///
+    /// This helper does not call [`Self::validate`]. A caller can therefore bind
+    /// a digest to malformed or non-canonical fields and must validate before
+    /// persisting or using the receipt for authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Backend`] if digest serialization fails.
     pub fn bind_computed_digest(&mut self) -> Result<(), SdkError> {
         self.receipt_digest = self.computed_digest()?;
         Ok(())
     }
 
+    /// Validates canonical shape, validity interval, and receipt digest.
+    ///
+    /// Current policy IDs are at most 255 bytes, begin with an ASCII
+    /// alphanumeric character, and then contain only ASCII alphanumerics, `.`,
+    /// `_`, or `-`. An empty policy ID is accepted only for historical read
+    /// compatibility. Evidence must contain one to 100 strictly increasing
+    /// digests, which simultaneously enforces deterministic order and uniqueness.
+    ///
+    /// This check does not evaluate policy, authenticate the validator, load the
+    /// finding or graph revision, verify evidence availability, or prove tenant
+    /// ownership of referenced objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::OutOfRange`] for invalid evidence count or validity
+    /// interval, [`SdkError::Invalid`] for malformed policy identity,
+    /// non-canonical evidence order, or a mismatched receipt digest, and
+    /// [`SdkError::Backend`] if digest serialization fails.
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.evidence_digests.is_empty() || self.evidence_digests.len() > 100 {
             return Err(SdkError::OutOfRange("finding validation evidence count"));
@@ -149,6 +226,24 @@ impl FindingValidationReceipt {
         Ok(())
     }
 
+    /// Checks whether this receipt authorizes one proposal at commit time.
+    ///
+    /// Authorization requires a valid current-format receipt with a confirmed
+    /// decision; exact tenant, finding identity and revision, graph revision,
+    /// and receipt-digest binding; separation between validator and proposer;
+    /// validation no later than proposal time; commit no earlier than proposal
+    /// time; and commit strictly before receipt expiration.
+    ///
+    /// This method validates the receipt but does not call
+    /// [`ActionProposal::validate`], recompute the proposal digest, authorize the
+    /// actors, or execute the action. The action-admission boundary must perform
+    /// those independent checks before accepting this result as authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns receipt validation errors, or [`SdkError::Conflict`] for a legacy
+    /// receipt, rejected decision, binding mismatch, self-validation, or invalid
+    /// proposal/commit timing.
     pub fn authorizes_action(
         &self,
         proposal: &ActionProposal,
@@ -175,6 +270,9 @@ impl FindingValidationReceipt {
                 "the finding validation receipt does not bind this Action proposal".to_owned(),
             ));
         }
+
+        // Receipt identity binds the policy material indirectly; explicit actor
+        // separation prevents the proposal author from self-validating the gate.
         if self.validated_by == proposal.proposed_by {
             return Err(SdkError::Conflict(
                 "the Action proposer cannot validate the finding".to_owned(),
@@ -192,6 +290,11 @@ impl FindingValidationReceipt {
     }
 }
 
+/// Strict wire representation decoded before typed validation.
+///
+/// Unknown fields are rejected to prevent silently unsigned extensions from
+/// entering a receipt. `policy_id` alone is optional for historical payloads;
+/// every other field must be present.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredFindingValidationReceipt {
@@ -213,6 +316,10 @@ struct StoredFindingValidationReceipt {
 impl TryFrom<StoredFindingValidationReceipt> for FindingValidationReceipt {
     type Error = SdkError;
 
+    /// Parses typed identities and validates the complete stored receipt.
+    ///
+    /// A missing historical policy ID is normalized to the empty-string sentinel
+    /// used by legacy digest computation and serialization compatibility.
     fn try_from(stored: StoredFindingValidationReceipt) -> Result<Self, Self::Error> {
         let receipt = Self {
             tenant_id: TenantId::parse(stored.tenant_id)
@@ -240,6 +347,10 @@ impl TryFrom<StoredFindingValidationReceipt> for FindingValidationReceipt {
 }
 
 impl<'de> Deserialize<'de> for FindingValidationReceipt {
+    /// Decodes only strict, typed, digest-valid receipt payloads.
+    ///
+    /// Deserialization is intentionally routed through the stored form so public
+    /// consumers cannot obtain an unchecked receipt from untrusted JSON.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
