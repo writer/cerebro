@@ -7918,19 +7918,19 @@ mod tests {
         let initial_finish = &initial_contracts[1].schema;
         let continue_read = &continue_contracts[0].schema;
         let continue_finish = &continue_contracts[1].schema;
-        assert_eq!(
-            initial_read["properties"]
+        let property_names = |schema: &Value| {
+            let mut names = schema["properties"]
                 .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["calls".into(), "lane".into(), "plan".into()])
-        );
+                .expect("the stage contract has object properties")
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(property_names(initial_read), vec!["calls", "lane", "plan"]);
         assert_eq!(initial_read["properties"]["calls"]["minItems"], 1);
-        assert_eq!(
-            initial_finish["properties"]
-                .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["draft".into(), "lane".into()])
-        );
+        assert_eq!(property_names(initial_finish), vec!["draft", "lane"]);
         assert!(
             initial_finish["properties"]["draft"]["properties"]
                 .get("message")
@@ -7941,25 +7941,10 @@ mod tests {
                 .get("presentation_ready")
                 .is_none()
         );
-        assert_eq!(
-            continue_read["properties"]
-                .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["calls".into()])
-        );
-        assert_eq!(
-            continue_finish["properties"]
-                .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["draft".into()])
-        );
+        assert_eq!(property_names(continue_read), vec!["calls"]);
+        assert_eq!(property_names(continue_finish), vec!["draft"]);
         let presentation_schema = session_presentation_schema(2);
-        assert_eq!(
-            presentation_schema["properties"]
-                .as_object()
-                .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
-            Some(vec!["claim_texts".into()])
-        );
+        assert_eq!(property_names(&presentation_schema), vec!["claim_texts"]);
         assert_eq!(
             presentation_schema["properties"]["claim_texts"]["minItems"],
             2
