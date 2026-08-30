@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash, createHmac } from "crypto";
 
 import { headersWithTrace, startWebSpan } from "./observability";
+import {
+  cacheAdmissionForCerebroProxyResponse,
+  cerebroProxyCachePolicyFor,
+  upstreamCacheControlRequiresNoStore,
+} from "./cerebro-proxy-cache-policy";
 import { normalizeProxyPath } from "./identity-write-stamp";
 
 const API_BASE =
@@ -335,25 +340,7 @@ export const signedIdentityHeadersFor = (request: NextRequest): HeadersInit => {
 };
 
 export const isCacheableCerebroPath = (path: string) => {
-  if (PROXY_CACHE_TTL_MS <= 0) {
-    return false;
-  }
-  const normalized = path.replace(/^\/+|\/+$/g, "").split("?", 1)[0];
-  return [
-    "grc/dashboard",
-    "grc/program-readiness",
-    "grc/controls",
-    "grc/control-packets",
-    "grc/control-packets/detail",
-    "grc/findings",
-    "grc/evidence",
-    "grc/inventory/categories",
-    "grc/inventory/assets",
-    "grc/inventory/assets/detail",
-    "grc/inventory/resource-scope",
-    "grc/inventory/asset-reports",
-    "platform/graph/neighborhood",
-  ].includes(normalized) || normalized.startsWith("grc/inventory/asset-reports/") || normalized.startsWith("grc/entities/") || normalized.startsWith("grc/audit-packets/");
+  return PROXY_CACHE_TTL_MS > 0 && cerebroProxyCachePolicyFor(path).cacheable;
 };
 
 export const cerebroProxyCacheKey = (target: URL, headers: HeadersInit) => {
@@ -404,7 +391,7 @@ export const warmCerebroProxyCache = async (path: string, search = "") => {
     if (!("content-type" in headers)) {
       headers["content-type"] = "text/plain";
     }
-    writeCerebroProxyCache(key, response, body, headers);
+    writeCerebroProxyCache(path, key, response, body, headers);
     return { body, headers, state: "miss", status: response.status };
   };
   const response = await trackCerebroProxyInflight(key, load());
@@ -458,9 +445,26 @@ export const trackCerebroProxyInflight = (key: string, request: Promise<ProxyRes
   return tracked;
 };
 
-export const writeCerebroProxyCache = (key: string, response: Response, body: string, headers: Record<string, string>) => {
-  if (!response.ok || PROXY_CACHE_TTL_MS <= 0) {
-    return;
+export const writeCerebroProxyCache = (
+  path: string,
+  key: string,
+  response: Response,
+  body: string,
+  headers: Record<string, string>,
+) => {
+  const admission = cacheAdmissionForCerebroProxyResponse(response);
+  if (!isCacheableCerebroPath(path)) {
+    return false;
+  }
+  if (!admission.cacheable) {
+    // A revalidation can reveal that an upstream representation became
+    // session-bound or otherwise unsafe to retain. Keep stale fallback for
+    // transient upstream status failures, but discard cached content when the
+    // response itself says it cannot be shared.
+    if (admission.reason !== "upstream_status") {
+      proxyResponseCache.delete(key);
+    }
+    return false;
   }
   if (proxyResponseCache.size >= PROXY_CACHE_MAX_ENTRIES) {
     const firstKey = proxyResponseCache.keys().next().value;
@@ -476,13 +480,17 @@ export const writeCerebroProxyCache = (key: string, response: Response, body: st
     expiresAt: now + PROXY_CACHE_TTL_MS,
     staleAt: now + PROXY_CACHE_TTL_MS + PROXY_CACHE_STALE_MS,
   });
+  return true;
 };
 
 export const cachedResponseHeaders = (cached: Pick<CachedProxyResponse, "headers">, state: "hit" | "miss" | "stale" | "dedupe"): Record<string, string> => {
   const upstreamCacheState = cached.headers["x-cerebro-cache"];
+  const upstreamCacheControl = cached.headers["cache-control"];
   const headers: Record<string, string> = {
     ...cached.headers,
-    "cache-control": "private, max-age=0, must-revalidate",
+    "cache-control": upstreamCacheControl && upstreamCacheControlRequiresNoStore(upstreamCacheControl)
+      ? upstreamCacheControl
+      : "private, max-age=0, must-revalidate",
     "x-cerebro-web-cache": state,
     "x-cerebro-cache": state,
   };

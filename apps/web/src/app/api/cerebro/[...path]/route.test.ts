@@ -211,8 +211,8 @@ describe("Cerebro proxy route", () => {
     });
     const fetchMock = vi.fn(() => pendingFetch);
     vi.stubGlobal("fetch", fetchMock);
-    const context = { params: Promise.resolve({ path: ["grc", "findings"] }) };
-    const requestURL = "http://localhost/api/cerebro/grc/findings?dedupe=rejection";
+    const context = { params: Promise.resolve({ path: ["grc", "dashboard"] }) };
+    const requestURL = "http://localhost/api/cerebro/grc/dashboard?dedupe=rejection";
 
     const first = GET(new NextRequest(requestURL), context);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
@@ -270,6 +270,61 @@ describe("Cerebro proxy route", () => {
     if (!fourth) throw new Error("refreshed response was not observed");
     expect(fourth.headers.get("x-cerebro-cache")).toBe("hit");
     expect(await fourth.json()).toEqual({ version: 2 });
+  });
+
+  it("does not cache or stale-serve live finding responses when their authority is unavailable", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ version: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "unavailable" }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = { params: Promise.resolve({ path: ["grc", "findings"] }) };
+    const requestURL = "http://localhost/api/cerebro/grc/findings?live_cache_contract=unavailable";
+
+    const first = await GET(new NextRequest(requestURL), context);
+    expect(first.status).toBe(200);
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    const unavailable = await GET(new NextRequest(requestURL), context);
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.get("x-cerebro-cache")).not.toBe("stale");
+    expect(unavailable.headers.get("warning")).toBeNull();
+    expect(await unavailable.json()).toEqual({ code: "unavailable" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retain a dashboard response the upstream marks no-store", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ version: 1 }), {
+        status: 200,
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "application/json",
+        },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "unavailable" }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = { params: Promise.resolve({ path: ["grc", "dashboard"] }) };
+    const requestURL = "http://localhost/api/cerebro/grc/dashboard?cache_contract=no-store";
+
+    const first = await GET(new NextRequest(requestURL), context);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("cache-control")).toBe("no-store");
+
+    const unavailable = await GET(new NextRequest(requestURL), context);
+    expect(unavailable.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("relays signed Rust-authority reads without deriving or stamping identity", async () => {

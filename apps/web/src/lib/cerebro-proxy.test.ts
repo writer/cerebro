@@ -12,6 +12,7 @@ import {
   fetchCerebro,
   getCerebroPublicConfig,
   isCacheableCerebroPath,
+  readCerebroProxyCache,
   responseHeadersFor,
   rustTenantAuthHeaders,
   rustOwnsWebAuthority,
@@ -20,6 +21,7 @@ import {
   shouldBypassCerebroProxyCache,
   warmCerebroProxyCache,
   withCerebroCacheBypassHeader,
+  writeCerebroProxyCache,
 } from "./cerebro-proxy";
 
 afterEach(() => {
@@ -143,6 +145,24 @@ describe("cerebro proxy cache headers", () => {
     expect(new Set([unscoped, workspaceA, workspaceB]).size).toBe(3);
   });
 
+  it("partitions dashboard cache keys by tenant and authorization", () => {
+    const target = new URL("https://api.example.com/grc/dashboard");
+    const tenantAUserOne = cerebroProxyCacheKey(target, {
+      authorization: "Bearer user-one",
+      "x-cerebro-tenant": "tenant-a",
+    });
+    const tenantAUserTwo = cerebroProxyCacheKey(target, {
+      authorization: "Bearer user-two",
+      "x-cerebro-tenant": "tenant-a",
+    });
+    const tenantBUserOne = cerebroProxyCacheKey(target, {
+      authorization: "Bearer user-one",
+      "x-cerebro-tenant": "tenant-b",
+    });
+
+    expect(new Set([tenantAUserOne, tenantAUserTwo, tenantBUserOne]).size).toBe(3);
+  });
+
   it("routes only Rust-owned public reads to the configured Rust platform origin", () => {
     vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
 
@@ -255,6 +275,89 @@ describe("cerebro proxy cache headers", () => {
     expect(headers["cache-control"]).toBe("private, max-age=0, must-revalidate");
   });
 
+  it("preserves an upstream no-store directive on the browser response", () => {
+    const headers = cachedResponseHeaders(
+      {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-type": "application/json",
+        },
+      },
+      "miss",
+    );
+
+    expect(headers["cache-control"]).toBe("private, no-store");
+  });
+
+  it.each([
+    ["no-store", { "cache-control": "no-store" }],
+    ["private", { "cache-control": "private, max-age=60" }],
+    ["set-cookie", { "set-cookie": "session=private" }],
+    ["unsupported vary", { vary: "Cookie" }],
+    ["wildcard vary", { vary: "*" }],
+  ])("does not admit an upstream response with %s", (label, responseHeaders) => {
+    const key = `cache-admission-${label}`;
+    const response = new Response(JSON.stringify({ label }), {
+      status: 200,
+      headers: responseHeaders,
+    });
+
+    expect(writeCerebroProxyCache("grc/dashboard", key, response, JSON.stringify({ label }), responseHeaders)).toBe(false);
+    expect(readCerebroProxyCache(key, true)).toBeNull();
+  });
+
+  it("evicts a dashboard entry when revalidation says it is no-store", () => {
+    const key = "cache-admission-revalidation-no-store";
+    const body = JSON.stringify({ state: "ready" });
+    const cacheable = new Response(body, {
+      status: 200,
+      headers: { "cache-control": "public, max-age=60" },
+    });
+    const noStore = new Response(body, {
+      status: 200,
+      headers: { "cache-control": "no-store" },
+    });
+
+    expect(writeCerebroProxyCache("grc/dashboard", key, cacheable, body, {
+      "cache-control": "public, max-age=60",
+    })).toBe(true);
+    expect(readCerebroProxyCache(key)).not.toBeNull();
+    expect(writeCerebroProxyCache("grc/dashboard", key, noStore, body, {
+      "cache-control": "no-store",
+    })).toBe(false);
+    expect(readCerebroProxyCache(key, true)).toBeNull();
+  });
+
+  it("admits explicitly cache-safe upstream responses whose Vary fields are in the cache key", () => {
+    const key = "cache-admission-supported-vary";
+    const response = new Response(JSON.stringify({ state: "ready" }), {
+      status: 200,
+      headers: {
+        "cache-control": "public, max-age=60",
+        vary: "Authorization, X-Cerebro-Tenant",
+      },
+    });
+
+    expect(writeCerebroProxyCache("grc/dashboard", key, response, JSON.stringify({ state: "ready" }), {
+      "cache-control": "public, max-age=60",
+      vary: "Authorization, X-Cerebro-Tenant",
+    })).toBe(true);
+    expect(readCerebroProxyCache(key)).toMatchObject({ body: JSON.stringify({ state: "ready" }), state: "hit" });
+  });
+
+  it("does not admit a response when the caller names a live workflow path", () => {
+    const key = "cache-admission-live-findings";
+    const response = new Response(JSON.stringify({ state: "open" }), {
+      status: 200,
+      headers: { "cache-control": "public, max-age=60" },
+    });
+
+    expect(writeCerebroProxyCache("grc/findings", key, response, JSON.stringify({ state: "open" }), {
+      "cache-control": "public, max-age=60",
+    })).toBe(false);
+    expect(readCerebroProxyCache(key, true)).toBeNull();
+  });
+
   it("passes through backend cache observability headers", () => {
     const response = new Response("{}", {
       headers: {
@@ -299,21 +402,22 @@ describe("cerebro proxy cache headers", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("caches program readiness so audit readiness can stale-serve through transient backend failures", () => {
-    expect(isCacheableCerebroPath("/grc/program-readiness")).toBe(true);
-    expect(isCacheableCerebroPath("grc/program-readiness")).toBe(true);
+  it("caches only the approved dashboard aggregate", () => {
+    expect(isCacheableCerebroPath("/grc/dashboard")).toBe(true);
+    expect(isCacheableCerebroPath("grc/dashboard?limit=12")).toBe(true);
   });
 
-  it("caches the bounded Rust graph neighborhood contract", () => {
-    expect(isCacheableCerebroPath("/platform/graph/neighborhood")).toBe(true);
-    expect(isCacheableCerebroPath("/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Atenant-demo%3Aentity%3Aone")).toBe(true);
-  });
-
-  it("keeps live finding previews fresh while immutable packets remain cacheable", () => {
+  it("keeps live finding, evidence, control, audit, inventory, and graph responses out of the process cache", () => {
+    expect(isCacheableCerebroPath("/grc/program-readiness")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/controls")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/control-packets/detail")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/evidence")).toBe(false);
     expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview")).toBe(false);
     expect(isCacheableCerebroPath("/grc/findings/finding-123")).toBe(false);
     expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview/export")).toBe(false);
-    expect(isCacheableCerebroPath("/grc/audit-packets/packet-123")).toBe(true);
+    expect(isCacheableCerebroPath("/grc/audit-packets/packet-123")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/inventory/assets")).toBe(false);
+    expect(isCacheableCerebroPath("/platform/graph/neighborhood")).toBe(false);
   });
 
   it("propagates trace headers upstream without logging auth or query strings", async () => {
