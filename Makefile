@@ -384,7 +384,7 @@ candidate-smoke: ## Run source candidate smoke checks for RUNTIME_ID.
 mcp-contract-check: mcp-tool-eval ## Validate MCP contract fixtures.
 	python3 scripts/mcp_contract_check.py
 
-mcp-tool-eval: ## Score the ten advertised task tools against the checked-in hillclimb baseline.
+mcp-tool-eval: ## Score the eight advertised task tools against the checked-in hillclimb baseline.
 	go test ./internal/bootstrap -run '^TestMCPTaskToolSelectionHillclimbBaseline$$' -count=1 -v
 
 mcp-smoke: ## Run MCP smoke checks.

@@ -1,105 +1,5 @@
 [
   {
-    "id": "service-health-readiness",
-    "user_request": "Is the Cerebro service healthy and ready?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "service-health-dependencies",
-    "user_request": "Check service health and dependency status before I start.",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "service-health-unavailable-dependency",
-    "user_request": "Which backend dependency is unavailable?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "service-health-backend-availability",
-    "user_request": "Check service health and backend dependency availability.",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "service-health-api-ready",
-    "user_request": "Is the API ready or is a backend unavailable?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "version-running-build",
-    "user_request": "Which Cerebro build is running?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "version-api-commit",
-    "user_request": "Show the API version and commit for this server.",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "version-release-identity",
-    "user_request": "What release is this server running?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "version-running-build-commit",
-    "user_request": "Confirm the running build commit before triage.",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
-    "id": "version-release-build-date",
-    "user_request": "Report the server release, build date, and API version.",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
     "id": "findings-open-critical",
     "user_request": "Find open critical findings for the AWS runtime.",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -500,16 +400,6 @@
     "maximum_call_count": 2
   },
   {
-    "id": "service-readiness-language",
-    "user_request": "Is the service readiness acceptable?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.health",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.assessments.plan.publish"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
-  },
-  {
     "id": "risk-risky-finding-language",
     "user_request": "Why is this finding risky?",
     "permitted_scopes": ["cerebro.cosmo.security.read"],
@@ -538,16 +428,6 @@
     "forbidden_tools": ["cerebro.graph.paths"],
     "require_partial_handling": true,
     "maximum_call_count": 2
-  },
-  {
-    "id": "version-deployed-revision-language",
-    "user_request": "Which revision is deployed?",
-    "permitted_scopes": ["cerebro.cosmo.security.read"],
-    "expected_tool": "cerebro.version",
-    "allowed_followup_tools": [],
-    "forbidden_tools": ["cerebro.agent.control_plane"],
-    "require_partial_handling": false,
-    "maximum_call_count": 1
   },
   {
     "id": "assets-host-inventory-language",

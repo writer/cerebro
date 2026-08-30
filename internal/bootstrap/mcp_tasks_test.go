@@ -71,19 +71,11 @@ func TestMCPBoolArgParsesJSONNumbers(t *testing.T) {
 	}
 }
 
-func TestMCPDefaultAndTaskProfilesExposeTenTools(t *testing.T) {
+func TestMCPDefaultTaskAndFullProfilesExposeExpectedTools(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
 
-	taskResponse := postMCPWithTaskProfile(t, server, map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/list",
-	})
-	tools := taskResponse["result"].(map[string]any)["tools"].([]any)
-	want := map[string]bool{
-		"cerebro.health":                true,
-		"cerebro.version":               true,
+	taskWant := map[string]bool{
 		"cerebro.findings.search":       true,
 		"cerebro.assets.search":         true,
 		"cerebro.graph.reason":          true,
@@ -93,27 +85,38 @@ func TestMCPDefaultAndTaskProfilesExposeTenTools(t *testing.T) {
 		"cerebro.sources.health":        true,
 		"cerebro.action.plan":           true,
 	}
-	if len(tools) != len(want) {
-		t.Fatalf("task profile tool count = %d, want %d: %#v", len(tools), len(want), tools)
-	}
-	for _, raw := range tools {
-		name := raw.(map[string]any)["name"].(string)
-		if !want[name] {
-			t.Fatalf("task profile exposed unexpected tool %q", name)
+
+	assertTaskTools := func(profile string, tools []any) {
+		t.Helper()
+		if len(tools) != len(taskWant) {
+			t.Fatalf("%s profile tool count = %d, want %d: %#v", profile, len(tools), len(taskWant), tools)
+		}
+		for _, raw := range tools {
+			name := raw.(map[string]any)["name"].(string)
+			if !taskWant[name] {
+				t.Fatalf("%s profile exposed unexpected tool %q", profile, name)
+			}
 		}
 	}
 
-	expertCall := postMCPWithTaskProfile(t, server, map[string]any{
+	taskResponse := postMCPWithTaskProfile(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/list",
+	})
+	assertTaskTools("task", taskResponse["result"].(map[string]any)["tools"].([]any))
+
+	taskRuntimeCall := postMCPWithTaskProfile(t, server, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "cerebro.graph.paths",
-			"arguments": map[string]any{"question": "show paths"},
+			"name":      "cerebro.version",
+			"arguments": map[string]any{},
 		},
 	})
-	if expertCall["result"].(map[string]any)["isError"] != true {
-		t.Fatalf("task profile expert call = %#v, want tool error", expertCall)
+	if taskRuntimeCall["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("task profile runtime call = %#v, want tool error", taskRuntimeCall)
 	}
 
 	defaultResponse := postMCPWithToolset(t, server, "", map[string]any{
@@ -122,35 +125,52 @@ func TestMCPDefaultAndTaskProfilesExposeTenTools(t *testing.T) {
 		"method":  "tools/list",
 	})
 	defaultTools := defaultResponse["result"].(map[string]any)["tools"].([]any)
-	if len(defaultTools) != len(want) {
-		t.Fatalf("default tool count = %d, want %d: %#v", len(defaultTools), len(want), defaultTools)
-	}
-	for _, raw := range defaultTools {
-		name := raw.(map[string]any)["name"].(string)
-		if !want[name] {
-			t.Fatalf("default profile exposed unexpected tool %q", name)
-		}
-	}
-	defaultExpertCall := postMCPWithToolset(t, server, "", map[string]any{
+	assertTaskTools("default", defaultTools)
+
+	defaultRuntimeCall := postMCPWithToolset(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      4,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "cerebro.graph.paths",
+			"name":      "cerebro.health",
 			"arguments": map[string]any{},
 		},
 	})
-	if defaultExpertCall["result"].(map[string]any)["isError"] != true {
-		t.Fatalf("default profile expert call = %#v, want tool error", defaultExpertCall)
+	if defaultRuntimeCall["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("default profile runtime call = %#v, want tool error", defaultRuntimeCall)
 	}
 
-	fullResponse := postMCPWithToolset(t, server, "full", map[string]any{
+	expertResponse := postMCPWithToolset(t, server, "expert", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      5,
 		"method":  "tools/list",
 	})
+	expertTools := expertResponse["result"].(map[string]any)["tools"].([]any)
+	for _, name := range []string{"cerebro.health", "cerebro.version"} {
+		if !mcpToolListContains(expertTools, name) {
+			t.Fatalf("expert profile missing runtime tool %q: %#v", name, expertTools)
+		}
+	}
+	expertVersionCall := postMCPWithToolset(t, server, "expert", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.version",
+			"arguments": map[string]any{},
+		},
+	})
+	if expertVersionCall["result"].(map[string]any)["isError"] == true {
+		t.Fatalf("expert profile version call = %#v, want success", expertVersionCall)
+	}
+
+	fullResponse := postMCPWithToolset(t, server, "full", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      7,
+		"method":  "tools/list",
+	})
 	fullTools := fullResponse["result"].(map[string]any)["tools"].([]any)
-	if len(fullTools) != len(mcpTools()) || !mcpToolListContains(fullTools, "cerebro.graph.paths") || !mcpToolListContains(fullTools, "cerebro.assessments.plan.create") {
+	if len(fullTools) != len(mcpTools()) || !mcpToolListContains(fullTools, "cerebro.health") || !mcpToolListContains(fullTools, "cerebro.version") || !mcpToolListContains(fullTools, "cerebro.graph.paths") || !mcpToolListContains(fullTools, "cerebro.assessments.plan.create") {
 		t.Fatalf("full compatibility profile = %#v", fullTools)
 	}
 }

@@ -13,6 +13,7 @@ import urllib.request
 
 
 PROTOCOL_VERSION = "2025-11-25"
+FULL_TOOLSET = "full"
 
 
 def main() -> int:
@@ -54,14 +55,14 @@ def main() -> int:
     if result.get("protocolVersion") != PROTOCOL_VERSION:
         raise SmokeError(f"initialize negotiated {result.get('protocolVersion')!r}, want {PROTOCOL_VERSION!r}")
 
-    tools = rpc(url, args.bearer_token, 2, "tools/list", {"limit": 100}).get("result", {}).get("tools", [])
+    tools = rpc(url, args.bearer_token, 2, "tools/list", {"limit": 100}, toolset=FULL_TOOLSET).get("result", {}).get("tools", [])
     if not isinstance(tools, list) or len(tools) < 10:
         raise SmokeError(f"tools/list returned {len(tools) if isinstance(tools, list) else 'non-list'} tools, want at least 10")
     names = {tool.get("name") for tool in tools if isinstance(tool, dict)}
     if "cerebro.version" not in names:
         raise SmokeError("tools/list is missing cerebro.version")
 
-    version = rpc(url, args.bearer_token, 3, "tools/call", {"name": "cerebro.version", "arguments": {}})
+    version = rpc(url, args.bearer_token, 3, "tools/call", {"name": "cerebro.version", "arguments": {}}, toolset=FULL_TOOLSET)
     if version.get("result", {}).get("isError") is True:
         raise SmokeError("cerebro.version returned an MCP tool error")
 
@@ -74,7 +75,7 @@ def main() -> int:
     if bad_version_status != 400:
         raise SmokeError(f"unsupported MCP-Protocol-Version status {bad_version_status}, want 400")
 
-    print(f"mcp_smoke: authenticated checks passed ({len(tools)} tools)")
+    print(f"mcp_smoke: authenticated full-profile checks passed ({len(tools)} tools)")
     return 0
 
 
@@ -107,9 +108,9 @@ def check_authenticated_get(url: str, token: str) -> None:
         raise SmokeError("authenticated GET unexpectedly advertised text/event-stream")
 
 
-def rpc(url: str, token: str, rpc_id: int, method: str, params: dict) -> dict:
+def rpc(url: str, token: str, rpc_id: int, method: str, params: dict, toolset: str = "") -> dict:
     payload = json.dumps({"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": params}).encode()
-    status, headers, body = request(url, "POST", payload, auth=token)
+    status, headers, body = request(url, "POST", payload, auth=token, toolset=toolset)
     if status != 200:
         raise SmokeError(f"{method} status {status}, want 200")
     if headers.get("mcp-session-id"):
@@ -125,7 +126,7 @@ def rpc(url: str, token: str, rpc_id: int, method: str, params: dict) -> dict:
     return parsed
 
 
-def request(url: str, method: str, body: bytes | None = None, auth: str = "", protocol_version: str = PROTOCOL_VERSION) -> tuple[int, dict[str, str], bytes]:
+def request(url: str, method: str, body: bytes | None = None, auth: str = "", protocol_version: str = PROTOCOL_VERSION, toolset: str = "") -> tuple[int, dict[str, str], bytes]:
     headers = {
         "Accept": "application/json, text/event-stream",
         "MCP-Protocol-Version": protocol_version,
@@ -135,6 +136,8 @@ def request(url: str, method: str, body: bytes | None = None, auth: str = "", pr
         headers["Content-Type"] = "application/json"
     if auth:
         headers["Authorization"] = f"Bearer {auth}"
+    if toolset:
+        headers["X-Cerebro-MCP-Toolsets"] = toolset
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
