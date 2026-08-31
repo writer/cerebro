@@ -47,6 +47,22 @@ const (
 )
 
 var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
+	"durable_compatibility_read": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "readCompatibilitySourcePull",
+	},
+	"durable_credential_resolution": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "sourceExecutionHostCredential",
+	},
+	"durable_lease_fence_binding": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "WithCurrentSourceRuntimeLeaseFence",
+	},
+	"durable_lease_fence_read": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "sourceRuntimeLeaseFenceFromContext",
+	},
 	"durable_plan_validation": {
 		Path:   "internal/sourceruntime/source_execution.go",
 		Symbol: "Service.validateRustSourceRuntimePlan",
@@ -55,13 +71,53 @@ var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
 		Path:   "internal/sourceruntime/source_execution.go",
 		Symbol: "Service.readSourcePull",
 	},
+	"durable_put_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.Put",
+	},
+	"durable_put_runtimes_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.PutRuntimes",
+	},
 	"durable_runtime_creation": {
 		Path:   "internal/sourceruntime/service.go",
 		Symbol: "Service.preparePutRuntime",
 	},
+	"durable_sync_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.Sync",
+	},
+	"durable_sync_with_lease_entrypoint": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "Service.SyncWithLease",
+	},
+	"preview_check_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Check",
+	},
+	"preview_credential_resolution": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.previewSourceExecutionCredential",
+	},
 	"preview_dispatch_adapter": {
 		Path:   "internal/sourceops/source_execution.go",
 		Symbol: "rustSourceFamily",
+	},
+	"preview_discover_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Discover",
+	},
+	"preview_discovery_dispatch": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.discoverRustSource",
+	},
+	"preview_execution_dispatch": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.executeRustSource",
+	},
+	"preview_read_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Read",
 	},
 	"preview_rust_selector": {
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
@@ -79,6 +135,36 @@ var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
 		Symbol: "TailscaleFamily",
 	},
+}
+
+var requiredRuntimeBindingEdges = []runtimeBindingEdge{
+	{CallerRole: "durable_plan_validation", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_compatibility_read", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_credential_resolution", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_lease_fence_read", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_output_conversion", Count: 1},
+	{CallerRole: "durable_put_entrypoint", CalleeRole: "durable_runtime_creation", Count: 1},
+	{CallerRole: "durable_put_runtimes_entrypoint", CalleeRole: "durable_runtime_creation", Count: 1},
+	{CallerRole: "durable_runtime_creation", CalleeRole: "durable_plan_validation", Count: 1},
+	{CallerRole: "durable_runtime_creation", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_sync_entrypoint", CalleeRole: "durable_lease_fence_read", Count: 1},
+	{CallerRole: "durable_sync_entrypoint", CalleeRole: "durable_pull_dispatch", Count: 1},
+	{CallerRole: "durable_sync_with_lease_entrypoint", CalleeRole: "durable_lease_fence_binding", Count: 1},
+	{CallerRole: "durable_sync_with_lease_entrypoint", CalleeRole: "durable_sync_entrypoint", Count: 1},
+	{CallerRole: "preview_check_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_check_entrypoint", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_discover_entrypoint", CalleeRole: "preview_discovery_dispatch", Count: 1},
+	{CallerRole: "preview_discover_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_discovery_dispatch", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_dispatch_adapter", CalleeRole: "preview_rust_selector", Count: 1},
+	{CallerRole: "preview_execution_dispatch", CalleeRole: "preview_credential_resolution", Count: 1},
+	{CallerRole: "preview_execution_dispatch", CalleeRole: "rust_output_conversion", Count: 1},
+	{CallerRole: "preview_read_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_read_entrypoint", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_rust_selector", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "rust_authoritative_selector", CalleeRole: "tailscale_authoritative_selector", Count: 1},
+	{CallerRole: "rust_output_conversion", CalleeRole: "rust_authoritative_selector", Count: 1},
 }
 
 var requiredSelectorCallsites = map[selectorCallsite]int{
@@ -176,6 +262,12 @@ type goDeclarationBinding struct {
 type runtimeBindingRequirement struct {
 	Path   string
 	Symbol string
+}
+
+type runtimeBindingEdge struct {
+	CallerRole string
+	CalleeRole string
+	Count      int
 }
 
 type selectorPolicy struct {
@@ -664,7 +756,7 @@ func validateRuntimeBindings(root string, implementation runtimeImplementation) 
 			)
 		}
 	}
-	return nil
+	return validateRuntimeBindingEdges(root)
 }
 
 func validateRuntimeBindingCoverage() error {
@@ -678,7 +770,111 @@ func validateRuntimeBindingCoverage() error {
 			return fmt.Errorf("required selector callsite %s is not protected by a full declaration binding", selectorCallsiteString(callsite))
 		}
 	}
+	for _, edge := range requiredRuntimeBindingEdges {
+		if _, ok := requiredRuntimeBindings[edge.CallerRole]; !ok {
+			return fmt.Errorf("required runtime binding edge names unbound caller role %q", edge.CallerRole)
+		}
+		if _, ok := requiredRuntimeBindings[edge.CalleeRole]; !ok {
+			return fmt.Errorf("required runtime binding edge names unbound callee role %q", edge.CalleeRole)
+		}
+		if edge.Count <= 0 {
+			return fmt.Errorf("required runtime binding edge %s -> %s must have a positive call count", edge.CallerRole, edge.CalleeRole)
+		}
+	}
 	return nil
+}
+
+func validateRuntimeBindingEdges(root string) error {
+	for _, edge := range requiredRuntimeBindingEdges {
+		caller := requiredRuntimeBindings[edge.CallerRole]
+		callee := requiredRuntimeBindings[edge.CalleeRole]
+		fullPath := filepath.Join(root, filepath.FromSlash(caller.Path))
+		payload, err := os.ReadFile(fullPath) // #nosec G304 -- caller path is fixed by requiredRuntimeBindings.
+		if err != nil {
+			return fmt.Errorf("read bound caller %s#%s: %w", caller.Path, caller.Symbol, err)
+		}
+		parsed, declaration, err := parseBoundGoDeclaration(fullPath, caller.Path, payload, caller.Symbol)
+		if err != nil {
+			return err
+		}
+		count := 0
+		ast.Inspect(declaration.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if ok && goCallMatchesRuntimeBinding(parsed, declaration, caller, callee, call.Fun) {
+				count++
+			}
+			return true
+		})
+		if count != edge.Count {
+			return fmt.Errorf(
+				"bound runtime call edge %s (%s#%s) -> %s (%s#%s) must occur exactly %d time(s); found %d",
+				edge.CallerRole, caller.Path, caller.Symbol,
+				edge.CalleeRole, callee.Path, callee.Symbol,
+				edge.Count, count,
+			)
+		}
+	}
+	return nil
+}
+
+func goDeclarationBaseName(symbol string) string {
+	if index := strings.LastIndex(symbol, "."); index >= 0 {
+		return symbol[index+1:]
+	}
+	return symbol
+}
+
+func goCallMatchesRuntimeBinding(parsed *ast.File, callerDeclaration *ast.FuncDecl, caller, callee runtimeBindingRequirement, expression ast.Expr) bool {
+	calleeName := goDeclarationBaseName(callee.Symbol)
+	callerDirectory := filepath.ToSlash(filepath.Dir(caller.Path))
+	calleeDirectory := filepath.ToSlash(filepath.Dir(callee.Path))
+	if callerDirectory == calleeDirectory {
+		if !strings.Contains(callee.Symbol, ".") {
+			identifier, ok := expression.(*ast.Ident)
+			return ok && identifier.Name == calleeName
+		}
+		selector, ok := expression.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != calleeName {
+			return false
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+		if !ok || callerDeclaration.Recv == nil {
+			return false
+		}
+		for _, field := range callerDeclaration.Recv.List {
+			for _, name := range field.Names {
+				if name.Name == receiver.Name {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if strings.Contains(callee.Symbol, ".") {
+		return false
+	}
+	calleeImportPath := "github.com/writer/cerebro/" + calleeDirectory
+	for _, spec := range parsed.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil || importPath != calleeImportPath {
+			continue
+		}
+		alias := filepath.Base(importPath)
+		if spec.Name != nil {
+			alias = spec.Name.Name
+		}
+		if alias == "." {
+			identifier, ok := expression.(*ast.Ident)
+			return ok && identifier.Name == calleeName
+		}
+		selector, ok := expression.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != calleeName {
+			return false
+		}
+		qualifier, ok := selector.X.(*ast.Ident)
+		return ok && qualifier.Name == alias
+	}
+	return false
 }
 
 func canonicalGoDeclarationContextDigest(root, relPath, symbol string) (string, error) {

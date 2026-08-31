@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-operation-authority/v3",
-  "revision": 3,
+  "revision": 4,
   "inventory": {
     "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
     "family_count": 4399,
@@ -11,6 +11,30 @@
     "contract": "compiled_go_selector_outcomes/v1",
     "canonicalization": "go_ast_declaration_context_sha256/v2",
     "bindings": [
+      {
+        "role": "durable_compatibility_read",
+        "path": "internal/sourceruntime/service.go",
+        "symbol": "readCompatibilitySourcePull",
+        "digest_sha256": "b04961096c7e44481cab80ed47fc25de277f163e6007c4898d44453283dbc9f2"
+      },
+      {
+        "role": "durable_credential_resolution",
+        "path": "internal/sourceruntime/source_execution.go",
+        "symbol": "sourceExecutionHostCredential",
+        "digest_sha256": "c4be3f2a3b7d5744b5a34c7df856446a9fee1343c1bd3d120c720cbed6645d0e"
+      },
+      {
+        "role": "durable_lease_fence_binding",
+        "path": "internal/sourceruntime/lease.go",
+        "symbol": "WithCurrentSourceRuntimeLeaseFence",
+        "digest_sha256": "80a764067fb9ed1c150192374659c8ecee95846dafddbe0ccfb4ac7b3ece3598"
+      },
+      {
+        "role": "durable_lease_fence_read",
+        "path": "internal/sourceruntime/lease.go",
+        "symbol": "sourceRuntimeLeaseFenceFromContext",
+        "digest_sha256": "e9c57a8441c00c145f8ac02102376c86673dcccce2ff8152edcd575198b32e6b"
+      },
       {
         "role": "durable_plan_validation",
         "path": "internal/sourceruntime/source_execution.go",
@@ -24,16 +48,76 @@
         "digest_sha256": "2904c501405188e7c8024d92554cfa25bef12904d3c5222b79f580ce65855f33"
       },
       {
+        "role": "durable_put_entrypoint",
+        "path": "internal/sourceruntime/service.go",
+        "symbol": "Service.Put",
+        "digest_sha256": "01f1cf611b042f3116b844c4db0b533dd390b53d77f8cd018c0243dfe7635f34"
+      },
+      {
+        "role": "durable_put_runtimes_entrypoint",
+        "path": "internal/sourceruntime/service.go",
+        "symbol": "Service.PutRuntimes",
+        "digest_sha256": "44c6c30dd2e2629c4f0cc482c5b0ebe87aca80559a7f7336527e4471dcfc76c3"
+      },
+      {
         "role": "durable_runtime_creation",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.preparePutRuntime",
         "digest_sha256": "12f59c590b28397ba8f529d16a15c910ac8241eecfa3c200f1c594adf2cd6bf4"
       },
       {
+        "role": "durable_sync_entrypoint",
+        "path": "internal/sourceruntime/service.go",
+        "symbol": "Service.Sync",
+        "digest_sha256": "97c9fee2170f323a2af124b5c7b099dcb5d666401aee6c5cef2de075d051debe"
+      },
+      {
+        "role": "durable_sync_with_lease_entrypoint",
+        "path": "internal/sourceruntime/lease.go",
+        "symbol": "Service.SyncWithLease",
+        "digest_sha256": "450d7d730f210a5566afac1dd3d31ed328b2fa424c013c6f2b38e338bb746172"
+      },
+      {
+        "role": "preview_check_entrypoint",
+        "path": "internal/sourceops/service.go",
+        "symbol": "Service.Check",
+        "digest_sha256": "a485a068b7aa2bf1149408994d90459cd9630a510d968dcc862d917c16f82fd2"
+      },
+      {
+        "role": "preview_credential_resolution",
+        "path": "internal/sourceops/source_execution.go",
+        "symbol": "Service.previewSourceExecutionCredential",
+        "digest_sha256": "8c56bbabfaaa952fc3c19ee4bb39ca40c424f763f8640a38460aab3bde02f3c6"
+      },
+      {
+        "role": "preview_discover_entrypoint",
+        "path": "internal/sourceops/service.go",
+        "symbol": "Service.Discover",
+        "digest_sha256": "5f667e7b37de79ae9ef60b1d5c3c2bd75540ea4922805cfbb1cf687930246c8d"
+      },
+      {
+        "role": "preview_discovery_dispatch",
+        "path": "internal/sourceops/source_execution.go",
+        "symbol": "Service.discoverRustSource",
+        "digest_sha256": "2b296276c4532a80190e7421b37222d5f38c236a8da7dc7653fc797852e9364d"
+      },
+      {
         "role": "preview_dispatch_adapter",
         "path": "internal/sourceops/source_execution.go",
         "symbol": "rustSourceFamily",
         "digest_sha256": "634ca0073eace4a99cf9d8f7e41e845b2cb3dbaebcc3a540f310672dd93bd1f8"
+      },
+      {
+        "role": "preview_execution_dispatch",
+        "path": "internal/sourceops/source_execution.go",
+        "symbol": "Service.executeRustSource",
+        "digest_sha256": "53dc1b0f068cba6ef824f745d87c55afe3793b40ea31a7bff0d0aada5f46cbcf"
+      },
+      {
+        "role": "preview_read_entrypoint",
+        "path": "internal/sourceops/service.go",
+        "symbol": "Service.Read",
+        "digest_sha256": "7f4881373446d05219b72da182519daffb6fefb2735811f8bb9d25f3c7ddeb25"
       },
       {
         "role": "preview_rust_selector",

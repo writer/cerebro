@@ -198,6 +198,160 @@ func TestAuthorityLedgerDetectsEveryBoundDeclarationDriftUntilExplicitRefresh(t 
 	}
 }
 
+func TestAuthorityLedgerRejectsRetainedUnusedRoutingHelpersAfterBindingRefresh(t *testing.T) {
+	tests := []struct {
+		callerRole string
+		helperRole string
+	}{
+		{callerRole: "durable_put_entrypoint", helperRole: "durable_runtime_creation"},
+		{callerRole: "durable_put_runtimes_entrypoint", helperRole: "durable_runtime_creation"},
+		{callerRole: "durable_sync_entrypoint", helperRole: "durable_pull_dispatch"},
+		{callerRole: "durable_sync_with_lease_entrypoint", helperRole: "durable_lease_fence_binding"},
+		{callerRole: "preview_check_entrypoint", helperRole: "preview_dispatch_adapter"},
+		{callerRole: "preview_discover_entrypoint", helperRole: "preview_discovery_dispatch"},
+		{callerRole: "preview_read_entrypoint", helperRole: "preview_dispatch_adapter"},
+	}
+	for _, test := range tests {
+		t.Run(test.callerRole, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			helper := requiredRuntimeBindings[test.helperRole]
+			before, err := canonicalGoDeclarationContextDigest(root, helper.Path, helper.Symbol)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			replaceBoundDeclarationBody(t, root, requiredRuntimeBindings[test.callerRole], `{
+	return sourceID == "manual" && familyID == "route"
+}`)
+			refreshRuntimeBinding(t, root, &ledger, test.callerRole)
+			writeLedger(t, root, ledger)
+
+			after, err := canonicalGoDeclarationContextDigest(root, helper.Path, helper.Symbol)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after != before {
+				t.Fatalf("retained helper %s changed digest: got %s, want %s", test.helperRole, after, before)
+			}
+			_, err = checkRepository(root)
+			if err == nil || !strings.Contains(err.Error(), "bound runtime call edge "+test.callerRole) {
+				t.Fatalf("check error = %v, want retained-helper manual-route rejection for %s", err, test.callerRole)
+			}
+		})
+	}
+}
+
+func TestAuthorityLedgerRejectsTaggedTransitiveFenceHelpers(t *testing.T) {
+	root, ledger := fixtureRepository(t)
+	writeFile(t, root, "internal/sourceruntime/fence_linux.go", `
+//go:build linux
+
+package sourceruntime
+
+func sourceRuntimeLeaseFenceFromContext() bool { return true }
+`)
+	writeFile(t, root, "internal/sourceruntime/fence_darwin.go", `
+//go:build darwin
+
+package sourceruntime
+
+func sourceRuntimeLeaseFenceFromContext() bool { return false }
+`)
+	writeLedger(t, root, ledger)
+
+	_, err := checkRepository(root)
+	if err == nil ||
+		!strings.Contains(err.Error(), "sourceRuntimeLeaseFenceFromContext must be declared exactly once across all release build contexts") ||
+		!strings.Contains(err.Error(), "fence_linux.go") ||
+		!strings.Contains(err.Error(), "fence_darwin.go") {
+		t.Fatalf("check error = %v, want tagged transitive fence-helper rejection", err)
+	}
+}
+
+func TestRuntimeBindingEdgeMatchesExactPackageAndReceiver(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		caller runtimeBindingRequirement
+		callee runtimeBindingRequirement
+		want   bool
+	}{
+		{
+			name: "exact imported package alias",
+			source: `package sourceops
+import worker "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+func route() { worker.PullFromExecutionOutput() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceops/source_execution.go", Symbol: "route"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/sourceworker/pull.go", Symbol: "PullFromExecutionOutput"},
+			want:   true,
+		},
+		{
+			name: "unrelated imported package",
+			source: `package sourceops
+import worker "example.com/sourceworker"
+func route() { worker.PullFromExecutionOutput() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceops/source_execution.go", Symbol: "route"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/sourceworker/pull.go", Symbol: "PullFromExecutionOutput"},
+			want:   false,
+		},
+		{
+			name: "caller receiver",
+			source: `package sourceruntime
+type Service struct{}
+func (s *Service) Sync() {}
+func (s *Service) SyncWithLease() { s.Sync() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceruntime/lease.go", Symbol: "Service.SyncWithLease"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "Service.Sync"},
+			want:   true,
+		},
+		{
+			name: "unrelated receiver",
+			source: `package sourceruntime
+type Service struct{}
+func (s *Service) Sync() {}
+func (s *Service) SyncWithLease() { other := &Service{}; other.Sync() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceruntime/lease.go", Symbol: "Service.SyncWithLease"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "Service.Sync"},
+			want:   false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fileSet := token.NewFileSet()
+			parsed, err := parser.ParseFile(fileSet, "binding.go", test.source, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var declaration *ast.FuncDecl
+			for _, candidate := range parsed.Decls {
+				function, ok := candidate.(*ast.FuncDecl)
+				if ok && goDeclarationSymbol(function) == test.caller.Symbol {
+					declaration = function
+					break
+				}
+			}
+			if declaration == nil {
+				t.Fatalf("caller %s is missing", test.caller.Symbol)
+			}
+			matched := false
+			ast.Inspect(declaration.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if ok && goCallMatchesRuntimeBinding(parsed, declaration, test.caller, test.callee, call.Fun) {
+					matched = true
+				}
+				return true
+			})
+			if matched != test.want {
+				t.Fatalf("edge match = %v, want %v", matched, test.want)
+			}
+		})
+	}
+}
+
 func TestContextualBindingIncludesImportContextButIgnoresFormattingAndImportOrder(t *testing.T) {
 	root := t.TempDir()
 	const relPath = "internal/example/selector.go"
@@ -395,6 +549,9 @@ func fixtureRepository(t *testing.T) (string, authorityLedger) {
 package sourceworker
 
 func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
+	if sourceID == "tailscale" {
+		return TailscaleFamily(sourceID, familyID)
+	}
 	return "", false
 }
 
@@ -423,9 +580,19 @@ func (s *Service) validateRustSourceRuntimePlan(sourceID, familyID string) bool 
 	return selected
 }
 
+func sourceExecutionHostCredential() bool {
+	return true
+}
+
 func (s *Service) readSourcePull(sourceID, familyID string) bool {
 	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
-	return selected
+	if !selected {
+		return readCompatibilitySourcePull()
+	}
+	if !sourceRuntimeLeaseFenceFromContext() || !sourceExecutionHostCredential() {
+		return false
+	}
+	return sourceworker.PullFromExecutionOutput(sourceID, familyID)
 }
 `)
 	writeFile(t, root, "internal/sourceruntime/service.go", `
@@ -433,9 +600,41 @@ package sourceruntime
 
 import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 
+func (s *Service) Put(sourceID, familyID string) bool {
+	return s.preparePutRuntime(sourceID, familyID)
+}
+
+func (s *Service) PutRuntimes(sourceID, familyID string) bool {
+	return s.preparePutRuntime(sourceID, familyID)
+}
+
 func (s *Service) preparePutRuntime(sourceID, familyID string) bool {
 	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
-	return selected
+	return selected && s.validateRustSourceRuntimePlan(sourceID, familyID)
+}
+
+func (s *Service) Sync(sourceID, familyID string) bool {
+	return sourceRuntimeLeaseFenceFromContext() && s.readSourcePull(sourceID, familyID)
+}
+
+func readCompatibilitySourcePull() bool {
+	return true
+}
+`)
+	writeFile(t, root, "internal/sourceruntime/lease.go", `
+package sourceruntime
+
+func sourceRuntimeLeaseFenceFromContext() bool {
+	return true
+}
+
+func WithCurrentSourceRuntimeLeaseFence() bool {
+	return true
+}
+
+func (s *Service) SyncWithLease(sourceID, familyID string) bool {
+	_ = WithCurrentSourceRuntimeLeaseFence()
+	return s.Sync(sourceID, familyID)
 }
 `)
 	writeFile(t, root, "internal/sourceops/source_execution.go", `
@@ -443,8 +642,40 @@ package sourceops
 
 import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 
+type Service struct{}
+
 func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
 	return sourceworker.PreviewRustFamily(sourceID, config["family"])
+}
+
+func (s *Service) executeRustSource(sourceID, familyID string) bool {
+	return s.previewSourceExecutionCredential() && sourceworker.PullFromExecutionOutput(sourceID, familyID)
+}
+
+func (s *Service) discoverRustSource(sourceID, familyID string) bool {
+	return s.executeRustSource(sourceID, familyID)
+}
+
+func (s *Service) previewSourceExecutionCredential() bool {
+	return true
+}
+`)
+	writeFile(t, root, "internal/sourceops/service.go", `
+package sourceops
+
+func (s *Service) Check(sourceID, familyID string) bool {
+	familyID, selected := rustSourceFamily(sourceID, map[string]string{"family": familyID})
+	return selected && s.executeRustSource(sourceID, familyID)
+}
+
+func (s *Service) Discover(sourceID, familyID string) bool {
+	familyID, selected := rustSourceFamily(sourceID, map[string]string{"family": familyID})
+	return selected && s.discoverRustSource(sourceID, familyID)
+}
+
+func (s *Service) Read(sourceID, familyID string) bool {
+	familyID, selected := rustSourceFamily(sourceID, map[string]string{"family": familyID})
+	return selected && s.executeRustSource(sourceID, familyID)
 }
 `)
 	writeFile(t, root, "sources/pull_source/catalog.yaml", pullCatalog("alpha"))
@@ -634,6 +865,40 @@ func insertBoundDeclarationStatement(t *testing.T, root string, requirement runt
 	mutated = append(mutated, '\n', '\t')
 	mutated = append(mutated, statement...)
 	mutated = append(mutated, payload[offset:]...)
+	if err := os.WriteFile(path, mutated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func replaceBoundDeclarationBody(t *testing.T, root string, requirement runtimeBindingRequirement, body string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(requirement.Path))
+	payload, err := os.ReadFile(path) // #nosec G304 -- test helper reads an explicit fixture path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, path, payload, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matched *ast.FuncDecl
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && goDeclarationSymbol(function) == requirement.Symbol {
+			matched = function
+			break
+		}
+	}
+	if matched == nil || matched.Body == nil {
+		t.Fatalf("fixture declaration %s#%s is missing", requirement.Path, requirement.Symbol)
+	}
+	start := fileSet.Position(matched.Body.Lbrace).Offset
+	end := fileSet.Position(matched.Body.Rbrace).Offset + 1
+	mutated := make([]byte, 0, len(payload)+len(body)-(end-start))
+	mutated = append(mutated, payload[:start]...)
+	mutated = append(mutated, body...)
+	mutated = append(mutated, payload[end:]...)
 	if err := os.WriteFile(path, mutated, 0o600); err != nil {
 		t.Fatal(err)
 	}
