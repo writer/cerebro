@@ -8,8 +8,10 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 COMMENT_MARKER = "<!-- post-merge-health -->"
@@ -121,17 +123,11 @@ def summarize(
     relevant = [
         run
         for run in runs
-        if (not head_sha or run.get("head_sha") == head_sha)
+        if head_sha
+        and run.get("head_sha") == head_sha
         and (not current_run_id or str(run.get("id") or "") != current_run_id)
         and run.get("workflow_name") != POST_MERGE_HEALTH_WORKFLOW
     ]
-    if not relevant:
-        relevant = [
-            run
-            for run in runs[:5]
-            if (not current_run_id or str(run.get("id") or "") != current_run_id)
-            and run.get("workflow_name") != POST_MERGE_HEALTH_WORKFLOW
-        ]
     failures = [
         run
         for run in relevant
@@ -146,8 +142,38 @@ def summarize(
         "failed_runs": failures,
         "pending_runs": pending,
         "release_status": release_status or {},
-        "healthy": not failures and bool(relevant),
+        "healthy": bool(relevant) and not failures and not pending,
     }
+
+
+def wait_for_terminal_summary(
+    branch: str,
+    head_sha: str,
+    collect: Callable[[], list[dict[str, object]]],
+    *,
+    current_run_id: str = "",
+    release_status: dict[str, object] | None = None,
+    wait_seconds: float = 0,
+    poll_seconds: float = 30,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> dict[str, object]:
+    deadline = monotonic() + max(wait_seconds, 0)
+    interval = max(poll_seconds, 1)
+    while True:
+        context = summarize(
+            branch,
+            head_sha,
+            collect(),
+            current_run_id=current_run_id,
+            release_status=release_status,
+        )
+        if context["healthy"] or context["failed_runs"] or not head_sha:
+            return context
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return context
+        sleep(min(interval, remaining))
 
 
 def render_markdown(context: dict[str, object]) -> str:
@@ -158,7 +184,7 @@ def render_markdown(context: dict[str, object]) -> str:
         COMMENT_MARKER,
         "## Post-Merge Health",
         "",
-        "Compare the merged commit's main-branch workflows against PR-green expectations.",
+        "Healthy requires exact-head sibling workflow evidence with every observed run terminal and non-failing.",
         "",
         f"- Branch: `{context.get('branch', '')}`",
         f"- Head: `{context.get('head_sha', '')}`",
@@ -192,8 +218,11 @@ def render_markdown(context: dict[str, object]) -> str:
         for run in pending:
             if isinstance(run, dict):
                 lines.append(f"- `{run.get('workflow_name', '')}` {run.get('status', '')}: {run.get('url', '')}")
-    if not failed and not pending:
-        lines.append("No failed or pending main workflow runs for the selected commit.")
+    runs = context.get("runs") if isinstance(context.get("runs"), list) else []
+    if not runs:
+        lines.append("No exact-head sibling workflow evidence was found; health remains false.")
+    elif not failed and not pending:
+        lines.append("All observed exact-head sibling workflow runs are terminal and non-failing.")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -201,7 +230,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--branch", default=os.environ.get("POST_MERGE_BRANCH", "main"))
     parser.add_argument("--head", default=os.environ.get("POST_MERGE_HEAD", os.environ.get("GITHUB_SHA", "")))
-    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument(
+        "--wait-seconds", type=float, default=os.environ.get("POST_MERGE_WAIT_SECONDS", "0")
+    )
+    parser.add_argument(
+        "--poll-seconds", type=float, default=os.environ.get("POST_MERGE_POLL_SECONDS", "30")
+    )
     parser.add_argument("--markdown-out", default=os.environ.get("POST_MERGE_OUT", "tmp/post-merge-health.md"))
     parser.add_argument("--json-out", default=os.environ.get("POST_MERGE_JSON_OUT", "tmp/post-merge-health.json"))
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when post-merge health is not healthy.")
@@ -224,12 +259,14 @@ def main() -> int:
         }
     else:
         try:
-            context = summarize(
+            context = wait_for_terminal_summary(
                 args.branch,
                 args.head,
-                collect_runs(args.branch, token, repository, args.limit),
+                lambda: collect_runs(args.branch, token, repository, args.limit),
                 current_run_id=os.environ.get("GITHUB_RUN_ID", ""),
                 release_status=release_status,
+                wait_seconds=args.wait_seconds,
+                poll_seconds=args.poll_seconds,
             )
         except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
             context = {
