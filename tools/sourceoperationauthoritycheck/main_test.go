@@ -325,6 +325,156 @@ func TestAuthorityLedgerRejectsDeadRuntimeBindingEdgesAfterDigestRefresh(t *test
 	return sourceID == "manual" && familyID == "route"
 }`,
 		},
+		{
+			name: "after return",
+			body: `{
+	return sourceID == "manual" && familyID == "route"
+	_ = sourceRuntimeLeaseFenceFromContext()
+	_ = s.readSourcePull(sourceID, familyID)
+}`,
+		},
+		{
+			name: "after break",
+			body: `{
+	for {
+		break
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "after continue",
+			body: `{
+	for sourceID != "" {
+		continue
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "skipped by forward goto",
+			body: `{
+	goto manual
+	_ = sourceRuntimeLeaseFenceFromContext()
+	_ = s.readSourcePull(sourceID, familyID)
+manual:
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "constant switch matched before default",
+			body: `{
+	switch true {
+	case true:
+		return sourceID == "manual" && familyID == "route"
+	default:
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+}`,
+		},
+		{
+			name: "constant switch matched after default",
+			body: `{
+	switch 1 {
+	default:
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	case 1:
+		return sourceID == "manual" && familyID == "route"
+	}
+}`,
+		},
+		{
+			name: "return before fallthrough",
+			body: `{
+	switch true {
+	case true:
+		return sourceID == "manual" && familyID == "route"
+		fallthrough
+	default:
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+}`,
+		},
+		{
+			name: "mixed terminating if branches",
+			body: `{
+	for sourceID != "" {
+		if familyID == "" {
+			break
+		} else {
+			continue
+		}
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "labeled break through nested switch",
+			body: `{
+outer:
+	for {
+		switch {
+		default:
+			break outer
+		}
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "labeled continue through nested switch",
+			body: `{
+outer:
+	for sourceID != "" {
+		switch {
+		default:
+			continue outer
+		}
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "labeled break through nested loop",
+			body: `{
+outer:
+	for {
+		for {
+			break outer
+		}
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "labeled continue through nested loop",
+			body: `{
+outer:
+	for sourceID != "" {
+		for {
+			continue outer
+		}
+		_ = sourceRuntimeLeaseFenceFromContext()
+		_ = s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -336,6 +486,173 @@ func TestAuthorityLedgerRejectsDeadRuntimeBindingEdgesAfterDigestRefresh(t *test
 			_, err := checkRepository(root)
 			if err == nil || !strings.Contains(err.Error(), "bound runtime call edge durable_sync_entrypoint") {
 				t.Fatalf("check error = %v, want dead authority-edge rejection", err)
+			}
+		})
+	}
+}
+
+func TestAuthorityLedgerRejectsCrossFileConstantDeadEdgesAfterDigestRefresh(t *testing.T) {
+	tests := []struct {
+		name         string
+		constantFile string
+		body         string
+	}{
+		{
+			name: "named false short circuit",
+			constantFile: `
+package sourceruntime
+
+const routeThroughAuthority = false
+`,
+			body: `{
+	_ = routeThroughAuthority && sourceRuntimeLeaseFenceFromContext()
+	_ = routeThroughAuthority && s.readSourcePull(sourceID, familyID)
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "shadowed predeclared true",
+			constantFile: `
+package sourceruntime
+
+const true = false
+`,
+			body: `{
+	if true {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			writeFile(t, root, "internal/sourceruntime/authority_route.go", test.constantFile)
+			replaceBoundDeclarationBody(t, root, requiredRuntimeBindings["durable_sync_entrypoint"], test.body)
+			refreshRuntimeBinding(t, root, &ledger, "durable_sync_entrypoint")
+			writeLedger(t, root, ledger)
+
+			_, err := checkRepository(root)
+			if err == nil || !strings.Contains(err.Error(), "bound runtime call edge durable_sync_entrypoint") {
+				t.Fatalf("check error = %v, want cross-file constant dead-edge rejection", err)
+			}
+		})
+	}
+}
+
+func TestAuthorityLedgerRejectsBuildContextVariantPackageConstants(t *testing.T) {
+	tests := []struct {
+		name              string
+		darwinDeclaration string
+		want              string
+	}{
+		{
+			name:              "conflicting constants",
+			darwinDeclaration: "const routeThroughAuthority = true",
+			want:              "package constant routeThroughAuthority in internal/sourceruntime must resolve identically across all release build contexts",
+		},
+		{
+			name:              "constant and variable",
+			darwinDeclaration: "var routeThroughAuthority = true",
+			want:              "package name routeThroughAuthority in internal/sourceruntime changes declaration kind across release build contexts",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			writeFile(t, root, "internal/sourceruntime/authority_route_linux.go", `
+//go:build linux
+
+package sourceruntime
+
+const routeThroughAuthority = false
+`)
+			writeFile(t, root, "internal/sourceruntime/authority_route_darwin.go", `
+//go:build darwin
+
+package sourceruntime
+
+`+test.darwinDeclaration+`
+`)
+			writeLedger(t, root, ledger)
+
+			_, err := checkRepository(root)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("check error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestAuthorityLedgerPreservesReachableGotoAndSwitchFallthroughEdges(t *testing.T) {
+	tests := []struct {
+		name         string
+		constantFile string
+		body         string
+	}{
+		{
+			name: "forward goto target",
+			body: `{
+	goto authority
+manual:
+	return sourceID == "manual" && familyID == "route"
+authority:
+	_ = sourceRuntimeLeaseFenceFromContext()
+	return s.readSourcePull(sourceID, familyID)
+}`,
+		},
+		{
+			name: "conditional forward goto target",
+			body: `{
+	if sourceID == "manual" {
+		goto authority
+	}
+	return false
+authority:
+	_ = sourceRuntimeLeaseFenceFromContext()
+	return s.readSourcePull(sourceID, familyID)
+}`,
+		},
+		{
+			name: "fallthrough into static default",
+			body: `{
+	switch true {
+	case true:
+		fallthrough
+	default:
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+}`,
+		},
+		{
+			name: "local value shadows package constant",
+			constantFile: `
+package sourceruntime
+
+const routeThroughAuthority = false
+`,
+			body: `{
+	const routeThroughAuthority = true
+	_ = routeThroughAuthority && sourceRuntimeLeaseFenceFromContext()
+	return routeThroughAuthority && s.readSourcePull(sourceID, familyID)
+}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			if test.constantFile != "" {
+				writeFile(t, root, "internal/sourceruntime/authority_route.go", test.constantFile)
+			}
+			replaceBoundDeclarationBody(t, root, requiredRuntimeBindings["durable_sync_entrypoint"], test.body)
+			refreshRuntimeBinding(t, root, &ledger, "durable_sync_entrypoint")
+			writeLedger(t, root, ledger)
+
+			if _, err := checkRepository(root); err != nil {
+				t.Fatalf("check reachable structural edges: %v", err)
 			}
 		})
 	}

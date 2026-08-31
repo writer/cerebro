@@ -786,6 +786,7 @@ func validateRuntimeBindingCoverage() error {
 }
 
 func validateRuntimeBindingEdges(root string) error {
+	packageConstantsByDirectory := make(map[string]goPackageConstants)
 	for _, edge := range requiredRuntimeBindingEdges {
 		caller := requiredRuntimeBindings[edge.CallerRole]
 		callee := requiredRuntimeBindings[edge.CalleeRole]
@@ -798,8 +799,17 @@ func validateRuntimeBindingEdges(root string) error {
 		if err != nil {
 			return err
 		}
+		callerDirectory := filepath.ToSlash(filepath.Dir(caller.Path))
+		packageConstants, loaded := packageConstantsByDirectory[callerDirectory]
+		if !loaded {
+			packageConstants, err = loadGoPackageConstants(root, caller.Path, parsed.Name.Name)
+			if err != nil {
+				return err
+			}
+			packageConstantsByDirectory[callerDirectory] = packageConstants
+		}
 		count := 0
-		inspectStructurallyReachableGoCalls(declaration.Body, func(call *ast.CallExpr) {
+		inspectStructurallyReachableGoCallsWithConstants(declaration.Body, packageConstants, func(call *ast.CallExpr) {
 			if goCallMatchesRuntimeBinding(parsed, declaration, caller, callee, call.Fun) {
 				count++
 			}
@@ -890,10 +900,15 @@ func goCallMatchesRuntimeBinding(parsed *ast.File, callerDeclaration *ast.FuncDe
 	return false
 }
 
-// inspectStructurallyReachableGoCalls prunes only syntax known not to execute
-// without runtime values. It is deliberately not a control- or data-flow proof.
-func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr)) {
+// inspectStructurallyReachableGoCallsWithConstants prunes only syntax known not
+// to execute without runtime values. It is deliberately not a full control- or
+// data-flow proof.
+func inspectStructurallyReachableGoCallsWithConstants(root ast.Node, packageConstants goPackageConstants, visit func(*ast.CallExpr)) {
 	var inspect func(ast.Node)
+	var inspectStatementList func([]ast.Stmt)
+	inspectStatementList = func(statements []ast.Stmt) {
+		goReachableStatementList(statements, packageConstants, inspect)
+	}
 	inspect = func(node ast.Node) {
 		if node == nil {
 			return
@@ -904,10 +919,13 @@ func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr
 				return false
 			case *ast.FuncLit:
 				return false
+			case *ast.BlockStmt:
+				inspectStatementList(typed.List)
+				return false
 			case *ast.IfStmt:
 				inspect(typed.Init)
 				inspect(typed.Cond)
-				if condition, known := staticGoBool(typed.Cond); known {
+				if condition, known := staticGoBoolWithConstants(typed.Cond, packageConstants); known {
 					if condition {
 						inspect(typed.Body)
 					} else {
@@ -921,7 +939,7 @@ func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr
 			case *ast.ForStmt:
 				inspect(typed.Init)
 				inspect(typed.Cond)
-				if condition, known := staticGoBool(typed.Cond); known && !condition {
+				if condition, known := staticGoBoolWithConstants(typed.Cond, packageConstants); known && !condition {
 					return false
 				}
 				inspect(typed.Body)
@@ -930,22 +948,31 @@ func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr
 			case *ast.SwitchStmt:
 				inspect(typed.Init)
 				inspect(typed.Tag)
-				for _, statement := range typed.Body.List {
+				reachable := goReachableSwitchClauses(typed.Tag, typed.Body.List, packageConstants)
+				for index, statement := range typed.Body.List {
 					clause, ok := statement.(*ast.CaseClause)
-					if !ok || goSwitchCaseStaticallyExcluded(typed.Tag, clause.List) {
+					if !ok || !reachable[index] {
 						continue
 					}
-					for _, bodyStatement := range clause.Body {
-						inspect(bodyStatement)
-					}
+					inspectStatementList(clause.Body)
 				}
+				return false
+			case *ast.CaseClause:
+				for _, expression := range typed.List {
+					inspect(expression)
+				}
+				inspectStatementList(typed.Body)
+				return false
+			case *ast.CommClause:
+				inspect(typed.Comm)
+				inspectStatementList(typed.Body)
 				return false
 			case *ast.BinaryExpr:
 				if typed.Op != token.LAND && typed.Op != token.LOR {
 					return true
 				}
 				inspect(typed.X)
-				left, known := staticGoBool(typed.X)
+				left, known := staticGoBoolWithConstants(typed.X, packageConstants)
 				if !known || (typed.Op == token.LAND && left) || (typed.Op == token.LOR && !left) {
 					inspect(typed.Y)
 				}
@@ -959,25 +986,335 @@ func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr
 	inspect(root)
 }
 
-func goSwitchCaseStaticallyExcluded(tag ast.Expr, cases []ast.Expr) bool {
+type goControlFlow struct {
+	breaks          bool
+	breakLabels     map[string]struct{}
+	caseFallthrough bool
+	continues       bool
+	continueLabels  map[string]struct{}
+	fallsThrough    bool
+	returns         bool
+	gotos           map[string]struct{}
+}
+
+func (flow *goControlFlow) merge(other goControlFlow) {
+	flow.breaks = flow.breaks || other.breaks
+	flow.caseFallthrough = flow.caseFallthrough || other.caseFallthrough
+	flow.continues = flow.continues || other.continues
+	flow.fallsThrough = flow.fallsThrough || other.fallsThrough
+	flow.returns = flow.returns || other.returns
+	for label := range other.breakLabels {
+		flow.addBreak(label)
+	}
+	for label := range other.continueLabels {
+		flow.addContinue(label)
+	}
+	for label := range other.gotos {
+		flow.addGoto(label)
+	}
+}
+
+func (flow *goControlFlow) addBreak(label string) {
+	if label == "" {
+		flow.breaks = true
+		return
+	}
+	if flow.breakLabels == nil {
+		flow.breakLabels = make(map[string]struct{})
+	}
+	flow.breakLabels[label] = struct{}{}
+}
+
+func (flow *goControlFlow) addContinue(label string) {
+	if label == "" {
+		flow.continues = true
+		return
+	}
+	if flow.continueLabels == nil {
+		flow.continueLabels = make(map[string]struct{})
+	}
+	flow.continueLabels[label] = struct{}{}
+}
+
+func (flow *goControlFlow) addGoto(label string) {
+	if label == "" {
+		return
+	}
+	if flow.gotos == nil {
+		flow.gotos = make(map[string]struct{})
+	}
+	flow.gotos[label] = struct{}{}
+}
+
+func goReachableStatementList(statements []ast.Stmt, packageConstants goPackageConstants, visit func(ast.Node)) goControlFlow {
+	labels := make(map[string]int)
+	for index, statement := range statements {
+		for {
+			labeled, ok := statement.(*ast.LabeledStmt)
+			if !ok {
+				break
+			}
+			labels[labeled.Label.Name] = index
+			statement = labeled.Stmt
+		}
+	}
+	queue := []int{0}
+	visited := make(map[int]bool)
+	var result goControlFlow
+	for len(queue) > 0 {
+		index := queue[0]
+		queue = queue[1:]
+		if index == len(statements) {
+			result.fallsThrough = true
+			continue
+		}
+		if index < 0 || index > len(statements) || visited[index] {
+			continue
+		}
+		visited[index] = true
+		statement := statements[index]
+		if visit != nil {
+			visit(statement)
+		}
+		flow := goStatementControlFlow(statement, packageConstants)
+		result.breaks = result.breaks || flow.breaks
+		result.caseFallthrough = result.caseFallthrough || flow.caseFallthrough
+		result.continues = result.continues || flow.continues
+		result.returns = result.returns || flow.returns
+		for label := range flow.breakLabels {
+			result.addBreak(label)
+		}
+		for label := range flow.continueLabels {
+			result.addContinue(label)
+		}
+		if flow.fallsThrough {
+			queue = append(queue, index+1)
+		}
+		for label := range flow.gotos {
+			if target, ok := labels[label]; ok {
+				queue = append(queue, target)
+			} else {
+				result.addGoto(label)
+			}
+		}
+	}
+	return result
+}
+
+func goStatementControlFlow(statement ast.Stmt, packageConstants goPackageConstants) goControlFlow {
+	switch typed := statement.(type) {
+	case *ast.ReturnStmt:
+		return goControlFlow{returns: true}
+	case *ast.BranchStmt:
+		switch typed.Tok {
+		case token.BREAK:
+			var flow goControlFlow
+			if typed.Label == nil {
+				flow.addBreak("")
+			} else {
+				flow.addBreak(typed.Label.Name)
+			}
+			return flow
+		case token.CONTINUE:
+			var flow goControlFlow
+			if typed.Label == nil {
+				flow.addContinue("")
+			} else {
+				flow.addContinue(typed.Label.Name)
+			}
+			return flow
+		case token.FALLTHROUGH:
+			return goControlFlow{caseFallthrough: true}
+		case token.GOTO:
+			var flow goControlFlow
+			if typed.Label != nil {
+				flow.addGoto(typed.Label.Name)
+			}
+			return flow
+		}
+	case *ast.LabeledStmt:
+		flow := goStatementControlFlow(typed.Stmt, packageConstants)
+		label := typed.Label.Name
+		switch typed.Stmt.(type) {
+		case *ast.ForStmt, *ast.RangeStmt:
+			if _, exits := flow.breakLabels[label]; exits {
+				delete(flow.breakLabels, label)
+				flow.fallsThrough = true
+			}
+			delete(flow.continueLabels, label)
+		case *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+			if _, exits := flow.breakLabels[label]; exits {
+				delete(flow.breakLabels, label)
+				flow.fallsThrough = true
+			}
+		}
+		return flow
+	case *ast.BlockStmt:
+		return goReachableStatementList(typed.List, packageConstants, nil)
+	case *ast.IfStmt:
+		if condition, known := staticGoBoolWithConstants(typed.Cond, packageConstants); known {
+			if condition {
+				return goStatementControlFlow(typed.Body, packageConstants)
+			}
+			if typed.Else != nil {
+				return goStatementControlFlow(typed.Else, packageConstants)
+			}
+			return goControlFlow{fallsThrough: true}
+		}
+		flow := goStatementControlFlow(typed.Body, packageConstants)
+		if typed.Else != nil {
+			flow.merge(goStatementControlFlow(typed.Else, packageConstants))
+		} else {
+			flow.fallsThrough = true
+		}
+		return flow
+	case *ast.ForStmt:
+		flow := goControlFlow{}
+		if condition, known := staticGoBoolWithConstants(typed.Cond, packageConstants); known && !condition {
+			flow.fallsThrough = true
+			return flow
+		}
+		body := goReachableStatementList(typed.Body.List, packageConstants, nil)
+		condition, known := staticGoBoolWithConstants(typed.Cond, packageConstants)
+		flow.fallsThrough = body.breaks || (typed.Cond != nil && (!known || !condition))
+		flow.returns = body.returns
+		for label := range body.breakLabels {
+			flow.addBreak(label)
+		}
+		for label := range body.continueLabels {
+			flow.addContinue(label)
+		}
+		for label := range body.gotos {
+			flow.addGoto(label)
+		}
+		return flow
+	case *ast.RangeStmt:
+		flow := goControlFlow{fallsThrough: true}
+		body := goReachableStatementList(typed.Body.List, packageConstants, nil)
+		flow.returns = body.returns
+		for label := range body.breakLabels {
+			flow.addBreak(label)
+		}
+		for label := range body.continueLabels {
+			flow.addContinue(label)
+		}
+		for label := range body.gotos {
+			flow.addGoto(label)
+		}
+		return flow
+	case *ast.SwitchStmt:
+		return goSwitchControlFlow(typed, packageConstants)
+	}
+	return goControlFlow{fallsThrough: true}
+}
+
+func goReachableSwitchClauses(tag ast.Expr, statements []ast.Stmt, packageConstants goPackageConstants) []bool {
+	staticMatch := goSwitchFirstStaticMatch(tag, statements, packageConstants)
+	reachable := make([]bool, len(statements))
+	fallthroughReachable := false
+	for index, statement := range statements {
+		clause, ok := statement.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		selected := false
+		switch {
+		case len(clause.List) == 0:
+			selected = staticMatch < 0
+		case staticMatch >= 0 && index > staticMatch:
+			selected = false
+		default:
+			selected = !goSwitchCaseStaticallyExcluded(tag, clause.List, packageConstants)
+		}
+		reachable[index] = selected || fallthroughReachable
+		fallthroughReachable = false
+		if reachable[index] {
+			flow := goReachableStatementList(clause.Body, packageConstants, nil)
+			fallthroughReachable = flow.caseFallthrough
+		}
+	}
+	return reachable
+}
+
+func goSwitchControlFlow(statement *ast.SwitchStmt, packageConstants goPackageConstants) goControlFlow {
+	reachable := goReachableSwitchClauses(statement.Tag, statement.Body.List, packageConstants)
+	staticMatch := goSwitchFirstStaticMatch(statement.Tag, statement.Body.List, packageConstants)
+	hasDefault := false
+	var result goControlFlow
+	for index, candidate := range statement.Body.List {
+		clause, ok := candidate.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		if len(clause.List) == 0 {
+			hasDefault = true
+		}
+		if !reachable[index] {
+			continue
+		}
+		flow := goReachableStatementList(clause.Body, packageConstants, nil)
+		result.fallsThrough = result.fallsThrough || flow.fallsThrough || flow.breaks
+		result.continues = result.continues || flow.continues
+		result.returns = result.returns || flow.returns
+		for label := range flow.breakLabels {
+			result.addBreak(label)
+		}
+		for label := range flow.continueLabels {
+			result.addContinue(label)
+		}
+		for label := range flow.gotos {
+			result.addGoto(label)
+		}
+	}
+	if staticMatch < 0 && !hasDefault {
+		result.fallsThrough = true
+	}
+	return result
+}
+
+func goSwitchFirstStaticMatch(tag ast.Expr, statements []ast.Stmt, packageConstants goPackageConstants) int {
+	tagValue := constant.MakeBool(true)
+	if tag != nil {
+		var known bool
+		tagValue, known = staticGoConstantWithConstants(tag, packageConstants)
+		if !known {
+			return -1
+		}
+	}
+	for index, statement := range statements {
+		clause, ok := statement.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		for _, expression := range clause.List {
+			caseValue, known := staticGoConstantWithConstants(expression, packageConstants)
+			if known && goConstantsEqual(tagValue, caseValue) {
+				return index
+			}
+		}
+	}
+	return -1
+}
+
+func goSwitchCaseStaticallyExcluded(tag ast.Expr, cases []ast.Expr, packageConstants goPackageConstants) bool {
 	if len(cases) == 0 {
 		return false
 	}
 	if tag == nil {
 		for _, expression := range cases {
-			value, known := staticGoBool(expression)
+			value, known := staticGoBoolWithConstants(expression, packageConstants)
 			if !known || value {
 				return false
 			}
 		}
 		return true
 	}
-	tagValue, tagKnown := staticGoConstant(tag, make(map[*ast.Object]bool))
+	tagValue, tagKnown := staticGoConstantWithConstants(tag, packageConstants)
 	if !tagKnown {
 		return false
 	}
 	for _, expression := range cases {
-		caseValue, known := staticGoConstant(expression, make(map[*ast.Object]bool))
+		caseValue, known := staticGoConstantWithConstants(expression, packageConstants)
 		if !known || goConstantsEqual(tagValue, caseValue) {
 			return false
 		}
@@ -985,18 +1322,40 @@ func goSwitchCaseStaticallyExcluded(tag ast.Expr, cases []ast.Expr) bool {
 	return true
 }
 
-func staticGoBool(expression ast.Expr) (bool, bool) {
+func staticGoBoolWithConstants(expression ast.Expr, packageConstants goPackageConstants) (bool, bool) {
 	if expression == nil {
 		return false, false
 	}
-	value, ok := staticGoConstant(expression, make(map[*ast.Object]bool))
+	value, ok := staticGoConstantWithConstants(expression, packageConstants)
 	if !ok || value.Kind() != constant.Bool {
 		return false, false
 	}
 	return constant.BoolVal(value), true
 }
 
-func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value constant.Value, ok bool) {
+type goPackageConstants struct {
+	expressions       map[string][]ast.Expr
+	declaredNames     map[string]struct{}
+	declarationCounts map[string]int
+	constantCounts    map[string]int
+}
+
+type goConstantContext struct {
+	packageConstants goPackageConstants
+	visitingObjects  map[*ast.Object]bool
+	visitingNames    map[string]bool
+}
+
+func staticGoConstantWithConstants(expression ast.Expr, packageConstants goPackageConstants) (constant.Value, bool) {
+	context := goConstantContext{
+		packageConstants: packageConstants,
+		visitingObjects:  make(map[*ast.Object]bool),
+		visitingNames:    make(map[string]bool),
+	}
+	return context.evaluate(expression)
+}
+
+func (context *goConstantContext) evaluate(expression ast.Expr) (value constant.Value, ok bool) {
 	defer func() {
 		if recover() != nil {
 			value, ok = nil, false
@@ -1007,8 +1366,17 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 		value := constant.MakeFromLiteral(typed.Value, typed.Kind, 0)
 		return value, value.Kind() != constant.Unknown
 	case *ast.ParenExpr:
-		return staticGoConstant(typed.X, visiting)
+		return context.evaluate(typed.X)
 	case *ast.Ident:
+		if typed.Obj == nil {
+			constantCount := context.packageConstants.constantCounts[typed.Name]
+			if constantCount > 0 && constantCount == context.packageConstants.declarationCounts[typed.Name] {
+				return context.packageConstant(typed.Name)
+			}
+			if _, declared := context.packageConstants.declaredNames[typed.Name]; declared {
+				return nil, false
+			}
+		}
 		switch typed.Name {
 		case "true":
 			if typed.Obj == nil || typed.Obj.Decl == nil {
@@ -1019,24 +1387,24 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 				return constant.MakeBool(false), true
 			}
 		}
-		if typed.Obj == nil || typed.Obj.Kind != ast.Con || visiting[typed.Obj] {
+		if typed.Obj == nil || typed.Obj.Kind != ast.Con || context.visitingObjects[typed.Obj] {
 			return nil, false
 		}
 		spec, ok := typed.Obj.Decl.(*ast.ValueSpec)
 		if !ok {
 			return nil, false
 		}
-		visiting[typed.Obj] = true
-		defer delete(visiting, typed.Obj)
+		context.visitingObjects[typed.Obj] = true
+		defer delete(context.visitingObjects, typed.Obj)
 		for index, name := range spec.Names {
 			if name.Obj != typed.Obj || index >= len(spec.Values) {
 				continue
 			}
-			return staticGoConstant(spec.Values[index], visiting)
+			return context.evaluate(spec.Values[index])
 		}
 		return nil, false
 	case *ast.UnaryExpr:
-		operand, known := staticGoConstant(typed.X, visiting)
+		operand, known := context.evaluate(typed.X)
 		if !known {
 			return nil, false
 		}
@@ -1048,12 +1416,12 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 		}
 		return constant.UnaryOp(typed.Op, operand, 0), true
 	case *ast.BinaryExpr:
-		left, leftKnown := staticGoConstant(typed.X, visiting)
+		left, leftKnown := context.evaluate(typed.X)
 		if typed.Op == token.LAND {
 			if leftKnown && left.Kind() == constant.Bool && !constant.BoolVal(left) {
 				return constant.MakeBool(false), true
 			}
-			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			right, rightKnown := context.evaluate(typed.Y)
 			if rightKnown && right.Kind() == constant.Bool && !constant.BoolVal(right) {
 				return constant.MakeBool(false), true
 			}
@@ -1066,7 +1434,7 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 			if leftKnown && left.Kind() == constant.Bool && constant.BoolVal(left) {
 				return constant.MakeBool(true), true
 			}
-			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			right, rightKnown := context.evaluate(typed.Y)
 			if rightKnown && right.Kind() == constant.Bool && constant.BoolVal(right) {
 				return constant.MakeBool(true), true
 			}
@@ -1075,7 +1443,7 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 			}
 			return nil, false
 		}
-		right, rightKnown := staticGoConstant(typed.Y, visiting)
+		right, rightKnown := context.evaluate(typed.Y)
 		if !leftKnown || !rightKnown {
 			return nil, false
 		}
@@ -1091,10 +1459,11 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 		}
 	case *ast.CallExpr:
 		identifier, isIdentifier := typed.Fun.(*ast.Ident)
-		if !isIdentifier || identifier.Name != "bool" || len(typed.Args) != 1 || (identifier.Obj != nil && identifier.Obj.Decl != nil) {
+		_, packageShadow := context.packageConstants.declaredNames["bool"]
+		if !isIdentifier || identifier.Name != "bool" || len(typed.Args) != 1 || (identifier.Obj != nil && identifier.Obj.Decl != nil) || packageShadow {
 			return nil, false
 		}
-		operand, known := staticGoConstant(typed.Args[0], visiting)
+		operand, known := context.evaluate(typed.Args[0])
 		if !known || operand.Kind() != constant.Bool {
 			return nil, false
 		}
@@ -1102,6 +1471,146 @@ func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value
 	default:
 		return nil, false
 	}
+}
+
+func (context *goConstantContext) packageConstant(name string) (constant.Value, bool) {
+	expressions := context.packageConstants.expressions[name]
+	if len(expressions) == 0 || context.visitingNames[name] {
+		return nil, false
+	}
+	context.visitingNames[name] = true
+	defer delete(context.visitingNames, name)
+	var resolved constant.Value
+	for _, expression := range expressions {
+		value, known := context.evaluate(expression)
+		if !known {
+			return nil, false
+		}
+		if resolved == nil {
+			resolved = value
+			continue
+		}
+		if !goConstantsEqual(resolved, value) {
+			return nil, false
+		}
+	}
+	return resolved, true
+}
+
+func loadGoPackageConstants(root, relPath, packageName string) (goPackageConstants, error) {
+	directory := filepath.Dir(filepath.Join(root, filepath.FromSlash(relPath)))
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return goPackageConstants{}, fmt.Errorf("read constant declaration directory for %s: %w", relPath, err)
+	}
+	constants := goPackageConstants{
+		expressions:       make(map[string][]ast.Expr),
+		declaredNames:     make(map[string]struct{}),
+		declarationCounts: make(map[string]int),
+		constantCounts:    make(map[string]int),
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		candidatePath := filepath.Join(directory, entry.Name())
+		candidateRel, err := filepath.Rel(root, candidatePath)
+		if err != nil {
+			return goPackageConstants{}, fmt.Errorf("resolve constant declaration path: %w", err)
+		}
+		candidateRel = filepath.ToSlash(candidateRel)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return goPackageConstants{}, fmt.Errorf("%s must not be a symlink", candidateRel)
+		}
+		payload, err := os.ReadFile(candidatePath) // #nosec G304 -- candidate is a Go file in a fixed bound declaration directory.
+		if err != nil {
+			return goPackageConstants{}, fmt.Errorf("read %s: %w", candidateRel, err)
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), candidatePath, payload, 0)
+		if err != nil {
+			return goPackageConstants{}, fmt.Errorf("parse package constants in %s: %w", candidateRel, err)
+		}
+		if parsed.Name.Name != packageName {
+			return goPackageConstants{}, fmt.Errorf("%s declares package %s; bound caller package is %s", candidateRel, parsed.Name.Name, packageName)
+		}
+		for _, declaration := range parsed.Decls {
+			switch typed := declaration.(type) {
+			case *ast.FuncDecl:
+				if typed.Recv == nil {
+					constants.declaredNames[typed.Name.Name] = struct{}{}
+					constants.declarationCounts[typed.Name.Name]++
+				}
+			case *ast.GenDecl:
+				for _, specification := range typed.Specs {
+					switch specification := specification.(type) {
+					case *ast.ValueSpec:
+						for _, name := range specification.Names {
+							if name.Name != "_" {
+								constants.declaredNames[name.Name] = struct{}{}
+								constants.declarationCounts[name.Name]++
+								if typed.Tok == token.CONST {
+									constants.constantCounts[name.Name]++
+								}
+							}
+						}
+					case *ast.TypeSpec:
+						constants.declaredNames[specification.Name.Name] = struct{}{}
+						constants.declarationCounts[specification.Name.Name]++
+					}
+				}
+			}
+			constantDeclaration, ok := declaration.(*ast.GenDecl)
+			if !ok || constantDeclaration.Tok != token.CONST {
+				continue
+			}
+			var priorValues []ast.Expr
+			for _, specification := range constantDeclaration.Specs {
+				valueSpec, ok := specification.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				values := valueSpec.Values
+				if len(values) > 0 {
+					priorValues = values
+				} else {
+					values = priorValues
+				}
+				for index, name := range valueSpec.Names {
+					if name.Name == "_" || index >= len(values) {
+						continue
+					}
+					constants.expressions[name.Name] = append(constants.expressions[name.Name], values[index])
+				}
+			}
+		}
+	}
+	for name, constantCount := range constants.constantCounts {
+		if constantCount != constants.declarationCounts[name] {
+			return goPackageConstants{}, fmt.Errorf(
+				"package name %s in %s changes declaration kind across release build contexts",
+				name,
+				filepath.ToSlash(filepath.Dir(relPath)),
+			)
+		}
+	}
+	for name, expressions := range constants.expressions {
+		if len(expressions) < 2 {
+			continue
+		}
+		context := goConstantContext{
+			packageConstants: constants,
+			visitingObjects:  make(map[*ast.Object]bool),
+			visitingNames:    make(map[string]bool),
+		}
+		if _, resolved := context.packageConstant(name); !resolved {
+			return goPackageConstants{}, fmt.Errorf(
+				"package constant %s in %s must resolve identically across all release build contexts",
+				name,
+				filepath.ToSlash(filepath.Dir(relPath)),
+			)
+		}
+	}
+	return constants, nil
 }
 
 func goConstantsEqual(left, right constant.Value) (equal bool) {
