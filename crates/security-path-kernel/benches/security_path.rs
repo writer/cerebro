@@ -1,3 +1,8 @@
+//! Stable smoke benchmark for the two path-count-sensitive kernel operations.
+//!
+//! This executable intentionally avoids a statistics framework: repository checks
+//! need a bounded, dependency-light timing signal rather than a performance claim.
+
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -6,10 +11,14 @@ use cerebro_security_path_kernel::{
     rank_candidate_cuts,
 };
 
+/// Number of measured calls after warm-up.
 const ITERATIONS: usize = 100;
 
 fn main() {
     let before = snapshot("before", "2026-07-15T08:00:00Z", Vec::new());
+    // Direct native helpers are benchmarked beyond the content-bound request limit
+    // to expose scaling regressions. A 1,000-path fixture is not an admissible Wasm
+    // EvaluationRequest and must never be interpreted as a production input bound.
     let paths = (0..1_000).map(path).collect::<Vec<_>>();
     let after = snapshot("after", "2026-07-15T08:05:00Z", paths.clone());
     report("compare_1000_paths", || {
@@ -20,7 +29,10 @@ fn main() {
     });
 }
 
+/// Warms one operation, measures a fixed batch, and emits integer nanoseconds/call.
 fn report(name: &str, operation: impl Fn()) {
+    // Warm-up removes first-use allocation and instruction-cache effects from the
+    // bounded measurement without trying to estimate statistical confidence.
     for _ in 0..10 {
         operation();
     }
@@ -33,10 +45,15 @@ fn report(name: &str, operation: impl Fn()) {
     println!("{name}: {} ns/op", nanos(per_operation));
 }
 
+/// Converts a per-operation duration without narrowing its nanosecond count.
 fn nanos(duration: Duration) -> u128 {
     duration.as_nanos()
 }
 
+/// Builds two paths per route and four paths per shared edge.
+///
+/// The resulting fixture makes comparison scale with route grouping while cut
+/// ranking must aggregate both route and path coverage for each edge.
 fn path(index: usize) -> SecurityPath {
     SecurityPath {
         id: format!("path-{index:04}"),
@@ -59,6 +76,7 @@ fn path(index: usize) -> SecurityPath {
     }
 }
 
+/// Builds the minimum complete snapshot accepted by direct comparison.
 fn snapshot(id: &str, observed_at: &str, paths: Vec<SecurityPath>) -> Snapshot {
     Snapshot {
         id: id.to_owned(),
