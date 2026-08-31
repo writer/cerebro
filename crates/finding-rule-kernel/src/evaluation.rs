@@ -1,3 +1,10 @@
+//! Deterministic dispatcher and built-in Tailscale rule evaluation.
+//!
+//! The entry point first verifies the host's content commitment, then routes to
+//! either the attribute-backed Tailscale evaluator or a closed payload rule.
+//! Every decision is reduced to stable lifecycle fields and a content digest;
+//! this module performs no I/O and reads no ambient time or tenant state.
+
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -16,21 +23,41 @@ pub const MAX_INPUT_BYTES: usize = 1 << 20;
 /// Maximum emitted JSON response size.
 pub const MAX_OUTPUT_BYTES: usize = 1 << 20;
 
+/// Fixed finding title for the Tailscale device-approval rule.
 const TITLE: &str = "Tailscale Tailnet Device Approval Disabled";
+/// Stable lifecycle check identity for the current-state evaluation.
 const CHECK_ID: &str = "tailscale-tailnet-device-approval-disabled-current";
+/// Operator-facing check name paired with [`CHECK_ID`].
 const CHECK_NAME: &str = "Tailscale Tailnet Device Approval Disabled (current state)";
+/// Trusted event attribute carrying application-workspace scope.
 const WORKSPACE_ATTRIBUTE: &str = "cerebro_application_workspace_id";
 
 /// Evaluates one content-bound request without network, clock, graph, or store access.
+///
+/// The digest is verified over the exact Serde JSON encoding of [`RuleRequest`]
+/// before any field is trusted. Rule routing is closed to the three definitions
+/// compiled into this kernel, and the result commits its lifecycle decision in a
+/// separate digest.
+///
+/// # Errors
+///
+/// Returns [`KernelError`] for an unsupported envelope or rule, a request whose
+/// digest is stale, invalid host scope, malformed rule input, or an internal
+/// serialization failure while constructing the receipt.
 pub fn evaluate(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, KernelError> {
+    // Reject incompatible envelopes before serializing or interpreting their
+    // candidate request fields.
     if envelope.schema_version != SCHEMA_VERSION {
         return Err(KernelError::UnsupportedSchema);
     }
+    // `BTreeMap` attributes make this struct encoding stable for a given request.
     let request_bytes =
         serde_json::to_vec(&envelope.request).map_err(|_| KernelError::InvalidInput)?;
     if envelope.input_digest != prefixed_digest(&request_bytes) {
         return Err(KernelError::InputDigestMismatch);
     }
+    // Whitespace is not part of catalog identity. The original request remains
+    // committed by `input_digest`, while routing uses the normalized identifier.
     let rule_id = envelope.request.rule_id.trim();
     if matches!(rule_id, AURELIUS_RULE_ID | COSMO_RULE_ID) {
         return evaluate_payload_rule(envelope);
@@ -58,6 +85,9 @@ pub fn evaluate(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, Kern
 
 fn evaluate_payload_rule(envelope: EvaluationEnvelope) -> Result<EvaluationResponse, KernelError> {
     let source_request = &envelope.request;
+    // Adapt the shared ABI record into the payload evaluator's typed runtime and
+    // event boundary. Trim scalar coordinates but preserve attributes and raw
+    // payload bytes exactly as committed by the outer input digest.
     let request = payload_findings::RuleRequest {
         operation: match source_request.operation {
             Operation::Evaluate => payload_findings::Operation::Evaluate,
@@ -89,6 +119,8 @@ fn evaluate_payload_rule(envelope: EvaluationEnvelope) -> Result<EvaluationRespo
         COSMO_RULE_ID => (COSMO_RULE_ID, COSMO_DEFINITION_DIGEST),
         _ => return Err(KernelError::UnsupportedRule),
     };
+    // Convert into one outer receipt vocabulary so every rule family shares the
+    // same Wasm ABI and lifecycle consumer.
     let action = match decision.action {
         payload_findings::Action::None => Action::None,
         payload_findings::Action::Open => Action::Open,
@@ -109,6 +141,8 @@ fn evaluate_payload_rule(envelope: EvaluationEnvelope) -> Result<EvaluationRespo
 }
 
 fn convert_payload_finding(record: payload_findings::RuleFindingDecision) -> FindingRecord {
+    // This is a field-for-field compatibility projection. Do not re-normalize
+    // values already admitted by the payload-rule kernel.
     FindingRecord {
         id: record.id,
         fingerprint: record.fingerprint,
@@ -141,6 +175,9 @@ fn convert_payload_finding(record: payload_findings::RuleFindingDecision) -> Fin
 }
 
 fn map_payload_error(error: payload_findings::KernelError) -> KernelError {
+    // Preserve actionable host/input classes. Evaluator-internal protocol
+    // failures collapse to `InvalidInput` because the outer ABI does not expose
+    // those implementation-specific states.
     match error {
         payload_findings::KernelError::UnsupportedRule
         | payload_findings::KernelError::UnsupportedOperation => KernelError::UnsupportedRule,
@@ -170,6 +207,8 @@ fn evaluate_open(
     request: &RuleRequest,
 ) -> Result<(Action, String, Option<FindingRecord>), KernelError> {
     validate_evaluation_scope(request)?;
+    // A valid Tailscale request for another event kind is a non-match, not a
+    // malformed request or unsupported rule.
     if !request
         .event_kind
         .trim()
@@ -178,6 +217,8 @@ fn evaluate_open(
         return Ok((Action::None, String::new(), None));
     }
     let tailnet = attribute(request, "tailnet");
+    // Missing identity, true approval, or an unrecognized boolean spelling does
+    // not satisfy the open predicate.
     if tailnet.is_empty()
         || parse_optional_bool(attribute(request, "devices_approval_on")) != Some(false)
     {
@@ -186,6 +227,8 @@ fn evaluate_open(
     let occurred_at = normalized_timestamp(&request.occurred_at)?;
     let tenant_id = request.runtime_tenant_id.trim();
     let runtime_id = request.runtime_id.trim();
+    // Tenant scope participates in the resource URN and therefore the finding
+    // fingerprint; equal provider names in different tenants cannot collide.
     let tailnet_urn = format!("urn:cerebro:{tenant_id}:tailscale_tailnet:{tailnet}");
     let fingerprint = fingerprint(TAILSCALE_RULE_ID, &tailnet_urn);
     let mut attributes = BTreeMap::from([
@@ -209,6 +252,8 @@ fn evaluate_open(
         ("rule_tags".into(), "tailscale,tailnet,device-approval,access-control".into()),
         ("rule_runbook".into(), "Confirm whether device approval should be enforced for this tailnet; if so, enable device approval so new devices require administrator review before joining.".into()),
     ]);
+    // Optional provider attributes are omitted rather than emitting empty
+    // strings, while fixed rule metadata remains part of the finding receipt.
     attributes.retain(|_, value| !value.trim().is_empty());
     let finding = FindingRecord {
         id: fingerprint.clone(),
@@ -245,6 +290,9 @@ fn evaluate_open(
 }
 
 fn evaluate_open_anchor(request: &RuleRequest) -> (Action, String, Option<FindingRecord>) {
+    // Anchor lookup consumes the lifecycle attribute previously emitted by an
+    // open finding. Missing state yields an empty anchor for the host to reject or
+    // treat as no matching open record; no provider payload is consulted.
     let urn = attribute(request, "tailscale_tailnet_urn");
     let anchor = if urn.is_empty() {
         String::new()
@@ -257,6 +305,9 @@ fn evaluate_open_anchor(request: &RuleRequest) -> (Action, String, Option<Findin
 fn evaluate_close(
     request: &RuleRequest,
 ) -> Result<(Action, String, Option<FindingRecord>), KernelError> {
+    // Close evaluation derives scope from the replayed event because it selects
+    // an existing lifecycle record; it requires an event tenant and Tailscale
+    // source but does not reuse the open path's runtime/workspace checks.
     if request.event_tenant_id.trim().is_empty()
         || !request
             .event_source_id
@@ -273,6 +324,8 @@ fn evaluate_close(
         return Ok((Action::None, String::new(), None));
     }
     let tailnet = attribute(request, "tailnet");
+    // Only an explicitly recognized true value proves remediation. Unknown or
+    // absent state cannot close the finding.
     if tailnet.is_empty()
         || parse_optional_bool(attribute(request, "devices_approval_on")) != Some(true)
     {
@@ -286,6 +339,8 @@ fn evaluate_close(
 }
 
 fn validate_evaluation_scope(request: &RuleRequest) -> Result<(), KernelError> {
+    // Open decisions bind trusted runtime and replayed event to one tenant and
+    // the same closed source family. Runtime identity itself must also be present.
     if request.runtime_id.trim().is_empty()
         || request.runtime_tenant_id.trim().is_empty()
         || request.event_tenant_id.trim().is_empty()
@@ -303,6 +358,8 @@ fn validate_evaluation_scope(request: &RuleRequest) -> Result<(), KernelError> {
     }
     let event_workspace = attribute(request, WORKSPACE_ATTRIBUTE);
     let runtime_workspace = request.runtime_workspace_id.trim();
+    // Workspace scope is optional on both sides. When both coordinates exist,
+    // disagreement fails closed instead of widening either scope.
     if !runtime_workspace.is_empty()
         && !event_workspace.is_empty()
         && runtime_workspace != event_workspace
@@ -313,14 +370,20 @@ fn validate_evaluation_scope(request: &RuleRequest) -> Result<(), KernelError> {
 }
 
 fn normalized_timestamp(value: &str) -> Result<String, KernelError> {
+    // Reuse the payload-rule timestamp parser so all rule families emit the same
+    // canonical observation-time representation.
     payload_findings::normalized_observation_time(value).map_err(|_| KernelError::InvalidInput)
 }
 
 fn attribute<'a>(request: &'a RuleRequest, key: &str) -> &'a str {
+    // Attribute lookup never allocates and treats a missing key as empty. Trimmed
+    // views drive decisions without mutating the content-bound request map.
     request.attributes.get(key).map_or("", |value| value.trim())
 }
 
 fn parse_optional_bool(value: &str) -> Option<bool> {
+    // Accept the provider spellings historically normalized by the Go path.
+    // Anything outside these closed sets remains unknown rather than false.
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "t" | "true" | "yes" | "y" | "enabled" | "on" | "active" => Some(true),
         "0" | "f" | "false" | "no" | "n" | "disabled" | "off" | "inactive" => Some(false),
@@ -329,6 +392,8 @@ fn parse_optional_bool(value: &str) -> Option<bool> {
 }
 
 fn fingerprint(parts: &str, anchor: &str) -> String {
+    // NUL separators make the two trimmed components unambiguous. The raw hex
+    // digest is retained for compatibility with existing finding identifiers.
     let mut input = Vec::with_capacity(parts.len() + anchor.len() + 2);
     input.extend_from_slice(parts.trim().as_bytes());
     input.push(0);
@@ -342,6 +407,9 @@ fn decision_digest(
     anchor: &str,
     finding: Option<&FindingRecord>,
 ) -> Result<String, KernelError> {
+    // Serialize the action through its wire representation and the finding
+    // through its compatibility field names. NUL-delimited components prevent
+    // boundary ambiguity while preserving exact finding JSON field order.
     let action = serde_json::to_value(action)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
@@ -364,10 +432,13 @@ fn decision_digest(
 }
 
 fn prefixed_digest(value: &[u8]) -> String {
+    // Request and decision commitments use an explicit algorithm prefix; finding
+    // fingerprints intentionally use the raw hexadecimal helper above.
     format!("sha256:{}", hex_digest(&sha256(value)))
 }
 
 fn hex_digest(value: &[u8]) -> String {
+    // Lowercase hexadecimal is the canonical text representation across the ABI.
     let mut encoded = String::with_capacity(value.len() * 2);
     for byte in value {
         write!(encoded, "{byte:02x}").expect("writing to String cannot fail");
