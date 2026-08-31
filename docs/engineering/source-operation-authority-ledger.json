@@ -1,11 +1,40 @@
 {
-  "schema_version": "cerebro.source-operation-authority/v1",
-  "revision": 1,
+  "schema_version": "cerebro.source-operation-authority/v2",
+  "revision": 2,
   "inventory": {
     "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
     "family_count": 4399,
     "pull_family_count": 4389,
     "push_family_count": 10
+  },
+  "runtime_implementation": {
+    "canonicalization": "go_ast_declaration_sha256/v1",
+    "bindings": [
+      {
+        "role": "durable_pull_dispatch",
+        "path": "internal/sourceruntime/source_execution.go",
+        "symbol": "Service.readSourcePull",
+        "digest_sha256": "a7c7c98bb7224338a72470beecd6ddc0486f7d37bbbc686f2b8fe9eef13d2dc4"
+      },
+      {
+        "role": "preview_rust_selector",
+        "path": "internal/sourceops/source_execution.go",
+        "symbol": "rustSourceFamily",
+        "digest_sha256": "8bb8db5c7d3bc0aae3092274eb3533e1d8ffe75c58eb213d5857421c2860c0ea"
+      },
+      {
+        "role": "rust_authoritative_selector",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "RustAuthoritativeFamily",
+        "digest_sha256": "5c0cef9a9f59810c8b6012b0fabc0a8b8486064eba27ae7e8470c87dec5f4c30"
+      },
+      {
+        "role": "tailscale_authoritative_selector",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "TailscaleFamily",
+        "digest_sha256": "86d165bfc20f62fb27ad0a6e625268fea8ea7bf82bb9e9dcafcb3ed3675b03db"
+      }
+    ]
   },
   "defaults": {
     "pull": {
