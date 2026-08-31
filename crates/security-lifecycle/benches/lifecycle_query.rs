@@ -1,3 +1,9 @@
+//! Allocation-aware smoke benchmark for lifecycle query execution strategies.
+//!
+//! The harness measures the existing in-memory core at three population sizes, a
+//! generic-resource discovery scan, and a minimal ordered keyset index. Results are
+//! comparative development signals, not production latency or capacity guarantees.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     hint::black_box,
@@ -11,18 +17,25 @@ use cerebro_security_lifecycle::{
 };
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 
+/// Fixed policy-evaluation time used by every benchmark fixture.
 const AS_OF: &str = "2026-07-26T12:00:00Z";
+/// Measured calls per scenario after one warm-up call.
 const ITERATIONS: u32 = 10;
 
+/// Allocation instrumentation shared by every measured scenario.
 #[global_allocator]
 static GLOBAL: &StatsAlloc<std::alloc::System> = &INSTRUMENTED_SYSTEM;
 
 fn main() {
+    // Debug builds distort both timing and allocation comparisons enough to be
+    // misleading, so direct `cargo run` usage exits with the exact bench command.
     if cfg!(debug_assertions) {
         eprintln!("run with cargo bench -p cerebro-security-lifecycle --bench lifecycle_query");
         return;
     }
     let tenant = TenantId::parse("benchmark-tenant").expect("tenant");
+    // Cloning is intentionally inside the operation: the in-memory API takes
+    // ownership of projected resources, so end-to-end cost includes that transfer.
     for count in [500, 10_000, 100_000] {
         let entities = fixture(count);
         report(&format!("optimized_core_{count}"), || {
@@ -45,6 +58,8 @@ fn main() {
         });
     }
 
+    // This scenario isolates discovery cost when lifecycle resources are sparse in
+    // a generic graph scan; it does not run policy or pagination.
     let generic_resources = generic_fixture(10_000);
     report("naive_generic_scan_10000", || {
         let selected = generic_resources
@@ -55,6 +70,8 @@ fn main() {
         black_box(selected);
     });
 
+    // The local index models the ordering and aggregate lookup an indexed adapter
+    // can provide without claiming parity with a particular graph backend.
     let index = LifecycleBenchIndex::new(fixture(100_000));
     report("indexed_keyset_page_100000", || {
         let page = index.page(None, 100);
@@ -62,7 +79,9 @@ fn main() {
     });
 }
 
+/// Measures average wall time and allocator deltas for one bounded scenario.
 fn report(name: &str, operation: impl Fn()) {
+    // Warm caches and one-time initialization before starting the allocation region.
     operation();
     let region = Region::new(GLOBAL);
     let started = Instant::now();
@@ -80,10 +99,16 @@ fn report(name: &str, operation: impl Fn()) {
     );
 }
 
+/// Converts a per-operation duration without narrowing its nanosecond count.
 fn nanos(duration: Duration) -> u128 {
     duration.as_nanos()
 }
 
+/// Builds deterministic lifecycle projections with mixed families and all states.
+///
+/// Every fourth subject is a certificate, states repeat every seven subjects, and
+/// stable slot URNs are unique. Expired subjects receive past expiry; the remaining
+/// subjects receive a future expiry so policy evaluation covers multiple outcomes.
 fn fixture(count: usize) -> Vec<ProjectedResource> {
     (0..count)
         .map(|index| {
@@ -160,6 +185,7 @@ fn fixture(count: usize) -> Vec<ProjectedResource> {
         .collect()
 }
 
+/// Builds a generic graph population containing five percent lifecycle resources.
 fn generic_fixture(count: usize) -> Vec<ProjectedResource> {
     let lifecycle = fixture(count / 20);
     let lifecycle_indexes = (0..lifecycle.len()).collect::<BTreeSet<_>>();
@@ -182,13 +208,18 @@ fn generic_fixture(count: usize) -> Vec<ProjectedResource> {
         .collect()
 }
 
+/// Minimal ordered subject index plus precomputed population state counts.
 struct LifecycleBenchIndex {
+    /// Lifecycle resources keyed by canonical subject URN.
     by_subject: BTreeMap<String, ProjectedResource>,
+    /// Number of uniquely indexed stable subjects.
     total: usize,
+    /// Population counts keyed by canonical lifecycle-state string.
     state_counts: BTreeMap<String, usize>,
 }
 
 impl LifecycleBenchIndex {
+    /// Builds the benchmark index, skipping resources without lifecycle identity/state.
     fn new(entities: Vec<ProjectedResource>) -> Self {
         let mut by_subject = BTreeMap::new();
         let mut state_counts = BTreeMap::new();
@@ -208,6 +239,10 @@ impl LifecycleBenchIndex {
         }
     }
 
+    /// Returns an ordered page strictly after `after`, or from the first subject.
+    ///
+    /// The exclusive bound mirrors the forward keyset semantics of lifecycle query
+    /// cursors; `take(limit)` keeps work proportional to the requested page.
     fn page(&self, after: Option<&str>, limit: usize) -> Vec<&ProjectedResource> {
         match after {
             Some(after) => self
