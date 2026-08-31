@@ -946,6 +946,11 @@ func (s *commandRuntimeStore) RenewSourceRuntimeLease(context.Context, string, s
 	return true, nil
 }
 
+//nolint:unparam // Test fake implements the fence-reader interface, including the error result.
+func (s *commandRuntimeStore) ReadSourceRuntimeLeaseFence(_ context.Context, _ string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: 1, ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+
 //nolint:unparam // Test fake implements the runtime-store lease interface, including the error result.
 func (s *commandRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, owner string) error {
 	s.releaseID = runtimeID

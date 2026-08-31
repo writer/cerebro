@@ -2013,8 +2013,8 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 
 // sourceRuntimeLeaseStore returns the StateStore's lease coordinator when
 // the underlying implementation supports it. The API's Sync handler uses
-// this to serialize cursor advances across replicas; CLI and single-task
-// callers receive nil and fall through to a plain Sync.
+// this to serialize cursor advances across replicas. SyncWithLease rejects a
+// nil result so production callers cannot advance without durable fencing.
 func sourceRuntimeLeaseStore(store ports.StateStore) ports.SourceRuntimeLeaseStore {
 	leaseStore, ok := store.(ports.SourceRuntimeLeaseStore)
 	if !ok || isNilInterface(leaseStore) {

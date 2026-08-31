@@ -58,12 +58,16 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 	if !acquired {
 		return result, fmt.Errorf("%w: %s", sourceruntime.ErrSyncInProgress, runtimeID)
 	}
-	ctx = leaseCtx
 	defer func() {
 		if err := releasePrimary(); err != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("release security path capture lease: %w", err))
 		}
 	}()
+	leaseCtx, err = sourceruntime.WithCurrentSourceRuntimeLeaseFence(leaseCtx, s.deps.LeaseStore, runtimeID, owner)
+	if err != nil {
+		return result, fmt.Errorf("bind security path capture lease fence: %w", err)
+	}
+	ctx = leaseCtx
 
 	runtime, err := s.deps.RuntimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {

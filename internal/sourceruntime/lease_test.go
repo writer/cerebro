@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -28,6 +29,7 @@ type stubLeaseStore struct {
 
 	heldBy     string
 	holdUntil  time.Time
+	generation uint64
 	rejectNext bool
 
 	acquireErr error
@@ -41,6 +43,22 @@ type fencedStubLeaseStore struct {
 	*stubLeaseStore
 	fence ports.SourceRuntimeLeaseFence
 	err   error
+}
+
+type leaseStoreWithoutFenceReader struct {
+	store *stubLeaseStore
+}
+
+func (s *leaseStoreWithoutFenceReader) AcquireSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
+	return s.store.AcquireSourceRuntimeLease(ctx, runtimeID, owner, ttl)
+}
+
+func (s *leaseStoreWithoutFenceReader) RenewSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
+	return s.store.RenewSourceRuntimeLease(ctx, runtimeID, owner, ttl)
+}
+
+func (s *leaseStoreWithoutFenceReader) ReleaseSourceRuntimeLease(ctx context.Context, runtimeID string, owner string) error {
+	return s.store.ReleaseSourceRuntimeLease(ctx, runtimeID, owner)
 }
 
 func (s *fencedStubLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
@@ -68,6 +86,9 @@ func (s *stubLeaseStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID 
 	if s.heldBy != "" && s.heldBy != owner && s.holdUntil.After(now) {
 		s.events = append(s.events, leaseEvent{verb: "acquire", owner: owner, acquired: false})
 		return false, nil
+	}
+	if s.heldBy != owner || !s.holdUntil.After(now) || s.generation == 0 {
+		s.generation++
 	}
 	s.heldBy = owner
 	s.holdUntil = now.Add(ttl)
@@ -106,6 +127,18 @@ func (s *stubLeaseStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID 
 	return nil
 }
 
+func (s *stubLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(runtimeID) == "" || strings.TrimSpace(owner) == "" {
+		return ports.SourceRuntimeLeaseFence{}, errors.New("runtime ID and owner are required")
+	}
+	if s.heldBy != owner || s.generation == 0 || !s.holdUntil.After(time.Now()) {
+		return ports.SourceRuntimeLeaseFence{}, ports.ErrSourceRuntimeLeaseLost
+	}
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: s.generation, ExpiresAt: s.holdUntil}, nil
+}
+
 func (s *stubLeaseStore) snapshotEvents() []leaseEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,16 +147,38 @@ func (s *stubLeaseStore) snapshotEvents() []leaseEvent {
 	return out
 }
 
-func TestSyncWithLeaseFallsThroughWhenLeaseStoreIsNil(t *testing.T) {
-	service := New(nil, nil, nil, nil)
+func leaseProgressProbeService(t *testing.T) (*Service, *runtimeStore) {
+	t.Helper()
+	registry, err := sourcecdk.NewRegistry(emptyPageSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "empty_page", TenantId: "tenant-a"},
+	}}
+	return New(registry, store, &appendLog{}, nil), store
+}
+
+func assertLeaseAcquiredAndReleased(t *testing.T, events []leaseEvent) {
+	t.Helper()
+	if len(events) < 2 || events[0].verb != "acquire" || !events[0].acquired || events[len(events)-1].verb != "release" {
+		t.Fatalf("lease events = %#v, want successful acquire followed by release", events)
+	}
+}
+
+func TestSyncWithLeaseRejectsMissingLeaseStoreBeforeProgressAdvances(t *testing.T) {
+	service, store := leaseProgressProbeService(t)
 	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("SyncWithLease() err = %v, want %v", err, ErrRuntimeUnavailable)
 	}
+	if store.putCount != 0 {
+		t.Fatalf("runtime progress writes = %d, want 0", store.putCount)
+	}
 }
 
 func TestWithCurrentSourceRuntimeLeaseFenceBindsDurableFence(t *testing.T) {
-	fence := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: time.Now().Add(time.Minute)}
+	fence := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: time.Now().UTC().Add(time.Minute)}
 	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, fence: fence}
 
 	ctx, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
@@ -147,6 +202,58 @@ func TestWithCurrentSourceRuntimeLeaseFencePreservesReaderFailure(t *testing.T) 
 	if !errors.Is(err, want) {
 		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want %v", err, want)
 	}
+}
+
+func TestWithCurrentSourceRuntimeLeaseFenceRejectsMissingReader(t *testing.T) {
+	store := &leaseStoreWithoutFenceReader{store: &stubLeaseStore{}}
+
+	_, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestSyncWithLeaseRejectsMissingFenceReaderBeforeProgressAdvances(t *testing.T) {
+	service, runtimeStore := leaseProgressProbeService(t)
+	inner := &stubLeaseStore{}
+	store := &leaseStoreWithoutFenceReader{store: inner}
+
+	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+		LeaseStore: store,
+		LeaseOwner: "owner-a",
+	})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("SyncWithLease() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+	if runtimeStore.putCount != 0 {
+		t.Fatalf("runtime progress writes = %d, want 0", runtimeStore.putCount)
+	}
+	assertLeaseAcquiredAndReleased(t, inner.snapshotEvents())
+}
+
+func TestSyncWithLeaseRejectsStaleFenceBeforeProgressAdvances(t *testing.T) {
+	service, runtimeStore := leaseProgressProbeService(t)
+	inner := &stubLeaseStore{}
+	store := &fencedStubLeaseStore{
+		stubLeaseStore: inner,
+		fence: ports.SourceRuntimeLeaseFence{
+			Owner:      "owner-a",
+			Generation: 1,
+			ExpiresAt:  time.Now().Add(-time.Minute),
+		},
+	}
+
+	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+		LeaseStore: store,
+		LeaseOwner: "owner-a",
+	})
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("SyncWithLease() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	}
+	if runtimeStore.putCount != 0 {
+		t.Fatalf("runtime progress writes = %d, want 0", runtimeStore.putCount)
+	}
+	assertLeaseAcquiredAndReleased(t, inner.snapshotEvents())
 }
 
 func TestSyncWithLeaseRejectsMissingRuntimeID(t *testing.T) {

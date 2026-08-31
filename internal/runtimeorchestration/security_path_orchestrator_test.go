@@ -86,6 +86,58 @@ func TestCollectVerificationStopsBeforeReadsWhenContributorLeaseIsHeld(t *testin
 	}
 }
 
+func TestSecurityPathCaptureRejectsLeaseStoreWithoutFenceReaderBeforeSync(t *testing.T) {
+	now := time.Now().UTC().Add(-2 * time.Minute)
+	graph := &verificationGraph{now: now, checkpoints: map[string]graphstore.IngestCheckpoint{}}
+	leases := &verificationLeaseStore{}
+	syncer := &securityPathRuntimeSyncProbe{}
+	service := NewSecurityPathService(SecurityPathDependencies{
+		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
+		LeaseStore: leases, RuntimeSync: syncer,
+	})
+
+	_, err := service.Capture(context.Background(), SecurityPathRequest{
+		RuntimeID: "runtime-a", ObservationID: "observation-a", LeaseOwner: "owner-a",
+	})
+	if !errors.Is(err, sourceruntime.ErrRuntimeUnavailable) {
+		t.Fatalf("Capture() error = %v, want %v", err, sourceruntime.ErrRuntimeUnavailable)
+	}
+	if syncer.syncCalls != 0 {
+		t.Fatalf("source runtime sync calls = %d, want 0", syncer.syncCalls)
+	}
+	if !reflect.DeepEqual(leases.acquired, []string{"runtime-a"}) || !reflect.DeepEqual(leases.released, []string{"runtime-a"}) {
+		t.Fatalf("leases acquired=%#v released=%#v, want runtime-a acquired and released", leases.acquired, leases.released)
+	}
+}
+
+func TestSecurityPathCaptureReadsLeaseGenerationBeforeSync(t *testing.T) {
+	now := time.Now().UTC().Add(-2 * time.Minute)
+	graph := &verificationGraph{
+		now: now, checkpoints: map[string]graphstore.IngestCheckpoint{},
+		requests: []graphingest.RuntimeRequest{{RuntimeID: "baseline-ready"}},
+	}
+	leases := &fencedVerificationLeaseStore{verificationLeaseStore: &verificationLeaseStore{}, generation: 7}
+	want := errors.New("stop after fenced sync entry")
+	syncer := &securityPathRuntimeSyncProbe{leaseStore: leases, err: want}
+	service := NewSecurityPathService(SecurityPathDependencies{
+		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
+		LeaseStore: leases, RuntimeSync: syncer,
+	})
+
+	_, err := service.Capture(context.Background(), SecurityPathRequest{
+		RuntimeID: "runtime-a", ObservationID: "observation-a", LeaseOwner: "owner-a",
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("Capture() error = %v, want %v", err, want)
+	}
+	if !leases.fenceRead || leases.readRuntimeID != "runtime-a" || leases.readOwner != "owner-a" {
+		t.Fatalf("lease fence read = %t runtime=%q owner=%q, want current runtime owner", leases.fenceRead, leases.readRuntimeID, leases.readOwner)
+	}
+	if syncer.syncCalls != 1 {
+		t.Fatalf("source runtime sync calls = %d, want 1", syncer.syncCalls)
+	}
+}
+
 type verificationRuntimeMap map[string]*cerebrov1.SourceRuntime
 
 func (s verificationRuntimeMap) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
@@ -117,6 +169,39 @@ type verificationLeaseStore struct {
 	blockedRuntime string
 	acquired       []string
 	released       []string
+}
+
+type fencedVerificationLeaseStore struct {
+	*verificationLeaseStore
+	generation    uint64
+	fenceRead     bool
+	readRuntimeID string
+	readOwner     string
+}
+
+func (s *fencedVerificationLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	s.fenceRead = true
+	s.readRuntimeID = runtimeID
+	s.readOwner = owner
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: s.generation, ExpiresAt: time.Now().Add(time.Minute)}, nil
+}
+
+type securityPathRuntimeSyncProbe struct {
+	leaseStore *fencedVerificationLeaseStore
+	err        error
+	syncCalls  int
+}
+
+func (s *securityPathRuntimeSyncProbe) Sync(context.Context, *cerebrov1.SyncSourceRuntimeRequest) (*cerebrov1.SyncSourceRuntimeResponse, error) {
+	s.syncCalls++
+	if s.leaseStore != nil && !s.leaseStore.fenceRead {
+		return nil, errors.New("source runtime sync started before the lease fence was read")
+	}
+	return nil, s.err
+}
+
+func (s *securityPathRuntimeSyncProbe) SyncWithLease(context.Context, *cerebrov1.SyncSourceRuntimeRequest, sourceruntime.SyncWithLeaseOptions) (*cerebrov1.SyncSourceRuntimeResponse, error) {
+	return nil, errors.New("unexpected SyncWithLease call")
 }
 
 func (s *verificationLeaseStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID, _ string, _ time.Duration) (bool, error) {
