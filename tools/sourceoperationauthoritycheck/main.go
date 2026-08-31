@@ -60,6 +60,10 @@ var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
 		Path:   "internal/sourceruntime/lease.go",
 		Symbol: "WithCurrentSourceRuntimeLeaseFence",
 	},
+	"durable_lease_fence_refresh": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "currentSourceRuntimeLeaseFence",
+	},
 	"durable_lease_fence_read": {
 		Path:   "internal/sourceruntime/lease.go",
 		Symbol: "sourceRuntimeLeaseFenceFromContext",
@@ -142,7 +146,7 @@ var requiredRuntimeBindingEdges = []runtimeBindingEdge{
 	{CallerRole: "durable_plan_validation", CalleeRole: "rust_authoritative_selector", Count: 1},
 	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_compatibility_read", Count: 1},
 	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_credential_resolution", Count: 1},
-	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_lease_fence_read", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_lease_fence_refresh", Count: 1},
 	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_authoritative_selector", Count: 1},
 	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_output_conversion", Count: 1},
 	{CallerRole: "durable_put_entrypoint", CalleeRole: "durable_runtime_creation", Count: 1},

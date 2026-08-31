@@ -241,6 +241,27 @@ func TestAuthorityLedgerRejectsRetainedUnusedRoutingHelpersAfterBindingRefresh(t
 	}
 }
 
+func TestAuthorityLedgerRejectsRetiredFenceReadAfterBindingRefresh(t *testing.T) {
+	root, ledger := fixtureRepository(t)
+	replaceBoundDeclarationBody(t, root, requiredRuntimeBindings["durable_pull_dispatch"], `{
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	if !selected {
+		return readCompatibilitySourcePull()
+	}
+	_ = sourceRuntimeLeaseFenceFromContext()
+	_ = sourceExecutionHostCredential()
+	_ = sourceworker.PullFromExecutionOutput(sourceID, familyID)
+	return sourceID == "manual"
+}`)
+	refreshRuntimeBinding(t, root, &ledger, "durable_pull_dispatch")
+	writeLedger(t, root, ledger)
+
+	_, err := checkRepository(root)
+	if err == nil || !strings.Contains(err.Error(), "bound runtime call edge durable_pull_dispatch") || !strings.Contains(err.Error(), "durable_lease_fence_refresh") {
+		t.Fatalf("check error = %v, want retired fence-read routing rejection", err)
+	}
+}
+
 func TestAuthorityLedgerRejectsDeadRuntimeBindingEdgesAfterDigestRefresh(t *testing.T) {
 	tests := []struct {
 		name string
@@ -671,7 +692,7 @@ func TestAuthorityLedgerRejectsShadowedRuntimeBindingEdgesAfterDigestRefresh(t *
 	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
 	readCompatibilitySourcePull := func() bool { return true }
 	_ = readCompatibilitySourcePull()
-	_ = sourceRuntimeLeaseFenceFromContext()
+	_ = currentSourceRuntimeLeaseFence()
 	_ = sourceExecutionHostCredential()
 	_ = sourceworker.PullFromExecutionOutput(sourceID, familyID)
 	return selected && sourceID == "manual"
@@ -718,29 +739,33 @@ func TestAuthorityLedgerRejectsShadowedRuntimeBindingEdgesAfterDigestRefresh(t *
 }
 
 func TestAuthorityLedgerRejectsTaggedTransitiveFenceHelpers(t *testing.T) {
-	root, ledger := fixtureRepository(t)
-	writeFile(t, root, "internal/sourceruntime/fence_linux.go", `
+	for _, symbol := range []string{"sourceRuntimeLeaseFenceFromContext", "currentSourceRuntimeLeaseFence"} {
+		t.Run(symbol, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			writeFile(t, root, "internal/sourceruntime/fence_linux.go", `
 //go:build linux
 
 package sourceruntime
 
-func sourceRuntimeLeaseFenceFromContext() bool { return true }
+func `+symbol+`() bool { return true }
 `)
-	writeFile(t, root, "internal/sourceruntime/fence_darwin.go", `
+			writeFile(t, root, "internal/sourceruntime/fence_darwin.go", `
 //go:build darwin
 
 package sourceruntime
 
-func sourceRuntimeLeaseFenceFromContext() bool { return false }
+func `+symbol+`() bool { return false }
 `)
-	writeLedger(t, root, ledger)
+			writeLedger(t, root, ledger)
 
-	_, err := checkRepository(root)
-	if err == nil ||
-		!strings.Contains(err.Error(), "sourceRuntimeLeaseFenceFromContext must be declared exactly once across all release build contexts") ||
-		!strings.Contains(err.Error(), "fence_linux.go") ||
-		!strings.Contains(err.Error(), "fence_darwin.go") {
-		t.Fatalf("check error = %v, want tagged transitive fence-helper rejection", err)
+			_, err := checkRepository(root)
+			if err == nil ||
+				!strings.Contains(err.Error(), symbol+" must be declared exactly once across all release build contexts") ||
+				!strings.Contains(err.Error(), "fence_linux.go") ||
+				!strings.Contains(err.Error(), "fence_darwin.go") {
+				t.Fatalf("check error = %v, want tagged transitive fence-helper rejection", err)
+			}
+		})
 	}
 }
 
@@ -1098,7 +1123,7 @@ func (s *Service) readSourcePull(sourceID, familyID string) bool {
 	if !selected {
 		return readCompatibilitySourcePull()
 	}
-	if !sourceRuntimeLeaseFenceFromContext() || !sourceExecutionHostCredential() {
+	if !currentSourceRuntimeLeaseFence() || !sourceExecutionHostCredential() {
 		return false
 	}
 	return sourceworker.PullFromExecutionOutput(sourceID, familyID)
@@ -1134,6 +1159,10 @@ func readCompatibilitySourcePull() bool {
 package sourceruntime
 
 func sourceRuntimeLeaseFenceFromContext() bool {
+	return true
+}
+
+func currentSourceRuntimeLeaseFence() bool {
 	return true
 }
 
