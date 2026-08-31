@@ -114,7 +114,10 @@ func TestGraphIngestLeaseLossConnectErrorHidesUnderlyingFailure(t *testing.T) {
 func TestFindingLeaseLossMappingsHideUnderlyingFailure(t *testing.T) {
 	const privateDetail = "private finding lease query failed"
 	want := errors.New(privateDetail)
-	err := fmt.Errorf("%w: renew finding evaluation lease: %w", ports.ErrSourceRuntimeLeaseLost, want)
+	err := errors.Join(
+		fmt.Errorf("finding lookup failed: %w", ports.ErrFindingNotFound),
+		fmt.Errorf("%w: renew finding evaluation lease: %w", ports.ErrSourceRuntimeLeaseLost, want),
+	)
 	if got := mappedHTTPStatusCode(err, findingErrorMappings); got != http.StatusConflict {
 		t.Fatalf("mappedHTTPStatusCode() = %d, want %d", got, http.StatusConflict)
 	}
