@@ -45,8 +45,8 @@
         "canonicalization": { "const": "go_ast_declaration_context_sha256/v2" },
         "bindings": {
           "type": "array",
-          "minItems": 22,
-          "maxItems": 22,
+          "minItems": 23,
+          "maxItems": 23,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/goDeclarationBinding" }
         },
@@ -65,6 +65,7 @@
             "durable_credential_resolution",
             "durable_lease_fence_binding",
             "durable_lease_fence_read",
+            "durable_lease_fence_refresh",
             "durable_plan_validation",
             "durable_pull_dispatch",
             "durable_put_entrypoint",

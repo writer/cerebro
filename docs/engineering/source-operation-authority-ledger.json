@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-operation-authority/v3",
-  "revision": 4,
+  "revision": 5,
   "inventory": {
     "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
     "family_count": 4399,
@@ -21,19 +21,25 @@
         "role": "durable_credential_resolution",
         "path": "internal/sourceruntime/source_execution.go",
         "symbol": "sourceExecutionHostCredential",
-        "digest_sha256": "c4be3f2a3b7d5744b5a34c7df856446a9fee1343c1bd3d120c720cbed6645d0e"
+        "digest_sha256": "268aea8eb65f532e57fa537be2a8e6318f4c9df323f965caeb5268151d5b1af1"
       },
       {
         "role": "durable_lease_fence_binding",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "WithCurrentSourceRuntimeLeaseFence",
-        "digest_sha256": "80a764067fb9ed1c150192374659c8ecee95846dafddbe0ccfb4ac7b3ece3598"
+        "digest_sha256": "4bccaa95d8bf62bb18a2e6a18d9c44481ddec69d3e851405c54c5da8a29233cd"
       },
       {
         "role": "durable_lease_fence_read",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "sourceRuntimeLeaseFenceFromContext",
         "digest_sha256": "e9c57a8441c00c145f8ac02102376c86673dcccce2ff8152edcd575198b32e6b"
+      },
+      {
+        "role": "durable_lease_fence_refresh",
+        "path": "internal/sourceruntime/lease.go",
+        "symbol": "currentSourceRuntimeLeaseFence",
+        "digest_sha256": "5d50fb3cbf9571424807b385f49ebeed84acee5b4b485a86c0604b9a9709f324"
       },
       {
         "role": "durable_plan_validation",
@@ -69,13 +75,13 @@
         "role": "durable_sync_entrypoint",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.Sync",
-        "digest_sha256": "97c9fee2170f323a2af124b5c7b099dcb5d666401aee6c5cef2de075d051debe"
+        "digest_sha256": "94bd4119b741b438222846de902ed53f4392d51f80b350a334b3e40421259bd2"
       },
       {
         "role": "durable_sync_with_lease_entrypoint",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "Service.SyncWithLease",
-        "digest_sha256": "450d7d730f210a5566afac1dd3d31ed328b2fa424c013c6f2b38e338bb746172"
+        "digest_sha256": "075e760e7e65d865b94db1b03c662ad12af055d29044e42f0eaa6c2bd5c517e5"
       },
       {
         "role": "preview_check_entrypoint",
