@@ -287,7 +287,8 @@ func TestConnectInternalErrorsHideDetails(t *testing.T) {
 }
 
 func TestConnectCancellationErrorsHideJoinedCleanupDetails(t *testing.T) {
-	privateErr := errors.New("private lease cleanup query failed")
+	const privateDetail = "private lease cleanup query failed"
+	privateErr := errors.New(privateDetail)
 	for _, helper := range []struct {
 		name     string
 		mapError func(error) error
@@ -314,7 +315,7 @@ func TestConnectCancellationErrorsHideJoinedCleanupDetails(t *testing.T) {
 				if !errors.As(mapped, &connectErr) || connectErr.Code() != cancellation.code {
 					t.Fatalf("mapped error = %#v, want connect %s", mapped, cancellation.code)
 				}
-				if connectErr.Message() != cancellation.message || strings.Contains(connectErr.Message(), privateErr.Error()) {
+				if connectErr.Message() != cancellation.message || strings.Contains(connectErr.Message(), privateDetail) {
 					t.Fatalf("connect message = %q, want canonical %q", connectErr.Message(), cancellation.message)
 				}
 				if !errors.Is(mapped, cancellation.cause) || !errors.Is(mapped, privateErr) {
