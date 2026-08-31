@@ -3,6 +3,11 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+/// Deserializes an optional collection while treating explicit JSON `null` as empty.
+///
+/// Older producers emitted `null` for some repeated fields. Keeping that compatibility
+/// at the wire boundary lets the rest of the kernel operate on ordinary, non-optional
+/// collections without weakening `deny_unknown_fields`.
 fn deserialize_default_on_null<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -381,7 +386,11 @@ pub const DECISION_INPUT_V1: &str = "security-path-decision-input/v1";
 pub struct EvaluationRequest {
     /// Decision schema; currently must equal [`DECISION_INPUT_V1`].
     pub schema_version: String,
-    /// Canonical SHA-256 digest calculated over the complete [`DecisionRequest`].
+    /// Canonical SHA-256 digest over the v1 decision-relevant request projection.
+    ///
+    /// The projection includes every field consumed by comparison, absence
+    /// verification, or cut ranking. Display metadata and provenance fields that
+    /// those operations do not inspect are deliberately outside the v1 digest.
     pub input_digest: String,
     /// Operation and all evidence on which the decision depends.
     pub request: DecisionRequest,
@@ -569,6 +578,7 @@ impl fmt::Display for KernelError {
 
 impl Error for KernelError {}
 
+/// Serde predicate used to omit zero-valued receipt counters from JSON.
 const fn is_zero(value: &usize) -> bool {
     *value == 0
 }

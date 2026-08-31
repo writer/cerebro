@@ -16,10 +16,14 @@ use crate::model::{
 /// memory exchange with a host, while the schema version describes JSON data.
 pub const ABI_VERSION: u32 = 1;
 #[cfg(target_arch = "wasm32")]
+/// Maximum JSON request allocation accepted by the WebAssembly guest.
 pub(crate) const MAX_INPUT_BYTES: usize = 8 << 20;
 #[cfg(target_arch = "wasm32")]
+/// Maximum serialized JSON response retained by the WebAssembly guest.
 pub(crate) const MAX_OUTPUT_BYTES: usize = 8 << 20;
 
+// Decision states are wire values shared with the Go authority path. Changing any
+// value is a schema change even though the constants are private to this crate.
 const COMPLETE: &str = "complete";
 const INITIAL: &str = "initial_observation";
 const COMPARED: &str = "compared";
@@ -28,6 +32,9 @@ const OBSERVED_ABSENT: &str = "observed_absent";
 const STILL_OBSERVED: &str = "still_observed";
 const FULL_GRAPH_COLLECTION: &str = "graph_reset_full_scan";
 const CANDIDATE_ONLY: &str = "candidate_only";
+
+// Semantic limits are enforced before hashing or evaluation so work and output
+// remain bounded on both native and WebAssembly hosts.
 const MAX_PATHS: usize = 100;
 const MAX_PROOF_EDGES_PER_PATH: usize = 64;
 const MAX_RUNTIME_RECEIPTS: usize = 256;
@@ -56,6 +63,10 @@ pub fn evaluate(request: EvaluationRequest) -> Result<EvaluationResponse, Kernel
     evaluate_verified(request.request, computed_digest)
 }
 
+/// Evaluates a request after its envelope schema and digest have been verified.
+///
+/// Validation is repeated through [`ValidatedDecisionRequest`] so internal callers
+/// cannot accidentally bypass semantic bounds merely by skipping [`evaluate`].
 pub(crate) fn evaluate_verified(
     request: DecisionRequest,
     input_digest: String,
@@ -85,10 +96,12 @@ pub(crate) fn evaluate_verified(
     })
 }
 
-/// Validates an operation and binds its complete input to a canonical digest.
+/// Validates an operation and binds its decision-relevant input to a canonical digest.
 ///
 /// The returned envelope is ready for [`evaluate`]. Binding makes mutation or
-/// substitution of any decision input detectable at the evaluation boundary.
+/// substitution of any field consumed by the v1 decision operations detectable at
+/// the evaluation boundary. Rich display and provenance fields that the operations
+/// do not inspect are intentionally excluded to preserve Go/Rust wire parity.
 ///
 /// # Errors
 ///
@@ -104,9 +117,14 @@ pub fn bind_decision_input(request: DecisionRequest) -> Result<EvaluationRequest
     })
 }
 
+/// Typestate wrapper proving that a decision request satisfies all kernel bounds.
+///
+/// The tuple field is private and construction is restricted to [`Self::new`], so
+/// downstream evaluation can rely on the validation pass having completed.
 struct ValidatedDecisionRequest(DecisionRequest);
 
 impl ValidatedDecisionRequest {
+    /// Validates `request` and returns the only admissible internal representation.
     fn new(request: DecisionRequest) -> Result<Self, KernelError> {
         validate_decision_request(&request)?;
         Ok(Self(request))
@@ -145,6 +163,8 @@ pub fn compare(
     }
 
     decision.state = COMPARED.to_owned();
+    // Route identity represents the effective exposure. Exact path identity only
+    // distinguishes alternative proofs for that same route.
     let before_routes = paths_by_route(&before.paths);
     let after_routes = paths_by_route(&after.paths);
     let route_ids: BTreeSet<&str> = before_routes
@@ -229,6 +249,9 @@ pub fn verify_observed_absent(
         requested_reference_paths.push((*path).clone());
     }
 
+    // Reference runtimes prove that the original paths were recollected. Runtimes
+    // present only in the later snapshot are included as well so newly introduced
+    // evidence cannot participate without a current receipt.
     let reference_runtime_ids = security_path_runtime_ids(&requested_reference_paths);
     let required_runtime_ids = normalized_strings(
         reference_runtime_ids
@@ -296,6 +319,9 @@ pub fn rank_candidate_cuts(paths: &[SecurityPath]) -> Vec<CandidateEdgeCut> {
 
     let mut ordered_paths = paths.to_vec();
     sort_paths(&mut ordered_paths);
+    // Ordered paths and a BTreeMap make both representative-edge selection and
+    // final tie-breaking stable. If an edge ID appears on multiple paths, the
+    // first deterministically ordered path supplies the representative payload.
     let mut by_edge = BTreeMap::<String, Coverage>::new();
     for path in ordered_paths {
         let mut seen = BTreeSet::new();
@@ -345,6 +371,11 @@ pub fn rank_candidate_cuts(paths: &[SecurityPath]) -> Vec<CandidateEdgeCut> {
     candidates
 }
 
+/// Calculates the v1 digest over the fields consumed by the selected operation.
+///
+/// This field order mirrors the Go host's reduced wire structs. It is therefore a
+/// cross-language protocol: reordering fields, adding fields, or changing encodings
+/// requires a new schema identifier and parity vector.
 fn decision_input_digest(request: &DecisionRequest) -> Result<String, KernelError> {
     let mut hasher = DecisionInputHasher::new();
     match request {
@@ -377,9 +408,15 @@ fn decision_input_digest(request: &DecisionRequest) -> Result<String, KernelErro
     Ok(hasher.finish())
 }
 
+/// Domain-separated, length-prefixed encoder for the v1 input digest.
+///
+/// Length prefixes prevent adjacent strings from being resegmented into the same
+/// byte stream. Counts use fixed-width big-endian `u64` so 32-bit Wasm and 64-bit
+/// native hosts calculate identical digests.
 struct DecisionInputHasher(Sha256);
 
 impl DecisionInputHasher {
+    /// Starts a digest in the decision-input-v1 domain.
     fn new() -> Self {
         let mut digest = Sha256::new();
         digest.update(DECISION_INPUT_V1.as_bytes());
@@ -387,24 +424,32 @@ impl DecisionInputHasher {
         Self(digest)
     }
 
+    /// Appends one byte string with its length, preserving empty values distinctly.
     fn string(&mut self, value: &str) {
         self.unsigned(value.len());
         self.0.update(value.as_bytes());
     }
 
+    /// Appends a single canonical byte for a boolean value.
     fn boolean(&mut self, value: bool) {
         self.0.update([u8::from(value)]);
     }
 
+    /// Appends a collection length or bounded count as big-endian `u64`.
     fn unsigned(&mut self, value: usize) {
         self.0.update((value as u64).to_be_bytes());
     }
 
+    /// Finalizes the digest in the repository's `sha256:<lower-hex>` form.
     fn finish(self) -> String {
         format_sha256(self.0.finalize())
     }
 }
 
+/// Appends the authority, completeness, path, and declared snapshot-digest fields.
+///
+/// Receipt telemetry that is not consumed by these decisions is intentionally
+/// absent, matching the Go `rustSnapshotInput` projection.
 fn hash_snapshot(hasher: &mut DecisionInputHasher, snapshot: &Snapshot) {
     let receipt = &snapshot.collection_receipt;
     for value in [
@@ -445,6 +490,7 @@ fn hash_snapshot(hasher: &mut DecisionInputHasher, snapshot: &Snapshot) {
     hasher.string(&snapshot.digest);
 }
 
+/// Appends every per-runtime field used to establish fresh compatible collection.
 fn hash_runtime_receipt(hasher: &mut DecisionInputHasher, receipt: &RuntimeCollectionReceipt) {
     for value in [
         &receipt.source_runtime_id,
@@ -465,6 +511,10 @@ fn hash_runtime_receipt(hasher: &mut DecisionInputHasher, receipt: &RuntimeColle
     hash_strings(hasher, &receipt.limitations);
 }
 
+/// Appends the path identity and edge material consumed by kernel decisions.
+///
+/// Node display data, materiality, provenance, and owner display metadata do not
+/// affect comparison, verification, or ranking and are outside the v1 wire digest.
 fn hash_security_path(hasher: &mut DecisionInputHasher, path: &SecurityPath) {
     hasher.string(&path.id);
     hasher.string(&path.route_id);
@@ -478,6 +528,7 @@ fn hash_security_path(hasher: &mut DecisionInputHasher, path: &SecurityPath) {
     }
 }
 
+/// Appends the edge identity, relation, and runtime authority used by decisions.
 fn hash_proof_edge(hasher: &mut DecisionInputHasher, edge: &ProofEdge) {
     hasher.string(&edge.id);
     hasher.string(&edge.relation);
@@ -485,6 +536,7 @@ fn hash_proof_edge(hasher: &mut DecisionInputHasher, edge: &ProofEdge) {
     hash_strings(hasher, &edge.assertion_runtime_ids);
 }
 
+/// Appends an ordered string collection, including its element count.
 fn hash_strings(hasher: &mut DecisionInputHasher, values: &[String]) {
     hasher.unsigned(values.len());
     for value in values {
@@ -492,6 +544,10 @@ fn hash_strings(hasher: &mut DecisionInputHasher, values: &[String]) {
     }
 }
 
+/// Returns source snapshot digests in the operation's stable receipt order.
+///
+/// Comparisons emit earlier then later when an earlier snapshot exists;
+/// verification emits reference then later; cut ranking has no snapshot source.
 fn source_snapshot_digests(request: &DecisionRequest) -> Vec<String> {
     match request {
         DecisionRequest::Compare { before, after } => before
@@ -506,6 +562,11 @@ fn source_snapshot_digests(request: &DecisionRequest) -> Vec<String> {
     }
 }
 
+/// Applies operation-specific structural, uniqueness, and size validation.
+///
+/// Snapshot operations validate both semantic snapshot identity and the deeper
+/// bounded object graph. Ranking has no snapshot envelope, so it validates paths
+/// directly.
 fn validate_decision_request(request: &DecisionRequest) -> Result<(), KernelError> {
     match request {
         DecisionRequest::Compare { before, after } => {
@@ -540,6 +601,11 @@ fn validate_decision_request(request: &DecisionRequest) -> Result<(), KernelErro
     }
 }
 
+/// Bounds every snapshot string and repeated field reachable by the v1 kernel.
+///
+/// This pass is intentionally separate from [`validate_snapshot`]: public
+/// comparison helpers need semantic identity checks, while bound requests must
+/// additionally constrain work before hashing and Wasm evaluation.
 fn validate_snapshot_bounds(snapshot: &Snapshot) -> Result<(), KernelError> {
     for value in [
         &snapshot.id,
@@ -614,6 +680,11 @@ fn validate_snapshot_bounds(snapshot: &Snapshot) -> Result<(), KernelError> {
     Ok(())
 }
 
+/// Validates path, edge, and assertion-runtime bounds and local uniqueness.
+///
+/// Path identifiers are unique across the request. Edge identifiers need only be
+/// unique within one path because a shared edge is precisely what cut ranking
+/// aggregates across paths.
 fn validate_paths(paths: &[SecurityPath]) -> Result<(), KernelError> {
     if paths.len() > MAX_PATHS {
         return Err(KernelError::InvalidInput("too many security paths"));
@@ -655,6 +726,10 @@ fn validate_paths(paths: &[SecurityPath]) -> Result<(), KernelError> {
     Ok(())
 }
 
+/// Validates a bounded string list and rejects duplicates after trimming.
+///
+/// Values themselves are retained verbatim; trimming is only the identity rule
+/// used to prevent whitespace aliases from bypassing uniqueness checks.
 fn validate_unique_strings(
     values: &[String],
     maximum: usize,
@@ -674,6 +749,7 @@ fn validate_unique_strings(
     Ok(())
 }
 
+/// Requires a bounded string with at least one non-whitespace character.
 fn validate_required_string(value: &str, reason: &'static str) -> Result<(), KernelError> {
     validate_bounded_string(value)?;
     if value.trim().is_empty() {
@@ -682,6 +758,7 @@ fn validate_required_string(value: &str, reason: &'static str) -> Result<(), Ker
     Ok(())
 }
 
+/// Rejects a string whose UTF-8 representation exceeds the per-field byte limit.
 fn validate_bounded_string(value: &str) -> Result<(), KernelError> {
     if value.len() > MAX_STRING_BYTES {
         return Err(KernelError::InvalidInput("string exceeds size limit"));
@@ -689,6 +766,11 @@ fn validate_bounded_string(value: &str) -> Result<(), KernelError> {
     Ok(())
 }
 
+/// Validates the semantic identity, declared digest shape, and observation time.
+///
+/// This does not recompute the snapshot digest: the snapshot producer owns that
+/// content-addressing contract, while this kernel binds the supplied digest into
+/// its input receipt and validates the decision fields independently.
 fn validate_snapshot(snapshot: &Snapshot) -> Result<(), KernelError> {
     if snapshot.id.trim().is_empty()
         || snapshot.digest.trim().is_empty()
@@ -710,12 +792,14 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), KernelError> {
     Ok(())
 }
 
+/// Checks the repository's prefixed 256-bit hexadecimal digest representation.
 fn is_sha256_digest(value: &str) -> bool {
     value
         .strip_prefix("sha256:")
         .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
+/// Prevents comparison across tenant, scope, detector, or detector-revision boundaries.
 fn validate_shared_scope(before: &Snapshot, after: &Snapshot) -> Result<(), KernelError> {
     if before.tenant_id != after.tenant_id
         || before.scope_id != after.scope_id
@@ -729,6 +813,7 @@ fn validate_shared_scope(before: &Snapshot, after: &Snapshot) -> Result<(), Kern
     Ok(())
 }
 
+/// Requires a strict temporal advance so equal observations cannot imply change.
 fn validate_after_time(before: &Snapshot, after: &Snapshot) -> Result<(), KernelError> {
     if parse_time(&after.observed_at)? <= parse_time(&before.observed_at)? {
         return Err(KernelError::InvalidInput(
@@ -738,15 +823,25 @@ fn validate_after_time(before: &Snapshot, after: &Snapshot) -> Result<(), Kernel
     Ok(())
 }
 
+/// Parses an RFC 3339 time after removing insignificant surrounding whitespace.
 fn parse_time(value: &str) -> Result<OffsetDateTime, KernelError> {
     OffsetDateTime::parse(value.trim(), &Rfc3339).map_err(|_| KernelError::InvalidTime)
 }
 
+/// Distinguishes an asserted timestamp from empty and Go zero-time encodings.
+///
+/// Full RFC 3339 syntax is checked for snapshot observation times. Receipt times
+/// are authority claims supplied by the host and currently use this presence test.
 fn nonzero_time(value: &str) -> bool {
     let value = value.trim();
     !value.is_empty() && value != "0001-01-01T00:00:00Z"
 }
 
+/// Evaluates the top-level collection proof required to infer path absence.
+///
+/// Completeness requires agreement between detector state, graph checkpoint,
+/// path counts, lease ownership, and an unqualified collection receipt. Per-runtime
+/// freshness is checked separately by [`verification_runtime_receipt_reasons`].
 fn snapshot_is_complete(snapshot: &Snapshot) -> bool {
     let receipt = &snapshot.collection_receipt;
     snapshot.completeness.state == COMPLETE
@@ -765,6 +860,7 @@ fn snapshot_is_complete(snapshot: &Snapshot) -> bool {
         && receipt.limitations.is_empty()
 }
 
+/// Groups paths by effective route and sorts each route's exact proof identities.
 fn paths_by_route(paths: &[SecurityPath]) -> BTreeMap<String, Vec<&SecurityPath>> {
     let mut result = BTreeMap::<String, Vec<&SecurityPath>>::new();
     for path in paths {
@@ -776,22 +872,26 @@ fn paths_by_route(paths: &[SecurityPath]) -> BTreeMap<String, Vec<&SecurityPath>
     result
 }
 
+/// Reports whether two route groups contain the same exact proof identities.
 fn same_path_ids(left: &[&SecurityPath], right: &[&SecurityPath]) -> bool {
     path_ids(left) == path_ids(right)
 }
 
+/// Copies and sorts identifiers from borrowed paths.
 fn path_ids(paths: &[&SecurityPath]) -> Vec<String> {
     let mut ids = paths.iter().map(|path| path.id.clone()).collect::<Vec<_>>();
     ids.sort();
     ids
 }
 
+/// Copies and sorts identifiers from an owned path slice.
 fn path_ids_owned(paths: &[SecurityPath]) -> Vec<String> {
     let mut ids = paths.iter().map(|path| path.id.clone()).collect::<Vec<_>>();
     ids.sort();
     ids
 }
 
+/// Orders paths by effective route and then exact proof identity.
 fn sort_paths(paths: &mut [SecurityPath]) {
     paths.sort_by(|left, right| {
         left.route_id
@@ -800,6 +900,7 @@ fn sort_paths(paths: &mut [SecurityPath]) {
     });
 }
 
+/// Trims, removes empty values, deduplicates, and lexically sorts strings.
 fn normalized_strings<'a>(values: impl Iterator<Item = &'a str>) -> Vec<String> {
     values
         .map(str::trim)
@@ -810,6 +911,10 @@ fn normalized_strings<'a>(values: impl Iterator<Item = &'a str>) -> Vec<String> 
         .collect()
 }
 
+/// Collects every source or assertion runtime that contributes an edge to `paths`.
+///
+/// Ownership edges participate because they are proof material too. Empty values
+/// are ignored and the returned runtime identities are sorted and unique.
 fn security_path_runtime_ids(paths: &[SecurityPath]) -> Vec<String> {
     let mut runtime_ids = BTreeSet::new();
     for path in paths {
@@ -833,6 +938,12 @@ fn security_path_runtime_ids(paths: &[SecurityPath]) -> Vec<String> {
     runtime_ids.into_iter().collect()
 }
 
+/// Returns stable reasons that runtime evidence cannot prove fresh absence.
+///
+/// Every required runtime must be declared in the later proof scope and have a
+/// complete current receipt. Runtimes that supported a requested reference path
+/// must additionally preserve provider family and configuration revision; a
+/// changed collection contract cannot prove that the old evidence disappeared.
 fn verification_runtime_receipt_reasons(
     reference: &CollectionReceipt,
     after: &CollectionReceipt,
@@ -850,6 +961,8 @@ fn verification_runtime_receipt_reasons(
         reference_runtime_ids.iter().map(String::as_str).collect();
     let mut reasons = Vec::new();
     for runtime_id in required_runtime_ids {
+        // Missing scope or receipt authority is terminal for this runtime: there is
+        // no trustworthy receipt against which deeper fields can be evaluated.
         if !after_scope.contains(runtime_id.as_str()) {
             reasons.push(format!("verification_runtime_scope_missing:{runtime_id}"));
             continue;
@@ -883,6 +996,10 @@ fn verification_runtime_receipt_reasons(
     normalized_strings(reasons.iter().map(String::as_str))
 }
 
+/// Indexes non-empty runtime receipts by their trimmed authority identity.
+///
+/// Bound requests have already rejected duplicates, so collection into a map
+/// cannot silently replace one validated receipt with another.
 fn runtime_receipts_by_id(
     receipts: &[RuntimeCollectionReceipt],
 ) -> BTreeMap<&str, &RuntimeCollectionReceipt> {
@@ -895,6 +1012,10 @@ fn runtime_receipts_by_id(
         .collect()
 }
 
+/// Expands one runtime receipt into stable, caller-prefixed limitation codes.
+///
+/// The prefix binds otherwise generic failures to the exact required runtime.
+/// Provider-supplied limitation codes are preserved after the same prefix.
 fn runtime_receipt_incomplete_reasons(
     prefix: &str,
     receipt: &RuntimeCollectionReceipt,
@@ -947,6 +1068,11 @@ fn runtime_receipt_incomplete_reasons(
     reasons
 }
 
+/// Maps relation semantics to the deterministic cut-ranking tie-break order.
+///
+/// Direct reachability ranks ahead of privilege and attachment relations;
+/// `belongs_to` ranks last because it usually describes containment rather than
+/// an actionable access edge. Unknown relations retain a stable middle priority.
 fn candidate_edge_cut_priority(relation: &str) -> u8 {
     match relation {
         "can_reach" => 0,
@@ -957,6 +1083,10 @@ fn candidate_edge_cut_priority(relation: &str) -> u8 {
     }
 }
 
+/// Calculates the v1 content digest for a comparison decision.
+///
+/// The digest excludes its own field and preserves the already normalized result
+/// order. The domain label prevents reuse as another decision type.
 fn comparison_digest(decision: &ComparisonDecision) -> String {
     let mut values = vec![
         "security-path-comparison-decision/v1".to_owned(),
@@ -979,6 +1109,7 @@ fn comparison_digest(decision: &ComparisonDecision) -> String {
     digest_strings(&values)
 }
 
+/// Calculates the v1 content digest for an absence-verification decision.
 fn verification_digest(decision: &VerificationDecision) -> String {
     let mut values = vec![
         "security-path-verification-decision/v1".to_owned(),
@@ -1000,6 +1131,7 @@ fn verification_digest(decision: &VerificationDecision) -> String {
     digest_strings(&values)
 }
 
+/// Appends labeled repeated values to a decision-digest transcript.
 fn append_values(target: &mut Vec<String>, label: &str, values: &[String]) {
     for value in values {
         target.push(label.to_owned());
@@ -1007,6 +1139,10 @@ fn append_values(target: &mut Vec<String>, label: &str, values: &[String]) {
     }
 }
 
+/// Appends the decision-relevant fields of ranked cut candidates.
+///
+/// Full edge provenance is intentionally absent because the decision output and
+/// its digest expose only edge identity, relation, coverage, rank, and state.
 fn append_cut_values(target: &mut Vec<String>, cuts: &[CandidateEdgeCut]) {
     for cut in cuts {
         target.push("cut".to_owned());
@@ -1021,6 +1157,11 @@ fn append_cut_values(target: &mut Vec<String>, cuts: &[CandidateEdgeCut]) {
     }
 }
 
+/// Hashes a normalized decision transcript using the established v1 encoding.
+///
+/// Transcript elements are separated by a NUL byte. This legacy output encoding
+/// is distinct from the length-prefixed input digest and must remain byte-for-byte
+/// stable until a new decision-digest version is introduced.
 fn digest_strings(values: &[String]) -> String {
     let mut digest = Sha256::new();
     for (index, value) in values.iter().enumerate() {
@@ -1032,6 +1173,7 @@ fn digest_strings(values: &[String]) -> String {
     format_sha256(digest.finalize())
 }
 
+/// Formats digest bytes as lowercase hexadecimal with the `sha256:` prefix.
 fn format_sha256(value: impl IntoIterator<Item = u8>) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(71);
