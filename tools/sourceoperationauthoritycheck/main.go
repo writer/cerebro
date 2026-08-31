@@ -10,6 +10,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"io"
 	"io/fs"
 	"os"
@@ -23,9 +27,29 @@ import (
 )
 
 const (
-	ledgerRelPath  = "docs/engineering/source-operation-authority-ledger.json"
-	ledgerSchemaV1 = "cerebro.source-operation-authority/v1"
+	ledgerRelPath                    = "docs/engineering/source-operation-authority-ledger.json"
+	ledgerSchemaV2                   = "cerebro.source-operation-authority/v2"
+	goASTDeclarationCanonicalization = "go_ast_declaration_sha256/v1"
 )
+
+var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
+	"durable_pull_dispatch": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "Service.readSourcePull",
+	},
+	"preview_rust_selector": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "rustSourceFamily",
+	},
+	"rust_authoritative_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: "RustAuthoritativeFamily",
+	},
+	"tailscale_authoritative_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: "TailscaleFamily",
+	},
+}
 
 var validStates = map[string]struct{}{
 	"authoritative":   {},
@@ -95,12 +119,30 @@ type authorityOverride struct {
 	authorityDefinition
 }
 
+type runtimeImplementation struct {
+	Canonicalization string                 `json:"canonicalization"`
+	Bindings         []goDeclarationBinding `json:"bindings"`
+}
+
+type goDeclarationBinding struct {
+	Role         string `json:"role"`
+	Path         string `json:"path"`
+	Symbol       string `json:"symbol"`
+	DigestSHA256 string `json:"digest_sha256"`
+}
+
+type runtimeBindingRequirement struct {
+	Path   string
+	Symbol string
+}
+
 type authorityLedger struct {
-	SchemaVersion string                         `json:"schema_version"`
-	Revision      int                            `json:"revision"`
-	Inventory     inventory                      `json:"inventory"`
-	Defaults      map[string]authorityDefinition `json:"defaults"`
-	Overrides     []authorityOverride            `json:"overrides"`
+	SchemaVersion         string                         `json:"schema_version"`
+	Revision              int                            `json:"revision"`
+	Inventory             inventory                      `json:"inventory"`
+	RuntimeImplementation runtimeImplementation          `json:"runtime_implementation"`
+	Defaults              map[string]authorityDefinition `json:"defaults"`
+	Overrides             []authorityOverride            `json:"overrides"`
 }
 
 type catalogHeader struct {
@@ -119,9 +161,10 @@ type catalogFamily struct {
 }
 
 type checkSummary struct {
-	Inventory inventory
-	States    map[string]int
-	Overrides int
+	Inventory       inventory
+	States          map[string]int
+	Overrides       int
+	RuntimeBindings int
 }
 
 func main() {
@@ -133,11 +176,12 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf(
-		"source-operation-authority-check: %d families (%d pull, %d push), %d overrides, states=%s, digest=%s\n",
+		"source-operation-authority-check: %d families (%d pull, %d push), %d overrides, %d runtime bindings, states=%s, digest=%s\n",
 		summary.Inventory.FamilyCount,
 		summary.Inventory.PullFamilyCount,
 		summary.Inventory.PushFamilyCount,
 		summary.Overrides,
+		summary.RuntimeBindings,
 		formatStateCounts(summary.States),
 		summary.Inventory.DigestSHA256,
 	)
@@ -182,7 +226,12 @@ func checkRepository(root string) (checkSummary, error) {
 		}
 		states[definition.State]++
 	}
-	return checkSummary{Inventory: actualInventory, States: states, Overrides: len(ledger.Overrides)}, nil
+	return checkSummary{
+		Inventory:       actualInventory,
+		States:          states,
+		Overrides:       len(ledger.Overrides),
+		RuntimeBindings: len(ledger.RuntimeImplementation.Bindings),
+	}, nil
 }
 
 func loadLedger(path string) (authorityLedger, error) {
@@ -334,11 +383,14 @@ func inventoryForFamilies(families []catalogFamily) inventory {
 }
 
 func validateLedger(root string, ledger authorityLedger, families []catalogFamily) error {
-	if ledger.SchemaVersion != ledgerSchemaV1 {
-		return fmt.Errorf("schema_version must be %q", ledgerSchemaV1)
+	if ledger.SchemaVersion != ledgerSchemaV2 {
+		return fmt.Errorf("schema_version must be %q", ledgerSchemaV2)
 	}
 	if ledger.Revision < 1 {
 		return fmt.Errorf("revision must be positive")
+	}
+	if err := validateRuntimeImplementation(root, ledger.RuntimeImplementation); err != nil {
+		return err
 	}
 	if len(ledger.Defaults) != 2 {
 		return fmt.Errorf("defaults must contain exactly pull and push authority")
@@ -379,6 +431,121 @@ func validateLedger(root string, ledger authorityLedger, families []catalogFamil
 		}
 	}
 	return nil
+}
+
+func validateRuntimeImplementation(root string, implementation runtimeImplementation) error {
+	if implementation.Canonicalization != goASTDeclarationCanonicalization {
+		return fmt.Errorf("runtime_implementation.canonicalization must be %q", goASTDeclarationCanonicalization)
+	}
+	if len(implementation.Bindings) != len(requiredRuntimeBindings) {
+		return fmt.Errorf("runtime_implementation.bindings must contain exactly %d required bindings", len(requiredRuntimeBindings))
+	}
+	seen := make(map[string]struct{}, len(implementation.Bindings))
+	for index, binding := range implementation.Bindings {
+		path := fmt.Sprintf("runtime_implementation.bindings[%d]", index)
+		requirement, ok := requiredRuntimeBindings[binding.Role]
+		if !ok {
+			return fmt.Errorf("%s.role %q is not a required runtime binding", path, binding.Role)
+		}
+		if _, duplicate := seen[binding.Role]; duplicate {
+			return fmt.Errorf("%s duplicates role %q", path, binding.Role)
+		}
+		seen[binding.Role] = struct{}{}
+		if binding.Path != requirement.Path || binding.Symbol != requirement.Symbol {
+			return fmt.Errorf(
+				"%s must bind %s#%s",
+				path,
+				requirement.Path,
+				requirement.Symbol,
+			)
+		}
+		if len(binding.DigestSHA256) != sha256.Size*2 || strings.ToLower(binding.DigestSHA256) != binding.DigestSHA256 {
+			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
+		}
+		if _, err := hex.DecodeString(binding.DigestSHA256); err != nil {
+			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
+		}
+		actualDigest, err := canonicalGoDeclarationDigest(root, binding.Path, binding.Symbol)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if binding.DigestSHA256 != actualDigest {
+			return fmt.Errorf(
+				"runtime implementation drift for %s: ledger has digest=%s; %s#%s has digest=%s; review the production routing change and refresh the ledger binding only when it is deliberate",
+				binding.Role,
+				binding.DigestSHA256,
+				binding.Path,
+				binding.Symbol,
+				actualDigest,
+			)
+		}
+	}
+	return nil
+}
+
+func canonicalGoDeclarationDigest(root, relPath, symbol string) (string, error) {
+	clean := filepath.Clean(relPath)
+	if relPath == "" || filepath.IsAbs(relPath) || clean != relPath || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path must be a clean repository-relative path")
+	}
+	if filepath.Ext(clean) != ".go" {
+		return "", fmt.Errorf("%s must identify Go source", relPath)
+	}
+	fullPath := filepath.Join(root, clean)
+	info, err := os.Lstat(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("stat %s: %w", relPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s must be a regular non-symlink file", relPath)
+	}
+	payload, err := os.ReadFile(fullPath) // #nosec G304 -- repository-relative path is fixed by requiredRuntimeBindings.
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", relPath, err)
+	}
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, fullPath, payload, 0)
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", relPath, err)
+	}
+	var matched *ast.FuncDecl
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || goDeclarationSymbol(function) != symbol {
+			continue
+		}
+		if matched != nil {
+			return "", fmt.Errorf("%s declares %s more than once", relPath, symbol)
+		}
+		matched = function
+	}
+	if matched == nil {
+		return "", fmt.Errorf("%s does not declare %s", relPath, symbol)
+	}
+	var canonical bytes.Buffer
+	if err := format.Node(&canonical, token.NewFileSet(), matched); err != nil {
+		return "", fmt.Errorf("canonicalize %s#%s: %w", relPath, symbol, err)
+	}
+	digest := sha256.Sum256(canonical.Bytes())
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func goDeclarationSymbol(function *ast.FuncDecl) string {
+	if function == nil || function.Name == nil {
+		return ""
+	}
+	if function.Recv == nil || len(function.Recv.List) != 1 {
+		return function.Name.Name
+	}
+	receiver := function.Recv.List[0].Type
+	if pointer, ok := receiver.(*ast.StarExpr); ok {
+		receiver = pointer.X
+	}
+	identifier, ok := receiver.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+	return identifier.Name + "." + function.Name.Name
 }
 
 func validateDefinition(root, mode, path string, definition authorityDefinition, family *catalogFamily) error {
