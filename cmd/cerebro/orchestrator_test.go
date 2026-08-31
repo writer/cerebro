@@ -1402,6 +1402,22 @@ func TestOrchestratorLeaseRenewalFailsClosedWhenTaskPanics(t *testing.T) {
 	}
 }
 
+func TestOrchestratorLeaseRenewalNormalStopDoesNotReportPanic(t *testing.T) {
+	cancelled := make(chan error, 1)
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+	stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), &leaseRuntimeStore{}, runtime, "owner-1", func(err error) {
+		cancelled <- err
+	}, time.Hour)
+	if err := stopRenewal(); err != nil {
+		t.Fatalf("stopRenewal() error = %v, want nil", err)
+	}
+	select {
+	case cause := <-cancelled:
+		t.Fatalf("normal renewal stop canceled work with %v", cause)
+	case <-time.After(10 * time.Millisecond):
+	}
+}
+
 func TestJoinOrchestratorRunErrorPreservesRenewalAndReleaseFailures(t *testing.T) {
 	renewErr := fmt.Errorf("%w: runtime-1", ports.ErrSourceRuntimeLeaseLost)
 	releaseErr := errors.New("release failed")
@@ -1432,6 +1448,35 @@ func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
 	}
 	if got := result.Runtimes[0].Sync; got != "skipped" {
 		t.Fatalf("runtime sync status = %q, want skipped", got)
+	}
+}
+
+func TestRunOrchestratorIterationClassifiesInitialFenceReadUncertainty(t *testing.T) {
+	want := errors.New("fence store unavailable")
+	store := &orchestratorRuntimeStore{
+		runtime:      &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+		acquired:     true,
+		fenceReadErr: want,
+	}
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(nil, store, nil, nil),
+		nil,
+		nil,
+		orchestratorOptions{},
+		1,
+	)
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, want) {
+		t.Fatalf("runOrchestratorIteration() error = %v, want lease loss preserving %v", err, want)
+	}
+	if len(result.Runtimes) != 1 || result.Runtimes[0].Sync != "failed" {
+		t.Fatalf("runtime results = %#v, want one failed sync", result.Runtimes)
+	}
+	if store.releaseID != "runtime-1" {
+		t.Fatalf("released runtime = %q, want runtime-1", store.releaseID)
 	}
 }
 

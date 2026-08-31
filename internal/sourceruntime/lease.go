@@ -87,7 +87,7 @@ func currentSourceRuntimeLeaseFence(ctx context.Context, runtimeID string) (port
 	}
 	fence, err := authority.reader.ReadSourceRuntimeLeaseFence(ctx, runtimeID, bound.Owner)
 	if err != nil {
-		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: refresh source runtime lease fence %q: %w", ports.ErrSourceRuntimeLeaseLost, runtimeID, err)
+		return ports.SourceRuntimeLeaseFence{}, sourceRuntimeLeaseAuthorityReadError(ctx, fmt.Sprintf("refresh source runtime lease fence %q", runtimeID), err)
 	}
 	fence.Owner = strings.TrimSpace(fence.Owner)
 	fence.ExpiresAt = fence.ExpiresAt.UTC()
@@ -114,7 +114,7 @@ func WithCurrentSourceRuntimeLeaseFence(ctx context.Context, store ports.SourceR
 	owner = strings.TrimSpace(owner)
 	fence, err := reader.ReadSourceRuntimeLeaseFence(ctx, runtimeID, owner)
 	if err != nil {
-		return ctx, fmt.Errorf("read source runtime lease fence %q: %w", runtimeID, err)
+		return ctx, sourceRuntimeLeaseAuthorityReadError(ctx, fmt.Sprintf("read source runtime lease fence %q", runtimeID), err)
 	}
 	fence.Owner = strings.TrimSpace(fence.Owner)
 	fence.ExpiresAt = fence.ExpiresAt.UTC()
@@ -200,27 +200,36 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 	syncCtx, fenceErr := WithCurrentSourceRuntimeLeaseFence(syncCtx, opts.LeaseStore, runtimeID, owner)
 	if fenceErr != nil {
 		cancelSync(fenceErr)
-		_ = releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
-		return nil, fenceErr
+		releaseErr := releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
+		if releaseErr != nil {
+			releaseErr = fmt.Errorf("release source runtime lease %q: %w", runtimeID, releaseErr)
+		}
+		return nil, errors.Join(fenceErr, releaseErr)
 	}
 	stopRenewal := startLeaseRenewal(syncCtx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
 	response, syncErr := s.Sync(syncCtx, req)
 	cancelSync(nil)
 	renewalErr := stopRenewal()
 	releaseErr := releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
+	if renewalErr != nil {
+		renewalErr = fmt.Errorf("renew source runtime lease %q: %w", runtimeID, renewalErr)
+	}
+	if releaseErr != nil {
+		releaseErr = fmt.Errorf("release source runtime lease %q: %w", runtimeID, releaseErr)
+	}
 	if errors.Is(renewalErr, ports.ErrSourceRuntimeLeaseLost) {
-		return nil, fmt.Errorf("renew source runtime lease %q: %w", runtimeID, renewalErr)
+		return nil, errors.Join(renewalErr, releaseErr)
 	}
 	if syncErr != nil {
-		return nil, syncErr
+		return nil, errors.Join(syncErr, renewalErr, releaseErr)
 	}
 	if renewalErr != nil {
 		errorKind = "lease_renew_failed"
-		return nil, fmt.Errorf("renew source runtime lease %q: %w", runtimeID, renewalErr)
+		return nil, errors.Join(renewalErr, releaseErr)
 	}
 	if releaseErr != nil {
 		errorKind = "lease_release_failed"
-		return nil, fmt.Errorf("release source runtime lease %q: %w", runtimeID, releaseErr)
+		return nil, releaseErr
 	}
 	return response, nil
 }
@@ -282,37 +291,40 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 	interval := LeaseRenewalInterval(ttl)
 	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
 		defer close(done)
+		normalExit := false
+		var taskErr error
 		defer func() {
-			leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
-			select {
-			case done <- leaseLost:
-				cancelWork(leaseLost)
-			default:
+			if !normalExit {
+				taskErr = sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
+				cancelWork(taskErr)
 			}
+			done <- taskErr
 		}()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-renewCtx.Done():
-				done <- nil
+				normalExit = true
 				return
 			case <-ticker.C:
 				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
 				if err != nil {
 					if sourceRuntimeLeaseRenewalStopped(renewCtx, err) {
-						done <- nil
+						normalExit = true
 						return
 					}
 					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, err)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 				if !renewed {
 					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, nil)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 			}
@@ -333,6 +345,13 @@ func sourceRuntimeLeaseRenewalLoss(runtimeID string, cause error) error {
 
 func sourceRuntimeLeaseRenewalStopped(ctx context.Context, err error) bool {
 	return ctx.Err() != nil && errors.Is(err, ctx.Err())
+}
+
+func sourceRuntimeLeaseAuthorityReadError(ctx context.Context, operation string, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	return fmt.Errorf("%w: %s: %w", ports.ErrSourceRuntimeLeaseLost, operation, err)
 }
 
 func LeaseRenewalInterval(ttl time.Duration) time.Duration {
@@ -374,37 +393,40 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 	done := make(chan error, 1)
 	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
 		defer close(done)
+		normalExit := false
+		var taskErr error
 		defer func() {
-			leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
-			select {
-			case done <- leaseLost:
-				cancelWork(leaseLost)
-			default:
+			if !normalExit {
+				taskErr = sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
+				cancelWork(taskErr)
 			}
+			done <- taskErr
 		}()
 		ticker := time.NewTicker(LeaseRenewalInterval(ttl))
 		defer ticker.Stop()
 		for {
 			select {
 			case <-renewCtx.Done():
-				done <- nil
+				normalExit = true
 				return
 			case <-ticker.C:
 				renewed, renewErr := store.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
 				if renewErr != nil {
 					if sourceRuntimeLeaseRenewalStopped(renewCtx, renewErr) {
-						done <- nil
+						normalExit = true
 						return
 					}
 					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, renewErr)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 				if !renewed {
 					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, nil)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 			}
