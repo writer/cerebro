@@ -1,4 +1,8 @@
 //! Closed payload-backed rule decisions used by the production Wasm dispatcher.
+//!
+//! This facade admits exactly the Aurelius and Cosmo families. Shared scope,
+//! payload, timestamp, and identity mechanics live in `model`; each sibling rule
+//! owns only its provider schema and lifecycle predicates.
 
 #[path = "payload_findings/aurelius.rs"]
 mod aurelius;
@@ -19,13 +23,19 @@ pub(crate) use model::{
     MAX_PAYLOAD_STRING_BYTES, PersistencePath, ScopedDecision, ScopedPersistenceAction,
 };
 
+/// Publicly re-exported Aurelius catalog identifier.
 pub(crate) const AURELIUS_RULE_ID: &str = aurelius::RULE_ID;
+/// Publicly re-exported Aurelius definition commitment.
 pub(crate) const AURELIUS_DEFINITION_DIGEST: &str = aurelius::DEFINITION_DIGEST;
+/// Publicly re-exported Cosmo catalog identifier.
 pub(crate) const COSMO_RULE_ID: &str = cosmo::RULE_ID;
+/// Publicly re-exported Cosmo definition commitment.
 pub(crate) const COSMO_DEFINITION_DIGEST: &str = cosmo::DEFINITION_DIGEST;
 
 /// Evaluates one of the two closed payload-backed rule families.
 pub(crate) fn evaluate(request: &RuleRequest) -> Result<Decision, KernelError> {
+    // Trim only for closed catalog lookup; the outer request digest continues to
+    // bind the exact caller-supplied string.
     match request.rule_id.trim() {
         aurelius::RULE_ID => aurelius::evaluate(request),
         cosmo::RULE_ID => cosmo::evaluate(request),
@@ -56,6 +66,9 @@ pub(crate) fn evaluate_scoped_output_with(
     request: &RuleRequest,
     evaluator: impl FnOnce(&RuleRequest) -> Result<EvaluatorOutput, KernelError>,
 ) -> Result<ScopedDecision, KernelError> {
+    // These test seams model the production host contract: workspace must exist,
+    // one evaluator runs, and both its receipt and decision are validated before
+    // trusted scope is attached.
     if request.runtime.workspace_id.trim().is_empty() {
         return Err(KernelError::MissingTrustedContext);
     }
@@ -81,6 +94,9 @@ fn expected_receipt(
     request: &RuleRequest,
     decision: &Decision,
 ) -> Result<EvaluatorReceipt, KernelError> {
+    // Commit every trusted coordinate, replay key, ordered host attribute, and
+    // raw provider byte. NUL separators and a fixed-width sequence prevent field
+    // boundary ambiguity in the parity receipt.
     let output =
         serde_json::to_vec(decision).map_err(|_| KernelError::MalformedEvaluatorResponse)?;
     let mut input = Vec::new();
@@ -131,6 +147,7 @@ fn validate_evaluator_receipt(
     request: &RuleRequest,
     output: &EvaluatorOutput,
 ) -> Result<(), KernelError> {
+    // Equality covers scope, rule definition, exact input/output, and action.
     let expected = expected_receipt(request, &output.decision)?;
     if output.receipt != expected {
         return Err(KernelError::InvalidEvaluatorReceipt);
@@ -143,6 +160,8 @@ fn validate_evaluator_decision(
     request: &RuleRequest,
     decision: &Decision,
 ) -> Result<(), KernelError> {
+    // First enforce the one-of action shape, then restrict the action vocabulary
+    // to the requested lifecycle operation.
     let structural = match decision.action {
         Action::None => decision.anchor.is_empty() && decision.finding.is_none(),
         Action::Open => decision.anchor.is_empty() && decision.finding.is_some(),
@@ -161,6 +180,8 @@ fn validate_evaluator_decision(
     if !allowed {
         return Err(KernelError::MalformedEvaluatorResponse);
     }
+    // A returned finding must bind the trusted runtime coordinates and use its
+    // deterministic fingerprint as lifecycle identity.
     if let Some(finding) = &decision.finding
         && (finding.tenant_id != request.runtime.tenant_id.trim()
             || finding.runtime_id != request.runtime.runtime_id.trim()

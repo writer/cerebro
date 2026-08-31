@@ -24,14 +24,23 @@ use futures_util::StreamExt;
 use reqwest::{Client, Response, StatusCode, Url, header};
 use serde::{Deserialize, Serialize};
 
+/// Catalog provider identifier accepted by the HTTP adapter.
 const ACCESS_APPROVALS_PROVIDER: &str = "access-approvals";
+/// Fixed provider-side attribution for mutations initiated by graph actions.
 const ACCESS_APPROVALS_SOURCE: &str = "cerebro:graph_action";
+/// Default end-to-end deadline for one provider request.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Lower deadline bound, preventing configurations that cannot make progress.
 const MIN_TIMEOUT: Duration = Duration::from_millis(100);
+/// Upper deadline bound on an unresponsive provider operation.
 const MAX_TIMEOUT: Duration = Duration::from_secs(60);
+/// Maximum accepted configuration size for the provider origin and base path.
 const MAX_BASE_URL_BYTES: usize = 2_048;
+/// Maximum credential size accepted before constructing an authorization header.
 const MAX_BEARER_TOKEN_BYTES: usize = 16 * 1_024;
+/// Maximum successful response retained as receipt evidence.
 const MAX_SUCCESS_BODY_BYTES: usize = 1 << 20;
+/// Maximum error response drained before returning its status classification.
 const MAX_ERROR_BODY_BYTES: usize = 4 << 10;
 
 #[derive(Clone)]
@@ -47,6 +56,9 @@ pub struct AccessApprovalsConfig {
 
 impl AccessApprovalsConfig {
     /// Creates configuration with the default ten-second timeout.
+    ///
+    /// Validation is deferred to [`AccessApprovalsClient::new`] so callers can
+    /// construct and amend configuration before attempting to build a client.
     pub fn new(base_url: impl Into<String>, bearer_token: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
@@ -62,8 +74,11 @@ impl AccessApprovalsConfig {
 /// The client rejects redirects, bounds response bodies, and performs no
 /// automatic mutation retry. Clone shares the underlying connection pool.
 pub struct AccessApprovalsClient {
+    /// Validated origin and optional deployment base path.
     base_url: Url,
+    /// Secret copied into each authenticated request and never receipt material.
     bearer_token: String,
+    /// Redirect-free client whose timeout covers the complete request.
     client: Client,
 }
 
@@ -115,6 +130,7 @@ impl ProviderStatus {
 impl TryFrom<&str> for ProviderStatus {
     type Error = ProviderError;
 
+    /// Parses the closed provider-state vocabulary without accepting aliases.
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "pending" => Ok(Self::Pending),
@@ -240,34 +256,68 @@ impl fmt::Display for ProviderError {
 impl Error for ProviderError {}
 
 #[derive(Serialize)]
+/// Mutation body sent to access-approvals.
+///
+/// The target and all correlation fields originate in the validated durable
+/// dispatch. The bearer credential is transport metadata and is never included
+/// in this serializable body or its digest.
 struct UserActionRequest<'a> {
+    /// Provider's legacy field for either a user email or durable user ID.
     email_or_user_id: &'a str,
+    /// Fixed attribution understood by the provider audit trail.
     source: &'static str,
+    /// Stable replay key chosen before entering the provider adapter.
     idempotency_key: &'a str,
+    /// Tenant authority copied from the durable dispatch.
     tenant_id: &'a str,
+    /// Finding that authorized the requested action.
     finding_id: &'a str,
 }
 
 #[derive(Deserialize)]
+/// Provider receipt decoded from both mutation and observation responses.
+///
+/// Correlation fields default only to make their absence a binding failure with
+/// a single error class. They are never treated as optional during validation.
 struct UserActionResponse {
+    /// Provider-owned action identifier used by the observation endpoint.
     id: String,
+    /// Provider operation, which must echo the dispatch operation.
     action: String,
+    /// Raw member of the closed [`ProviderStatus`] vocabulary.
     status: String,
+    /// Provider target, which must echo the dispatch target.
     target: String,
+    /// Echoed replay key; a missing value becomes empty and fails binding.
     #[serde(default)]
     idempotency_key: String,
+    /// Echoed tenant; a missing value becomes empty and fails binding.
     #[serde(default)]
     tenant_id: String,
+    /// Echoed finding; a missing value becomes empty and fails binding.
     #[serde(default)]
     finding_id: String,
+    /// Provider-reported last transition time in Unix seconds.
     #[serde(default)]
     updated_at_unix: Option<u64>,
+    /// Provider-reported terminal transition time in Unix seconds.
     #[serde(default)]
     completed_at_unix: Option<u64>,
 }
 
 impl AccessApprovalsClient {
     /// Validates configuration and builds a redirect-free bounded HTTP client.
+    ///
+    /// HTTPS is required except for literal loopback addresses and `localhost`,
+    /// which permit HTTP for local tests. User information, query parameters,
+    /// and fragments are rejected so request construction cannot inherit hidden
+    /// authority or routing input from the base URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidConfiguration`] when the URL, bearer
+    /// token, timeout, or underlying HTTP client configuration violates the
+    /// adapter bounds.
     pub fn new(config: AccessApprovalsConfig) -> Result<Self, ProviderError> {
         let base_url = validate_base_url(&config.base_url)?;
         let bearer_token = validate_bearer_token(config.bearer_token)?;
@@ -292,6 +342,17 @@ impl AccessApprovalsClient {
     /// success body, or a malformed success receipt all return
     /// [`ProviderError::DispatchAmbiguous`]. The caller must reconcile by the
     /// idempotency key rather than blindly retrying.
+    ///
+    /// The request digest covers the exact JSON body before transport metadata
+    /// such as the bearer credential is applied. This function performs exactly
+    /// one HTTP attempt and never follows a redirect.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidDispatch`] before network access for an
+    /// invalid digest or catalog route, [`ProviderError::DispatchRejected`] for
+    /// a definite provider rejection, and [`ProviderError::DispatchAmbiguous`]
+    /// whenever the mutation outcome cannot be proven.
     pub async fn dispatch(
         &self,
         dispatch: &ActionDispatch,
@@ -311,6 +372,8 @@ impl AccessApprovalsClient {
         };
         let request_body = serde_json::to_vec(&request)
             .map_err(|_| ProviderError::InvalidDispatch("provider request"))?;
+        // Commit only the provider-visible mutation body. Authorization headers
+        // and connection details must not enter durable action evidence.
         let request_digest = ContentDigest::of_bytes(&request_body);
         let response = self
             .client
@@ -328,6 +391,18 @@ impl AccessApprovalsClient {
 
     /// Reads the provider receipt linked to `external_id` and revalidates its
     /// tenant, finding, target, action, and idempotency bindings.
+    ///
+    /// Observation is read-only and therefore may be repeated after an
+    /// ambiguous dispatch. The identifier selects the provider object, but the
+    /// response must still echo every durable dispatch binding before it is
+    /// accepted as evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidDispatch`] for invalid authority input,
+    /// [`ProviderError::ObservationUnavailable`] when the receipt cannot be
+    /// read, or a more specific bounded-response error when returned evidence
+    /// is unsafe or inconsistent.
     pub async fn observe(
         &self,
         dispatch: &ActionDispatch,
@@ -361,6 +436,8 @@ impl AccessApprovalsClient {
         }
         if !response.status().is_success() {
             let status = response.status();
+            // Attempt a bounded drain, but do not retain or expose provider
+            // error content as action evidence.
             let _ = read_bounded(response, MAX_ERROR_BODY_BYTES).await;
             return if ambiguous_status(status) {
                 Err(ProviderError::DispatchAmbiguous)
@@ -376,6 +453,8 @@ impl AccessApprovalsClient {
         let bytes = read_bounded(response, MAX_SUCCESS_BODY_BYTES)
             .await
             .map_err(|_| ProviderError::DispatchAmbiguous)?;
+        // Once a mutation returned success, malformed or unbound bytes cannot
+        // prove whether the provider committed the intended operation.
         decode_receipt(&bytes, dispatch, None, Some(request_digest))
             .map_err(|_| ProviderError::DispatchAmbiguous)
     }
@@ -386,6 +465,8 @@ impl AccessApprovalsClient {
         dispatch: &ActionDispatch,
         expected_external_id: Option<&OpaqueId>,
     ) -> Result<ProviderReceipt, ProviderError> {
+        // Unlike dispatch, this request is read-only: redirects are a definite
+        // policy violation rather than evidence of an uncertain mutation.
         if response.status().is_redirection() {
             return Err(ProviderError::RedirectRejected);
         }
@@ -398,6 +479,9 @@ impl AccessApprovalsClient {
     }
 
     fn endpoint(&self, suffix: &[&str]) -> Result<Url, ProviderError> {
+        // Preserve the validated scheme, authority, and deployment base path.
+        // `path_segments_mut` percent-encodes each suffix as one path segment,
+        // including an opaque external identifier supplied during observation.
         let mut endpoint = self.base_url.clone();
         endpoint.set_query(None);
         endpoint.set_fragment(None);
@@ -411,6 +495,8 @@ impl AccessApprovalsClient {
 }
 
 fn validate_base_url(value: &str) -> Result<Url, ProviderError> {
+    // Reject padding and control bytes before parsing so configuration has one
+    // canonical textual representation and cannot smuggle header delimiters.
     if value.is_empty()
         || value.trim() != value
         || value.len() > MAX_BASE_URL_BYTES
@@ -419,6 +505,8 @@ fn validate_base_url(value: &str) -> Result<Url, ProviderError> {
         return Err(ProviderError::InvalidConfiguration("base URL"));
     }
     let url = Url::parse(value).map_err(|_| ProviderError::InvalidConfiguration("base URL"))?;
+    // Authentication belongs in the dedicated bearer field. Query and fragment
+    // data are also prohibited because every operation builds its own fixed path.
     if url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -428,6 +516,8 @@ fn validate_base_url(value: &str) -> Result<Url, ProviderError> {
         return Err(ProviderError::InvalidConfiguration("base URL"));
     }
     let secure = url.scheme() == "https";
+    // Plain HTTP exists only for local test servers. Parsed IP literals must be
+    // loopback; arbitrary hostnames cannot opt into insecure transport.
     let loopback_http = url.scheme() == "http"
         && url.host_str().is_some_and(|host| {
             host.eq_ignore_ascii_case("localhost")
@@ -444,6 +534,8 @@ fn validate_base_url(value: &str) -> Result<Url, ProviderError> {
 }
 
 fn validate_bearer_token(value: String) -> Result<String, ProviderError> {
+    // Trimming would silently authenticate with a credential different from the
+    // configured value. Control bytes are rejected to protect header framing.
     if value.is_empty()
         || value.trim() != value
         || value.len() > MAX_BEARER_TOKEN_BYTES
@@ -455,6 +547,8 @@ fn validate_bearer_token(value: String) -> Result<String, ProviderError> {
 }
 
 fn validate_dispatch(dispatch: &ActionDispatch) -> Result<(), ProviderError> {
+    // Validate the dispatch's content commitment before trusting any field, then
+    // narrow the envelope to the exact provider and supported action vocabulary.
     dispatch
         .validate()
         .map_err(|_| ProviderError::InvalidDispatch("content digest"))?;
@@ -473,6 +567,8 @@ fn decode_receipt(
     expected_external_id: Option<&OpaqueId>,
     request_digest: Option<ContentDigest>,
 ) -> Result<ProviderReceipt, ProviderError> {
+    // Hash the exact bounded bytes below. Deserialization is used for validation,
+    // not for re-encoding a potentially different representation of the receipt.
     let response: UserActionResponse =
         serde_json::from_slice(bytes).map_err(|_| ProviderError::InvalidResponse("JSON body"))?;
     let external_id =
@@ -480,6 +576,8 @@ fn decode_receipt(
     if expected_external_id.is_some_and(|expected| expected != &external_id) {
         return Err(ProviderError::InvalidResponse("external id"));
     }
+    // The provider-controlled identifier may select an object for observation,
+    // but all authorization and correlation fields must echo the durable dispatch.
     if response.action != dispatch.provider_action
         || response.target != dispatch.target_id
         || response.idempotency_key != dispatch.idempotency_key
@@ -489,6 +587,8 @@ fn decode_receipt(
         return Err(ProviderError::InvalidResponse("dispatch binding"));
     }
     let status = ProviderStatus::try_from(response.status.as_str())?;
+    // Successful execution requires a completion instant. Other terminal states
+    // may omit it because the provider contract does not promise one for them.
     if status == ProviderStatus::Succeeded && response.completed_at_unix.is_none() {
         return Err(ProviderError::InvalidResponse(
             "succeeded receipt completion time",
@@ -505,12 +605,16 @@ fn decode_receipt(
 }
 
 fn ambiguous_status(status: StatusCode) -> bool {
+    // These statuses cannot distinguish rejection from a mutation that committed
+    // before the provider or an intermediary timed out, throttled, or failed.
     status == StatusCode::REQUEST_TIMEOUT
         || status == StatusCode::TOO_MANY_REQUESTS
         || status.is_server_error()
 }
 
 fn is_json(response: &Response) -> bool {
+    // Accept parameters such as a charset, but require the exact JSON media type;
+    // vendor `+json` responses are outside this provider's receipt contract.
     response
         .headers()
         .get(header::CONTENT_TYPE)
@@ -523,6 +627,8 @@ fn is_json(response: &Response) -> bool {
 }
 
 async fn read_bounded(response: Response, limit: usize) -> Result<Vec<u8>, ProviderError> {
+    // A trustworthy Content-Length permits an early rejection, while the stream
+    // check below remains authoritative for absent or inaccurate declarations.
     if response
         .content_length()
         .is_some_and(|content_length| content_length > limit as u64)
@@ -533,6 +639,8 @@ async fn read_bounded(response: Response, limit: usize) -> Result<Vec<u8>, Provi
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|_| ProviderError::ObservationUnavailable)?;
+        // Saturating arithmetic keeps an adversarial chunk length from wrapping
+        // the bound check before the bytes are appended.
         if body.len().saturating_add(chunk.len()) > limit {
             return Err(ProviderError::ResponseTooLarge);
         }
