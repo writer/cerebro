@@ -3,6 +3,18 @@ import unittest
 import scripts.post_merge_health as pm
 
 
+def successful_required_runs(head_sha="abc"):
+    return [
+        {
+            "workflow_name": workflow_name,
+            "head_sha": head_sha,
+            "status": "completed",
+            "conclusion": "success",
+        }
+        for workflow_name in sorted(pm.REQUIRED_WORKFLOW_NAMES)
+    ]
+
+
 class PostMergeHealthTests(unittest.TestCase):
     def test_summarize_marks_failures(self):
         context = pm.summarize(
@@ -23,7 +35,7 @@ class PostMergeHealthTests(unittest.TestCase):
             runs=[
                 {"id": 1, "workflow_name": "Post-Merge Health", "head_sha": "abc", "status": "in_progress"},
                 {"id": 2, "workflow_name": "Post-Merge Health", "head_sha": "abc", "status": "completed", "conclusion": "failure"},
-                {"id": 3, "workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"},
+                *successful_required_runs(),
             ],
             current_run_id="1",
         )
@@ -31,23 +43,117 @@ class PostMergeHealthTests(unittest.TestCase):
         self.assertEqual(len(context["failed_runs"]), 0)
         self.assertEqual(len(context["pending_runs"]), 0)
 
-    def test_summarize_does_not_fail_for_pending_sibling_runs(self):
+    def test_summarize_marks_pending_sibling_runs_unhealthy(self):
         context = pm.summarize(
             branch="main",
             head_sha="abc",
             runs=[
+                *[run for run in successful_required_runs() if run["workflow_name"] != "CI"],
                 {"workflow_name": "CI", "head_sha": "abc", "status": "in_progress", "url": "https://ci"},
-                {"workflow_name": "Leak Check", "head_sha": "abc", "status": "completed", "conclusion": "success"},
             ],
         )
-        self.assertTrue(context["healthy"])
+        self.assertFalse(context["healthy"])
         self.assertEqual(len(context["pending_runs"]), 1)
+
+    def test_summarize_marks_partial_exact_head_evidence_unhealthy(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[{"workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"}],
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(
+            context["missing_workflows"],
+            sorted(pm.REQUIRED_WORKFLOW_NAMES - {"CI"}),
+        )
+
+    def test_summarize_does_not_fallback_to_prior_head_runs(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=successful_required_runs("prior"),
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(context["runs"], [])
+
+    def test_summarize_requires_head_for_exact_head_evidence(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="",
+            runs=[{"workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"}],
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(context["runs"], [])
+
+    def test_summarize_marks_missing_run_state_unhealthy(self):
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[
+                *[run for run in successful_required_runs() if run["workflow_name"] != "CI"],
+                {"workflow_name": "CI", "head_sha": "abc"},
+            ],
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(len(context["pending_runs"]), 1)
+
+    def test_wait_for_terminal_summary_rechecks_pending_evidence(self):
+        snapshots = iter(
+            [
+                [
+                    *[run for run in successful_required_runs() if run["workflow_name"] != "CI"],
+                    {"workflow_name": "CI", "head_sha": "abc", "status": "in_progress"},
+                ],
+                successful_required_runs(),
+            ]
+        )
+        clock = [0.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        context = pm.wait_for_terminal_summary(
+            branch="main",
+            head_sha="abc",
+            collect=lambda: next(snapshots),
+            wait_seconds=30,
+            poll_seconds=5,
+            sleep=sleep,
+            monotonic=lambda: clock[0],
+        )
+
+        self.assertTrue(context["healthy"])
+        self.assertEqual(sleeps, [5])
+
+    def test_wait_for_terminal_summary_times_out_without_evidence(self):
+        clock = [0.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        context = pm.wait_for_terminal_summary(
+            branch="main",
+            head_sha="abc",
+            collect=lambda: [],
+            wait_seconds=10,
+            poll_seconds=5,
+            sleep=sleep,
+            monotonic=lambda: clock[0],
+        )
+
+        self.assertFalse(context["healthy"])
+        self.assertEqual(context["runs"], [])
+        self.assertEqual(sleeps, [5, 5])
 
     def test_summarize_release_lag_is_informational(self):
         context = pm.summarize(
             branch="main",
             head_sha="abc",
-            runs=[{"workflow_name": "CI", "head_sha": "abc", "status": "completed", "conclusion": "success"}],
+            runs=successful_required_runs(),
             release_status={
                 "latest_tag": "v2.1.399",
                 "latest_tag_on_head": False,
@@ -66,6 +172,7 @@ class PostMergeHealthTests(unittest.TestCase):
                 "healthy": False,
                 "failed_runs": [{"workflow_name": "CI", "conclusion": "failure", "url": "https://ci"}],
                 "pending_runs": [],
+                "missing_workflows": [],
                 "release_status": {
                     "latest_tag": "v2.1.399",
                     "latest_tag_on_head": False,
@@ -78,6 +185,22 @@ class PostMergeHealthTests(unittest.TestCase):
         self.assertIn("https://ci", markdown)
         self.assertIn("v2.1.399", markdown)
         self.assertIn("Release Status", markdown)
+
+    def test_render_markdown_explains_missing_exact_head_evidence(self):
+        markdown = pm.render_markdown(
+            {
+                "branch": "main",
+                "head_sha": "abc",
+                "healthy": False,
+                "runs": [],
+                "failed_runs": [],
+                "pending_runs": [],
+                "missing_workflows": sorted(pm.REQUIRED_WORKFLOW_NAMES),
+                "release_status": {},
+            }
+        )
+        self.assertIn("No exact-head sibling workflow evidence was found", markdown)
+        self.assertIn("Missing Required Workflows", markdown)
 
 
 if __name__ == "__main__":
