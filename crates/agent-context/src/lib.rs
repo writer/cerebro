@@ -33,13 +33,21 @@ use cerebro_organizational_model::{
 use serde::Serialize;
 use tokio::sync::RwLock;
 
+/// Maximum traversal or path length accepted by every graph backend.
 const MAX_DEPTH: usize = 6;
+/// Shared result parameter bound for searches, edges, paths, and query matches.
 const MAX_RESULTS: usize = 500;
+/// Maximum exact keys accepted by one batched neighborhood expansion.
 const MAX_ROOTS: usize = 100;
+/// Maximum node variables in one typed fact-query pattern.
 const MAX_QUERY_NODES: usize = 8;
+/// Maximum required assertion patterns in one typed fact query.
 const MAX_QUERY_EDGES: usize = 12;
+/// Maximum negative assertion constraints evaluated for one query match.
 const MAX_QUERY_ABSENCE_CHECKS: usize = 8;
+/// Maximum stable identity alternatives accepted by one node pattern.
 const MAX_QUERY_KEYS_PER_NODE: usize = 100;
+/// Closed upper bound covering every entity kind admitted by query validation.
 const MAX_QUERY_KINDS: usize = 29;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,6 +139,8 @@ impl ContextEntity {
     pub fn from_domain(entity: &Entity) -> Self {
         let agent_key = entity.agent_key();
         let mut properties = entity.properties().clone();
+        // Always expose the computed stable key under the common property name,
+        // replacing any source property that attempted to claim that namespace.
         properties.insert("entity_urn".to_owned(), agent_key.clone());
         Self {
             entity_id: entity.id().clone(),
@@ -138,6 +148,9 @@ impl ContextEntity {
             entity_kind: entity
                 .properties()
                 .get("entity_type")
+                // Provider catalog kinds may be more specific than the sealed
+                // model kind, but only a normalized printable value is safe to
+                // expose as the presentation discriminator.
                 .filter(|value| {
                     !value.is_empty()
                         && value.trim() == value.as_str()
@@ -145,6 +158,8 @@ impl ContextEntity {
                 })
                 .cloned()
                 .unwrap_or_else(|| entity.kind().as_str().to_owned()),
+            // Authority is presentation data here, not an authorization input.
+            // Preserve the entity even if this non-critical projection fails.
             authority: serde_json::to_value(entity.authority()).unwrap_or(serde_json::Value::Null),
             label: entity.label().to_owned(),
             properties,
@@ -340,6 +355,8 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         limit: usize,
     ) -> Result<Vec<ContextEntity>, ContextError> {
         validate_limit(limit)?;
+        // Normalize only the comparison term. Returned labels and identities
+        // retain their authoritative spelling from the graph.
         let query = query.trim().to_lowercase();
         let mut result = Vec::new();
         for entity in self.reader.entities(tenant_id) {
@@ -405,6 +422,9 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         let mut frontier = BTreeSet::from([root_id.clone()]);
         let mut selected_edges = Vec::new();
 
+        // Breadth-first frontier expansion treats each directed assertion as
+        // undirected adjacency. `seen` prevents re-expanding a discovered node;
+        // assertion direction is retained in the returned edge itself.
         for _ in 0..depth {
             let mut next = BTreeSet::new();
             for edge in &edges {
@@ -426,10 +446,15 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             }
         }
 
+        // A reachable edge may touch two frontier nodes or be encountered on
+        // multiple hops. Canonical ordering makes identity-based deduplication
+        // deterministic before the caller's result bound is applied.
         selected_edges.sort_by(|left, right| left.assertion_id.cmp(&right.assertion_id));
         selected_edges.dedup_by(|left, right| left.assertion_id == right.assertion_id);
         let truncated = selected_edges.len() > limit;
         selected_edges.truncate(limit);
+        // Return only endpoints required to interpret retained edges. This keeps
+        // entity cardinality bounded indirectly by the edge limit.
         let retained_entities = selected_edges
             .iter()
             .flat_map(|edge| [&edge.from, &edge.to])
@@ -481,6 +506,8 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             .collect();
         edges.sort_by(|left, right| left.assertion_id.cmp(&right.assertion_id));
         let mut paths = Vec::new();
+        // Iterative deepening guarantees shorter paths are appended first. Each
+        // fixed-depth search walks assertion-ID-sorted outgoing edges.
         for path_depth in 1..=max_depth {
             let mut visited = BTreeSet::from([from.clone()]);
             let mut edge_path = Vec::new();
@@ -519,14 +546,20 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             return;
         }
         for edge in edges {
+            // Path finding is directed even though neighborhood expansion is
+            // undirected: only assertions whose source is current may advance.
             if &edge.from != current {
                 continue;
             }
+            // Per-path membership, rather than a global visited set, excludes
+            // cycles while allowing the same entity in a different candidate.
             if !visited.insert(edge.to.clone()) {
                 continue;
             }
             edge_path.push(edge.clone());
             if &edge.to == target {
+                // Record only at this iterative-deepening depth; shallower paths
+                // were emitted by earlier passes and are not duplicated here.
                 if depth_remaining == 1 {
                     let mut ids = Vec::with_capacity(edge_path.len() + 1);
                     ids.push(edge_path[0].from.clone());
@@ -554,6 +587,8 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
                     result,
                 );
             }
+            // Restore both mutable stacks before considering the next outgoing
+            // assertion, even after a branch reaches the target.
             edge_path.pop();
             visited.remove(&edge.to);
             if result.len() >= limit {
@@ -588,6 +623,9 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         tenant_id: &TenantId,
         query: &FactQuery,
     ) -> Result<QueryResult, ContextError> {
+        // Materialize one tenant snapshot into ordered maps before matching. A
+        // durable backend implementation must provide equivalent revision-bound
+        // semantics even if it evaluates the pattern server-side.
         let entities = self
             .reader
             .entities(tenant_id)
@@ -712,10 +750,14 @@ pub trait AgentGraph: Send + Sync {
         depth: usize,
         limit: usize,
     ) -> Result<BTreeMap<String, Neighborhood>, ContextError> {
+        // Validate the complete batch before the first backend access, avoiding
+        // a partially executed request when a later key or bound is malformed.
         validate_root_keys(root_keys)?;
         validate_depth(depth)?;
         validate_limit(limit)?;
         let mut neighborhoods = BTreeMap::new();
+        // Execute sequentially to preserve a simple backend contract. Results
+        // are keyed by the exact request text and sorted by `BTreeMap`.
         for root_key in root_keys {
             let root = match self.resolve(tenant_id, root_key).await {
                 Ok(root) => root,
@@ -818,6 +860,8 @@ impl AgentGraph for MemoryAgentGraph {
                 || entity.label.to_lowercase().contains(&query)
                 || entity.entity_id.as_str().to_lowercase().contains(&query)
             {
+                // Keep the lexicographically first `(label, entity_id)` values
+                // without collecting an unbounded intermediate result.
                 entities.insert((entity.label.clone(), entity.entity_id.clone()), entity);
                 if entities.len() > limit {
                     entities.pop_last();
@@ -842,6 +886,8 @@ impl AgentGraph for MemoryAgentGraph {
         key: &str,
     ) -> Result<ContextEntity, ContextError> {
         let graph = self.graph.read().await;
+        // Resolution accepts only native identity or the derived stable agent
+        // key. Taking two matches is sufficient to fail closed on ambiguity.
         let key = key.trim();
         let mut matches = graph
             .entities(tenant_id)
@@ -909,14 +955,18 @@ fn execute_query(
     entities: &BTreeMap<EntityId, ContextEntity>,
     edges: &[ContextEdge],
 ) -> Result<QueryResult, ContextError> {
+    // Validated variable uniqueness makes this map total and collision-free.
     let node_patterns = query
         .nodes
         .iter()
         .map(|node| (node.variable.as_str(), node))
         .collect::<BTreeMap<_, _>>();
+    // Collect one sentinel match beyond the requested limit so `truncated` is
+    // based on observed data instead of an assumption about graph size.
     let target = query.limit.saturating_add(1);
     let mut matches = Vec::new();
     if query.edges.is_empty() {
+        // Validation guarantees exactly one node for an edge-free query.
         let node = &query.nodes[0];
         for entity in entities
             .values()
@@ -944,6 +994,8 @@ fn execute_query(
             target,
         );
     }
+    // Different edge-enumeration branches can discover the same complete
+    // binding. Canonicalize and deduplicate before applying the public limit.
     matches.sort_by(query_match_order);
     matches.dedup();
     let truncated = matches.len() > query.limit;
@@ -972,6 +1024,8 @@ fn collect_query_matches(
         return;
     }
     let Some(edge_index) = next_query_edge(query, used_edges, entity_bindings) else {
+        // Negative constraints are meaningful only after every positive edge
+        // has bound a complete candidate. They never introduce new entities.
         if !query_absence_holds(query, node_patterns, entities, graph_edges, entity_bindings) {
             return;
         }
@@ -1015,6 +1069,8 @@ fn collect_query_matches(
         if !node_matches(from_pattern, from) || !node_matches(to_pattern, to) {
             continue;
         }
+        // `inserted_*` distinguishes bindings created by this branch from those
+        // shared with an earlier edge, so backtracking cannot erase join state.
         let inserted_from = entity_bindings
             .insert(pattern.from_variable.clone(), edge.from.clone())
             .is_none();
@@ -1044,6 +1100,7 @@ fn collect_query_matches(
             break;
         }
     }
+    // Restore the planner state for the caller's next candidate branch.
     used_edges[edge_index] = false;
 }
 
@@ -1052,6 +1109,8 @@ fn next_query_edge(
     used: &[bool],
     bindings: &BTreeMap<String, EntityId>,
 ) -> Option<usize> {
+    // Prefer a pattern with both endpoints already bound, then one endpoint.
+    // This reduces branching without changing the set of valid bindings.
     query
         .edges
         .iter()
@@ -1071,6 +1130,8 @@ fn query_absence_holds(
     edges: &[ContextEdge],
     bindings: &BTreeMap<String, EntityId>,
 ) -> bool {
+    // Every absence check is correlated to an already bound node. An empty
+    // `other_kinds` list rejects any matching relation in the chosen direction.
     query.absent_edges.iter().all(|absence| {
         let Some(bound) = bindings.get(&absence.bound_variable) else {
             return false;
@@ -1098,6 +1159,8 @@ fn query_absence_holds(
 }
 
 fn node_matches(pattern: &QueryNode, entity: &ContextEntity) -> bool {
+    // Keys form an OR over native IDs and derived stable agent keys. Kind and key
+    // filters are combined with AND; an empty filter is unconstrained.
     (pattern.kinds.is_empty() || pattern.kinds.contains(&entity.entity_kind))
         && (pattern.keys.is_empty()
             || pattern
@@ -1107,6 +1170,8 @@ fn node_matches(pattern: &QueryNode, entity: &ContextEntity) -> bool {
 }
 
 fn query_match_order(left: &QueryMatch, right: &QueryMatch) -> std::cmp::Ordering {
+    // Compare node bindings first by variable then native entity identity. Edge
+    // assertion identities provide a deterministic tie-break for the same nodes.
     let left_entities = left
         .entities
         .iter()
@@ -1138,6 +1203,7 @@ fn validate_query(
     absent_edges: &[QueryAbsentEdge],
     limit: usize,
 ) -> Result<(), ContextError> {
+    // Reject global structural bounds before allocating validation indexes.
     if nodes.is_empty() || nodes.len() > MAX_QUERY_NODES {
         return Err(ContextError::InvalidQuery(format!(
             "node count must be between 1 and {MAX_QUERY_NODES}"
@@ -1166,6 +1232,8 @@ fn validate_query(
         }
         validate_query_kinds(&node.kinds)?;
         node_patterns.insert(node.variable.as_str(), node);
+        // Stable keys must already be normalized and unique so matching does not
+        // conceal caller ambiguity behind trimming or duplicate alternatives.
         if node.keys.len() > MAX_QUERY_KEYS_PER_NODE
             || node
                 .keys
@@ -1199,6 +1267,8 @@ fn validate_query(
         validate_query_relation(&edge.relation)?;
         let from = node_patterns[edge.from_variable.as_str()];
         let to = node_patterns[edge.to_variable.as_str()];
+        // When both endpoint kind sets are constrained, prove that at least one
+        // pair is legal under the organizational relation schema at construction.
         if !from.kinds.is_empty()
             && !to.kinds.is_empty()
             && !from.kinds.iter().any(|from_kind| {
@@ -1223,6 +1293,8 @@ fn validate_query(
         validate_query_relation(&absence.relation)?;
         validate_query_kinds(&absence.other_kinds)?;
         let bound = node_patterns[absence.bound_variable.as_str()];
+        // Apply the same relation compatibility check in the requested incoming
+        // or outgoing orientation for a negative constraint.
         if !bound.kinds.is_empty()
             && !absence.other_kinds.is_empty()
             && !bound.kinds.iter().any(|bound_kind| {
@@ -1254,6 +1326,8 @@ fn validate_query(
 }
 
 fn validate_query_variable(value: &str) -> Result<(), ContextError> {
+    // The first character rule also rejects the empty string. ASCII-only lower
+    // snake case keeps serialized variable maps portable across query backends.
     let mut chars = value.chars();
     if value.len() > 64
         || !chars.next().is_some_and(|first| first.is_ascii_lowercase())
@@ -1269,6 +1343,8 @@ fn validate_query_variable(value: &str) -> Result<(), ContextError> {
 }
 
 fn validate_query_kinds(kinds: &[String]) -> Result<(), ContextError> {
+    // The organizational model owns the closed wire-name vocabulary. Duplicate
+    // kinds are rejected instead of silently changing query normalization.
     if kinds.len() > MAX_QUERY_KINDS
         || kinds
             .iter()
@@ -1283,6 +1359,8 @@ fn validate_query_kinds(kinds: &[String]) -> Result<(), ContextError> {
 }
 
 fn validate_query_relation(relation: &str) -> Result<(), ContextError> {
+    // Identity binding is projected as the synthetic `represents` relation;
+    // every other name must come from the organizational relation schema.
     if relation != "represents"
         && cerebro_organizational_model::RelationKind::from_wire(relation).is_none()
     {
@@ -1294,6 +1372,8 @@ fn validate_query_relation(relation: &str) -> Result<(), ContextError> {
 }
 
 fn query_relation_accepts(relation: &str, from: &str, to: &str) -> bool {
+    // `represents` is not a `RelationKind`, so encode its provider/identity to
+    // person constraint explicitly before consulting the model schema.
     if relation == "represents" {
         return matches!(from, "identity" | "provider") && to == "person";
     }
@@ -1307,6 +1387,9 @@ fn query_relation_accepts(relation: &str, from: &str, to: &str) -> bool {
 }
 
 fn query_entity_kind(value: &str) -> Option<EntityKind> {
+    // Convert validated wire names into representative sealed kinds solely for
+    // relation compatibility checks. The fixed provider kind carries no tenant
+    // or runtime identity and is never returned as graph data.
     Some(match value {
         "person" => EntityKind::Person,
         "identity" => EntityKind::Identity,
@@ -1347,6 +1430,9 @@ fn validate_connected_query(
     variables: &BTreeSet<&str>,
     edges: &[QueryEdge],
 ) -> Result<(), ContextError> {
+    // Compute an undirected reachability closure over the positive pattern. Edge
+    // direction still matters during execution; connectivity only proves that
+    // the query cannot create an unconstrained Cartesian product.
     let mut visited = BTreeSet::from([edges[0].from_variable.as_str()]);
     loop {
         let before = visited.len();
@@ -1371,6 +1457,9 @@ fn validate_connected_query(
 }
 
 fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
+    // Preserve native direction and provenance for relationships. Identity
+    // bindings use a synthetic provider-to-canonical `represents` edge and have
+    // no application-workspace scope in their domain contract.
     match assertion {
         GraphAssertion::Relationship(value) => ContextEdge {
             assertion_id: value.id().clone(),
@@ -1394,6 +1483,8 @@ fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
 }
 
 fn validate_limit(limit: usize) -> Result<(), ContextError> {
+    // One lower bound is shared across all operations so zero never means
+    // "unbounded" or silently changes method semantics.
     if !(1..=MAX_RESULTS).contains(&limit) {
         return Err(ContextError::InvalidLimit);
     }
@@ -1401,6 +1492,7 @@ fn validate_limit(limit: usize) -> Result<(), ContextError> {
 }
 
 fn validate_depth(depth: usize) -> Result<(), ContextError> {
+    // Depth counts edges, so zero would not perform a traversal or path search.
     if !(1..=MAX_DEPTH).contains(&depth) {
         return Err(ContextError::InvalidDepth);
     }
@@ -1418,6 +1510,8 @@ fn validate_depth(depth: usize) -> Result<(), ContextError> {
 /// Returns [`ContextError::InvalidRootCount`] for an invalid batch size or
 /// [`ContextError::InvalidRootKey`] for an empty or non-normalized key.
 pub fn validate_root_keys(root_keys: &[String]) -> Result<(), ContextError> {
+    // Validate cardinality first, then exact normalization for every key before
+    // a backend can begin the batch.
     if !(1..=MAX_ROOTS).contains(&root_keys.len()) {
         return Err(ContextError::InvalidRootCount);
     }
