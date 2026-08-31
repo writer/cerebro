@@ -27,10 +27,11 @@ type leaseEvent struct {
 type stubLeaseStore struct {
 	mu sync.Mutex
 
-	heldBy     string
-	holdUntil  time.Time
-	generation uint64
-	rejectNext bool
+	heldBy        string
+	holdUntil     time.Time
+	generation    uint64
+	rejectNext    bool
+	rejectRenewal bool
 
 	acquireErr error
 	renewErr   error
@@ -43,10 +44,30 @@ type fencedStubLeaseStore struct {
 	*stubLeaseStore
 	fence ports.SourceRuntimeLeaseFence
 	err   error
+	reads int
 }
 
 type leaseStoreWithoutFenceReader struct {
 	store *stubLeaseStore
+}
+
+type renewalBlockingSource struct{}
+
+func (renewalBlockingSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "renewal_blocking"}
+}
+
+func (renewalBlockingSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (renewalBlockingSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (renewalBlockingSource) Read(ctx context.Context, _ sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	<-ctx.Done()
+	return sourcecdk.Pull{}, ctx.Err()
 }
 
 func (s *leaseStoreWithoutFenceReader) AcquireSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -62,6 +83,9 @@ func (s *leaseStoreWithoutFenceReader) ReleaseSourceRuntimeLease(ctx context.Con
 }
 
 func (s *fencedStubLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reads++
 	if s.err != nil {
 		return ports.SourceRuntimeLeaseFence{}, s.err
 	}
@@ -69,6 +93,18 @@ func (s *fencedStubLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, ru
 		return ports.SourceRuntimeLeaseFence{}, errors.New("runtime ID and owner are required")
 	}
 	return s.fence, nil
+}
+
+func (s *fencedStubLeaseStore) setFence(fence ports.SourceRuntimeLeaseFence) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fence = fence
+}
+
+func (s *fencedStubLeaseStore) readCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reads
 }
 
 func (s *stubLeaseStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -102,6 +138,10 @@ func (s *stubLeaseStore) RenewSourceRuntimeLease(_ context.Context, runtimeID st
 	defer s.mu.Unlock()
 	if s.renewErr != nil {
 		return false, s.renewErr
+	}
+	if s.rejectRenewal {
+		s.events = append(s.events, leaseEvent{verb: "renew", owner: owner, acquired: false})
+		return false, nil
 	}
 	if s.heldBy != owner {
 		s.events = append(s.events, leaseEvent{verb: "renew", owner: owner, acquired: false})
@@ -194,6 +234,43 @@ func TestWithCurrentSourceRuntimeLeaseFenceBindsDurableFence(t *testing.T) {
 	}
 }
 
+func TestCurrentSourceRuntimeLeaseFenceRefreshesRenewedExpiry(t *testing.T) {
+	initial := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: time.Now().UTC().Add(time.Minute)}
+	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, fence: initial}
+	ctx, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if err != nil {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v", err)
+	}
+
+	renewed := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: initial.ExpiresAt.Add(time.Minute)}
+	store.setFence(renewed)
+	got, err := currentSourceRuntimeLeaseFence(ctx, "runtime-a")
+	if err != nil {
+		t.Fatalf("currentSourceRuntimeLeaseFence() error = %v", err)
+	}
+	if got != renewed {
+		t.Fatalf("current fence = %#v, want renewed fence %#v", got, renewed)
+	}
+	if gotReads := store.readCount(); gotReads != 2 {
+		t.Fatalf("fence reads = %d, want initial bind plus page refresh", gotReads)
+	}
+}
+
+func TestCurrentSourceRuntimeLeaseFenceRejectsGenerationChange(t *testing.T) {
+	initial := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: time.Now().UTC().Add(time.Minute)}
+	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, fence: initial}
+	ctx, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if err != nil {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v", err)
+	}
+
+	store.setFence(ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 8, ExpiresAt: initial.ExpiresAt.Add(time.Minute)})
+	_, err = currentSourceRuntimeLeaseFence(ctx, "runtime-a")
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("currentSourceRuntimeLeaseFence() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	}
+}
+
 func TestWithCurrentSourceRuntimeLeaseFencePreservesReaderFailure(t *testing.T) {
 	want := errors.New("fence unavailable")
 	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, err: want}
@@ -243,12 +320,21 @@ func TestSyncWithLeaseRejectsStaleFenceBeforeProgressAdvances(t *testing.T) {
 		},
 	}
 
-	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
-		LeaseStore: store,
-		LeaseOwner: "owner-a",
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+			LeaseStore: store,
+			LeaseOwner: "owner-a",
+		})
+		if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+			t.Fatalf("SyncWithLease() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+		}
 	})
-	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
-		t.Fatalf("SyncWithLease() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync_with_lease")
+	if got := payload["status"]; got != "lease_lost" {
+		t.Fatalf("telemetry status = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "lease_lost" {
+		t.Fatalf("telemetry error_kind = %#v, want lease_lost; payload=%#v", got, payload)
 	}
 	if runtimeStore.putCount != 0 {
 		t.Fatalf("runtime progress writes = %d, want 0", runtimeStore.putCount)
@@ -412,6 +498,54 @@ func TestStartLeaseRenewalStopsWhenSyncContextCancels(t *testing.T) {
 	}
 }
 
+func TestStartLeaseRenewalClassifiesLostOwnership(t *testing.T) {
+	cancelled := make(chan struct{})
+	var cancelOnce sync.Once
+	store := &stubLeaseStore{}
+	stopRenewal := startLeaseRenewal(context.Background(), store, "runtime-a", "owner-a", 10*time.Millisecond, func() {
+		cancelOnce.Do(func() { close(cancelled) })
+	})
+
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("lost lease did not cancel source-runtime work")
+	}
+	if err := stopRenewal(); !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("stopRenewal() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	}
+}
+
+func TestSyncWithLeasePreservesRenewalOwnershipLoss(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(renewalBlockingSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "renewal_blocking", TenantId: "tenant-a"},
+	}}
+	service := New(registry, runtimeStore, &appendLog{}, nil)
+	leaseStore := &stubLeaseStore{rejectRenewal: true}
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+			LeaseStore: leaseStore,
+			LeaseOwner: "owner-a",
+			LeaseTTL:   30 * time.Millisecond,
+		})
+		if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+			t.Fatalf("SyncWithLease() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+		}
+	})
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync_with_lease")
+	if got := payload["status"]; got != "lease_lost" {
+		t.Fatalf("telemetry status = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "lease_lost" {
+		t.Fatalf("telemetry error_kind = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+}
+
 func TestLeaseRenewalIntervalCapsLongTTL(t *testing.T) {
 	if got := LeaseRenewalInterval(time.Minute); got != 30*time.Second {
 		t.Fatalf("LeaseRenewalInterval(1m) = %s, want 30s", got)
@@ -457,6 +591,26 @@ func TestAcquireRenewableLeaseCancelsWorkAndReleasesAfterRenewalFailure(t *testi
 	events := store.snapshotEvents()
 	if len(events) < 2 || events[0].verb != "acquire" || events[len(events)-1].verb != "release" {
 		t.Fatalf("events = %#v, want acquire followed by release", events)
+	}
+}
+
+func TestAcquireRenewableLeaseClassifiesLostOwnership(t *testing.T) {
+	store := &stubLeaseStore{}
+	workCtx, release, acquired, err := AcquireRenewableLease(context.Background(), store, "runtime-a", "owner-a", 30*time.Millisecond)
+	if err != nil || !acquired {
+		t.Fatalf("AcquireRenewableLease() = (%t, %v), want true, nil", acquired, err)
+	}
+	store.mu.Lock()
+	store.heldBy = "successor"
+	store.mu.Unlock()
+
+	select {
+	case <-workCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("lost lease did not cancel renewable work")
+	}
+	if err := release(); !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("release() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
 	}
 }
 

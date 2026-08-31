@@ -74,9 +74,9 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	if s == nil || s.sourceWorker == nil {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for %s.%s", ErrRuntimeUnavailable, runtime.GetSourceId(), familyID)
 	}
-	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
-	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
-		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
+	fence, err := currentSourceRuntimeLeaseFence(ctx, runtime.GetId())
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
 	}
 	reference, credential, err := sourceExecutionHostCredential(ctx, runtime.GetSourceId(), source, runtime.GetConfig(), cfg)
 	if err != nil {

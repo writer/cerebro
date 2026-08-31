@@ -1844,7 +1844,7 @@ func sourceConnectError(err error) error {
 
 var sourceRuntimeErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
-	{match: matchesAnyError(sourceruntime.ErrSyncInProgress), httpStatus: http.StatusConflict, code: connect.CodeAborted},
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress, ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted},
 	{match: matchesAnyError(sourceruntime.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(sourceruntime.ErrInvalidRequest, graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }

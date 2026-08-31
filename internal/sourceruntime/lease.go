@@ -54,13 +54,47 @@ type SyncWithLeaseOptions struct {
 type sourceRuntimeLeaseFenceContextKey struct{}
 
 type sourceRuntimeLeaseAuthority struct {
-	fence ports.SourceRuntimeLeaseFence
+	fence     ports.SourceRuntimeLeaseFence
+	runtimeID string
+	reader    ports.SourceRuntimeLeaseFenceReader
 }
 
 func sourceRuntimeLeaseFenceFromContext(ctx context.Context) (ports.SourceRuntimeLeaseFence, bool) {
 	authority, ok := ctx.Value(sourceRuntimeLeaseFenceContextKey{}).(sourceRuntimeLeaseAuthority)
 	fence := authority.fence
 	return fence, ok && strings.TrimSpace(fence.Owner) != "" && fence.Generation > 0 && !fence.ExpiresAt.IsZero()
+}
+
+// currentSourceRuntimeLeaseFence refreshes the durable expiry before each Rust
+// source page while preserving the generation acquired for this execution.
+// Package-local tests may bind an immutable fence directly; production callers
+// bind through WithCurrentSourceRuntimeLeaseFence and always carry a reader.
+func currentSourceRuntimeLeaseFence(ctx context.Context, runtimeID string) (ports.SourceRuntimeLeaseFence, error) {
+	authority, ok := ctx.Value(sourceRuntimeLeaseFenceContextKey{}).(sourceRuntimeLeaseAuthority)
+	bound := authority.fence
+	if !ok || strings.TrimSpace(bound.Owner) == "" || bound.Generation == 0 || bound.ExpiresAt.IsZero() {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
+	}
+	runtimeID = strings.TrimSpace(runtimeID)
+	if authority.reader == nil {
+		if !bound.ExpiresAt.After(time.Now().UTC()) {
+			return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: source runtime lease fence %q is not current", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+		}
+		return bound, nil
+	}
+	if strings.TrimSpace(authority.runtimeID) != runtimeID {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: source runtime lease fence does not match runtime %q", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+	}
+	fence, err := authority.reader.ReadSourceRuntimeLeaseFence(ctx, runtimeID, bound.Owner)
+	if err != nil {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("refresh source runtime lease fence %q: %w", runtimeID, err)
+	}
+	fence.Owner = strings.TrimSpace(fence.Owner)
+	fence.ExpiresAt = fence.ExpiresAt.UTC()
+	if fence.Owner != bound.Owner || fence.Generation != bound.Generation || !fence.ExpiresAt.After(time.Now().UTC()) {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: source runtime lease fence %q changed generation or expired", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+	}
+	return fence, nil
 }
 
 // WithCurrentSourceRuntimeLeaseFence binds the durable owner/generation snapshot
@@ -87,7 +121,11 @@ func WithCurrentSourceRuntimeLeaseFence(ctx context.Context, store ports.SourceR
 	if fence.Owner != owner || fence.Generation == 0 || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return ctx, fmt.Errorf("%w: source runtime lease fence %q is not current", ports.ErrSourceRuntimeLeaseLost, runtimeID)
 	}
-	return context.WithValue(ctx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: fence}), nil
+	return context.WithValue(ctx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{
+		fence:     fence,
+		runtimeID: runtimeID,
+		reader:    reader,
+	}), nil
 }
 
 // SyncWithLease wraps Sync with a durable, renewable runtime lease so the
@@ -170,6 +208,9 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 	cancelSync()
 	renewalErr := stopRenewal()
 	releaseErr := releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
+	if errors.Is(renewalErr, ports.ErrSourceRuntimeLeaseLost) {
+		return nil, fmt.Errorf("renew source runtime lease %q: %w", runtimeID, renewalErr)
+	}
 	if syncErr != nil {
 		return nil, syncErr
 	}
@@ -194,6 +235,9 @@ func syncWithLeaseTelemetryAttrs(req *cerebrov1.SyncSourceRuntimeRequest, leaseS
 }
 
 func syncWithLeaseTelemetryStatus(err error) string {
+	if errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		return "lease_lost"
+	}
 	if errors.Is(err, ErrSyncInProgress) {
 		return "conflict"
 	}
@@ -202,6 +246,8 @@ func syncWithLeaseTelemetryStatus(err error) string {
 
 func syncWithLeaseTelemetryErrorKind(err error) string {
 	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeLeaseLost):
+		return "lease_lost"
 	case errors.Is(err, ErrSyncInProgress):
 		return "sync_in_progress"
 	case errors.Is(err, ErrInvalidRequest):
@@ -258,7 +304,7 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 				}
 				if !renewed {
 					cancelWork()
-					done <- fmt.Errorf("source runtime lease lost: %s", runtimeID)
+					done <- fmt.Errorf("%w: %s", ports.ErrSourceRuntimeLeaseLost, runtimeID)
 					return
 				}
 			}
@@ -339,7 +385,7 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 						return
 					}
 					cancelWork()
-					done <- fmt.Errorf("source runtime lease lost: %s", runtimeID)
+					done <- fmt.Errorf("%w: %s", ports.ErrSourceRuntimeLeaseLost, runtimeID)
 					return
 				}
 			}

@@ -148,6 +148,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "source invalid", err: sourceConnectError(sourceops.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "source unknown", err: sourceConnectError(errors.New("transport failed")), code: connect.CodeInternal},
 		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "runtime lease lost", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeLeaseLost), code: connect.CodeAborted},
 		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "runtime invalid", err: sourceRuntimeConnectError(sourceruntime.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
@@ -329,6 +330,12 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+
+	leaseLost := httptest.NewRecorder()
+	writeSourceRuntimeError(leaseLost, ports.ErrSourceRuntimeLeaseLost)
+	if leaseLost.Code != http.StatusConflict {
+		t.Fatalf("lease-lost runtime status = %d, want %d", leaseLost.Code, http.StatusConflict)
 	}
 }
 

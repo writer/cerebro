@@ -340,10 +340,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	)
 	defer func() {
 		if err != nil {
-			status = "failed"
+			status = sourceRuntimeTelemetryStatus(err)
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily {
+			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily && !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
@@ -803,6 +803,13 @@ func durationMilliseconds(duration time.Duration) float64 {
 	return float64(duration) / float64(time.Millisecond)
 }
 
+func sourceRuntimeTelemetryStatus(err error) string {
+	if errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		return "lease_lost"
+	}
+	return "failed"
+}
+
 func sourceRuntimeTelemetryErrorKind(err error) string {
 	if err == nil {
 		return ""
@@ -810,6 +817,8 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 	switch {
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
+	case errors.Is(err, ports.ErrSourceRuntimeLeaseLost):
+		return "lease_lost"
 	case errors.Is(err, ErrRuntimeUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, eventadmission.ErrKernelUnavailable):

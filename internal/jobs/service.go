@@ -794,6 +794,9 @@ func classifyJobFailure(err error) string {
 	if err == nil {
 		return ""
 	}
+	if errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		return JobFailureRetryable
+	}
 	var retryable retryableJobError
 	if errors.As(err, &retryable) || errors.Is(err, context.DeadlineExceeded) {
 		return JobFailureRetryable
