@@ -43,9 +43,8 @@ var ErrSyncInProgress = errors.New("source runtime sync is in progress")
 
 // SyncWithLeaseOptions configures cross-task locking around Sync.
 //
-// LeaseStore is the durable lease coordinator. When nil, SyncWithLease
-// falls back to plain Sync so callers that are statically single-task
-// (CLI, single-replica deployments) keep working without changes.
+// LeaseStore is the durable lease coordinator. SyncWithLease fails closed when
+// it is absent or cannot return the acquired lease's durable generation.
 type SyncWithLeaseOptions struct {
 	LeaseStore ports.SourceRuntimeLeaseStore
 	LeaseOwner string
@@ -70,13 +69,23 @@ func sourceRuntimeLeaseFenceFromContext(ctx context.Context) (ports.SourceRuntim
 // context before invoking Sync so credential-free source execution can reject
 // stale workers and fenced page commits can use the same generation.
 func WithCurrentSourceRuntimeLeaseFence(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string) (context.Context, error) {
+	if store == nil {
+		return ctx, fmt.Errorf("%w: durable source runtime lease store is unavailable", ErrRuntimeUnavailable)
+	}
 	reader, ok := store.(ports.SourceRuntimeLeaseFenceReader)
 	if !ok {
-		return ctx, nil
+		return ctx, fmt.Errorf("%w: durable source runtime lease fence reader is unavailable", ErrRuntimeUnavailable)
 	}
-	fence, err := reader.ReadSourceRuntimeLeaseFence(ctx, strings.TrimSpace(runtimeID), strings.TrimSpace(owner))
+	runtimeID = strings.TrimSpace(runtimeID)
+	owner = strings.TrimSpace(owner)
+	fence, err := reader.ReadSourceRuntimeLeaseFence(ctx, runtimeID, owner)
 	if err != nil {
-		return ctx, fmt.Errorf("read source runtime lease fence %q: %w", strings.TrimSpace(runtimeID), err)
+		return ctx, fmt.Errorf("read source runtime lease fence %q: %w", runtimeID, err)
+	}
+	fence.Owner = strings.TrimSpace(fence.Owner)
+	fence.ExpiresAt = fence.ExpiresAt.UTC()
+	if fence.Owner != owner || fence.Generation == 0 || !fence.ExpiresAt.After(time.Now().UTC()) {
+		return ctx, fmt.Errorf("%w: source runtime lease fence %q is not current", ports.ErrSourceRuntimeLeaseLost, runtimeID)
 	}
 	return context.WithValue(ctx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: fence}), nil
 }
@@ -124,7 +133,7 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		return nil, ErrRuntimeUnavailable
 	}
 	if opts.LeaseStore == nil {
-		return s.Sync(ctx, req)
+		return nil, fmt.Errorf("%w: durable source runtime lease store is unavailable", ErrRuntimeUnavailable)
 	}
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)

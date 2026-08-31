@@ -818,9 +818,11 @@ type stubRuntimeStore struct {
 // path.
 type leaseAwareRuntimeStore struct {
 	*stubRuntimeStore
-	mu       sync.Mutex
-	holder   string
-	holdsAll bool
+	mu         sync.Mutex
+	holder     string
+	generation uint64
+	expiresAt  time.Time
+	holdsAll   bool
 }
 
 func (s *leaseAwareRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, _ string, owner string, _ time.Duration) (bool, error) {
@@ -830,6 +832,8 @@ func (s *leaseAwareRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, _ 
 		return false, nil
 	}
 	s.holder = owner
+	s.generation++
+	s.expiresAt = time.Now().Add(time.Minute)
 	return true, nil
 }
 
@@ -837,6 +841,15 @@ func (s *leaseAwareRuntimeStore) RenewSourceRuntimeLease(_ context.Context, _ st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.holder == owner, nil
+}
+
+func (s *leaseAwareRuntimeStore) ReadSourceRuntimeLeaseFence(_ context.Context, _ string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.holder != owner || s.generation == 0 || !s.expiresAt.After(time.Now()) {
+		return ports.SourceRuntimeLeaseFence{}, ports.ErrSourceRuntimeLeaseLost
+	}
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: s.generation, ExpiresAt: s.expiresAt}, nil
 }
 
 func (s *leaseAwareRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, _ string, owner string) error {
@@ -5092,7 +5105,7 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	appendLog := &recordingAppendLog{}
-	runtimeStore := &stubRuntimeStore{}
+	runtimeStore := &leaseAwareRuntimeStore{stubRuntimeStore: &stubRuntimeStore{}}
 	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  appendLog,
@@ -5526,7 +5539,7 @@ func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	t.Setenv("CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN", "resolved-token")
-	runtimeStore := &stubRuntimeStore{}
+	runtimeStore := &leaseAwareRuntimeStore{stubRuntimeStore: &stubRuntimeStore{}}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  &recordingAppendLog{},
 		StateStore: runtimeStore,
