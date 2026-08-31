@@ -1,8 +1,15 @@
+//! Cross-operation properties that must hold for every deterministic host.
+//!
+//! These tests use structured permutations rather than random generation so a
+//! failure is reproducible and names the exact ordering or authority invariant.
+
 use cerebro_security_path_kernel::{
     CollectionReceipt, Completeness, NodeRef, ProofEdge, RuntimeCollectionReceipt, SecurityPath,
     Snapshot, compare, rank_candidate_cuts, verify_observed_absent,
 };
 
+// Comparison requires a strict temporal advance; fixtures keep that variable fixed
+// so each property isolates ordering, completeness, or identity normalization.
 const BEFORE_TIME: &str = "2026-07-15T08:00:00Z";
 const AFTER_TIME: &str = "2026-07-15T08:05:00Z";
 
@@ -16,6 +23,8 @@ fn path_order_does_not_change_comparison_or_cut_decisions() {
     )
     .expect("baseline comparison");
 
+    // Rotations cover every possible starting position and alternating reversal
+    // exercises the opposite local ordering without factorial test growth.
     for rotation in 0..baseline_paths.len() {
         let mut permuted = baseline_paths.clone();
         permuted.rotate_left(rotation);
@@ -35,6 +44,8 @@ fn path_order_does_not_change_comparison_or_cut_decisions() {
 #[test]
 fn incomplete_evidence_never_produces_observed_absent() {
     let reference = snapshot("before", BEFORE_TIME, vec![path(0)]);
+    // Vary the reason text to prove the fail-closed result is not coupled to one
+    // recognized limitation code and that caller-provided reasons are preserved.
     for index in 0..64 {
         let mut after = snapshot("after", AFTER_TIME, Vec::new());
         after.completeness = Completeness {
@@ -55,6 +66,9 @@ fn incomplete_evidence_never_produces_observed_absent() {
 fn duplicated_requested_paths_normalize_to_one_verification_target() {
     let reference = snapshot("before", BEFORE_TIME, vec![path(0)]);
     let after = snapshot("after", AFTER_TIME, Vec::new());
+    // The direct helper normalizes caller selections for ergonomic in-process use.
+    // Content-bound EvaluationRequest construction is stricter and rejects duplicate
+    // identifiers before hashing, which is covered by the unit test suite.
     let decision = verify_observed_absent(
         &reference,
         &after,
@@ -69,6 +83,10 @@ fn duplicated_requested_paths_normalize_to_one_verification_target() {
     assert_eq!(decision.state, "observed_absent");
 }
 
+/// Builds paths with two proofs per route and one edge shared across four paths.
+///
+/// That topology simultaneously exercises exact-path comparison, route grouping,
+/// and the route-versus-path coverage ordering used by cut ranking.
 fn path(index: usize) -> SecurityPath {
     SecurityPath {
         id: format!("path-{index:03}"),
@@ -95,6 +113,11 @@ fn path(index: usize) -> SecurityPath {
     }
 }
 
+/// Wraps `paths` in a complete single-runtime collection proof.
+///
+/// Digest strings are syntactically valid deterministic fixtures, not recomputed
+/// content digests; the kernel validates their representation and binds their value
+/// but the snapshot producer owns snapshot digest construction.
 fn snapshot(id: &str, observed_at: &str, paths: Vec<SecurityPath>) -> Snapshot {
     let runtime_receipt = RuntimeCollectionReceipt {
         source_runtime_id: "runtime-a".to_owned(),

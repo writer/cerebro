@@ -1,3 +1,10 @@
+//! Shared admission model for payload-backed finding rules.
+//!
+//! This module binds trusted runtime context to one replayed event, preflights
+//! arbitrary JSON under strict structural budgets, normalizes host authority
+//! time, and supplies deterministic identity helpers. Provider payload fields
+//! never choose tenant, workspace, runtime, source, or observation time.
+
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -7,64 +14,101 @@ use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+/// Maximum raw JSON bytes accepted by a payload-backed rule.
 pub(crate) const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
+/// Maximum nested JSON value depth, counting the top-level value as one.
 pub(crate) const MAX_PAYLOAD_DEPTH: usize = 8;
+/// Maximum elements admitted by any one JSON array.
 pub(crate) const MAX_PAYLOAD_ARRAY_ITEMS: usize = 64;
+/// Maximum unique fields admitted by any one JSON object.
 pub(crate) const MAX_PAYLOAD_OBJECT_FIELDS: usize = 64;
+/// Maximum UTF-8 bytes in a JSON string value or object key.
 pub(crate) const MAX_PAYLOAD_STRING_BYTES: usize = 8 * 1024;
+/// Maximum trusted overlay attributes admitted with one event.
 const MAX_ATTRIBUTES: usize = 64;
+/// Maximum UTF-8 bytes in one trusted attribute key.
 const MAX_ATTRIBUTE_KEY_BYTES: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Closed operation requested from a payload rule.
 pub(crate) enum Operation {
+    /// Evaluate an event for a new or recurring finding.
     Evaluate,
+    /// Derive the stable anchor of an open finding.
     OpenAnchor,
+    /// Evaluate an event as possible remediation evidence.
     Close,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Lifecycle action emitted by a payload rule.
 pub(crate) enum Action {
+    /// Event does not change finding state.
     None,
+    /// Open or recur the returned finding.
     Open,
+    /// Close the finding selected by the returned anchor.
     Close,
+    /// Return the stable anchor without a finding body.
     OpenAnchor,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Host-authenticated runtime scope that provider JSON cannot override.
 pub(crate) struct TrustedRuntime {
+    /// Concrete collector or runtime identity.
     pub(crate) runtime_id: String,
+    /// Closed provider source family.
     pub(crate) source_id: String,
+    /// Authenticated tenant identity.
     pub(crate) tenant_id: String,
+    /// Trusted application workspace used by storage isolation.
     pub(crate) workspace_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded replayed event plus its trusted host overlay.
 pub(crate) struct EventInput {
+    /// Stable event identity.
     pub(crate) id: String,
+    /// Tenant copied from authenticated admission context.
     pub(crate) tenant_id: String,
+    /// Source family admitted by the host.
     pub(crate) source_id: String,
+    /// Closed event kind selected for rule matching.
     pub(crate) kind: String,
+    /// Exact event schema admitted before kernel execution.
     pub(crate) schema_ref: String,
     /// Host-supplied observation time. Provider payload time fields are closed.
     pub(crate) observed_at: String,
     /// Host-supplied deterministic replay order for equal timestamps.
     pub(crate) replay_sequence: u64,
+    /// Bounded non-payload metadata supplied by the trusted host.
     pub(crate) attributes: BTreeMap<String, String>,
+    /// Original provider JSON bytes evaluated under structural budgets.
     pub(crate) payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Complete credential-free input to one payload-backed rule.
 pub(crate) struct RuleRequest {
+    /// Requested lifecycle operation.
     pub(crate) operation: Operation,
+    /// Exact compiled rule identifier.
     pub(crate) rule_id: String,
+    /// Authenticated runtime scope.
     pub(crate) runtime: TrustedRuntime,
+    /// Replayed event and bounded payload.
     pub(crate) event: EventInput,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Framework-native control reference attached to a rule finding.
 pub(crate) struct ControlRef {
+    /// Display name of the framework.
     pub(crate) framework_name: String,
+    /// Framework-native control identifier.
     pub(crate) control_id: String,
 }
 
@@ -118,14 +162,19 @@ pub(crate) struct RuleFindingDecision {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Structurally valid lifecycle decision produced by one rule evaluator.
 pub(crate) struct Decision {
+    /// Requested host lifecycle transition.
     pub(crate) action: Action,
+    /// Stable open-finding selector for anchor and close responses.
     pub(crate) anchor: String,
+    /// Rule-owned finding subset for an open response.
     pub(crate) finding: Option<RuleFindingDecision>,
 }
 
 #[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Test oracle binding an injected evaluator to exact input and output digests.
 pub(crate) struct EvaluatorReceipt {
     pub(crate) workspace_id: String,
     pub(crate) tenant_id: String,
@@ -140,6 +189,7 @@ pub(crate) struct EvaluatorReceipt {
 
 #[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Test-only pairing of an injected evaluator result and its receipt.
 pub(crate) struct EvaluatorOutput {
     pub(crate) decision: Decision,
     pub(crate) receipt: EvaluatorReceipt,
@@ -166,6 +216,7 @@ pub(crate) struct ScopedDecision {
 
 #[cfg(test)]
 impl ScopedDecision {
+    /// Returns the decision only when the caller presents the retained workspace.
     pub(crate) fn require_workspace(&self, workspace_id: &str) -> Result<&Decision, KernelError> {
         if workspace_id.trim().is_empty() || self.workspace_id != workspace_id.trim() {
             return Err(KernelError::WorkspaceMismatch);
@@ -176,14 +227,19 @@ impl ScopedDecision {
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Persistence seam exercised by workspace-retention parity tests.
 pub(crate) enum PersistencePath {
+    /// Candidate evaluation before persistence.
     Candidate,
+    /// Production finding upsert.
     ProductionUpsert,
+    /// Finding closeout.
     Closeout,
 }
 
 #[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Test-only persistence action that must retain all trusted scope coordinates.
 pub(crate) struct ScopedPersistenceAction {
     pub(crate) workspace_id: String,
     pub(crate) tenant_id: String,
@@ -199,6 +255,7 @@ pub(crate) struct ScopedPersistenceAction {
 
 #[cfg(test)]
 impl ScopedDecision {
+    /// Copies one scoped decision into a selected persistence path.
     pub(crate) fn for_path(&self, path: PersistencePath) -> ScopedPersistenceAction {
         ScopedPersistenceAction {
             workspace_id: self.workspace_id.clone(),
@@ -272,6 +329,7 @@ pub(crate) struct HostFindingFields {
 
 #[cfg(test)]
 impl Default for HostFindingFields {
+    /// Reproduces Go zero values used by the shared finding conversion seam.
     fn default() -> Self {
         const GO_ZERO_TIME: &str = "0001-01-01T00:00:00Z";
         Self {
@@ -305,6 +363,7 @@ impl Default for HostFindingFields {
 
 #[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Full parity record combining rule-owned and host-owned finding fields.
 pub(crate) struct CompleteFindingRecord {
     #[serde(flatten)]
     pub(crate) rule: RuleFindingDecision,
@@ -314,6 +373,7 @@ pub(crate) struct CompleteFindingRecord {
 
 #[cfg(test)]
 impl From<RuleFindingDecision> for CompleteFindingRecord {
+    /// Adds the exact host-owned zero/default field set to a rule decision.
     fn from(rule: RuleFindingDecision) -> Self {
         Self {
             rule,
@@ -337,6 +397,7 @@ impl CompleteFindingRecord {
 }
 
 impl Decision {
+    /// Constructs a structurally empty non-match decision.
     pub(super) fn none() -> Self {
         Self {
             action: Action::None,
@@ -345,6 +406,7 @@ impl Decision {
         }
     }
 
+    /// Constructs an anchor response, degrading an empty anchor to `None`.
     pub(super) fn anchor(anchor: String) -> Self {
         if anchor.trim().is_empty() {
             return Self::none();
@@ -356,6 +418,7 @@ impl Decision {
         }
     }
 
+    /// Constructs an open action with exactly one finding body.
     pub(super) fn open(finding: RuleFindingDecision) -> Self {
         Self {
             action: Action::Open,
@@ -364,6 +427,7 @@ impl Decision {
         }
     }
 
+    /// Constructs a close action with no finding body.
     pub(super) fn close(anchor: String) -> Self {
         Self {
             action: Action::Close,
@@ -374,38 +438,64 @@ impl Decision {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Typed failure at the payload-rule admission or evaluation boundary.
 pub(crate) enum KernelError {
+    /// Rule identifier is not compiled into this evaluator.
     UnsupportedRule,
+    /// Rule does not implement the requested lifecycle operation.
     UnsupportedOperation,
+    /// Runtime and event tenant, source, or runtime coordinates disagree.
     ScopeMismatch,
+    /// Trusted event workspace disagrees with runtime workspace.
     WorkspaceMismatch,
+    /// Event schema does not match the rule contract.
     SchemaMismatch,
+    /// Anchor or close requests unexpectedly carried provider bytes.
     ActionPayloadNotEmpty,
+    /// Required host-authenticated scope is absent.
     MissingTrustedContext,
+    /// Injected evaluator failed before producing a decision.
     EvaluatorFailure,
+    /// Evaluator decision shape or operation is invalid.
     MalformedEvaluatorResponse,
+    /// Evaluator receipt or finding binding is inconsistent.
     InvalidEvaluatorReceipt,
+    /// Raw payload exceeds [`MAX_PAYLOAD_BYTES`].
     PayloadTooLarge,
+    /// JSON nesting exceeds [`MAX_PAYLOAD_DEPTH`].
     PayloadTooDeep,
+    /// A JSON array exceeds [`MAX_PAYLOAD_ARRAY_ITEMS`].
     PayloadArrayTooLarge,
+    /// A JSON object exceeds [`MAX_PAYLOAD_OBJECT_FIELDS`].
     PayloadObjectTooLarge,
+    /// A JSON string or key exceeds [`MAX_PAYLOAD_STRING_BYTES`].
     PayloadStringTooLarge,
+    /// A JSON object repeats a field name.
     DuplicatePayloadField,
+    /// JSON is invalid, trailing, or outside the target rule schema.
     MalformedPayload,
+    /// Host authority time is not supported RFC 3339 input.
     InvalidObservationTime,
+    /// Trusted attribute map exceeds its count or field bounds.
     InvalidAttributes,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Provider scalar normalized to the historical Go string representation.
 pub(super) struct CanonicalScalar(String);
 
 impl CanonicalScalar {
+    /// Returns the already normalized scalar value.
     pub(super) fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
 
 impl<'de> Deserialize<'de> for CanonicalScalar {
+    /// Accepts only string, Boolean, or number JSON scalars.
+    ///
+    /// Strings are trimmed, Booleans use lowercase Rust spelling, and numbers
+    /// pass through the Go-compatible `f64` normalization below.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -433,6 +523,8 @@ pub(super) fn validate_scope(
 ) -> Result<(), KernelError> {
     let runtime = &request.runtime;
     let event = &request.event;
+    // Establish all required host coordinates before comparing them. Workspace
+    // is mandatory for payload families because persistence is workspace-scoped.
     if runtime.runtime_id.trim().is_empty()
         || runtime.tenant_id.trim().is_empty()
         || runtime.source_id.trim().is_empty()
@@ -442,12 +534,15 @@ pub(super) fn validate_scope(
     {
         return Err(KernelError::MissingTrustedContext);
     }
+    // Source comparison is ASCII case-insensitive for compatibility; tenant and
+    // runtime identities retain exact trimmed comparison.
     if runtime.tenant_id.trim() != event.tenant_id.trim()
         || !runtime.source_id.trim().eq_ignore_ascii_case(source_id)
         || !event.source_id.trim().eq_ignore_ascii_case(source_id)
     {
         return Err(KernelError::ScopeMismatch);
     }
+    // Schema identity is exact because it selects the closed payload decoder.
     if event.schema_ref.trim() != schema_ref {
         return Err(KernelError::SchemaMismatch);
     }
@@ -466,6 +561,8 @@ pub(super) fn validate_scope(
 }
 
 fn validate_attributes(attributes: &BTreeMap<String, String>) -> Result<(), KernelError> {
+    // Attributes are already a trusted host overlay, but still need independent
+    // cardinality and byte bounds before a rule copies them into findings.
     if attributes.len() > MAX_ATTRIBUTES {
         return Err(KernelError::InvalidAttributes);
     }
@@ -483,12 +580,16 @@ pub(super) fn decode_payload<T>(payload: &[u8]) -> Result<T, KernelError>
 where
     T: for<'de> Deserialize<'de> + Default,
 {
+    // An absent provider body maps only to the target's explicit `Default`, which
+    // keeps optional payloads distinct from malformed non-empty JSON.
     if payload.is_empty() {
         return Ok(T::default());
     }
     if payload.len() > MAX_PAYLOAD_BYTES {
         return Err(KernelError::PayloadTooLarge);
     }
+    // Preflight the generic JSON tree before target deserialization. This catches
+    // duplicate fields and structural budgets that ordinary Serde derives do not.
     let failure = Cell::new(None);
     let mut preflight = serde_json::Deserializer::from_slice(payload);
     if (BoundedValueSeed {
@@ -508,6 +609,8 @@ where
         });
     }
     preflight.end().map_err(|_| KernelError::MalformedPayload)?;
+    // Decode a second time only after the entire generic value and trailing-byte
+    // check pass; the closed target schema supplies semantic field validation.
     let mut deserializer = serde_json::Deserializer::from_slice(payload);
     let decoded = T::deserialize(&mut deserializer).map_err(|_| KernelError::MalformedPayload)?;
     deserializer
@@ -517,6 +620,7 @@ where
 }
 
 #[derive(Clone, Copy)]
+/// Exact budget first exceeded during generic JSON preflight.
 enum BudgetFailure {
     Depth,
     Array,
@@ -526,7 +630,9 @@ enum BudgetFailure {
 }
 
 struct BoundedValueSeed<'a> {
+    /// Current value depth, with the root at one.
     depth: usize,
+    /// Shared first-failure class propagated out of Serde's generic error.
     failure: &'a Cell<Option<BudgetFailure>>,
 }
 
@@ -537,6 +643,8 @@ impl<'a, 'de> DeserializeSeed<'de> for BoundedValueSeed<'a> {
     where
         D: Deserializer<'de>,
     {
+        // Check before descending so every scalar, sequence, and map at this
+        // position participates in the same depth accounting.
         if self.depth > MAX_PAYLOAD_DEPTH {
             self.failure.set(Some(BudgetFailure::Depth));
             return Err(serde::de::Error::custom("payload budget exceeded"));
@@ -549,7 +657,9 @@ impl<'a, 'de> DeserializeSeed<'de> for BoundedValueSeed<'a> {
 }
 
 struct BoundedValueVisitor<'a> {
+    /// Depth of the value currently being visited.
     depth: usize,
+    /// Out-of-band typed failure retained across Serde callbacks.
     failure: &'a Cell<Option<BudgetFailure>>,
 }
 
@@ -606,6 +716,8 @@ impl<'a, 'de> Visitor<'de> for BoundedValueVisitor<'a> {
     where
         A: SeqAccess<'de>,
     {
+        // Count elements as they are recursively consumed; reject immediately
+        // after consuming the first item beyond the closed per-array budget.
         let mut count = 0;
         while sequence
             .next_element_seed(BoundedValueSeed {
@@ -627,6 +739,8 @@ impl<'a, 'de> Visitor<'de> for BoundedValueVisitor<'a> {
     where
         A: MapAccess<'de>,
     {
+        // Retaining keys for one bounded object enables exact duplicate rejection
+        // before target deserialization could apply last-key-wins semantics.
         let mut keys = std::collections::BTreeSet::new();
         let mut count = 0;
         while let Some(key) = map.next_key::<String>()? {
@@ -653,6 +767,8 @@ impl<'a, 'de> Visitor<'de> for BoundedValueVisitor<'a> {
 }
 
 pub(crate) fn normalized_observation_time(value: &str) -> Result<String, KernelError> {
+    // ASCII is required before fixed byte slicing. Accept UTC `Z` or a numeric
+    // offset, then normalize every valid instant into a UTC representation.
     let value = value.trim();
     if !value.is_ascii() {
         return Err(KernelError::InvalidObservationTime);
@@ -706,6 +822,8 @@ pub(crate) fn normalized_observation_time(value: &str) -> Result<String, KernelE
     {
         return Err(KernelError::InvalidObservationTime);
     }
+    // Fractional seconds may carry one through nine digits. Leap seconds and
+    // timezone names are outside this closed RFC 3339 subset.
     let fraction = &date_time[19..];
     if !fraction.is_empty()
         && (!fraction.starts_with('.')
@@ -734,6 +852,7 @@ pub(crate) fn normalized_observation_time(value: &str) -> Result<String, KernelE
 }
 
 fn parse_digits(value: &str) -> Result<u32, KernelError> {
+    // Fixed-width timestamp slices must contain ASCII digits only.
     if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(KernelError::InvalidObservationTime);
     }
@@ -743,6 +862,7 @@ fn parse_digits(value: &str) -> Result<u32, KernelError> {
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
+    // Gregorian leap-year rules apply to the admitted four-digit input year.
     match month {
         2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
         2 => 28,
@@ -752,6 +872,8 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 }
 
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    // Convert a Gregorian date to days relative to the Unix epoch using 400-year
+    // eras; Euclidean division also behaves correctly before 1970.
     let adjusted_year = year - i32::from(month <= 2);
     let era = adjusted_year.div_euclid(400);
     let year_of_era = adjusted_year - era * 400;
@@ -764,6 +886,7 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
 }
 
 fn civil_from_days(days: i64) -> (i32, u32, u32) {
+    // Inverse of `days_from_civil`, used after applying the numeric UTC offset.
     let days = days + 719_468;
     let era = days.div_euclid(146_097);
     let day_of_era = days - era * 146_097;
@@ -779,14 +902,19 @@ fn civil_from_days(days: i64) -> (i32, u32, u32) {
 }
 
 pub(super) fn attribute<'a>(event: &'a EventInput, key: &str) -> &'a str {
+    // Decisions use trimmed views while the original ordered map remains intact
+    // for input commitments and receipts.
     event.attributes.get(key).map_or("", |value| value.trim())
 }
 
 pub(super) fn scalar(value: &Option<CanonicalScalar>) -> &str {
+    // Treat an absent optional provider scalar as empty for closed predicates.
     value.as_ref().map_or("", CanonicalScalar::as_str)
 }
 
 pub(super) fn first_non_empty<'a>(values: &[&'a str]) -> &'a str {
+    // Preserve precedence in caller order and return a trimmed view of the first
+    // usable identity or display field.
     values
         .iter()
         .copied()
@@ -795,10 +923,14 @@ pub(super) fn first_non_empty<'a>(values: &[&'a str]) -> &'a str {
 }
 
 pub(super) fn trim_empty(attributes: &mut BTreeMap<String, String>) {
+    // Remove empty metadata without normalizing retained keys or values; their
+    // exact strings remain part of the emitted finding JSON.
     attributes.retain(|key, value| !key.trim().is_empty() && !value.trim().is_empty());
 }
 
 pub(super) fn finding_hash(parts: &[&str]) -> String {
+    // NUL-delimit trimmed components before hashing so field boundaries cannot
+    // collide. The historical raw lowercase hex form is retained.
     let mut input = Vec::new();
     for part in parts {
         input.extend_from_slice(part.trim().as_bytes());
@@ -808,6 +940,8 @@ pub(super) fn finding_hash(parts: &[&str]) -> String {
 }
 
 pub(super) fn stable_external_id(value: &str) -> String {
+    // Reject empty/control-bearing identity material, then expose only 128 digest
+    // bits so provider identifiers do not pass through to stable rule output.
     let normalized = value.trim();
     if !valid_identity_component(normalized) {
         return String::new();
@@ -817,6 +951,8 @@ pub(super) fn stable_external_id(value: &str) -> String {
 }
 
 pub(super) fn identity_anchor(attributes: &BTreeMap<String, String>, fields: &[&str]) -> String {
+    // Every named field is required and emitted in caller order as `key=value`.
+    // Any invalid name or value invalidates the whole recurrence anchor.
     if fields.is_empty() {
         return String::new();
     }
@@ -836,6 +972,8 @@ pub(super) fn identity_anchor(attributes: &BTreeMap<String, String>, fields: &[&
 }
 
 pub(super) fn valid_identity_component(value: &str) -> bool {
+    // Surrounding whitespace is tolerated by this predicate because callers
+    // normalize before hashing; control characters are never identity material.
     !value.trim().is_empty() && !value.chars().any(char::is_control)
 }
 
@@ -845,6 +983,7 @@ pub(super) fn byte_digest(value: &[u8]) -> String {
 }
 
 fn hex_digest(value: &[u8]) -> String {
+    // Manual lowercase encoding fixes one deterministic representation.
     let mut encoded = String::with_capacity(value.len() * 2);
     for byte in value {
         write!(encoded, "{byte:02x}").expect("writing to String cannot fail");
@@ -853,6 +992,8 @@ fn hex_digest(value: &[u8]) -> String {
 }
 
 fn canonical_number(value: &str) -> Option<String> {
+    // Preserve negative zero because Go's fixed-point formatting distinguishes it
+    // from positive zero after parsing.
     if value.starts_with('-') && value.parse::<f64>().ok()? == 0.0 {
         return Some("-0".into());
     }
@@ -864,6 +1005,8 @@ fn canonical_number(value: &str) -> Option<String> {
 }
 
 fn fixed_decimal(value: f64) -> String {
+    // Rust's shortest representation may use scientific notation. Expand it to
+    // fixed point to match Go's `FormatFloat(..., 'f', -1, 64)` contract.
     let shortest = value.to_string();
     let Some((mantissa, exponent)) = shortest
         .split_once('e')

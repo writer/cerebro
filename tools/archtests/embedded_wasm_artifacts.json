@@ -60,7 +60,7 @@
     {
       "name": "finding-rule-evaluator",
       "path": "internal/findings/findingrule.wasm",
-      "sha256": "5f2a5d04183b59579966a14a134e8007b920526d472979689f6efd71f91c2183",
+      "sha256": "fa96dfceb0a18057ee92b550940aa3b129a4bb72d45174f898bce195addd63c0",
       "size_bytes": 247348,
       "max_size_bytes": 250000,
       "abi_version": 1
