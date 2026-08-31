@@ -2,8 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -56,129 +60,244 @@ func TestAuthorityLedgerDetectsCatalogInventoryDrift(t *testing.T) {
 	}
 }
 
-func TestAuthorityLedgerDetectsRuntimeImplementationDriftUntilBindingIsRefreshed(t *testing.T) {
-	tests := []struct {
-		name    string
-		role    string
-		content string
-	}{
-		{
-			name: "durable dispatch",
-			role: "durable_pull_dispatch",
-			content: `
-package sourceruntime
-
-type Service struct{}
-
-func (s *Service) readSourcePull() bool {
-	return false
-}
-`,
-		},
-		{
-			name: "primary selector",
-			role: "rust_authoritative_selector",
-			content: `
-package sourceworker
-
-func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "pull_source" || sourceID == "new_source"
-}
-
-
-func TailscaleFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "tailscale"
-}
-`,
-		},
-		{
-			name: "transitive selector",
-			role: "tailscale_authoritative_selector",
-			content: `
-package sourceworker
-
-func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "pull_source"
-}
-
-func TailscaleFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "tailscale" || sourceID == "new_tailscale_alias"
-}
-`,
-		},
-		{
-			name: "preview selector",
-			role: "preview_rust_selector",
-			content: `
-package sourceops
-
-func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
-	return config["family"], sourceID == "pull_source" || sourceID == "new_preview_source"
-}
-`,
-		},
+func TestSelectorOutcomeContractChecksCatalogAndDefaultOutcomes(t *testing.T) {
+	families := []catalogFamily{
+		{Key: familyKey{Mode: "pull", SourceID: "pull_source", FamilyID: "alpha"}},
+		{Key: familyKey{Mode: "pull", SourceID: "pull_source", FamilyID: "beta"}},
+		{Key: familyKey{Mode: "push", SourceID: "push_source", FamilyID: "delivery"}},
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	policy := selectorPolicy{
+		DefaultKernel: goCompatibilityKernel,
+		RustKernelRules: []selectorRule{{
+			SourceID: "pull_source", Families: []string{"alpha"}, DefaultFamily: "alpha",
+			UnknownFamilyPolicy: unknownFamilyGoPolicy,
+		}},
+	}
+	selector := func(sourceID, familyID string) (string, bool) {
+		if sourceID != "pull_source" {
+			return "", false
+		}
+		if familyID == "" {
+			familyID = "alpha"
+		}
+		return familyID, familyID == "alpha"
+	}
+	if err := validateSelectorOutcomes("test", policy, selector, families); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSelectorOutcomeContractDetectsNormalizationDrift(t *testing.T) {
+	families := []catalogFamily{{Key: familyKey{Mode: "pull", SourceID: "pull_source", FamilyID: "alpha"}}}
+	policy := selectorPolicy{
+		DefaultKernel: goCompatibilityKernel,
+		RustKernelRules: []selectorRule{{
+			SourceID: "pull_source", AllCatalogFamilies: true,
+			UnknownFamilyPolicy: unknownFamilyRustPolicy,
+		}},
+	}
+	selector := func(sourceID, familyID string) (string, bool) {
+		if sourceID == "pull_source" {
+			return "wrong", true
+		}
+		return "", false
+	}
+	err := validateSelectorOutcomes("test", policy, selector, families)
+	if err == nil || !strings.Contains(err.Error(), "selector normalization drift") {
+		t.Fatalf("check error = %v, want normalization drift", err)
+	}
+}
+
+func TestSelectorOutcomeContractChecksUnknownFamilyPolicy(t *testing.T) {
+	families := []catalogFamily{{Key: familyKey{Mode: "pull", SourceID: "pull_source", FamilyID: "alpha"}}}
+	policy := selectorPolicy{
+		DefaultKernel: goCompatibilityKernel,
+		RustKernelRules: []selectorRule{{
+			SourceID: "pull_source", AllCatalogFamilies: true,
+			UnknownFamilyPolicy: unknownFamilyRustPolicy,
+		}},
+	}
+	selector := func(sourceID, familyID string) (string, bool) {
+		if sourceID != "pull_source" || familyID == "" || familyID == unknownFamilySentinel {
+			return familyID, false
+		}
+		return familyID, true
+	}
+	err := validateSelectorOutcomes("test", policy, selector, families)
+	if err == nil || !strings.Contains(err.Error(), "family=\""+unknownFamilySentinel+"\"") || !strings.Contains(err.Error(), "compiled selector selects go_compatibility") {
+		t.Fatalf("check error = %v, want unknown-family policy drift", err)
+	}
+}
+
+func TestSelectorOutcomeContractKeepsRustKernelInsideGoAuthorityBoundary(t *testing.T) {
+	families := []catalogFamily{{Key: familyKey{Mode: "pull", SourceID: "pull_source", FamilyID: "alpha"}}}
+	policy := selectorPolicy{
+		DefaultKernel: goCompatibilityKernel,
+		RustKernelRules: []selectorRule{{
+			SourceID: "pull_source", Families: []string{"alpha"},
+			UnknownFamilyPolicy: unknownFamilyGoPolicy,
+		}},
+	}
+	ledger := authorityLedger{
+		Defaults: map[string]authorityDefinition{"pull": pullAuthority()},
+	}
+	pull := ledger.Defaults["pull"]
+	pull.Operations.Append = "organizational_projection"
+	ledger.Defaults["pull"] = pull
+
+	err := validateSelectorAuthority("durable_pull", policy, ledger, families)
+	if err == nil || !strings.Contains(err.Error(), "crosses the declared Go authority boundary") || !strings.Contains(err.Error(), "operations.append") {
+		t.Fatalf("check error = %v, want selector/owner boundary drift", err)
+	}
+}
+
+func TestAuthorityLedgerDetectsProductionSelectorCallsiteDrift(t *testing.T) {
+	root, ledger := fixtureRepository(t)
+	writeFile(t, root, "internal/extra/route.go", `
+package extra
+
+import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+
+func route(sourceID, familyID string) bool {
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	return selected
+}
+`)
+	writeLedger(t, root, ledger)
+
+	_, err := checkRepository(root)
+	if err == nil || !strings.Contains(err.Error(), "production Go selector callsite drift") || !strings.Contains(err.Error(), "internal/extra/route.go#route") {
+		t.Fatalf("check error = %v, want actionable callsite drift", err)
+	}
+}
+
+func TestAuthorityLedgerDetectsEveryBoundDeclarationDriftUntilExplicitRefresh(t *testing.T) {
+	roles := make([]string, 0, len(requiredRuntimeBindings))
+	for role := range requiredRuntimeBindings {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	for _, role := range roles {
+		t.Run(role, func(t *testing.T) {
 			root, ledger := fixtureRepository(t)
+			requirement := requiredRuntimeBindings[role]
+			insertBoundDeclarationStatement(t, root, requirement, "_ = \"reviewed implementation drift\"")
 			writeLedger(t, root, ledger)
-			writeFile(t, root, requiredRuntimeBindings[test.role].Path, test.content)
 
 			_, err := checkRepository(root)
-			if err == nil || !strings.Contains(err.Error(), "runtime implementation drift for "+test.role) || !strings.Contains(err.Error(), "refresh the ledger binding") {
-				t.Fatalf("check error = %v, want actionable runtime implementation drift", err)
+			if err == nil || !strings.Contains(err.Error(), "runtime implementation drift for "+role) || !strings.Contains(err.Error(), "refresh this binding only when it is deliberate") {
+				t.Fatalf("check error = %v, want actionable binding drift for %s", err, role)
 			}
 
-			refreshRuntimeBinding(t, root, &ledger, test.role)
+			refreshRuntimeBinding(t, root, &ledger, role)
 			writeLedger(t, root, ledger)
 			if _, err := checkRepository(root); err != nil {
-				t.Fatalf("check after deliberate binding refresh: %v", err)
+				t.Fatalf("check after explicit binding refresh: %v", err)
 			}
 		})
 	}
 }
 
-func TestAuthorityLedgerRejectsRuntimeBindingSubstitution(t *testing.T) {
-	root, ledger := fixtureRepository(t)
-	ledger.RuntimeImplementation.Bindings[0].Path = "internal/sourceruntime/sourceworker/pull.go"
-	ledger.RuntimeImplementation.Bindings[0].Symbol = "RustAuthoritativeFamily"
-	writeLedger(t, root, ledger)
-
-	_, err := checkRepository(root)
-	if err == nil || !strings.Contains(err.Error(), "must bind internal/sourceruntime/source_execution.go#Service.readSourcePull") {
-		t.Fatalf("check error = %v, want required runtime-binding rejection", err)
-	}
-}
-
-func TestRuntimeBindingCanonicalizationIgnoresCommentsAndFormatting(t *testing.T) {
+func TestContextualBindingIncludesImportContextButIgnoresFormattingAndImportOrder(t *testing.T) {
 	root := t.TempDir()
-	const path = "internal/example/selector.go"
-	writeFile(t, root, path, `
+	const relPath = "internal/example/selector.go"
+	writeFile(t, root, relPath, `
 package example
 
-func Select(value string) bool { return value == "active" }
+import (
+	"fmt"
+	text "strings"
+)
+
+func Select(value string) string {
+	return fmt.Sprint(text.TrimSpace(value))
+}
 `)
-	want, err := canonicalGoDeclarationDigest(root, path, "Select")
+	want, err := canonicalGoDeclarationContextDigest(root, relPath, "Select")
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, root, path, `
+	writeFile(t, root, relPath, `
 package example
 
-// Select is deliberately formatted differently without changing behavior.
+import (
+	text "strings"
+	"fmt"
+)
+
+// Select deliberately changes only comments and formatting.
 func Select(
 	value string,
-) bool {
-	return value == "active"
+) string {
+	return fmt.Sprint(text.TrimSpace(value))
 }
 `)
-	got, err := canonicalGoDeclarationDigest(root, path, "Select")
+	got, err := canonicalGoDeclarationContextDigest(root, relPath, "Select")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
-		t.Fatalf("canonical digest = %s, want %s for comment and formatting-only change", got, want)
+		t.Fatalf("contextual digest = %s, want %s after formatting-only change", got, want)
 	}
+
+	writeFile(t, root, relPath, `
+package example
+
+import (
+	"fmt"
+	text "bytes"
+)
+
+func Select(value string) string {
+	return fmt.Sprint(text.TrimSpace(value))
+}
+`)
+	changed, err := canonicalGoDeclarationContextDigest(root, relPath, "Select")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == want {
+		t.Fatal("contextual digest ignored an import-path change")
+	}
+}
+
+func TestContextualBindingRejectsBuildConstrainedOrDuplicateDeclarations(t *testing.T) {
+	t.Run("build constrained bound file", func(t *testing.T) {
+		root := t.TempDir()
+		const relPath = "internal/example/selector.go"
+		writeFile(t, root, relPath, `
+//go:build darwin
+
+package example
+
+func Select() bool { return true }
+`)
+		_, err := canonicalGoDeclarationContextDigest(root, relPath, "Select")
+		if err == nil || !strings.Contains(err.Error(), "must not use Go build constraints") || !strings.Contains(err.Error(), "release build contexts") {
+			t.Fatalf("binding error = %v, want build-context rejection", err)
+		}
+	})
+
+	t.Run("duplicate across build contexts", func(t *testing.T) {
+		root := t.TempDir()
+		const relPath = "internal/example/selector.go"
+		writeFile(t, root, relPath, `
+package example
+
+func Select() bool { return true }
+`)
+		writeFile(t, root, "internal/example/selector_darwin.go", `
+//go:build darwin
+
+package example
+
+func Select() bool { return false }
+`)
+		_, err := canonicalGoDeclarationContextDigest(root, relPath, "Select")
+		if err == nil || !strings.Contains(err.Error(), "declared exactly once across all release build contexts") || !strings.Contains(err.Error(), "selector_darwin.go") {
+			t.Fatalf("binding error = %v, want duplicate declaration rejection", err)
+		}
+	})
 }
 
 func TestAuthorityLedgerRejectsNetworkEnabledRustCandidate(t *testing.T) {
@@ -272,31 +391,60 @@ event_contracts:
 func fixtureRepository(t *testing.T) (string, authorityLedger) {
 	t.Helper()
 	root := t.TempDir()
-	writeFile(t, root, requiredRuntimeBindings["rust_authoritative_selector"].Path, `
+	writeFile(t, root, "internal/sourceruntime/sourceworker/pull.go", `
 package sourceworker
 
 func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "pull_source"
+	return "", false
 }
 
 func TailscaleFamily(sourceID, familyID string) (string, bool) {
-	return familyID, sourceID == "tailscale"
+	return "", false
+}
+
+func PreviewRustFamily(sourceID, familyID string) (string, bool) {
+	return RustAuthoritativeFamily(sourceID, familyID)
+}
+
+func PullFromExecutionOutput(sourceID, familyID string) bool {
+	_, selected := RustAuthoritativeFamily(sourceID, familyID)
+	return selected
 }
 `)
-	writeFile(t, root, requiredRuntimeBindings["durable_pull_dispatch"].Path, `
+	writeFile(t, root, "internal/sourceruntime/source_execution.go", `
 package sourceruntime
+
+import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 
 type Service struct{}
 
-func (s *Service) readSourcePull() bool {
-	return true
+func (s *Service) validateRustSourceRuntimePlan(sourceID, familyID string) bool {
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	return selected
+}
+
+func (s *Service) readSourcePull(sourceID, familyID string) bool {
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	return selected
 }
 `)
-	writeFile(t, root, requiredRuntimeBindings["preview_rust_selector"].Path, `
+	writeFile(t, root, "internal/sourceruntime/service.go", `
+package sourceruntime
+
+import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+
+func (s *Service) preparePutRuntime(sourceID, familyID string) bool {
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	return selected
+}
+`)
+	writeFile(t, root, "internal/sourceops/source_execution.go", `
 package sourceops
 
+import "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+
 func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
-	return config["family"], sourceID == "pull_source"
+	return sourceworker.PreviewRustFamily(sourceID, config["family"])
 }
 `)
 	writeFile(t, root, "sources/pull_source/catalog.yaml", pullCatalog("alpha"))
@@ -321,16 +469,18 @@ const KIND: &str = "pull_source.alpha";
 		t.Fatal(err)
 	}
 	ledger := authorityLedger{
-		SchemaVersion: ledgerSchemaV2,
+		SchemaVersion: ledgerSchemaV3,
 		Revision:      1,
 		Inventory:     inventoryForFamilies(families),
 		RuntimeImplementation: runtimeImplementation{
-			Canonicalization: goASTDeclarationCanonicalization,
-			Bindings: []goDeclarationBinding{
-				fixtureRuntimeBinding(t, root, "durable_pull_dispatch"),
-				fixtureRuntimeBinding(t, root, "preview_rust_selector"),
-				fixtureRuntimeBinding(t, root, "rust_authoritative_selector"),
-				fixtureRuntimeBinding(t, root, "tailscale_authoritative_selector"),
+			Contract:         selectorOutcomeContract,
+			Canonicalization: goDeclarationContextV2,
+			Bindings:         fixtureRuntimeBindings(t, root),
+			DurablePull: selectorPolicy{
+				DefaultKernel: goCompatibilityKernel,
+			},
+			Preview: selectorPolicy{
+				DefaultKernel: goCompatibilityKernel,
 			},
 		},
 		Defaults: map[string]authorityDefinition{
@@ -341,27 +491,35 @@ const KIND: &str = "pull_source.alpha";
 	return root, ledger
 }
 
-func fixtureRuntimeBinding(t *testing.T, root, role string) goDeclarationBinding {
+func fixtureRuntimeBindings(t *testing.T, root string) []goDeclarationBinding {
 	t.Helper()
-	requirement, ok := requiredRuntimeBindings[role]
-	if !ok {
-		t.Fatalf("unknown runtime binding role %q", role)
+	roles := make([]string, 0, len(requiredRuntimeBindings))
+	for role := range requiredRuntimeBindings {
+		roles = append(roles, role)
 	}
-	digest, err := canonicalGoDeclarationDigest(root, requirement.Path, requirement.Symbol)
-	if err != nil {
-		t.Fatal(err)
+	sort.Strings(roles)
+	bindings := make([]goDeclarationBinding, 0, len(roles))
+	for _, role := range roles {
+		requirement := requiredRuntimeBindings[role]
+		digest, err := canonicalGoDeclarationContextDigest(root, requirement.Path, requirement.Symbol)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bindings = append(bindings, goDeclarationBinding{
+			Role: role, Path: requirement.Path, Symbol: requirement.Symbol, DigestSHA256: digest,
+		})
 	}
-	return goDeclarationBinding{Role: role, Path: requirement.Path, Symbol: requirement.Symbol, DigestSHA256: digest}
+	return bindings
 }
 
 func refreshRuntimeBinding(t *testing.T, root string, ledger *authorityLedger, role string) {
 	t.Helper()
 	for index := range ledger.RuntimeImplementation.Bindings {
-		if ledger.RuntimeImplementation.Bindings[index].Role != role {
+		binding := &ledger.RuntimeImplementation.Bindings[index]
+		if binding.Role != role {
 			continue
 		}
-		binding := &ledger.RuntimeImplementation.Bindings[index]
-		digest, err := canonicalGoDeclarationDigest(root, binding.Path, binding.Symbol)
+		digest, err := canonicalGoDeclarationContextDigest(root, binding.Path, binding.Symbol)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -445,6 +603,40 @@ func writeLedger(t *testing.T, root string, ledger authorityLedger) {
 		t.Fatal(err)
 	}
 	writeFile(t, root, ledgerRelPath, string(payload)+"\n")
+}
+
+func insertBoundDeclarationStatement(t *testing.T, root string, requirement runtimeBindingRequirement, statement string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(requirement.Path))
+	payload, err := os.ReadFile(path) // #nosec G304 -- test helper reads an explicit fixture path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, path, payload, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matched *ast.FuncDecl
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && goDeclarationSymbol(function) == requirement.Symbol {
+			matched = function
+			break
+		}
+	}
+	if matched == nil || matched.Body == nil {
+		t.Fatalf("fixture declaration %s#%s is missing", requirement.Path, requirement.Symbol)
+	}
+	offset := fileSet.Position(matched.Body.Lbrace).Offset + 1
+	mutated := make([]byte, 0, len(payload)+len(statement)+2)
+	mutated = append(mutated, payload[:offset]...)
+	mutated = append(mutated, '\n', '\t')
+	mutated = append(mutated, statement...)
+	mutated = append(mutated, payload[offset:]...)
+	if err := os.WriteFile(path, mutated, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeFile(t *testing.T, root, relPath, content string) {

@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import scripts.post_merge_health as pm
 
@@ -16,6 +17,39 @@ def successful_required_runs(head_sha="abc"):
 
 
 class PostMergeHealthTests(unittest.TestCase):
+    def test_collect_runs_queries_encoded_exact_push_head(self):
+        response = {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "name": "CI",
+                    "head_sha": "abc/def?attempt=1",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        }
+        with mock.patch.object(pm, "request_json", return_value=response) as request:
+            runs = pm.collect_runs(
+                "main/release",
+                "abc/def?attempt=1",
+                "token",
+                "writer/cerebro",
+                25,
+            )
+
+        request.assert_called_once_with(
+            "/actions/runs?branch=main%2Frelease&head_sha=abc%2Fdef%3Fattempt%3D1&event=push&per_page=25",
+            "token",
+            "writer/cerebro",
+        )
+        self.assertEqual(runs[0]["head_sha"], "abc/def?attempt=1")
+
+    def test_collect_runs_requires_head_before_request(self):
+        with mock.patch.object(pm, "request_json") as request:
+            self.assertEqual(pm.collect_runs("main", "", "token", "writer/cerebro", 25), [])
+        request.assert_not_called()
+
     def test_summarize_marks_failures(self):
         context = pm.summarize(
             branch="main",

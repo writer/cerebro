@@ -226,6 +226,19 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	}
 }
 
+// PreviewRustFamily returns the normalized family only when source preview
+// uses the credential-free Rust worker for that exact source-family pair.
+// Preview is promoted separately from durable collection, so this closed list
+// intentionally excludes durable-only routes such as Twilio.
+func PreviewRustFamily(sourceID, familyID string) (string, bool) {
+	switch strings.TrimSpace(sourceID) {
+	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
+		return RustAuthoritativeFamily(sourceID, familyID)
+	default:
+		return "", false
+	}
+}
+
 // CredentialBinding selects the provider's ordered credential aliases from
 // stored references and trusted-host resolved values. It returns strings only
 // to the Go host; callers must never include the resolved value in worker

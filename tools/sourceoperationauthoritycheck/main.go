@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -19,36 +21,73 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	ledgerRelPath                    = "docs/engineering/source-operation-authority-ledger.json"
-	ledgerSchemaV2                   = "cerebro.source-operation-authority/v2"
-	goASTDeclarationCanonicalization = "go_ast_declaration_sha256/v1"
+	ledgerRelPath           = "docs/engineering/source-operation-authority-ledger.json"
+	ledgerSchemaV3          = "cerebro.source-operation-authority/v3"
+	selectorOutcomeContract = "compiled_go_selector_outcomes/v1"
+	goDeclarationContextV2  = "go_ast_declaration_context_sha256/v2"
+	goCompatibilityKernel   = "go_compatibility"
+	rustWorkerKernel        = "credential_free_rust_worker"
+	unknownFamilyGoPolicy   = "go_compatibility"
+	unknownFamilyRustPolicy = "rust_fail_closed"
+	sourceworkerImportPath  = "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+	durableSelectorName     = "RustAuthoritativeFamily"
+	previewSelectorName     = "PreviewRustFamily"
+	unknownSourceSentinel   = "__cerebro_authority_unknown_source__"
+	unknownFamilySentinel   = "__cerebro_authority_unknown_family__"
 )
 
 var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
+	"durable_plan_validation": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "Service.validateRustSourceRuntimePlan",
+	},
 	"durable_pull_dispatch": {
 		Path:   "internal/sourceruntime/source_execution.go",
 		Symbol: "Service.readSourcePull",
 	},
-	"preview_rust_selector": {
+	"durable_runtime_creation": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.preparePutRuntime",
+	},
+	"preview_dispatch_adapter": {
 		Path:   "internal/sourceops/source_execution.go",
 		Symbol: "rustSourceFamily",
 	},
+	"preview_rust_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: previewSelectorName,
+	},
 	"rust_authoritative_selector": {
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
-		Symbol: "RustAuthoritativeFamily",
+		Symbol: durableSelectorName,
+	},
+	"rust_output_conversion": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: "PullFromExecutionOutput",
 	},
 	"tailscale_authoritative_selector": {
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
 		Symbol: "TailscaleFamily",
 	},
+}
+
+var requiredSelectorCallsites = map[selectorCallsite]int{
+	{Selector: durableSelectorName, Path: "internal/sourceruntime/source_execution.go", Symbol: "Service.validateRustSourceRuntimePlan"}: 1,
+	{Selector: durableSelectorName, Path: "internal/sourceruntime/source_execution.go", Symbol: "Service.readSourcePull"}:                1,
+	{Selector: durableSelectorName, Path: "internal/sourceruntime/service.go", Symbol: "Service.preparePutRuntime"}:                      1,
+	{Selector: durableSelectorName, Path: "internal/sourceruntime/sourceworker/pull.go", Symbol: "PullFromExecutionOutput"}:              1,
+	{Selector: durableSelectorName, Path: "internal/sourceruntime/sourceworker/pull.go", Symbol: previewSelectorName}:                    1,
+	{Selector: previewSelectorName, Path: "internal/sourceops/source_execution.go", Symbol: "rustSourceFamily"}:                          1,
 }
 
 var validStates = map[string]struct{}{
@@ -120,8 +159,11 @@ type authorityOverride struct {
 }
 
 type runtimeImplementation struct {
+	Contract         string                 `json:"contract"`
 	Canonicalization string                 `json:"canonicalization"`
 	Bindings         []goDeclarationBinding `json:"bindings"`
+	DurablePull      selectorPolicy         `json:"durable_pull"`
+	Preview          selectorPolicy         `json:"preview"`
 }
 
 type goDeclarationBinding struct {
@@ -134,6 +176,27 @@ type goDeclarationBinding struct {
 type runtimeBindingRequirement struct {
 	Path   string
 	Symbol string
+}
+
+type selectorPolicy struct {
+	DefaultKernel   string         `json:"default_kernel"`
+	RustKernelRules []selectorRule `json:"rust_kernel_rules"`
+}
+
+type selectorRule struct {
+	SourceID            string   `json:"source_id"`
+	AllCatalogFamilies  bool     `json:"all_catalog_families,omitempty"`
+	Families            []string `json:"families,omitempty"`
+	DefaultFamily       string   `json:"default_family,omitempty"`
+	UnknownFamilyPolicy string   `json:"unknown_family_policy"`
+}
+
+type selectorFunc func(sourceID, familyID string) (string, bool)
+
+type selectorCallsite struct {
+	Selector string
+	Path     string
+	Symbol   string
 }
 
 type authorityLedger struct {
@@ -161,10 +224,10 @@ type catalogFamily struct {
 }
 
 type checkSummary struct {
-	Inventory       inventory
-	States          map[string]int
-	Overrides       int
-	RuntimeBindings int
+	Inventory     inventory
+	States        map[string]int
+	Overrides     int
+	SelectorRules int
 }
 
 func main() {
@@ -176,12 +239,12 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf(
-		"source-operation-authority-check: %d families (%d pull, %d push), %d overrides, %d runtime bindings, states=%s, digest=%s\n",
+		"source-operation-authority-check: %d families (%d pull, %d push), %d overrides, %d selector rules, states=%s, digest=%s\n",
 		summary.Inventory.FamilyCount,
 		summary.Inventory.PullFamilyCount,
 		summary.Inventory.PushFamilyCount,
 		summary.Overrides,
-		summary.RuntimeBindings,
+		summary.SelectorRules,
 		formatStateCounts(summary.States),
 		summary.Inventory.DigestSHA256,
 	)
@@ -194,6 +257,10 @@ func checkRepository(root string) (checkSummary, error) {
 		return checkSummary{}, err
 	}
 	families, err := loadCatalogFamilies(root)
+	if err != nil {
+		return checkSummary{}, err
+	}
+	selectorFamilies, err := loadSelectorFamilies(root, families)
 	if err != nil {
 		return checkSummary{}, err
 	}
@@ -211,7 +278,7 @@ func checkRepository(root string) (checkSummary, error) {
 			actualInventory.DigestSHA256,
 		)
 	}
-	if err := validateLedger(root, ledger, families); err != nil {
+	if err := validateLedger(root, ledger, families, selectorFamilies); err != nil {
 		return checkSummary{}, err
 	}
 	states := map[string]int{}
@@ -227,10 +294,10 @@ func checkRepository(root string) (checkSummary, error) {
 		states[definition.State]++
 	}
 	return checkSummary{
-		Inventory:       actualInventory,
-		States:          states,
-		Overrides:       len(ledger.Overrides),
-		RuntimeBindings: len(ledger.RuntimeImplementation.Bindings),
+		Inventory:     actualInventory,
+		States:        states,
+		Overrides:     len(ledger.Overrides),
+		SelectorRules: len(ledger.RuntimeImplementation.DurablePull.RustKernelRules) + len(ledger.RuntimeImplementation.Preview.RustKernelRules),
 	}, nil
 }
 
@@ -337,6 +404,84 @@ func loadCatalogFamilies(root string) ([]catalogFamily, error) {
 	return families, nil
 }
 
+func loadSelectorFamilies(root string, runtimeFamilies []catalogFamily) ([]catalogFamily, error) {
+	families := append([]catalogFamily(nil), runtimeFamilies...)
+	seen := make(map[familyKey]struct{}, len(families))
+	for _, family := range families {
+		seen[family.Key] = struct{}{}
+	}
+	sourcesRoot := filepath.Join(root, "sources")
+	entries, err := os.ReadDir(sourcesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("read sources directory for selector catalog: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("sources/%s must not be a symlink", entry.Name())
+		}
+		if !entry.IsDir() || entry.Name() == "catalogruntime" {
+			continue
+		}
+		relPath := filepath.ToSlash(filepath.Join("sources", entry.Name(), "catalog.yaml"))
+		path := filepath.Join(sourcesRoot, entry.Name(), "catalog.yaml")
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", relPath, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s must be a regular non-symlink file", relPath)
+		}
+		payload, err := os.ReadFile(path) // #nosec G304 -- bounded to repository source catalogs.
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", relPath, err)
+		}
+		var header catalogHeader
+		if err := yaml.Unmarshal(payload, &header); err != nil {
+			return nil, fmt.Errorf("decode %s collection mode: %w", relPath, err)
+		}
+		mode := strings.TrimSpace(header.CollectionMode)
+		if mode == "" {
+			mode = "pull"
+		}
+		if mode != "pull" {
+			continue
+		}
+		catalog, err := sourcecdk.LoadSourceCatalog(payload)
+		if err != nil {
+			return nil, fmt.Errorf("decode %s: %w", relPath, err)
+		}
+		if len(catalog.RuntimeFamilies) > 0 {
+			continue
+		}
+		sourceID := strings.TrimSpace(catalog.Spec.GetId())
+		contracts := make(map[string]sourcecdk.EventContract, len(catalog.EventContracts))
+		for _, contract := range catalog.EventContracts {
+			contracts[contract.Kind] = contract
+		}
+		for _, contract := range catalog.EventContracts {
+			prefix := sourceID + "."
+			if !strings.HasPrefix(contract.Kind, prefix) {
+				continue
+			}
+			familyID := strings.TrimPrefix(contract.Kind, prefix)
+			if familyID == "" || strings.Contains(familyID, ".") {
+				continue
+			}
+			key := familyKey{Mode: "pull", SourceID: sourceID, FamilyID: familyID}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			families = append(families, catalogFamily{Key: key, Contracts: contracts})
+		}
+	}
+	sort.Slice(families, func(i, j int) bool { return families[i].Key.String() < families[j].Key.String() })
+	return families, nil
+}
+
 func catalogFamilyIDs(mode, sourceID string, catalog *sourcecdk.SourceCatalog) ([]string, error) {
 	if mode == "pull" {
 		if len(catalog.RuntimeFamilies) == 0 {
@@ -382,14 +527,20 @@ func inventoryForFamilies(families []catalogFamily) inventory {
 	return result
 }
 
-func validateLedger(root string, ledger authorityLedger, families []catalogFamily) error {
-	if ledger.SchemaVersion != ledgerSchemaV2 {
-		return fmt.Errorf("schema_version must be %q", ledgerSchemaV2)
+func validateLedger(root string, ledger authorityLedger, families, selectorFamilies []catalogFamily) error {
+	if ledger.SchemaVersion != ledgerSchemaV3 {
+		return fmt.Errorf("schema_version must be %q", ledgerSchemaV3)
 	}
 	if ledger.Revision < 1 {
 		return fmt.Errorf("revision must be positive")
 	}
-	if err := validateRuntimeImplementation(root, ledger.RuntimeImplementation); err != nil {
+	if err := validateRuntimeImplementation(
+		root,
+		ledger,
+		selectorFamilies,
+		sourceworker.RustAuthoritativeFamily,
+		sourceworker.PreviewRustFamily,
+	); err != nil {
 		return err
 	}
 	if len(ledger.Defaults) != 2 {
@@ -433,31 +584,64 @@ func validateLedger(root string, ledger authorityLedger, families []catalogFamil
 	return nil
 }
 
-func validateRuntimeImplementation(root string, implementation runtimeImplementation) error {
-	if implementation.Canonicalization != goASTDeclarationCanonicalization {
-		return fmt.Errorf("runtime_implementation.canonicalization must be %q", goASTDeclarationCanonicalization)
+func validateRuntimeImplementation(root string, ledger authorityLedger, families []catalogFamily, durable, preview selectorFunc) error {
+	implementation := ledger.RuntimeImplementation
+	if implementation.Contract != selectorOutcomeContract {
+		return fmt.Errorf("runtime_implementation.contract must be %q", selectorOutcomeContract)
+	}
+	if err := validateRuntimeBindings(root, implementation); err != nil {
+		return err
+	}
+	selectors := []struct {
+		name     string
+		policy   selectorPolicy
+		selector selectorFunc
+	}{
+		{name: "durable_pull", policy: implementation.DurablePull, selector: durable},
+		{name: "preview", policy: implementation.Preview, selector: preview},
+	}
+	for _, selected := range selectors {
+		if err := validateSelectorPolicy("runtime_implementation."+selected.name, selected.policy, families); err != nil {
+			return err
+		}
+		if err := validateSelectorOutcomes(selected.name, selected.policy, selected.selector, families); err != nil {
+			return err
+		}
+		if err := validateSelectorAuthority(selected.name, selected.policy, ledger, families); err != nil {
+			return err
+		}
+	}
+	return validateSelectorCallsites(root)
+}
+
+func validateRuntimeBindings(root string, implementation runtimeImplementation) error {
+	if implementation.Canonicalization != goDeclarationContextV2 {
+		return fmt.Errorf("runtime_implementation.canonicalization must be %q", goDeclarationContextV2)
+	}
+	if err := validateRuntimeBindingCoverage(); err != nil {
+		return err
 	}
 	if len(implementation.Bindings) != len(requiredRuntimeBindings) {
 		return fmt.Errorf("runtime_implementation.bindings must contain exactly %d required bindings", len(requiredRuntimeBindings))
 	}
 	seen := make(map[string]struct{}, len(implementation.Bindings))
+	priorRole := ""
 	for index, binding := range implementation.Bindings {
 		path := fmt.Sprintf("runtime_implementation.bindings[%d]", index)
 		requirement, ok := requiredRuntimeBindings[binding.Role]
 		if !ok {
 			return fmt.Errorf("%s.role %q is not a required runtime binding", path, binding.Role)
 		}
+		if priorRole != "" && binding.Role <= priorRole {
+			return fmt.Errorf("%s.role must be unique and sorted after %q", path, priorRole)
+		}
+		priorRole = binding.Role
 		if _, duplicate := seen[binding.Role]; duplicate {
 			return fmt.Errorf("%s duplicates role %q", path, binding.Role)
 		}
 		seen[binding.Role] = struct{}{}
 		if binding.Path != requirement.Path || binding.Symbol != requirement.Symbol {
-			return fmt.Errorf(
-				"%s must bind %s#%s",
-				path,
-				requirement.Path,
-				requirement.Symbol,
-			)
+			return fmt.Errorf("%s must bind %s#%s", path, requirement.Path, requirement.Symbol)
 		}
 		if len(binding.DigestSHA256) != sha256.Size*2 || strings.ToLower(binding.DigestSHA256) != binding.DigestSHA256 {
 			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
@@ -465,13 +649,13 @@ func validateRuntimeImplementation(root string, implementation runtimeImplementa
 		if _, err := hex.DecodeString(binding.DigestSHA256); err != nil {
 			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
 		}
-		actualDigest, err := canonicalGoDeclarationDigest(root, binding.Path, binding.Symbol)
+		actualDigest, err := canonicalGoDeclarationContextDigest(root, binding.Path, binding.Symbol)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		if binding.DigestSHA256 != actualDigest {
 			return fmt.Errorf(
-				"runtime implementation drift for %s: ledger has digest=%s; %s#%s has digest=%s; review the production routing change and refresh the ledger binding only when it is deliberate",
+				"runtime implementation drift for %s: ledger has digest=%s; %s#%s has contextual digest=%s; review the selector or routing change and refresh this binding only when it is deliberate",
 				binding.Role,
 				binding.DigestSHA256,
 				binding.Path,
@@ -483,7 +667,21 @@ func validateRuntimeImplementation(root string, implementation runtimeImplementa
 	return nil
 }
 
-func canonicalGoDeclarationDigest(root, relPath, symbol string) (string, error) {
+func validateRuntimeBindingCoverage() error {
+	boundDeclarations := make(map[string]struct{}, len(requiredRuntimeBindings))
+	for _, requirement := range requiredRuntimeBindings {
+		boundDeclarations[requirement.Path+"#"+requirement.Symbol] = struct{}{}
+	}
+	for callsite := range requiredSelectorCallsites {
+		key := callsite.Path + "#" + callsite.Symbol
+		if _, ok := boundDeclarations[key]; !ok {
+			return fmt.Errorf("required selector callsite %s is not protected by a full declaration binding", selectorCallsiteString(callsite))
+		}
+	}
+	return nil
+}
+
+func canonicalGoDeclarationContextDigest(root, relPath, symbol string) (string, error) {
 	clean := filepath.Clean(relPath)
 	if relPath == "" || filepath.IsAbs(relPath) || clean != relPath || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path must be a clean repository-relative path")
@@ -503,10 +701,66 @@ func canonicalGoDeclarationDigest(root, relPath, symbol string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", relPath, err)
 	}
-	fileSet := token.NewFileSet()
-	parsed, err := parser.ParseFile(fileSet, fullPath, payload, 0)
+	if err := rejectGoBuildConstraints(relPath, payload); err != nil {
+		return "", err
+	}
+	parsed, matched, err := parseBoundGoDeclaration(fullPath, relPath, payload, symbol)
 	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", relPath, err)
+		return "", err
+	}
+	if err := requireUniqueGoDeclarationAcrossBuildContexts(root, relPath, symbol); err != nil {
+		return "", err
+	}
+
+	imports := make([]string, 0, len(parsed.Imports))
+	for _, spec := range parsed.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return "", fmt.Errorf("parse import context in %s: %w", relPath, err)
+		}
+		alias := ""
+		if spec.Name != nil {
+			alias = spec.Name.Name
+		}
+		imports = append(imports, alias+"\t"+strconv.Quote(importPath))
+	}
+	sort.Strings(imports)
+
+	var canonical bytes.Buffer
+	_, _ = io.WriteString(&canonical, goDeclarationContextV2+"\n")
+	_, _ = io.WriteString(&canonical, "package\t"+parsed.Name.Name+"\n")
+	for _, imported := range imports {
+		_, _ = io.WriteString(&canonical, "import\t"+imported+"\n")
+	}
+	_, _ = io.WriteString(&canonical, "declaration\n")
+	if err := format.Node(&canonical, token.NewFileSet(), matched); err != nil {
+		return "", fmt.Errorf("canonicalize %s#%s: %w", relPath, symbol, err)
+	}
+	digest := sha256.Sum256(canonical.Bytes())
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func rejectGoBuildConstraints(relPath string, payload []byte) error {
+	scanner := bufio.NewScanner(bytes.NewReader(payload))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if constraint.IsGoBuild(line) || constraint.IsPlusBuild(line) {
+			return fmt.Errorf("%s must not use Go build constraints because its authority binding must be identical across release build contexts", relPath)
+		}
+		if strings.HasPrefix(line, "package ") {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan build constraints in %s: %w", relPath, err)
+	}
+	return nil
+}
+
+func parseBoundGoDeclaration(fullPath, relPath string, payload []byte, symbol string) (*ast.File, *ast.FuncDecl, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), fullPath, payload, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", relPath, err)
 	}
 	var matched *ast.FuncDecl
 	for _, declaration := range parsed.Decls {
@@ -515,19 +769,425 @@ func canonicalGoDeclarationDigest(root, relPath, symbol string) (string, error) 
 			continue
 		}
 		if matched != nil {
-			return "", fmt.Errorf("%s declares %s more than once", relPath, symbol)
+			return nil, nil, fmt.Errorf("%s declares %s more than once", relPath, symbol)
 		}
 		matched = function
 	}
 	if matched == nil {
-		return "", fmt.Errorf("%s does not declare %s", relPath, symbol)
+		return nil, nil, fmt.Errorf("%s does not declare %s", relPath, symbol)
 	}
-	var canonical bytes.Buffer
-	if err := format.Node(&canonical, token.NewFileSet(), matched); err != nil {
-		return "", fmt.Errorf("canonicalize %s#%s: %w", relPath, symbol, err)
+	return parsed, matched, nil
+}
+
+func requireUniqueGoDeclarationAcrossBuildContexts(root, relPath, symbol string) error {
+	directory := filepath.Dir(filepath.Join(root, filepath.FromSlash(relPath)))
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("read declaration directory for %s: %w", relPath, err)
 	}
-	digest := sha256.Sum256(canonical.Bytes())
-	return hex.EncodeToString(digest[:]), nil
+	locations := make([]string, 0, 1)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		candidatePath := filepath.Join(directory, entry.Name())
+		candidateRel, err := filepath.Rel(root, candidatePath)
+		if err != nil {
+			return fmt.Errorf("resolve declaration candidate path: %w", err)
+		}
+		candidateRel = filepath.ToSlash(candidateRel)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s must not be a symlink", candidateRel)
+		}
+		payload, err := os.ReadFile(candidatePath) // #nosec G304 -- candidate is a Go file in a fixed bound declaration directory.
+		if err != nil {
+			return fmt.Errorf("read %s: %w", candidateRel, err)
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), candidatePath, payload, 0)
+		if err != nil {
+			return fmt.Errorf("parse %s across release build contexts: %w", candidateRel, err)
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if ok && goDeclarationSymbol(function) == symbol {
+				locations = append(locations, candidateRel)
+			}
+		}
+	}
+	sort.Strings(locations)
+	if len(locations) != 1 || locations[0] != filepath.ToSlash(relPath) {
+		return fmt.Errorf("%s must be declared exactly once across all release build contexts at %s; found %v", symbol, filepath.ToSlash(relPath), locations)
+	}
+	return nil
+}
+
+func validateSelectorPolicy(path string, policy selectorPolicy, families []catalogFamily) error {
+	if policy.DefaultKernel != goCompatibilityKernel {
+		return fmt.Errorf("%s.default_kernel must be %q", path, goCompatibilityKernel)
+	}
+	pullFamilies := make(map[string]map[string]struct{})
+	for _, family := range families {
+		if family.Key.Mode != "pull" {
+			continue
+		}
+		if pullFamilies[family.Key.SourceID] == nil {
+			pullFamilies[family.Key.SourceID] = map[string]struct{}{}
+		}
+		pullFamilies[family.Key.SourceID][family.Key.FamilyID] = struct{}{}
+	}
+	seenSources := make(map[string]struct{}, len(policy.RustKernelRules))
+	priorSource := ""
+	for index, rule := range policy.RustKernelRules {
+		rulePath := fmt.Sprintf("%s.rust_kernel_rules[%d]", path, index)
+		if strings.TrimSpace(rule.SourceID) == "" || strings.TrimSpace(rule.SourceID) != rule.SourceID || containsControl(rule.SourceID) {
+			return fmt.Errorf("%s.source_id must be non-empty, trimmed, and printable", rulePath)
+		}
+		if priorSource != "" && rule.SourceID <= priorSource {
+			return fmt.Errorf("%s.source_id must be unique and sorted after %q", rulePath, priorSource)
+		}
+		priorSource = rule.SourceID
+		if _, duplicate := seenSources[rule.SourceID]; duplicate {
+			return fmt.Errorf("%s duplicates source_id %q", rulePath, rule.SourceID)
+		}
+		seenSources[rule.SourceID] = struct{}{}
+		catalogFamilies, ok := pullFamilies[rule.SourceID]
+		if !ok {
+			return fmt.Errorf("%s references unknown pull source %q", rulePath, rule.SourceID)
+		}
+		if rule.AllCatalogFamilies == (len(rule.Families) > 0) {
+			return fmt.Errorf("%s must select exactly one of all_catalog_families or families", rulePath)
+		}
+		priorFamily := ""
+		for familyIndex, familyID := range rule.Families {
+			familyPath := fmt.Sprintf("%s.families[%d]", rulePath, familyIndex)
+			if strings.TrimSpace(familyID) == "" || strings.TrimSpace(familyID) != familyID || containsControl(familyID) {
+				return fmt.Errorf("%s must be non-empty, trimmed, and printable", familyPath)
+			}
+			if priorFamily != "" && familyID <= priorFamily {
+				return fmt.Errorf("%s must be unique and sorted after %q", familyPath, priorFamily)
+			}
+			priorFamily = familyID
+			if _, ok := catalogFamilies[familyID]; !ok {
+				return fmt.Errorf("%s references unknown catalog family pull\t%s\t%s", familyPath, rule.SourceID, familyID)
+			}
+		}
+		if rule.DefaultFamily != "" {
+			if strings.TrimSpace(rule.DefaultFamily) != rule.DefaultFamily || containsControl(rule.DefaultFamily) {
+				return fmt.Errorf("%s.default_family must be trimmed and printable", rulePath)
+			}
+			if _, ok := catalogFamilies[rule.DefaultFamily]; !ok {
+				return fmt.Errorf("%s.default_family %q is not a catalog family", rulePath, rule.DefaultFamily)
+			}
+			if !ruleSelectsFamily(rule, rule.DefaultFamily) {
+				return fmt.Errorf("%s.default_family %q must select the Rust kernel", rulePath, rule.DefaultFamily)
+			}
+		}
+		switch rule.UnknownFamilyPolicy {
+		case unknownFamilyGoPolicy:
+		case unknownFamilyRustPolicy:
+			if !rule.AllCatalogFamilies {
+				return fmt.Errorf("%s unknown Rust fail-closed policy requires all_catalog_families", rulePath)
+			}
+		default:
+			return fmt.Errorf("%s.unknown_family_policy %q is not supported", rulePath, rule.UnknownFamilyPolicy)
+		}
+	}
+	return nil
+}
+
+func validateSelectorOutcomes(name string, policy selectorPolicy, selector selectorFunc, families []catalogFamily) error {
+	if selector == nil {
+		return fmt.Errorf("runtime selector %s is unavailable", name)
+	}
+	rules := selectorRulesBySource(policy)
+	seenSources := map[string]struct{}{}
+	for _, family := range families {
+		rule, hasRule := rules[family.Key.SourceID]
+		wantRust := family.Key.Mode == "pull" && hasRule && ruleSelectsFamily(rule, family.Key.FamilyID)
+		if err := compareSelectorOutcome(name, selector, family.Key.SourceID, family.Key.FamilyID, family.Key.FamilyID, wantRust); err != nil {
+			return err
+		}
+		if family.Key.Mode == "pull" {
+			seenSources[family.Key.SourceID] = struct{}{}
+		}
+	}
+	sourceIDs := make([]string, 0, len(seenSources))
+	for sourceID := range seenSources {
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	sort.Strings(sourceIDs)
+	for _, sourceID := range sourceIDs {
+		rule, hasRule := rules[sourceID]
+		wantEmpty := hasRule && rule.DefaultFamily != ""
+		wantEmptyFamily := ""
+		if wantEmpty {
+			wantEmptyFamily = rule.DefaultFamily
+		}
+		if err := compareSelectorOutcome(name, selector, sourceID, "", wantEmptyFamily, wantEmpty); err != nil {
+			return err
+		}
+		wantUnknown := hasRule && rule.UnknownFamilyPolicy == unknownFamilyRustPolicy
+		if err := compareSelectorOutcome(name, selector, sourceID, unknownFamilySentinel, unknownFamilySentinel, wantUnknown); err != nil {
+			return err
+		}
+	}
+	for _, sentinel := range []struct{ sourceID, familyID string }{
+		{sourceID: "", familyID: ""},
+		{sourceID: unknownSourceSentinel, familyID: unknownFamilySentinel},
+	} {
+		if err := compareSelectorOutcome(name, selector, sentinel.sourceID, sentinel.familyID, "", false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func compareSelectorOutcome(name string, selector selectorFunc, sourceID, familyID, wantFamily string, wantRust bool) error {
+	gotFamily, gotRust := selector(sourceID, familyID)
+	if gotRust != wantRust {
+		return fmt.Errorf(
+			"%s selector outcome drift for source=%q family=%q: ledger selects %s; compiled selector selects %s",
+			name,
+			sourceID,
+			familyID,
+			selectorKernel(wantRust),
+			selectorKernel(gotRust),
+		)
+	}
+	if gotRust && gotFamily != wantFamily {
+		return fmt.Errorf(
+			"%s selector normalization drift for source=%q family=%q: ledger expects normalized family=%q; compiled selector returns %q",
+			name,
+			sourceID,
+			familyID,
+			wantFamily,
+			gotFamily,
+		)
+	}
+	return nil
+}
+
+func validateSelectorAuthority(name string, policy selectorPolicy, ledger authorityLedger, families []catalogFamily) error {
+	rules := selectorRulesBySource(policy)
+	overrides := make(map[familyKey]authorityDefinition, len(ledger.Overrides))
+	for _, override := range ledger.Overrides {
+		overrides[override.key()] = override.authorityDefinition
+	}
+	for _, family := range families {
+		if family.Key.Mode != "pull" {
+			continue
+		}
+		rule, ok := rules[family.Key.SourceID]
+		if !ok || !ruleSelectsFamily(rule, family.Key.FamilyID) {
+			continue
+		}
+		definition := ledger.Defaults["pull"]
+		if override, ok := overrides[family.Key]; ok {
+			definition = override
+		}
+		if err := validateGoBoundaryAuthority(definition); err != nil {
+			return fmt.Errorf("%s selector route %s crosses the declared Go authority boundary: %w", name, family.Key.String(), err)
+		}
+	}
+	return nil
+}
+
+func validateGoBoundaryAuthority(definition authorityDefinition) error {
+	expected := map[string]string{
+		"credential_owner":             "go_trusted_runtime_host",
+		"network_owner":                "go_trusted_runtime_host",
+		"operations.check":             "go_source_runtime",
+		"operations.discover":          "go_source_runtime",
+		"operations.read_page":         "go_source_runtime",
+		"operations.push_admit":        "not_applicable",
+		"operations.append":            "go_source_runtime",
+		"operations.project":           "go_source_runtime",
+		"operations.checkpoint_commit": "go_source_runtime_store",
+		"operations.product_read":      "organizational_projection",
+	}
+	actual := map[string]string{
+		"credential_owner":             definition.CredentialOwner,
+		"network_owner":                definition.NetworkOwner,
+		"operations.check":             definition.Operations.Check,
+		"operations.discover":          definition.Operations.Discover,
+		"operations.read_page":         definition.Operations.ReadPage,
+		"operations.push_admit":        definition.Operations.PushAdmit,
+		"operations.append":            definition.Operations.Append,
+		"operations.project":           definition.Operations.Project,
+		"operations.checkpoint_commit": definition.Operations.CheckpointCommit,
+		"operations.product_read":      definition.Operations.ProductRead,
+	}
+	keys := make([]string, 0, len(expected))
+	for key := range expected {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if actual[key] != expected[key] {
+			return fmt.Errorf("%s is %q, want %q", key, actual[key], expected[key])
+		}
+	}
+	return nil
+}
+
+func selectorRulesBySource(policy selectorPolicy) map[string]selectorRule {
+	rules := make(map[string]selectorRule, len(policy.RustKernelRules))
+	for _, rule := range policy.RustKernelRules {
+		rules[rule.SourceID] = rule
+	}
+	return rules
+}
+
+func ruleSelectsFamily(rule selectorRule, familyID string) bool {
+	if rule.AllCatalogFamilies {
+		return true
+	}
+	for _, selected := range rule.Families {
+		if familyID == selected {
+			return true
+		}
+	}
+	return false
+}
+
+func selectorKernel(rust bool) string {
+	if rust {
+		return rustWorkerKernel
+	}
+	return goCompatibilityKernel
+}
+
+func validateSelectorCallsites(root string) error {
+	actual := map[selectorCallsite]int{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return fmt.Errorf("resolve selector callsite path: %w", err)
+		}
+		relPath = filepath.ToSlash(relPath)
+		if entry.IsDir() {
+			if relPath == "tools/sourceoperationauthoritycheck" || selectorCallsiteExcludedDirectory(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if filepath.Ext(path) == ".go" {
+				return fmt.Errorf("%s must not be a symlink", relPath)
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		payload, err := os.ReadFile(path) // #nosec G304 -- path is bounded to repository Go source.
+		if err != nil {
+			return fmt.Errorf("read %s: %w", relPath, err)
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, payload, 0)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", relPath, err)
+		}
+		aliases, err := sourceworkerImportAliases(parsed)
+		if err != nil {
+			return fmt.Errorf("parse imports in %s: %w", relPath, err)
+		}
+		insideSourceworker := strings.HasPrefix(relPath, "internal/sourceruntime/sourceworker/") && parsed.Name.Name == "sourceworker"
+		dotImported := aliases["."]
+		recordReferences := func(node ast.Node, symbol string) {
+			ast.Inspect(node, func(node ast.Node) bool {
+				switch expression := node.(type) {
+				case *ast.SelectorExpr:
+					identifier, ok := expression.X.(*ast.Ident)
+					if !ok || !aliases[identifier.Name] {
+						return true
+					}
+					if expression.Sel.Name == durableSelectorName || expression.Sel.Name == previewSelectorName {
+						actual[selectorCallsite{Selector: expression.Sel.Name, Path: relPath, Symbol: symbol}]++
+					}
+				case *ast.Ident:
+					if (insideSourceworker || dotImported) && (expression.Name == durableSelectorName || expression.Name == previewSelectorName) {
+						actual[selectorCallsite{Selector: expression.Name, Path: relPath, Symbol: symbol}]++
+					}
+				}
+				return true
+			})
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok {
+				recordReferences(declaration, "<package>")
+				continue
+			}
+			if function.Body != nil {
+				recordReferences(function.Body, goDeclarationSymbol(function))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("scan production Go selector callsites: %w", err)
+	}
+	keys := make([]selectorCallsite, 0, len(requiredSelectorCallsites)+len(actual))
+	seen := map[selectorCallsite]struct{}{}
+	for callsite := range requiredSelectorCallsites {
+		keys = append(keys, callsite)
+		seen[callsite] = struct{}{}
+	}
+	for callsite := range actual {
+		if _, ok := seen[callsite]; !ok {
+			keys = append(keys, callsite)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return selectorCallsiteString(keys[i]) < selectorCallsiteString(keys[j])
+	})
+	for _, callsite := range keys {
+		want := requiredSelectorCallsites[callsite]
+		got := actual[callsite]
+		if got != want {
+			return fmt.Errorf("production Go selector callsite drift for %s: found %d references, want %d; update routing and the closed callsite contract together", selectorCallsiteString(callsite), got, want)
+		}
+	}
+	return nil
+}
+
+func selectorCallsiteExcludedDirectory(name string) bool {
+	switch name {
+	case ".git", ".cache", ".venv", "node_modules", "target", "vendor":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceworkerImportAliases(file *ast.File) (map[string]bool, error) {
+	aliases := map[string]bool{}
+	for _, spec := range file.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return nil, err
+		}
+		if importPath != sourceworkerImportPath {
+			continue
+		}
+		alias := "sourceworker"
+		if spec.Name != nil {
+			alias = spec.Name.Name
+		}
+		if alias == "_" {
+			continue
+		}
+		aliases[alias] = true
+	}
+	return aliases, nil
+}
+
+func selectorCallsiteString(callsite selectorCallsite) string {
+	return callsite.Selector + " at " + callsite.Path + "#" + callsite.Symbol
 }
 
 func goDeclarationSymbol(function *ast.FuncDecl) string {
