@@ -4,11 +4,12 @@
   "title": "Cerebro source operation authority ledger",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "revision", "inventory", "defaults", "overrides"],
+  "required": ["schema_version", "revision", "inventory", "runtime_implementation", "defaults", "overrides"],
   "properties": {
-    "schema_version": { "const": "cerebro.source-operation-authority/v1" },
+    "schema_version": { "const": "cerebro.source-operation-authority/v2" },
     "revision": { "type": "integer", "minimum": 1 },
     "inventory": { "$ref": "#/$defs/inventory" },
+    "runtime_implementation": { "$ref": "#/$defs/runtimeImplementation" },
     "defaults": {
       "type": "object",
       "additionalProperties": false,
@@ -33,6 +34,31 @@
         "family_count": { "type": "integer", "minimum": 1 },
         "pull_family_count": { "type": "integer", "minimum": 1 },
         "push_family_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "runtimeImplementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization", "bindings"],
+      "properties": {
+        "canonicalization": { "const": "go_ast_declaration_sha256/v1" },
+        "bindings": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/goDeclarationBinding" }
+        }
+      }
+    },
+    "goDeclarationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "symbol", "digest_sha256"],
+      "properties": {
+        "role": { "enum": ["durable_pull_dispatch", "preview_rust_selector", "rust_authoritative_selector", "tailscale_authoritative_selector"] },
+        "path": { "type": "string", "pattern": "^internal/.+\\.go$" },
+        "symbol": { "type": "string", "minLength": 1 },
+        "digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "operations": {
