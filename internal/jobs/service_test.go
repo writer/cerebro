@@ -459,13 +459,14 @@ func TestRunClassifiesSourceRuntimeLeaseLossAsRetryable(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-lease-lost"] = &ports.Job{ID: "job-lease-lost", Kind: KindSourceRuntimeSync, Status: ports.JobStatusQueued}
 	service := New(store)
+	fenceErr := errors.New("fence store unavailable")
 	service.WithRunner(KindSourceRuntimeSync, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
-		return nil, nil, fmt.Errorf("sync runtime: %w", ports.ErrSourceRuntimeLeaseLost)
+		return nil, nil, fmt.Errorf("%w: read source runtime lease fence: %w", ports.ErrSourceRuntimeLeaseLost, fenceErr)
 	})
 
 	runErr := service.Run(context.Background(), "job-lease-lost")
-	if !errors.Is(runErr, ports.ErrSourceRuntimeLeaseLost) {
-		t.Fatalf("Run() error = %v, want %v", runErr, ports.ErrSourceRuntimeLeaseLost)
+	if !errors.Is(runErr, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(runErr, fenceErr) {
+		t.Fatalf("Run() error = %v, want retryable lease loss preserving %v", runErr, fenceErr)
 	}
 	stored, err := store.GetJob(context.Background(), "job-lease-lost")
 	if err != nil {

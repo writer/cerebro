@@ -1766,10 +1766,20 @@ func sensitiveSourceConfigKey(key string) bool {
 }
 
 type bootstrapErrorMapping struct {
-	match      func(error) bool
-	httpStatus int
-	code       connect.Code
+	match          func(error) bool
+	httpStatus     int
+	code           connect.Code
+	connectMessage string
 }
+
+type safeConnectCause struct {
+	message string
+	cause   error
+}
+
+func (e safeConnectCause) Error() string { return e.message }
+
+func (e safeConnectCause) Unwrap() error { return e.cause }
 
 func matchesAnyError(targets ...error) func(error) bool {
 	return func(err error) bool {
@@ -1809,6 +1819,9 @@ func writeMappedBootstrapError(w http.ResponseWriter, err error, mappings []boot
 func mappedConnectError(err error, mappings []bootstrapErrorMapping) error {
 	for _, mapping := range mappings {
 		if mapping.match != nil && mapping.match(err) {
+			if mapping.connectMessage != "" {
+				err = safeConnectCause{message: mapping.connectMessage, cause: err}
+			}
 			return connect.NewError(mapping.code, err)
 		}
 	}
@@ -1844,7 +1857,7 @@ func sourceConnectError(err error) error {
 
 var sourceRuntimeErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
-	{match: matchesAnyError(sourceruntime.ErrSyncInProgress, ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted},
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress, ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted, connectMessage: "source runtime lease conflict; retry the request"},
 	{match: matchesAnyError(sourceruntime.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(sourceruntime.ErrInvalidRequest, graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
@@ -1875,7 +1888,7 @@ var graphQueryErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
 var graphIngestErrorMappings = []bootstrapErrorMapping{
-	{match: matchesAnyError(sourceruntime.ErrSyncInProgress, ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted},
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress, ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted, connectMessage: "graph ingest lease conflict; retry the request"},
 	{match: matchesAnyError(graphingest.ErrRunNotFound, ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
 	{match: matchesAnyError(graphingest.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphingest.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
