@@ -17,20 +17,36 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
+/// Event kind admitted for credential lifecycle observations.
 pub const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
+/// Event kind admitted for certificate lifecycle observations.
 pub const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
+/// Versioned payload schema required by [`CREDENTIAL_EVENT_KIND`].
 pub const CREDENTIAL_SCHEMA_REF: &str = "cerebro/security/credential-lifecycle/v1";
+/// Versioned payload schema required by [`CERTIFICATE_EVENT_KIND`].
 pub const CERTIFICATE_SCHEMA_REF: &str = "cerebro/security/certificate-lifecycle/v1";
+/// Stable identifier for the built-in lifecycle expiry policy.
 pub const EXPIRY_POLICY_ID: &str = "security.lifecycle.expiry";
+/// Semantic version of the built-in lifecycle expiry policy.
 pub const EXPIRY_POLICY_VERSION: &str = "1";
+/// Default inclusive window in which active material is classified as expiring.
 pub const DEFAULT_WARNING_WINDOW_DAYS: u32 = 30;
+/// Page size used when a query does not specify a limit.
 pub const DEFAULT_QUERY_LIMIT: usize = 100;
+/// Largest page size accepted by scan and indexed query paths.
 pub const MAX_QUERY_LIMIT: usize = 500;
+
+// Cursors freeze evaluation time for at most one short navigation session. These
+// limits bound both parsing allocation and keyset work before graph access.
 const MAX_CURSOR_AGE: Duration = Duration::minutes(15);
 const MAX_CURSOR_SUBJECT_URN_BYTES: usize = 2_048;
 const MAX_PAGE_TOKEN_CHARS: usize = 4_608;
 const MAX_QUERY_FILTER_VALUES: usize = 100;
 
+/// Protobuf representation of a cross-surface resource reference.
+///
+/// `api_path` and `mcp_uri` remain on the v1 wire for compatibility, but lifecycle
+/// authority is derived exclusively from canonical `kind`, `id`, revision, and state.
 #[derive(Clone, PartialEq, Message)]
 struct WireResourceRef {
     #[prost(string, tag = "1")]
@@ -47,6 +63,10 @@ struct WireResourceRef {
     state: String,
 }
 
+/// Credential-free protobuf payload admitted from a lifecycle event envelope.
+///
+/// The payload carries identifiers and metadata only. Secret-bearing attribute
+/// names and recognizable private-key material are rejected after decoding.
 #[derive(Clone, PartialEq, Message)]
 struct WireObservation {
     #[prost(message, optional, tag = "1")]
@@ -83,27 +103,43 @@ struct WireObservation {
     attributes: std::collections::HashMap<String, String>,
 }
 
+/// Closed protobuf discriminator for the resource family being observed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
 enum WireSubjectKind {
+    /// Missing or unsupported discriminator; always rejected at admission.
     Unspecified = 0,
+    /// Credential material occupying a stable logical slot.
     Credential = 1,
+    /// Certificate material occupying a stable logical slot.
     Certificate = 2,
 }
 
+/// Closed protobuf representation of provider lifecycle state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
 enum WireLifecycleState {
+    /// Missing state; always rejected at admission.
     Unspecified = 0,
+    /// Material is active and may or may not declare an expiry.
     Active = 1,
+    /// Provider explicitly reports that material is nearing expiry.
     Expiring = 2,
+    /// Provider explicitly reports expired material.
     Expired = 3,
+    /// A newer material revision replaced this one.
     Rotated = 4,
+    /// Provider revoked the material.
     Revoked = 5,
+    /// Material is inactive without a stronger terminal state.
     Inactive = 6,
+    /// Provider cannot establish the lifecycle state.
     Unknown = 7,
 }
 
+// Only metadata with an explicit product use is admitted. The secondary fragment
+// denylist keeps future allowlist additions from accidentally admitting common
+// secret-bearing names.
 const ALLOWED_ATTRIBUTES: &[&str] = &[
     "algorithm",
     "environment",
@@ -133,10 +169,14 @@ const FORBIDDEN_ATTRIBUTE_FRAGMENTS: &[&str] = &[
     "pkcs",
 ];
 
+/// Typed rejection at the lifecycle admission, policy, projection, or query boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LifecycleError {
+    /// A required field or invariant identified by a stable field label is invalid.
     Invalid(&'static str),
+    /// A bounded error whose message needs request-specific context.
     InvalidValue(String),
+    /// Metadata was rejected because its name or value could contain secret material.
     SecretMaterial(String),
 }
 
@@ -153,14 +193,18 @@ impl fmt::Display for LifecycleError {
 
 impl Error for LifecycleError {}
 
+/// Lifecycle resource family used for contracts, identity, policy, and actions.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubjectKind {
+    /// A credential such as an API credential or signing key slot.
     Credential,
+    /// A certificate slot whose material can be renewed.
     Certificate,
 }
 
 impl SubjectKind {
+    /// Returns the exact event kind and schema reference for this family.
     pub fn event_contract(self) -> (&'static str, &'static str) {
         match self {
             Self::Credential => (CREDENTIAL_EVENT_KIND, CREDENTIAL_SCHEMA_REF),
@@ -168,6 +212,7 @@ impl SubjectKind {
         }
     }
 
+    /// Returns the canonical lowercase identity segment for this family.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Credential => "credential",
@@ -176,66 +221,114 @@ impl SubjectKind {
     }
 }
 
+/// Provider-observed lifecycle state before policy evaluation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleState {
+    /// Material is active; expiry policy derives compliance from `expires_at`.
     Active,
+    /// Provider explicitly marks the material as nearing expiry.
     Expiring,
+    /// Provider explicitly marks the material as expired.
     Expired,
+    /// Material has been replaced by a newer revision.
     Rotated,
+    /// Material has been revoked.
     Revoked,
+    /// Material is no longer active.
     Inactive,
+    /// Provider could not determine a state.
     Unknown,
 }
 
+/// Canonical reference to a tenant-scoped product object.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceRef {
+    /// Provider-neutral object kind.
     pub kind: String,
+    /// Canonical tenant-scoped URN.
     pub id: String,
+    /// Optional material or object revision; never part of stable slot identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    /// Optional state of the referenced object at observation time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
 }
 
+/// Validated metadata-only observation of one credential or certificate slot.
+///
+/// `authority_id` and `stable_locator` determine the stable subject URN. Material
+/// rotation changes `subject_ref.revision`, not `subject_ref.id`, so findings and
+/// action routes remain attached to the logical slot across replacements.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Observation {
+    /// Stable subject slot and current material revision.
     pub subject_ref: ResourceRef,
+    /// Credential or certificate semantics for this subject.
     pub subject_kind: SubjectKind,
+    /// Provider that reported the observation.
     pub provider: String,
+    /// Stable provider account, issuer, or administrative authority.
     pub authority_id: String,
+    /// Stable slot locator within the authority.
     pub stable_locator: String,
+    /// Human-readable subject name; never used for identity.
     pub display_name: String,
+    /// Provider-observed lifecycle state.
     pub state: LifecycleState,
+    /// RFC 3339 time correlated exactly with the event envelope and collection receipt.
     pub observed_at: String,
+    /// Optional RFC 3339 issue time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issued_at: Option<String>,
+    /// Optional RFC 3339 expiry time used by the built-in policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
+    /// Optional RFC 3339 rotation time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotated_at: Option<String>,
+    /// Optional RFC 3339 revocation time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revoked_at: Option<String>,
+    /// Optional tenant-scoped accountable owner.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_urn: Option<String>,
+    /// Tenant-scoped resources within the material's declared scope.
     #[serde(default)]
     pub scope_refs: Vec<ResourceRef>,
+    /// Tenant-scoped claims that support this observation.
     #[serde(default)]
     pub evidence_claim_refs: Vec<ResourceRef>,
+    /// Explicitly allowlisted, secret-free provider metadata.
     #[serde(default)]
     pub attributes: BTreeMap<String, String>,
 }
 
+/// Minimal graph resource representation consumed by lifecycle reads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectedResource {
+    /// Stable graph key used when a legacy projection lacks `resource_urn`.
     pub agent_key: String,
+    /// Human-readable graph label.
     pub label: String,
+    /// String-valued projection properties, including encoded repeated metadata.
     pub properties: BTreeMap<String, String>,
 }
 
 impl Observation {
+    /// Validates stable identity, times, tenant isolation, and the metadata allowlist.
+    ///
+    /// Validation reconstructs the canonical subject URN from authenticated tenant
+    /// context rather than trusting the payload identity. Attribute names must be on
+    /// the allowlist and values are screened for recognizable private-key envelopes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LifecycleError::Invalid`] for identity or time failures and
+    /// [`LifecycleError::SecretMaterial`] for prohibited metadata.
     pub fn validate(&self, tenant_id: &TenantId) -> Result<(), LifecycleError> {
         for (field, value) in [
             ("provider", self.provider.as_str()),
@@ -272,6 +365,8 @@ impl Observation {
                 parse_time(value, field)?;
             }
         }
+        // Normalize names only for policy checks. The original key and value are
+        // retained for projection after they pass the credential-free boundary.
         for (key, value) in &self.attributes {
             let normalized = key.trim().to_ascii_lowercase();
             if !ALLOWED_ATTRIBUTES.contains(&normalized.as_str())
@@ -303,6 +398,11 @@ impl Observation {
         Ok(())
     }
 
+    /// Reconstructs a lifecycle observation from graph projection properties.
+    ///
+    /// Returns `Ok(None)` for unrelated or incomplete resources so broad scans can
+    /// skip them. Once an entity declares both lifecycle kind and state, malformed
+    /// state or encoded JSON is an error rather than a silent omission.
     pub fn from_graph(entity: ProjectedResource) -> Result<Option<Self>, LifecycleError> {
         let properties = entity.properties;
         let Some(subject_kind) = properties
@@ -364,6 +464,16 @@ impl Observation {
     }
 }
 
+/// Decodes and validates one protobuf lifecycle event payload.
+///
+/// The payload observation time must equal the authenticated envelope time at
+/// millisecond precision. This binds projection to the admitted event and prevents
+/// provider-controlled timestamps from being substituted after admission.
+///
+/// # Errors
+///
+/// Returns a typed lifecycle error for malformed protobuf, unsupported enum values,
+/// invalid timestamps, envelope-time mismatch, tenant mismatch, or secret metadata.
 pub fn decode_protobuf_observation(
     payload: &[u8],
     tenant_id: &TenantId,
@@ -440,6 +550,17 @@ pub fn decode_protobuf_observation(
     Ok(observation)
 }
 
+/// Projects a validated observation and any open expiry finding into one graph delta.
+///
+/// The collection receipt supplies authenticated tenant and runtime authority. Its
+/// observation time must equal the payload time. The resource entity is always
+/// emitted; a finding and `affects` assertion are emitted only when policy state is
+/// `expiring` or `expired`.
+///
+/// # Errors
+///
+/// Returns an error when observation authority, collection time, graph identifiers,
+/// properties, provenance, or relationship construction is invalid.
 pub fn project_observation(
     receipt: CollectionReceipt,
     observation_id: ObservationId,
@@ -450,6 +571,8 @@ pub fn project_observation(
     if observed_at_unix_ms != receipt.observed_at_unix_ms() {
         return Err(LifecycleError::Invalid("collection observed time"));
     }
+    // Graph EntityId has a bounded syntax, so it is derived from the canonical URN.
+    // The full URN remains a property and is the product-facing stable identity.
     let subject_id = stable_entity_id("security-lifecycle-resource", &observation.subject_ref.id)?;
     let mut subject = Entity::canonical(
         receipt.tenant_id().clone(),
@@ -492,6 +615,8 @@ pub fn project_observation(
         DEFAULT_WARNING_WINDOW_DAYS,
     )?;
     if evaluation.has_finding() {
+        // Finding identity is derived from the stable slot URN rather than material
+        // revision, keeping one durable finding lane across credential rotation.
         let finding_urn = canonical_finding_urn(tenant_id.as_str(), &observation.subject_ref.id)?;
         let finding_id = stable_entity_id("security-lifecycle-finding", &finding_urn)?;
         let mut finding = Entity::canonical(
@@ -534,6 +659,10 @@ pub fn project_observation(
     Ok(builder.build())
 }
 
+/// Serializes all observation fields required for a lossless graph read.
+///
+/// Repeated and map values are encoded as JSON strings because the organizational
+/// graph property contract is scalar. Empty optional collections are omitted.
 fn projection_properties(
     observation: &Observation,
 ) -> Result<BTreeMap<String, String>, LifecycleError> {
@@ -589,6 +718,7 @@ fn projection_properties(
     Ok(properties)
 }
 
+/// Encodes one structured value into a scalar graph property.
 fn insert_graph_json_property(
     properties: &mut BTreeMap<String, String>,
     key: &'static str,
@@ -600,6 +730,10 @@ fn insert_graph_json_property(
     Ok(())
 }
 
+/// Decodes an optional structured graph property, defaulting only when absent.
+///
+/// Present malformed JSON fails closed so a corrupted lifecycle projection cannot
+/// be mistaken for an intentionally empty collection.
 fn graph_json_property<T>(
     properties: &BTreeMap<String, String>,
     key: &'static str,
@@ -617,24 +751,43 @@ where
         .map(Option::unwrap_or_default)
 }
 
+/// Deterministic result of applying the built-in expiry policy to one observation.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PolicyEvaluation {
+    /// Stable policy identifier.
     pub policy_id: &'static str,
+    /// Policy semantics version.
     pub policy_version: &'static str,
+    /// Subject evaluated by the policy.
     pub subject_ref: ResourceRef,
+    /// `compliant`, `expiring`, `expired`, or `unknown`.
     pub state: &'static str,
+    /// Inclusive warning window used for this evaluation.
     pub warning_window_days: u32,
+    /// Signed duration from evaluation time to expiry, when expiry is known.
     pub seconds_until_expiry: Option<i64>,
+    /// RFC 3339 time at which policy state was calculated.
     pub evaluated_at: String,
+    /// Claims carried forward as supporting evidence.
     pub evidence_claim_refs: Vec<ResourceRef>,
 }
 
 impl PolicyEvaluation {
+    /// Returns whether this policy state requires an open lifecycle finding.
     pub fn has_finding(&self) -> bool {
         matches!(self.state, "expiring" | "expired")
     }
 }
 
+/// Applies lifecycle-state precedence and the expiry window at a caller-supplied time.
+///
+/// Explicit `expired` and `expiring` provider states win. Rotated, revoked, and
+/// inactive material is compliant regardless of historical expiry. Active material
+/// is derived from `expires_at`; an active observation without expiry is unknown.
+///
+/// # Errors
+///
+/// Returns an error when the evaluation or expiry time is not RFC 3339.
 pub fn evaluate(
     observation: &Observation,
     evaluated_at: &str,
@@ -675,26 +828,48 @@ pub fn evaluate(
     })
 }
 
+/// Product binding between an open finding, its subject, and supporting evidence.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FindingBinding {
+    /// Stable tenant-scoped finding.
     pub finding_ref: ResourceRef,
+    /// Credential or certificate slot affected by the finding.
     pub subject_ref: ResourceRef,
+    /// Family-specific finding kind such as `credential_expiry`.
     pub finding_kind: String,
+    /// Current finding status; records produced here are open.
     pub status: String,
+    /// Evidence claims copied from the observation.
     pub evidence_claim_refs: Vec<ResourceRef>,
 }
 
+/// Opaque references required to route an approved lifecycle remediation.
+///
+/// This record describes intent and correlation only. It does not contain provider
+/// credentials, private routes, or proof that an action was authorized or executed.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionRoute {
+    /// Finding that motivates the action.
     pub finding_ref: ResourceRef,
+    /// Stable subject slot to rotate or renew.
     pub target_ref: ResourceRef,
+    /// `rotate_credential` or `renew_certificate`.
     pub action_type: String,
+    /// Whether dispatch must wait for an approval decision.
     pub approval_required: bool,
+    /// Stable opaque action-intent reference.
     pub action_intent_ref: ResourceRef,
+    /// Stable opaque dispatch reference.
     pub dispatch_ref: ResourceRef,
+    /// Stable opaque verification reference.
     pub verification_ref: ResourceRef,
 }
 
+/// Builds deterministic action correlation references for an open finding.
+///
+/// Subject and finding references must belong to the authenticated tenant. Opaque
+/// child references share the finding suffix so downstream records can correlate
+/// without embedding provider-specific execution details.
 pub fn action_route(
     tenant_id: &TenantId,
     finding_ref: ResourceRef,
@@ -735,29 +910,57 @@ pub fn action_route(
     })
 }
 
+/// Authority that a post-remediation observation must satisfy before closure.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerificationExpectation {
+    /// Authenticated tenant for every bound reference.
     pub tenant_id: TenantId,
+    /// Finding awaiting closure evidence.
     pub finding_ref: ResourceRef,
+    /// Recorded provider remediation outcome; success alone is insufficient.
     pub remediation_outcome_ref: ResourceRef,
+    /// Stable subject slot that must be recollected.
     pub subject_ref: ResourceRef,
+    /// Exact source runtime that must produce the fresh observation.
     pub source_runtime_ref: ResourceRef,
+    /// RFC 3339 dispatch time; qualifying evidence must be strictly later.
     pub dispatched_at: String,
 }
 
+/// Evidence binding that either verifies closure or records why verification remains pending.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct VerificationBinding {
+    /// Finding evaluated for closure.
     pub finding_ref: ResourceRef,
+    /// Remediation outcome correlated with this verification.
     pub remediation_outcome_ref: ResourceRef,
+    /// Fresh observation event considered by the verifier.
     pub observation_event_ref: ResourceRef,
+    /// Runtime that produced the observation.
     pub source_runtime_ref: ResourceRef,
+    /// `verified_closed` or `verification_pending`.
     pub result: &'static str,
+    /// Whether recollection covered the declared source scope.
     pub source_complete: bool,
+    /// Whether provider or runtime bounds truncated recollection.
     pub source_truncated: bool,
+    /// RFC 3339 observation time used for freshness.
     pub observed_at: String,
+    /// Claims supporting the observed lifecycle state.
     pub evidence_claim_refs: Vec<ResourceRef>,
 }
 
+/// Binds post-action recollection to a finding and decides whether it can close.
+///
+/// Closure requires all of the following: matching tenant-scoped subject and source
+/// runtime, observation strictly after dispatch, complete and untruncated collection,
+/// and a compliant policy result. A provider success response never substitutes for
+/// fresh observed state.
+///
+/// # Errors
+///
+/// Returns an error for invalid observation authority, foreign references, subject or
+/// runtime mismatch, invalid times, or policy-evaluation failure.
 pub fn bind_verification(
     observation: &Observation,
     observation_event_ref: ResourceRef,
@@ -806,142 +1009,223 @@ pub fn bind_verification(
     })
 }
 
+/// Bounded filters and keyset cursor for lifecycle reads.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 pub struct LifecycleQuery {
+    /// Accepted resource families; empty means both families.
     #[serde(default)]
     pub subject_kinds: Vec<SubjectKind>,
+    /// Accepted provider-observed states; empty means every state.
     #[serde(default)]
     pub states: Vec<LifecycleState>,
+    /// Accepted tenant-scoped owner URNs; empty means every owner.
     #[serde(default)]
     pub owner_urns: Vec<String>,
+    /// Exclusive RFC 3339 expiry cutoff; missing or later expiry does not match.
     #[serde(default)]
     pub expires_before: Option<String>,
+    /// When true, omit subjects whose policy evaluation has no finding.
     #[serde(default)]
     pub findings_only: bool,
+    /// Requested page size from 1 through [`MAX_QUERY_LIMIT`].
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Opaque v2 keyset token returned by an earlier equivalent query.
     #[serde(default)]
     pub page_token: Option<String>,
+    /// Exact stable subject slot to resolve, independent of material revision.
     #[serde(default)]
     pub subject_locator: Option<SubjectLocator>,
 }
 
+/// Provider-neutral components that resolve one stable lifecycle subject URN.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct SubjectLocator {
+    /// Credential or certificate namespace.
     pub subject_kind: SubjectKind,
+    /// Provider authority containing the slot.
     pub authority_id: String,
+    /// Stable slot within the authority.
     pub stable_locator: String,
 }
 
+/// Product read model for one lifecycle subject at a fixed evaluation time.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct LifecycleRecord {
+    /// Current metadata-only observation reconstructed from the graph.
     pub observation: Observation,
+    /// Policy results calculated for this read.
     pub policy_evaluations: Vec<PolicyEvaluation>,
+    /// Open findings derived from those policy results.
     pub findings: Vec<FindingBinding>,
+    /// Opaque action routes available for the findings.
     pub action_routes: Vec<ActionRoute>,
+    /// Frozen query evaluation time, not the graph write time.
     pub projected_at: String,
+    /// Source runtime recorded on the graph projection.
     pub source_runtime_id: String,
+    /// Optional provider/runtime collection correlation identifier.
     pub source_collection_id: String,
 }
 
+/// One lifecycle query page with navigation, coverage, freshness, and aggregates.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QueryResult {
+    /// Stable-subject-ordered records for this page.
     pub records: Vec<LifecycleRecord>,
+    /// Forward keyset cursor when a later page exists and the graph stayed stable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
+    /// Backward keyset cursor when an earlier page exists and the graph stayed stable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_page_token: Option<String>,
+    /// Whether pagination or incomplete source coverage omits matching records.
     pub truncated: bool,
+    /// Frozen RFC 3339 policy-evaluation time shared by every page in the cursor chain.
     pub as_of: String,
+    /// Counts for the complete filtered population when coverage permits.
     pub aggregates: LifecycleAggregates,
+    /// Coverage, freshness, and page-local truncation evidence.
     pub metadata: QueryMetadata,
 }
 
+/// Count of matching records for one subject family.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SubjectKindCount {
+    /// Counted family.
     pub subject_kind: SubjectKind,
+    /// Saturating count in the filtered population.
     pub count: u64,
 }
 
+/// Count of matching records for one observed lifecycle state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct StateCount {
+    /// Counted provider-observed state.
     pub state: LifecycleState,
+    /// Saturating count in the filtered population.
     pub count: u64,
 }
 
+/// Closed policy-state vocabulary used by aggregates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PolicyState {
+    /// No expiry finding is required.
     Compliant,
+    /// Expiry falls within the warning window.
     Expiring,
+    /// Expiry has passed or was explicitly reported.
     Expired,
+    /// Available evidence cannot determine compliance.
     Unknown,
 }
 
+/// Count of matching records for one derived policy state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PolicyStateCount {
+    /// Counted derived state.
     pub policy_state: PolicyState,
+    /// Saturating count in the filtered population.
     pub count: u64,
 }
 
+/// Population-wide counts returned with a lifecycle page.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct LifecycleAggregates {
+    /// Whether coverage proves every count is exact.
     pub counts_are_exact: bool,
+    /// Total records matching filters before page slicing.
     pub matched_records: u64,
+    /// Matching records whose policy evaluation has a finding.
     pub matched_findings: u64,
+    /// Counts for both subject families, including zero entries.
     pub subject_kind_counts: Vec<SubjectKindCount>,
+    /// Counts for every observed lifecycle state, including zero entries.
     pub state_counts: Vec<StateCount>,
+    /// Counts for every derived policy state, including zero entries.
     pub policy_state_counts: Vec<PolicyStateCount>,
 }
 
+/// Reason a query does or does not cover its complete declared population.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoverageReason {
+    /// The source covered the full population at one stable graph revision.
     Complete,
+    /// A scan bound stopped before the full source population was read.
     ScanLimit,
+    /// The graph revision changed while the query was being served.
     GraphChanged,
 }
 
+/// Evidence describing population coverage for a query result.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QueryCoverage {
+    /// Whether the result covers the complete declared source population.
     pub complete: bool,
+    /// Whether a source bound or graph change truncated population coverage.
     pub truncated: bool,
+    /// Generic graph entities inspected by an in-memory scan; zero for indexed reads.
     pub scanned_entities: u64,
+    /// Lifecycle entities found before user filters.
     pub lifecycle_entities: u64,
+    /// Graph revision against which the page was evaluated.
     pub graph_revision: u64,
+    /// Machine-readable explanation of coverage state.
     pub reason: CoverageReason,
 }
 
+/// Observation-time range for the filtered lifecycle population.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QueryFreshness {
+    /// Frozen policy-evaluation time.
     pub as_of: String,
+    /// Oldest observation time among matched records.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oldest_observed_at: Option<String>,
+    /// Newest observation time among matched records.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub newest_observed_at: Option<String>,
 }
 
+/// Operational evidence attached to every lifecycle query page.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QueryMetadata {
+    /// Population coverage and graph-revision evidence.
     pub coverage: QueryCoverage,
+    /// Evaluation and observation-time evidence.
     pub freshness: QueryFreshness,
+    /// Whether additional keyset pages exist, independent of source coverage.
     pub page_truncated: bool,
 }
 
+/// Source-scan evidence supplied by an in-memory graph reader.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct QuerySource {
+    /// Number of generic graph entities inspected.
     pub scanned_entities: usize,
+    /// Whether a scan limit stopped source enumeration.
     pub truncated: bool,
+    /// Graph revision observed by the reader.
     pub graph_revision: u64,
+    /// Whether the graph changed during enumeration.
     pub graph_changed: bool,
 }
 
+/// Direction of an indexed keyset query.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeysetDirection {
+    /// Read subjects lexically after the cursor.
     Forward,
+    /// Read subjects lexically before the cursor.
     Backward,
 }
 
+/// Validated, normalized query contract passed to an indexed graph implementation.
+///
+/// Fields are private so an indexed adapter must obtain values through accessors and
+/// cannot construct a query that bypasses cursor, tenant, filter, or time validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedLifecycleQuery {
     limit: usize,
@@ -961,72 +1245,106 @@ pub struct PreparedLifecycleQuery {
 }
 
 impl PreparedLifecycleQuery {
+    /// Returns the validated page size.
     pub fn limit(&self) -> usize {
         self.limit
     }
 
+    /// Returns sorted, deduplicated subject-family filters.
     pub fn subject_kinds(&self) -> &[SubjectKind] {
         &self.subject_kinds
     }
 
+    /// Returns sorted, deduplicated observed-state filters.
     pub fn states(&self) -> &[LifecycleState] {
         &self.states
     }
 
+    /// Returns sorted, deduplicated tenant-scoped owner filters.
     pub fn owner_urns(&self) -> &[String] {
         &self.owner_urns
     }
 
+    /// Returns the optional exclusive expiry cutoff as Unix milliseconds.
     pub fn expires_before_unix_ms(&self) -> Option<i64> {
         self.expires_before_unix_ms
     }
 
+    /// Returns whether only records with expiry findings should be selected.
     pub fn findings_only(&self) -> bool {
         self.findings_only
     }
 
+    /// Returns the optional canonical subject URN resolved from [`SubjectLocator`].
     pub fn locator_urn(&self) -> Option<&str> {
         self.locator_urn.as_deref()
     }
 
+    /// Returns the keyset direction selected by the page token.
     pub fn direction(&self) -> KeysetDirection {
         self.direction
     }
 
+    /// Returns the exclusive keyset boundary, when continuing a page chain.
     pub fn cursor_subject_urn(&self) -> Option<&str> {
         self.cursor_subject_urn.as_deref()
     }
 
+    /// Returns the graph revision to which this query is bound.
     pub fn graph_revision(&self) -> u64 {
         self.graph_revision
     }
 
+    /// Returns the frozen RFC 3339 policy-evaluation time.
     pub fn effective_as_of(&self) -> &str {
         &self.effective_as_of
     }
 
+    /// Returns the frozen evaluation time as Unix milliseconds.
     pub fn effective_as_of_unix_ms(&self) -> i64 {
         self.effective_as_of_unix_ms
     }
 
+    /// Returns the inclusive default warning cutoff as Unix milliseconds.
     pub fn warning_cutoff_unix_ms(&self) -> i64 {
         self.warning_cutoff_unix_ms
     }
 }
 
+/// Page and population evidence returned by an indexed lifecycle reader.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IndexedLifecyclePage {
+    /// At most the prepared limit of projected lifecycle resources.
     pub resources: Vec<ProjectedResource>,
+    /// Population-wide aggregates computed by the index.
     pub aggregates: LifecycleAggregates,
+    /// Total lifecycle entities in the indexed source scope.
     pub lifecycle_entities: u64,
+    /// Oldest matched observation time computed by the index.
     pub oldest_observed_at: Option<String>,
+    /// Newest matched observation time computed by the index.
     pub newest_observed_at: Option<String>,
+    /// Whether an earlier keyset page exists.
     pub has_previous: bool,
+    /// Whether a later keyset page exists.
     pub has_next: bool,
+    /// Graph revision actually read by the index.
     pub graph_revision: u64,
+    /// Whether the index observed revision change during the read.
     pub graph_changed: bool,
 }
 
+/// Validates a public query and compiles it for an indexed graph adapter.
+///
+/// Preparation binds a continuation token to the exact normalized filters and graph
+/// revision. The first page establishes `as_of`; later pages reuse that time and are
+/// accepted for at most 15 minutes, preventing policy state from drifting mid-chain.
+///
+/// # Errors
+///
+/// Returns an error for invalid limits, excessive filter cardinality, foreign owner
+/// URNs, inconsistent locators, malformed or stale cursors, filter mismatch, or an
+/// invalid evaluation time.
 pub fn prepare_indexed_query(
     tenant_id: &TenantId,
     query: &LifecycleQuery,
@@ -1096,6 +1414,8 @@ pub fn prepare_indexed_query(
             ));
         }
     }
+    // Cursor time, rather than the newest request time, freezes expiry evaluation
+    // across forward and backward navigation.
     let effective_as_of = cursor
         .as_ref()
         .map(|cursor| cursor.as_of.as_str())
@@ -1148,6 +1468,19 @@ pub fn prepare_indexed_query(
     })
 }
 
+/// Converts one indexed graph page into the public lifecycle read model.
+///
+/// The adapter owns filtering and aggregate computation; this boundary revalidates
+/// each returned resource, rejects duplicate stable identities, derives findings and
+/// actions, and emits navigation tokens only when the graph revision stayed stable.
+/// Indexed aggregates remain exact across ordinary page truncation, but are marked
+/// inexact when the graph changed during the read.
+///
+/// # Errors
+///
+/// Returns an error when the adapter exceeds the prepared limit, returns a non-
+/// lifecycle or invalid resource, duplicates an identity, or supplies data that
+/// cannot be converted into the public record contract.
 pub fn finalize_indexed_query(
     tenant_id: &TenantId,
     prepared: &PreparedLifecycleQuery,
@@ -1209,6 +1542,8 @@ pub fn finalize_indexed_query(
         .into_iter()
         .map(|candidate| lifecycle_record(tenant_id, candidate, &prepared.effective_as_of))
         .collect::<Result<Vec<_>, _>>()?;
+    // A revision mismatch is equivalent to an observed graph change even if the
+    // adapter failed to set its explicit graph_changed flag.
     let graph_changed = page.graph_changed || page.graph_revision != prepared.graph_revision;
     let previous_page_token = (!graph_changed && page.has_previous)
         .then(|| records.first())
@@ -1267,6 +1602,7 @@ pub fn finalize_indexed_query(
     })
 }
 
+/// Validated observation plus derived and projection provenance used during paging.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Candidate {
     observation: Observation,
@@ -1275,12 +1611,14 @@ struct Candidate {
     source_collection_id: String,
 }
 
+/// Compact direction stored inside the v2 page-token wire format.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CursorDirection {
     Forward,
     Backward,
 }
 
+/// Decoded keyset cursor before graph, filter, and age validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PageCursor {
     direction: CursorDirection,
@@ -1290,6 +1628,11 @@ struct PageCursor {
     subject_urn: String,
 }
 
+/// Executes a bounded in-memory lifecycle query with complete source coverage.
+///
+/// This convenience entry point treats every supplied entity as scanned and delegates
+/// to [`query_records_with_source`]. Callers with truncation or graph-revision evidence
+/// must use the explicit source variant.
 pub fn query_records(
     tenant_id: &TenantId,
     query: &LifecycleQuery,
@@ -1303,6 +1646,10 @@ pub fn query_records(
     query_records_with_source(tenant_id, query, entities, as_of, source)
 }
 
+/// Resolves one current open finding from its projected lifecycle subject.
+///
+/// A compliant subject returns `Ok(None)`. A nonmatching or foreign finding URN is an
+/// error so callers cannot attach one subject's current state to another finding.
 pub fn resolve_finding_record(
     tenant_id: &TenantId,
     finding_urn: &str,
@@ -1341,6 +1688,18 @@ pub fn resolve_finding_record(
     Ok(Some(record))
 }
 
+/// Filters, evaluates, aggregates, and keyset-pages an in-memory graph scan.
+///
+/// Aggregates describe the entire filtered candidate population before page slicing.
+/// Page truncation, source scan truncation, and graph change are reported separately.
+/// Navigation tokens are suppressed after a graph change because their keyset view is
+/// no longer stable.
+///
+/// # Errors
+///
+/// Returns an error for invalid query bounds, tenant references, locator or cursor
+/// mismatch, expired cursor time, malformed lifecycle projections, duplicate stable
+/// identities, or count/time conversion failure.
 pub fn query_records_with_source(
     tenant_id: &TenantId,
     query: &LifecycleQuery,
@@ -1411,6 +1770,8 @@ pub fn query_records_with_source(
             ));
         }
     }
+    // Freeze policy time to the cursor's first-page instant while still requiring
+    // the current request time to advance no more than the allowed cursor age.
     let effective_as_of = page_cursor
         .as_ref()
         .map(|cursor| cursor.as_of.as_str())
@@ -1428,6 +1789,8 @@ pub fn query_records_with_source(
         ));
     }
 
+    // Counts and freshness are accumulated before page slicing so aggregates cover
+    // the matched population rather than only the visible page.
     let mut candidates = Vec::new();
     let mut lifecycle_entities = 0_u64;
     let mut matched_findings = 0_u64;
@@ -1629,6 +1992,7 @@ pub fn query_records_with_source(
     })
 }
 
+/// Derives findings and action routes for one validated query candidate.
 fn lifecycle_record(
     tenant_id: &TenantId,
     candidate: Candidate,
@@ -1668,6 +2032,10 @@ fn lifecycle_record(
     })
 }
 
+/// Computes an exclusive stable-identity keyset window in either direction.
+///
+/// A missing cursor subject is treated as an insertion point. Forward navigation
+/// skips an exact cursor match; backward navigation ends immediately before it.
 fn page_bounds(
     candidates: &[Candidate],
     cursor: Option<&PageCursor>,
@@ -1699,6 +2067,11 @@ fn page_bounds(
     }
 }
 
+/// Digests the normalized filters that define cursor compatibility.
+///
+/// This digest detects accidental or malicious filter substitution but is not an
+/// authorization token or MAC. Tenant isolation is enforced independently by the
+/// authenticated graph scope and tenant-scoped references.
 fn query_filter_digest(query: &LifecycleQuery, limit: usize, locator_urn: Option<&str>) -> String {
     let subject_kinds = canonical_filter_values(
         query
@@ -1725,12 +2098,17 @@ fn query_filter_digest(query: &LifecycleQuery, limit: usize, locator_urn: Option
     hex_encode(&Sha256::digest(raw.as_bytes()))
 }
 
+/// Sorts and deduplicates a set-valued filter for stable digest encoding.
 fn canonical_filter_values(mut values: Vec<&str>) -> String {
     values.sort_unstable();
     values.dedup();
     values.join(",")
 }
 
+/// Encodes a v2 cursor as lowercase hex over a NUL-delimited field sequence.
+///
+/// The token is opaque navigation state, not a secret and not an authorization
+/// credential. Semantic graph, filter, and age checks occur during query preparation.
 fn encode_page_token(cursor: &PageCursor) -> String {
     let direction = match cursor.direction {
         CursorDirection::Forward => "f",
@@ -1746,6 +2124,11 @@ fn encode_page_token(cursor: &PageCursor) -> String {
     encoded
 }
 
+/// Parses and bounds the v2 cursor wire format before semantic validation.
+///
+/// Length is checked before hex allocation. The parser requires exactly five fields,
+/// a known direction, valid time, digest-shaped filter binding, and bounded subject
+/// identity; graph revision, filter equality, and age are checked by query preparation.
 fn decode_page_token(token: &str) -> Result<PageCursor, LifecycleError> {
     if token.len() > MAX_PAGE_TOKEN_CHARS {
         return Err(LifecycleError::InvalidValue(
@@ -1799,6 +2182,7 @@ fn decode_page_token(token: &str) -> Result<PageCursor, LifecycleError> {
     })
 }
 
+/// Encodes bytes as lowercase hexadecimal without padding or separators.
 fn hex_encode(bytes: &[u8]) -> String {
     let mut encoded = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -1808,6 +2192,7 @@ fn hex_encode(bytes: &[u8]) -> String {
     encoded
 }
 
+/// Decodes an already length-bounded even-width hexadecimal token body.
 fn hex_decode(encoded: &str) -> Result<Vec<u8>, LifecycleError> {
     encoded
         .as_bytes()
@@ -1821,6 +2206,7 @@ fn hex_decode(encoded: &str) -> Result<Vec<u8>, LifecycleError> {
         .collect()
 }
 
+/// Maps the closed subject enum to its aggregate-array slot.
 fn subject_kind_index(kind: SubjectKind) -> usize {
     match kind {
         SubjectKind::Credential => 0,
@@ -1828,6 +2214,7 @@ fn subject_kind_index(kind: SubjectKind) -> usize {
     }
 }
 
+/// Maps the closed observed-state enum to its aggregate-array slot.
 fn state_index(state: LifecycleState) -> usize {
     match state {
         LifecycleState::Active => 0,
@@ -1840,6 +2227,7 @@ fn state_index(state: LifecycleState) -> usize {
     }
 }
 
+/// Converts the policy wire string back into the closed aggregate enum.
 fn policy_state(evaluation: &PolicyEvaluation) -> Result<PolicyState, LifecycleError> {
     match evaluation.state {
         "compliant" => Ok(PolicyState::Compliant),
@@ -1850,6 +2238,7 @@ fn policy_state(evaluation: &PolicyEvaluation) -> Result<PolicyState, LifecycleE
     }
 }
 
+/// Maps the closed policy enum to its aggregate-array slot.
 fn policy_state_index(state: PolicyState) -> usize {
     match state {
         PolicyState::Compliant => 0,
@@ -1859,6 +2248,7 @@ fn policy_state_index(state: PolicyState) -> usize {
     }
 }
 
+/// Formats an optional observation bound as RFC 3339 without inventing a default.
 fn format_optional_time(value: Option<OffsetDateTime>) -> Result<Option<String>, LifecycleError> {
     value
         .map(|value| {
@@ -1869,6 +2259,15 @@ fn format_optional_time(value: Option<OffsetDateTime>) -> Result<Option<String>,
         .transpose()
 }
 
+/// Constructs the stable tenant-scoped URN for a credential or certificate slot.
+///
+/// Tenant, authority, and locator must be non-empty with no surrounding whitespace.
+/// Each component is percent-encoded independently, preventing delimiter aliases.
+/// Material revision is deliberately absent from stable slot identity.
+///
+/// # Errors
+///
+/// Returns an error for invalid components or a URN too large for page cursors.
 pub fn canonical_resource_urn(
     tenant_id: &str,
     kind: SubjectKind,
@@ -1899,10 +2298,12 @@ pub fn canonical_resource_urn(
     Ok(urn)
 }
 
+/// Constructs a tenant-scoped finding URN from an opaque finding identity.
 pub fn canonical_finding_urn(tenant_id: &str, finding_id: &str) -> Result<String, LifecycleError> {
     canonical_single_id_urn(tenant_id, "finding", finding_id)
 }
 
+/// Constructs the tenant-specific prefix used to recognize lifecycle finding URNs.
 pub fn canonical_finding_urn_prefix(tenant_id: &str) -> Result<String, LifecycleError> {
     if tenant_id.trim().is_empty() {
         return Err(LifecycleError::Invalid("URN component"));
@@ -1913,6 +2314,7 @@ pub fn canonical_finding_urn_prefix(tenant_id: &str) -> Result<String, Lifecycle
     ))
 }
 
+/// Constructs a tenant-scoped remediation-outcome URN from an opaque outcome identity.
 pub fn canonical_remediation_outcome_urn(
     tenant_id: &str,
     outcome_id: &str,
@@ -1920,6 +2322,7 @@ pub fn canonical_remediation_outcome_urn(
     canonical_single_id_urn(tenant_id, "remediation_outcome", outcome_id)
 }
 
+/// Constructs a canonical tenant/kind/opaque-id URN with component encoding.
 fn canonical_single_id_urn(
     tenant_id: &str,
     kind: &str,
@@ -1935,6 +2338,7 @@ fn canonical_single_id_urn(
     ))
 }
 
+/// Requires a nonempty object below the authenticated tenant URN prefix.
 fn require_tenant_urn(tenant_id: &str, value: &str) -> Result<(), LifecycleError> {
     let expected = format!("urn:cerebro:{}:", encode_segment(tenant_id));
     if !value.starts_with(&expected) || value.len() == expected.len() {
@@ -1943,6 +2347,10 @@ fn require_tenant_urn(tenant_id: &str, value: &str) -> Result<(), LifecycleError
     Ok(())
 }
 
+/// Percent-encodes one URN component using the RFC 3986 unreserved set.
+///
+/// Encoding operates on UTF-8 bytes and uses uppercase hex, producing one canonical
+/// spelling for delimiters and non-ASCII text.
 fn encode_segment(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
@@ -1955,10 +2363,15 @@ fn encode_segment(value: &str) -> String {
     encoded
 }
 
+/// Parses one strict RFC 3339 field and preserves its name in the rejection.
 fn parse_time(value: &str, field: &'static str) -> Result<OffsetDateTime, LifecycleError> {
     OffsetDateTime::parse(value, &Rfc3339).map_err(|_| LifecycleError::Invalid(field))
 }
 
+/// Validates and formats a protobuf timestamp as RFC 3339.
+///
+/// Negative epoch seconds are rejected by this v1 contract, and nanoseconds must be
+/// within the protobuf range before conversion.
 fn wire_timestamp(
     value: &prost_types::Timestamp,
     field: &'static str,
@@ -1973,12 +2386,14 @@ fn wire_timestamp(
         .map_err(|_| LifecycleError::Invalid(field))
 }
 
+/// Converts RFC 3339 to signed Unix milliseconds without saturating overflow.
 pub fn timestamp_millis_from_rfc3339(value: &str) -> Result<i64, LifecycleError> {
     let timestamp = parse_time(value, "timestamp")?;
     i64::try_from(timestamp.unix_timestamp_nanos() / 1_000_000)
         .map_err(|_| LifecycleError::Invalid("timestamp"))
 }
 
+/// Converts signed Unix milliseconds to canonical RFC 3339.
 pub fn rfc3339_from_timestamp_millis(value: i64) -> Result<String, LifecycleError> {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(value).saturating_mul(1_000_000))
         .map_err(|_| LifecycleError::Invalid("timestamp"))?
@@ -1986,6 +2401,7 @@ pub fn rfc3339_from_timestamp_millis(value: i64) -> Result<String, LifecycleErro
         .map_err(|_| LifecycleError::Invalid("timestamp"))
 }
 
+/// Converts a wire reference and drops empty optional strings and routing hints.
 fn resource_ref(value: WireResourceRef) -> ResourceRef {
     ResourceRef {
         kind: value.kind,
@@ -1995,6 +2411,10 @@ fn resource_ref(value: WireResourceRef) -> ResourceRef {
     }
 }
 
+/// Derives a bounded graph identifier from the first 128 bits of a SHA-256 digest.
+///
+/// The caller provides a type-specific prefix, while the full canonical URN remains
+/// in graph properties for correlation and collision diagnosis.
 fn stable_entity_id(prefix: &str, value: &str) -> Result<EntityId, LifecycleError> {
     let digest = Sha256::digest(value.as_bytes());
     let suffix = digest[..16]
@@ -2004,10 +2424,12 @@ fn stable_entity_id(prefix: &str, value: &str) -> Result<EntityId, LifecycleErro
     EntityId::parse(format!("{prefix}:{suffix}")).map_err(model_error)
 }
 
+/// Adapts organizational-model validation failures without exposing internal types.
 fn model_error(error: impl fmt::Display) -> LifecycleError {
     LifecycleError::InvalidValue(error.to_string())
 }
 
+/// Parses the closed lowercase subject-kind graph vocabulary.
 fn parse_subject_kind(value: &str) -> Option<SubjectKind> {
     match value.trim() {
         "credential" => Some(SubjectKind::Credential),
@@ -2016,6 +2438,7 @@ fn parse_subject_kind(value: &str) -> Option<SubjectKind> {
     }
 }
 
+/// Parses the closed lowercase observed-state graph vocabulary.
 fn parse_state(value: &str) -> Option<LifecycleState> {
     match value.trim() {
         "active" => Some(LifecycleState::Active),
@@ -2029,6 +2452,7 @@ fn parse_state(value: &str) -> Option<LifecycleState> {
     }
 }
 
+/// Returns the canonical lowercase observed-state graph value.
 fn state_name(value: LifecycleState) -> &'static str {
     match value {
         LifecycleState::Active => "active",
@@ -2041,6 +2465,7 @@ fn state_name(value: LifecycleState) -> &'static str {
     }
 }
 
+/// Returns the canonical lowercase name for a lifecycle state.
 pub fn lifecycle_state_name(value: LifecycleState) -> &'static str {
     state_name(value)
 }
