@@ -37,16 +37,16 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.11.1",
-    "minimatch": "^10.0.3",
+    "better-sqlite3": "^13.0.3",
+    "minimatch": "^10.2.6",
     "yaml": "^2.9.0",
-    "zod": "^4.2.1"
+    "zod": "^4.5.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.10.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.4.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.16"
   },
   "engines": {

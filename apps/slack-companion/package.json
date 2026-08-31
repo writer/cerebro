@@ -36,11 +36,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1111.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1121.0",
     "@writer/cerebro-sdk": "0.1.0"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "typescript": "^7.0.2"
   }
 }
