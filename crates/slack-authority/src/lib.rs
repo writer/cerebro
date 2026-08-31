@@ -32,14 +32,26 @@ pub const ANSWER_DECISION_V1: &str = "slack-answer-decision/v1";
 pub const QUESTION_CANDIDATE_V1: &str = "slack-question-candidate/v1";
 /// Schema emitted for an authoritative [`QuestionDecision`].
 pub const QUESTION_DECISION_V1: &str = "slack-question-decision/v1";
+/// Maximum number of conversational messages admitted before routing.
 const MAX_HISTORY_ITEMS: usize = 16;
+/// Maximum trimmed UTF-8 byte length of one history message.
 const MAX_HISTORY_ITEM_BYTES: usize = 8 * 1024;
+/// Maximum trimmed UTF-8 byte length of candidate Slack markdown.
 const MAX_MARKDOWN_BYTES: usize = 64 * 1024;
+/// Maximum trimmed UTF-8 byte length of the current question.
 const MAX_QUESTION_BYTES: usize = 32 * 1024;
+/// Maximum entries in either structured-refusal list.
 const MAX_REFUSAL_ITEMS: usize = 32;
+/// Shared trimmed byte limit for trace IDs and each refusal text item.
 const MAX_REFUSAL_ITEM_BYTES: usize = 512;
+/// Maximum trimmed byte length of a transport request identifier.
 const MAX_REQUEST_ID_BYTES: usize = 512;
+/// Maximum trimmed byte length of the server-owned tenant identifier.
 const MAX_TENANT_ID_BYTES: usize = 256;
+/// Authority-owned answer for identity and work-status conversation.
+///
+/// Keeping this response static prevents the conversational lane from
+/// fabricating graph evidence or claiming access to cross-thread work history.
 const SELF_CONTEXT_ANSWER: &str = "I’m Cerebro, Writer’s security operations assistant. I read governed Cerebro evidence for findings, assets, identities, controls, owners, and connector health.\n\nI don’t have a verified cross-thread work log in this request, so I can’t claim a complete list of today’s work. Run `@Cerebro scratchpad` in this thread to see retained requests, outcomes, and blockers, or ask me about one current security task.";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -92,15 +104,15 @@ pub struct QuestionPolicy {
 impl QuestionPolicy {
     /// Constructs a policy for one bounded tenant identifier.
     ///
-    /// Identifiers may contain ASCII letters, digits, `-`, `_`, `:`, and `.`.
-    /// Leading or trailing whitespace does not make an otherwise empty or
-    /// oversized identifier valid.
+    /// After surrounding whitespace is ignored for validation, identifiers may
+    /// contain ASCII letters, digits, `-`, `_`, `:`, and `.`. The original value
+    /// is retained as the exact tenant comparison key.
     ///
     /// # Errors
     ///
-    /// Returns [`QuestionAuthorityError::InvalidPolicy`] when `tenant_id` is
-    /// empty, oversized, contains whitespace, or contains another character
-    /// outside the identifier alphabet.
+    /// Returns [`QuestionAuthorityError::InvalidPolicy`] when the trimmed
+    /// `tenant_id` is empty, oversized, contains internal whitespace, or
+    /// contains another character outside the identifier alphabet.
     pub fn new(tenant_id: String) -> Result<Self, QuestionAuthorityError> {
         if !bounded_identifier(&tenant_id, MAX_TENANT_ID_BYTES) {
             return Err(QuestionAuthorityError::InvalidPolicy);
@@ -192,6 +204,8 @@ pub fn authorize_question(
     policy: &QuestionPolicy,
     candidate: QuestionCandidate,
 ) -> Result<QuestionDecision, QuestionAuthorityError> {
+    // Validate the version and server-owned tenant binding before inspecting
+    // user text, so unsupported or cross-tenant envelopes never reach routing.
     if candidate.schema_version != QUESTION_CANDIDATE_V1 {
         return Err(QuestionAuthorityError::InvalidSchema);
     }
@@ -204,6 +218,8 @@ pub fn authorize_question(
     if !bounded_text(&candidate.question, MAX_QUESTION_BYTES) {
         return Err(QuestionAuthorityError::QuestionInvalid);
     }
+    // History can influence a later host conversation but never the lane
+    // classifier below. It is still bounded here before leaving the authority.
     if candidate.history.len() > MAX_HISTORY_ITEMS
         || candidate
             .history
@@ -227,11 +243,16 @@ pub fn authorize_question(
 }
 
 fn question_execution_lane(question: &str) -> QuestionExecutionLane {
+    // Collapse whitespace and case only for deterministic phrase matching. The
+    // original question is not rewritten, and unmatched text always falls into
+    // the evidence-requiring lookup lane.
     let normalized = question
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase();
+    // Permit surrounding Slack-style punctuation on exact identity questions
+    // without turning arbitrary mentions of "who are you" into conversation.
     let identity_question = normalized.trim_matches(|character: char| {
         character.is_ascii_punctuation() || character.is_whitespace()
     });
@@ -247,6 +268,8 @@ fn question_execution_lane(question: &str) -> QuestionExecutionLane {
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
+    // `Converse` authorizes only the fixed response above; it is not a general
+    // permission to generate an answer without governed evidence.
     if asks_identity || asks_work {
         QuestionExecutionLane::Converse
     } else {
@@ -386,6 +409,8 @@ impl Error for AnswerAuthorityError {}
 /// trace, citation evidence, or refusal structure fails validation, or when the
 /// candidate presents conflicting grounded and refusal states.
 pub fn validate_answer(candidate: AnswerCandidate) -> Result<AnswerDecision, AnswerAuthorityError> {
+    // Terminal state and common delivery fields are prerequisites for both
+    // grounded answers and refusals, so validate them before choosing a lane.
     if candidate.schema_version != ANSWER_CANDIDATE_V1 {
         return Err(AnswerAuthorityError::InvalidSchema);
     }
@@ -399,8 +424,13 @@ pub fn validate_answer(candidate: AnswerCandidate) -> Result<AnswerDecision, Ans
         return Err(AnswerAuthorityError::InvalidTrace);
     }
 
+    // The evidence state is derived from validated structure, never from the
+    // candidate markdown. A successful citation claim and refusal conflict;
+    // failed or absent citation validation may still accompany a valid refusal.
     match (candidate.citation_validation, candidate.unsupported_query) {
         (Some(citations), None) if citations.ok => {
+            // These counts are a host attestation. Requiring a non-empty subset
+            // prevents an `ok` flag alone from authorizing a grounded answer.
             if citations.row_urn_count == 0 || citations.referenced_urn_count == 0 {
                 return Err(AnswerAuthorityError::CitationEvidenceMissing);
             }
@@ -434,6 +464,8 @@ fn validate_refusal(
     refusal: &UnsupportedQuery,
     answer_trace_id: &str,
 ) -> Result<(), AnswerAuthorityError> {
+    // Trace equality prevents a structured refusal from another execution from
+    // authorizing this markdown. Both lists must be present and wholly bounded.
     if refusal.trace_id != answer_trace_id
         || !bounded_text(&refusal.code, MAX_REFUSAL_ITEM_BYTES)
         || !bounded_text(&refusal.reason, MAX_REFUSAL_ITEM_BYTES)
@@ -446,6 +478,8 @@ fn validate_refusal(
 }
 
 fn bounded_list(values: &[String]) -> bool {
+    // Empty lists are incomplete operator guidance; validate every item with the
+    // same trimmed-text rules used by the top-level refusal fields.
     !values.is_empty()
         && values.len() <= MAX_REFUSAL_ITEMS
         && values
@@ -454,6 +488,10 @@ fn bounded_list(values: &[String]) -> bool {
 }
 
 fn bounded_text(value: &str, max_bytes: usize) -> bool {
+    // Bounds are UTF-8 bytes after trimming surrounding Unicode whitespace. The
+    // original value is not normalized or rewritten by this predicate. Preserve
+    // newlines, carriage returns, and tabs needed by Slack markdown, while
+    // rejecting other control characters in the validated content.
     let value = value.trim();
     !value.is_empty()
         && value.len() <= max_bytes
@@ -463,6 +501,9 @@ fn bounded_text(value: &str, max_bytes: usize) -> bool {
 }
 
 fn bounded_identifier(value: &str, max_bytes: usize) -> bool {
+    // Identifiers use an ASCII-only alphabet after trimming for validation. The
+    // caller retains the original string, so this predicate does not canonicalize
+    // equality keys or correlation identifiers.
     let value = value.trim();
     !value.is_empty()
         && value.len() <= max_bytes

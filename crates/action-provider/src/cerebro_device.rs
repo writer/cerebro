@@ -1,3 +1,11 @@
+//! First-party provider adapter for tenant-scoped Cerebro device revocation.
+//!
+//! The durable [`ActionDispatch`] is the authority for both the tenant and the
+//! device identifier. The adapter deliberately has no provider-supplied target
+//! lookup or fallback path: mutation and observation use the same
+//! `(device_id, tenant_id)` key, and a receipt identifier is accepted only when
+//! it can be reproduced from that dispatch.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -10,9 +18,13 @@ use tokio_postgres::Client as PostgresClient;
 
 use crate::{ProviderError, ProviderReceipt, ProviderStatus};
 
+/// Catalog provider identifier accepted by this adapter.
 const PROVIDER: &str = "cerebro-device-auth";
+/// Only provider operation implemented by the device adapter.
 const PROVIDER_ACTION: &str = "revoke";
+/// Domain separator included in the canonical response digest payload.
 const RECEIPT_SCHEMA: &str = "cerebro.device-action-receipt.v1";
+/// Namespace that prevents a device target from colliding with another provider.
 const EXTERNAL_PREFIX: &str = "cerebro-device:revoke:";
 
 #[derive(Clone)]
@@ -26,25 +38,56 @@ pub struct CerebroDeviceClient {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Minimal provider state needed to classify and timestamp a revocation.
+///
+/// The status remains a string so an unexpected database value can be bound
+/// into the receipt digest and surfaced as `NeedsAttention` instead of being
+/// silently translated into a successful state.
 struct CerebroDeviceState {
     status: String,
     revoked_at_unix_ms: Option<u64>,
 }
 
 #[async_trait]
+/// Persistence seam for mutation and reconciliation of one durable dispatch.
+///
+/// Implementations must scope both operations to the dispatch tenant and
+/// target. The trait receives the full dispatch so that alternate stores cannot
+/// accidentally substitute caller-controlled identity alongside the authority
+/// record.
 trait CerebroDeviceStore: Send + Sync {
+    /// Applies an idempotent revocation and returns the resulting device state.
     async fn revoke(&self, dispatch: &ActionDispatch) -> Result<CerebroDeviceState, ProviderError>;
 
+    /// Reads the current state without mutating the device.
     async fn observe(&self, dispatch: &ActionDispatch)
     -> Result<CerebroDeviceState, ProviderError>;
 }
 
+/// PostgreSQL store whose single client is serialized across async operations.
+///
+/// Serializing the client keeps each adapter instance's queries ordered. The
+/// database predicates and idempotent update, rather than this mutex, provide
+/// the tenant isolation and replay semantics.
 struct PostgresCerebroDeviceStore {
     client: Mutex<PostgresClient>,
 }
 
 impl CerebroDeviceClient {
-    /// Connects to the device store using native TLS and starts the connection driver.
+    /// Connects to the device store using native TLS and starts its driver task.
+    ///
+    /// The connection string is validated only for a non-empty, unpadded value;
+    /// PostgreSQL performs the remaining syntax and endpoint validation. The
+    /// spawned driver owns the connection after this function returns, while
+    /// this client retains only the query handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidConfiguration`] when the connection
+    /// string, native TLS setup, or initial PostgreSQL connection is invalid.
+    /// A later driver failure is reported by the driver task and causes
+    /// subsequent store operations to fail through their operation-specific
+    /// error paths.
     pub async fn connect_tls(connection_string: &str) -> Result<Self, ProviderError> {
         if connection_string.trim().is_empty() || connection_string.trim() != connection_string {
             return Err(ProviderError::InvalidConfiguration(
@@ -58,6 +101,9 @@ impl CerebroDeviceClient {
             tokio_postgres::connect(connection_string, MakeTlsConnector::new(tls))
                 .await
                 .map_err(|_| ProviderError::InvalidConfiguration("device PostgreSQL connection"))?;
+        // `tokio_postgres` makes no progress unless its connection future is
+        // driven. Keep the query client in the adapter and run the transport in
+        // a detached task for the lifetime of that client.
         tokio::spawn(async move {
             if let Err(error) = connection.await {
                 eprintln!("Action device PostgreSQL connection closed: {error}");
@@ -79,6 +125,14 @@ impl CerebroDeviceClient {
     ///
     /// A database error is ambiguous because the update may have committed
     /// before the connection failed; callers reconcile instead of retrying.
+    /// Replaying a successful dispatch preserves the first revocation time and
+    /// reason, so it produces the same provider receipt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidDispatch`] before touching the store when
+    /// the dispatch digest or catalog routing is invalid. Store errors preserve
+    /// the distinction between a definite rejection and an ambiguous write.
     pub async fn dispatch(
         &self,
         dispatch: &ActionDispatch,
@@ -90,6 +144,17 @@ impl CerebroDeviceClient {
 
     /// Reads the device's current state after proving `expected_external_id`
     /// names the same target as the durable dispatch.
+    ///
+    /// This is the reconciliation path after an ambiguous mutation. The
+    /// external identifier is checked before the store read, preventing a
+    /// receipt from selecting a target other than the dispatch authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::InvalidDispatch`] for an invalid dispatch,
+    /// [`ProviderError::InvalidResponse`] for a mismatched external identifier,
+    /// and [`ProviderError::ObservationUnavailable`] when current state cannot
+    /// be established.
     pub async fn observe(
         &self,
         dispatch: &ActionDispatch,
@@ -108,9 +173,16 @@ impl CerebroDeviceClient {
 #[async_trait]
 impl CerebroDeviceStore for PostgresCerebroDeviceStore {
     async fn revoke(&self, dispatch: &ActionDispatch) -> Result<CerebroDeviceState, ProviderError> {
+        // PostgreSQL's timestamp expression accepts signed milliseconds. Reject
+        // values outside that representation instead of wrapping the request
+        // time or persisting a different instant.
         let requested_at = i64::try_from(dispatch.requested_at_unix_ms)
             .map_err(|_| ProviderError::InvalidDispatch("request time"))?;
         let reason = format!("Action {}", dispatch.operation_id);
+        // The tenant predicate is part of the mutation key and intentionally
+        // returns the same 404 for an absent device and a device in another
+        // tenant. `COALESCE` and the status guards preserve the first revocation
+        // timestamp, reason, and update time on an idempotent replay.
         let row = self
             .client
             .lock()
@@ -148,6 +220,8 @@ FROM updated
                 ],
             )
             .await
+            // A transport error does not prove that PostgreSQL rolled back the
+            // update, so the caller must observe before deciding what to do.
             .map_err(|_| ProviderError::DispatchAmbiguous)?;
         row.map(state_from_row)
             .transpose()?
@@ -158,6 +232,8 @@ FROM updated
         &self,
         dispatch: &ActionDispatch,
     ) -> Result<CerebroDeviceState, ProviderError> {
+        // Use the identical tenant-and-device key as the mutation. Observation
+        // never broadens lookup based on the external receipt identifier.
         let row = self
             .client
             .lock()
@@ -181,6 +257,8 @@ WHERE device_id = $1 AND tenant_id = $2
 }
 
 fn state_from_row(row: tokio_postgres::Row) -> Result<CerebroDeviceState, ProviderError> {
+    // The database expression is signed; the portable receipt contract is not.
+    // Treat a negative timestamp as corrupt provider state instead of casting it.
     let revoked_at = row
         .try_get::<_, Option<i64>>("revoked_at_unix_ms")
         .map_err(|_| ProviderError::InvalidResponse("device timestamp"))?
@@ -197,6 +275,8 @@ fn state_from_row(row: tokio_postgres::Row) -> Result<CerebroDeviceState, Provid
 }
 
 fn validate_dispatch(dispatch: &ActionDispatch) -> Result<(), ProviderError> {
+    // `validate` proves the durable dispatch still matches its content digest.
+    // The adapter then narrows that valid envelope to its exact catalog route.
     dispatch
         .validate()
         .map_err(|_| ProviderError::InvalidDispatch("content digest"))?;
@@ -210,6 +290,8 @@ fn validate_dispatch(dispatch: &ActionDispatch) -> Result<(), ProviderError> {
 }
 
 fn external_id(target_id: &str) -> Result<OpaqueId, ProviderError> {
+    // External identity is a deterministic projection of the authoritative
+    // target, not a provider response that could redirect reconciliation.
     OpaqueId::parse(format!("{EXTERNAL_PREFIX}{target_id}"))
         .map_err(|_| ProviderError::InvalidDispatch("target"))
 }
@@ -223,12 +305,19 @@ fn receipt(
     if expected_external_id.is_some_and(|expected| expected != &external_id) {
         return Err(ProviderError::InvalidResponse("external id"));
     }
+    // A status label alone is insufficient evidence of completion. Require the
+    // durable revocation timestamp as well; every other combination remains
+    // visible to the action engine as operator attention rather than success.
     let status = if state.status == "revoked" && state.revoked_at_unix_ms.is_some() {
         ProviderStatus::Succeeded
     } else {
         ProviderStatus::NeedsAttention
     };
     #[derive(Serialize)]
+    /// Stable, field-ordered payload committed by `response_digest`.
+    ///
+    /// It binds provider state to the dispatch tenant, target, finding, action,
+    /// and idempotency key without serializing the raw dispatch or a credential.
     struct DeviceReceipt<'a> {
         schema: &'static str,
         external_id: &'a str,
@@ -241,6 +330,8 @@ fn receipt(
         device_status: &'a str,
         revoked_at_unix_ms: Option<u64>,
     }
+    // Serde preserves declaration order for this struct. Changing these fields,
+    // their order, or the schema changes the canonical provider response digest.
     let bytes = serde_json::to_vec(&DeviceReceipt {
         schema: RECEIPT_SCHEMA,
         external_id: external_id.as_str(),
@@ -262,6 +353,8 @@ fn receipt(
                 .map_err(|_| ProviderError::InvalidDispatch("dispatch digest"))?,
         ),
         response_digest: ContentDigest::of_bytes(bytes),
+        // The provider record stores milliseconds; the common receipt contract
+        // intentionally truncates them to whole Unix seconds.
         updated_at_unix_s: state.revoked_at_unix_ms.map(|value| value / 1_000),
         completed_at_unix_s: if status.is_terminal() {
             state.revoked_at_unix_ms.map(|value| value / 1_000)
