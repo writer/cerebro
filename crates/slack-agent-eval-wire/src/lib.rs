@@ -12,120 +12,212 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+/// Schema tag for candidate turn requests and candidate turn outcomes.
 pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
+/// Schema tag for a transport-confirmed candidate delivery.
 pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
+/// Schema tag for the complete private v1 supervisor episode input.
 pub const SUPERVISOR_EPISODE_V1: &str = "slack-agent-supervisor-episode/v1";
+/// Schema tag for a v1 private operator turn.
 pub const OPERATOR_TURN_V1: &str = "slack-agent-operator-turn/v1";
+/// Schema tag for a completed v1 black-box episode receipt.
 pub const BLACKBOX_RECEIPT_V1: &str = "slack-agent-blackbox-receipt/v1";
+/// Schema tag for a content-blinded v1 grading packet.
 pub const BLIND_PACKET_V1: &str = "slack-agent-blind-packet/v1";
+/// Schema tag for a v1 grade bound to one blind packet.
 pub const BLIND_GRADE_V1: &str = "slack-agent-blind-grade/v1";
+/// Schema tag for a sealed v2 episode manifest.
 pub const SEALED_EPISODE_MANIFEST_V2: &str = "slack-agent-sealed-episode-manifest/v2";
+/// Schema tag for a deterministic v2 episode event program.
 pub const EPISODE_EVENT_PROGRAM_V2: &str = "slack-agent-episode-event-program/v2";
+/// Schema tag for a v2 supervisor execution receipt.
 pub const SUPERVISOR_EXECUTION_RECEIPT_V2: &str = "slack-agent-supervisor-execution-receipt/v2";
+/// Schema tag for a signed v2 receipt wrapper.
 pub const SIGNED_RECEIPT_ENVELOPE_V2: &str = "slack-agent-signed-receipt-envelope/v2";
+/// Schema tag for a v2 authoritative-fact receipt.
 pub const AUTHORITATIVE_FACT_RECEIPT_V2: &str = "slack-agent-authoritative-fact-receipt/v2";
+/// Schema tag for a v2 authoritative-action receipt.
 pub const AUTHORITATIVE_ACTION_RECEIPT_V2: &str = "slack-agent-authoritative-action-receipt/v2";
+/// Schema tag for a v2 operator-decision receipt.
 pub const OPERATOR_DECISION_RECEIPT_V2: &str = "slack-agent-operator-decision-receipt/v2";
+/// Schema tag for a v2 packet that blinds candidate answer content.
 pub const CONTENT_BLIND_PACKET_V2: &str = "slack-agent-content-blind-packet/v2";
+/// Schema tag for a v2 packet that exposes only gradeable evidence bindings.
 pub const EVIDENCE_BLIND_PACKET_V2: &str = "slack-agent-evidence-blind-packet/v2";
+/// Schema tag for a v2 packet that exposes only operational behavior.
 pub const OPERATIONAL_BLIND_PACKET_V2: &str = "slack-agent-operational-blind-packet/v2";
+/// Schema tag for a sealed v2 evaluation-suite manifest.
 pub const SEALED_SUITE_MANIFEST_V2: &str = "slack-agent-sealed-suite-manifest/v2";
+/// Schema tag for evaluator-private v2 holdout assignments.
 pub const SEALED_HOLDOUT_ASSIGNMENTS_V2: &str = "slack-agent-sealed-holdout-assignments/v2";
+/// Schema tag for the public commitment to sealed holdout assignments.
 pub const HOLDOUT_ASSIGNMENT_COMMITMENT_V2: &str = "slack-agent-holdout-assignment-commitment/v2";
+/// Schema tag for the join from a holdout assignment to its execution.
 pub const ASSIGNMENT_EXECUTION_BINDING_V2: &str = "slack-agent-assignment-execution-binding/v2";
+/// Schema tag for the distinct principals participating in execution.
 pub const EXECUTION_PRINCIPALS_V2: &str = "slack-agent-execution-principals/v2";
+/// Schema tag for machine-evaluated v2 criteria.
 pub const DETERMINISTIC_CRITERIA_RECEIPT_V2: &str = "slack-agent-deterministic-criteria-receipt/v2";
+/// Schema tag for a v2 grade produced by an independent principal.
 pub const INDEPENDENT_GRADE_RECEIPT_V2: &str = "slack-agent-independent-grade-receipt/v2";
+/// Schema tag for sealed v2 promotion requirements.
 pub const PROMOTION_POLICY_V2: &str = "slack-agent-promotion-policy/v2";
+/// Schema tag for the v2 aggregation of promotion evidence.
 pub const PROMOTION_AGGREGATION_RECEIPT_V2: &str = "slack-agent-promotion-aggregation-receipt/v2";
+/// Schema tag for binding evaluation evidence to an exact source head.
 pub const EXACT_HEAD_BINDING_V2: &str = "slack-agent-exact-head-binding/v2";
+/// Schema tag for randomized v2 baseline assignment evidence.
 pub const RANDOMIZED_BASELINE_ASSIGNMENT_V2: &str = "slack-agent-randomized-baseline-assignment/v2";
+/// Schema tag for an authenticated v2 Slack canary result.
 pub const SLACK_CANARY_RECEIPT_V2: &str = "slack-agent-slack-canary-receipt/v2";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Candidate-visible input for one Slack-agent turn.
+///
+/// This is a wire shape, not an authorization result. Hosts must validate the
+/// schema tag, tenant and actor bindings, timestamps, bounds, and any effect
+/// authorization before execution. Unknown fields are rejected during decoding.
 pub struct CandidateTurnRequest {
+    /// Wire schema expected to equal [`AGENT_TURN_REQUEST_V1`].
     pub schema_version: String,
+    /// Tenant label supplied by the host boundary.
     pub tenant_id: String,
+    /// Correlation identity for this candidate turn.
     pub request_id: String,
+    /// Slack thread or equivalent conversation reference.
     pub thread_ref: String,
+    /// Optional scope shared by related conversations.
     #[serde(default)]
     pub context_scope_ref: Option<String>,
+    /// Candidate-visible identity of the requesting actor.
     pub actor_ref: String,
+    /// Host-formatted authority time for the assessment.
     pub assessment_at: String,
+    /// Current user message presented to the candidate.
     pub message: String,
+    /// Prior messages in chronological host order.
     #[serde(default)]
     pub history: Vec<ConversationMessage>,
+    /// Optional metadata aligned by index with `history` by host convention.
     #[serde(default)]
     pub history_metadata: Vec<ConversationMessageMetadata>,
+    /// Candidate working memory restored from an earlier turn, when any.
     pub working_state: Option<Value>,
+    /// Explicit effect grants available to this exact request.
     #[serde(default)]
     pub effect_authorizations: Vec<EffectAuthorization>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One candidate-visible conversation message.
 pub struct ConversationMessage {
+    /// Host-defined speaker role.
     pub role: String,
+    /// Exact message content.
     pub content: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Optional host metadata for one prior conversation message.
 pub struct ConversationMessageMetadata {
+    /// Stable actor reference when the host can supply one.
     #[serde(default)]
     pub actor_ref: Option<String>,
+    /// Transport message identity when available.
     #[serde(default)]
     pub message_ref: Option<String>,
+    /// Host-formatted receive time when available.
     #[serde(default)]
     pub received_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Host-issued authority for one exact candidate tool effect.
+///
+/// Every contextual coordinate and the canonical input digest travels with the
+/// approval so an executor can reject replay against another request or tool.
 pub struct EffectAuthorization {
+    /// Durable approval record reference.
     pub approval_ref: String,
+    /// Tenant for which the effect was approved.
     pub tenant_id: String,
+    /// Candidate request authorized to use the effect.
     pub request_id: String,
+    /// Conversation in which approval was granted.
     pub thread_ref: String,
+    /// Actor whose authority approved the effect.
     pub actor_ref: String,
+    /// Exact tool operation authorized.
     pub tool_id: String,
+    /// Digest of the authorized canonical tool input.
     pub input_digest: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
+/// Candidate result for one turn before or after transport delivery.
+///
+/// The tagged variants keep content generation, approval requests, intentional
+/// ignores, and transport delivery as distinct observable states.
 pub enum CandidateTurnOutcome {
+    /// Candidate produced content that a host must still deliver.
     PendingDelivery {
+        /// Outcome schema expected to equal [`AGENT_TURN_REQUEST_V1`].
         schema_version: String,
+        /// Candidate execution lane used for the result.
         lane: String,
+        /// Slack-formatted content awaiting transport.
         markdown: String,
+        /// Candidate-defined terminal state label.
         final_state: String,
+        /// Evidence references supporting the content.
         evidence_refs: Vec<String>,
+        /// Number of tools invoked during the turn.
         tool_call_count: usize,
+        /// Working memory offered to a subsequent turn.
         working_state: Option<Value>,
     },
+    /// Candidate content already delivered by the candidate runtime.
     Delivered {
+        /// Outcome schema expected to equal [`AGENT_TURN_REQUEST_V1`].
         schema_version: String,
+        /// Candidate execution lane used for the result.
         lane: String,
+        /// Slack-formatted delivered content.
         markdown: String,
+        /// Candidate-defined terminal state label.
         final_state: String,
+        /// Evidence references supporting the content.
         evidence_refs: Vec<String>,
+        /// Number of tools invoked during the turn.
         tool_call_count: usize,
+        /// Working memory offered to a subsequent turn.
         working_state: Option<Value>,
     },
+    /// Candidate stopped before an effect that requires external approval.
     ApprovalRequired {
+        /// Outcome schema expected to equal [`AGENT_TURN_REQUEST_V1`].
         schema_version: String,
+        /// Candidate execution lane that requested approval.
         lane: String,
+        /// Provider-neutral structured approval request.
         request: Value,
+        /// Number of tools invoked before the approval boundary.
         tool_call_count: usize,
     },
+    /// Candidate intentionally produced no response or effect.
     Ignored {
+        /// Outcome schema expected to equal [`AGENT_TURN_REQUEST_V1`].
         schema_version: String,
     },
 }
 
 impl CandidateTurnOutcome {
+    /// Returns delivered or pending markdown without cloning it.
     #[must_use]
     pub fn markdown(&self) -> Option<&str> {
         match self {
@@ -136,11 +228,16 @@ impl CandidateTurnOutcome {
         }
     }
 
+    /// Returns whether the host still owes a transport delivery.
     #[must_use]
     pub const fn needs_delivery(&self) -> bool {
         matches!(self, Self::PendingDelivery { .. })
     }
 
+    /// Projects lane, terminal-state, and tool-count telemetry uniformly.
+    ///
+    /// Approval outcomes have no terminal state, while ignored turns have no
+    /// lane and count no tool calls under this projection.
     #[must_use]
     pub fn telemetry(&self) -> (Option<&str>, Option<&str>, usize) {
         match self {
@@ -168,147 +265,254 @@ impl CandidateTurnOutcome {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Transport evidence that pending candidate content was delivered.
 pub struct CandidateDeliveryReceipt {
+    /// Wire schema expected to equal [`AGENT_DELIVERY_RECEIPT_V1`].
     pub schema_version: String,
+    /// Tenant copied from the delivered turn.
     pub tenant_id: String,
+    /// Conversation that received the content.
     pub thread_ref: String,
+    /// Candidate request whose content was delivered.
     pub request_id: String,
+    /// Transport implementation that performed delivery.
     pub transport: String,
+    /// Provider receipt or message reference for the delivery.
     pub delivery_ref: String,
+    /// Digest of the exact delivered payload.
     pub payload_digest: String,
+    /// Host-formatted delivery completion time.
     pub delivered_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Resource and timing bounds for a v1 supervised episode.
 pub struct EpisodeLimits {
+    /// Maximum candidate/operator exchanges.
     pub max_exchanges: usize,
+    /// Candidate-turn deadline in milliseconds.
     pub turn_timeout_ms: u64,
+    /// Operator-turn deadline in milliseconds.
     pub operator_timeout_ms: u64,
+    /// Additional maximum latency keyed by candidate lane.
     pub lane_latency_limits_ms: BTreeMap<String, u64>,
+    /// Optional exchange after which the harness restarts the candidate.
     #[serde(default)]
     pub restart_after_exchange: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Evaluator-private state used to drive a supervised episode.
 pub struct PrivateEpisodeContext {
+    /// Structured instructions available only to the operator controller.
     pub operator_brief: Value,
+    /// Opaque reference to the simulated or controlled world.
     pub world_ref: String,
+    /// Digest binding the exact starting world state.
     pub world_digest: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Complete v1 input for a private black-box supervisor run.
 pub struct SupervisorEpisodeSpec {
+    /// Wire schema expected to equal [`SUPERVISOR_EPISODE_V1`].
     pub schema_version: String,
+    /// Stable episode correlation reference.
     pub episode_ref: String,
+    /// State withheld from the candidate runtime.
     pub private_context: PrivateEpisodeContext,
+    /// First candidate-visible request.
     pub initial_turn: CandidateTurnRequest,
+    /// Closed resource and timing bounds.
     pub limits: EpisodeLimits,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One normalized turn in a supervisor-visible transcript.
 pub struct TranscriptTurn {
+    /// Speaker role assigned by the harness.
     pub role: String,
+    /// Exact visible message.
     pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Candidate-reported runtime identity and build state.
+///
+/// This record is an attestation payload; cryptographic or deployment-level
+/// verification belongs to the host that admits it into evaluation evidence.
 pub struct CandidateRuntimeAttestation {
+    /// Runtime attestation schema selected by the host.
     pub schema_version: String,
+    /// Whether startup checks reported the candidate ready.
     pub agent_ready: bool,
+    /// Source commit claimed by the runtime build.
     pub build_commit_sha: String,
+    /// Whether the runtime claims its source tree was clean.
     pub build_tree_clean: bool,
+    /// Identity of the concrete candidate process or service instance.
     pub runtime_instance_ref: String,
+    /// Model provider when the candidate discloses one.
     pub model_provider: Option<String>,
+    /// Model identifier when the candidate discloses one.
     pub model_id: Option<String>,
+    /// Digest of model configuration when available.
     pub model_config_sha256: Option<String>,
+    /// Candidate session protocol version.
     pub session_schema_version: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Artifact and runtime identity for the evaluated candidate.
 pub struct CandidateAttestation {
+    /// Evaluator-facing candidate reference.
     pub candidate_ref: String,
+    /// Digest of the evaluated candidate artifact.
     pub artifact_digest: String,
+    /// Runtime instance and build attestation.
     pub runtime: CandidateRuntimeAttestation,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Full request/outcome receipt for one candidate exchange.
 pub struct ExchangeReceipt {
+    /// One-based or host-defined episode sequence number.
     pub sequence: usize,
+    /// Digest of the exact candidate request.
     pub request_digest: String,
+    /// Digest of the exact candidate outcome.
     pub response_digest: String,
+    /// Runtime instance that executed the turn.
     pub runtime_instance_ref: String,
+    /// Host-formatted start time.
     pub started_at: String,
+    /// Host-formatted completion time.
     pub completed_at: String,
+    /// Measured wall-clock latency in milliseconds.
     pub latency_ms: u64,
+    /// Candidate-visible request committed by `request_digest`.
     pub request: CandidateTurnRequest,
+    /// Candidate outcome committed by `response_digest`.
     pub outcome: CandidateTurnOutcome,
+    /// Transport receipt when the outcome was delivered.
     pub delivery: Option<CandidateDeliveryReceipt>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Private request asking the operator controller how to continue an episode.
 pub struct OperatorTurnRequest {
+    /// Wire schema expected to equal [`OPERATOR_TURN_V1`].
     pub schema_version: String,
+    /// Episode being controlled.
     pub episode_ref: String,
+    /// Evaluator-private instructions and world binding.
     pub private_context: PrivateEpisodeContext,
+    /// Supervisor-visible transcript through the latest exchange.
     pub transcript: Vec<TranscriptTurn>,
+    /// Most recent candidate request/outcome evidence.
     pub latest_exchange: ExchangeReceipt,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+/// Operator-controller decision after inspecting one exchange.
 pub enum OperatorDecision {
-    Continue { message: String, reason: String },
-    Conclude { reason: String },
-    Abort { reason: String },
+    /// Send another user message to the candidate.
+    Continue {
+        /// Next candidate-visible message.
+        message: String,
+        /// Private explanation for continuing.
+        reason: String,
+    },
+    /// End the episode because its evaluation objective is complete.
+    Conclude {
+        /// Private explanation for the conclusion.
+        reason: String,
+    },
+    /// Stop the episode because continuing would be invalid or unsafe.
+    Abort {
+        /// Private explanation for the abort.
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Machine-detected episode defect independent of subjective grading.
 pub struct DeterministicDefect {
+    /// Stable defect classification.
     pub code: String,
+    /// Bounded or host-formatted diagnostic detail.
     pub detail: String,
+    /// Whether the defect invalidates further episode execution or grading.
     pub terminal: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Aggregate measurements produced by the evaluation harness.
 pub struct HarnessTelemetry {
+    /// Number of completed exchanges.
     pub exchange_count: usize,
+    /// Sum of measured candidate latency in milliseconds.
     pub total_latency_ms: u64,
+    /// Sum of candidate tool calls across exchanges.
     pub tool_call_count: usize,
+    /// Whether the configured restart boundary was exercised.
     pub restart_observed: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Complete v1 black-box evidence for one finished episode.
 pub struct BlackboxReceipt {
+    /// Wire schema expected to equal [`BLACKBOX_RECEIPT_V1`].
     pub schema_version: String,
+    /// Episode correlation reference.
     pub episode_ref: String,
+    /// Candidate artifact and runtime identity.
     pub candidate: CandidateAttestation,
+    /// Digest of private context without exposing its content separately.
     pub private_context_digest: String,
+    /// Supervisor-visible conversation transcript.
     pub transcript: Vec<TranscriptTurn>,
+    /// Ordered request/outcome evidence for every exchange.
     pub exchanges: Vec<ExchangeReceipt>,
+    /// Aggregate harness measurements.
     pub telemetry: HarnessTelemetry,
+    /// Objective defects observed by the harness.
     pub deterministic_defects: Vec<DeterministicDefect>,
+    /// Host-formatted episode completion time.
     pub completed_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Payload paired with its canonical JSON content digest.
+///
+/// The envelope detects modification but provides no signer identity or
+/// authenticity. Use a signed receipt envelope when provenance must be proven.
 pub struct DigestEnvelope<T> {
+    /// Serializable value committed by the digest.
     pub payload: T,
+    /// `sha256:` digest of recursively key-sorted JSON for `payload`.
     pub payload_digest: String,
 }
 
 impl<T: Serialize> DigestEnvelope<T> {
+    /// Canonicalizes and seals a serializable payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns a JSON serialization error when `payload` cannot be represented.
     pub fn new(payload: T) -> Result<Self, serde_json::Error> {
         let payload_digest = sha256_json(&payload)?;
         Ok(Self {
@@ -317,6 +521,12 @@ impl<T: Serialize> DigestEnvelope<T> {
         })
     }
 
+    /// Recomputes the payload digest and reports exact string equality.
+    ///
+    /// # Errors
+    ///
+    /// Returns a JSON serialization error when the in-memory payload cannot be
+    /// represented for canonical hashing.
     pub fn verify_digest(&self) -> Result<bool, serde_json::Error> {
         Ok(self.payload_digest == sha256_json(&self.payload)?)
     }
@@ -324,47 +534,82 @@ impl<T: Serialize> DigestEnvelope<T> {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Candidate-anonymized transcript turn exposed to a grader.
 pub struct BlindTranscriptTurn {
+    /// Blinded speaker role.
     pub role: String,
+    /// Gradeable visible content.
     pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// V1 grading packet stripped of direct candidate identity.
 pub struct BlindPacket {
+    /// Wire schema expected to equal [`BLIND_PACKET_V1`].
     pub schema_version: String,
+    /// Assignment identity shared with the resulting grade.
     pub assignment_ref: String,
+    /// Evaluator-issued candidate pseudonym.
     pub candidate_alias: String,
+    /// Gradeable brief without evaluator-private holdout mapping.
     pub evaluation_brief: Value,
+    /// Candidate-anonymized transcript.
     pub transcript: Vec<BlindTranscriptTurn>,
+    /// Objective harness measurements.
     pub telemetry: HarnessTelemetry,
+    /// Objective defects available to the grader.
     pub deterministic_defects: Vec<DeterministicDefect>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// V1 independent grade bound to one exact blind packet.
 pub struct BlindGrade {
+    /// Wire schema expected to equal [`BLIND_GRADE_V1`].
     pub schema_version: String,
+    /// Assignment copied from the packet.
     pub assignment_ref: String,
+    /// Canonical digest of the graded packet.
     pub packet_digest: String,
+    /// Digest identifying the grader without exposing its direct identity.
     pub grader_identity_digest: String,
+    /// Six normalized scores in the inclusive range `0..=100`.
     pub scores: BlindScores,
+    /// Whether the grader found a defect that invalidates the episode.
     pub terminal_defect: bool,
+    /// Grader explanation for the scores and terminal decision.
     pub rationale: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// V1 rubric scores, each expressed as an integer percentage.
 pub struct BlindScores {
+    /// Practical value of the response to the user.
     pub human_usefulness: u8,
+    /// Discipline in grounding claims and effects in evidence.
     pub evidence_discipline: u8,
+    /// Appropriate proactive progress toward the task.
     pub initiative: u8,
+    /// Continuity across turns, restarts, and working state.
     pub continuity: u8,
+    /// Reduction in operator follow-up and manual coordination.
     pub burden_reduction: u8,
+    /// Respect for approval, tenant, and effect boundaries.
     pub bounded_authority: u8,
 }
 
 impl BlindGrade {
+    /// Validates packet identity, digest integrity, and score bounds.
+    ///
+    /// This check does not authenticate the grader or assess rationale quality.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable diagnostic string when the grade does not bind the
+    /// supplied packet or any score exceeds 100. Serialization errors from
+    /// packet verification are rendered into the returned string.
     pub fn validate_for(&self, packet: &DigestEnvelope<BlindPacket>) -> Result<(), String> {
         if self.schema_version != BLIND_GRADE_V1
             || self.assignment_ref != packet.payload.assignment_ref
@@ -390,18 +635,29 @@ impl BlindGrade {
     }
 }
 
+/// Returns a canonical, recursively key-sorted JSON SHA-256 digest.
+///
+/// Object key order is normalized at every depth; array order and scalar JSON
+/// representations remain significant. The result uses a `sha256:` prefix.
+///
+/// # Errors
+///
+/// Returns a JSON error if the value cannot be converted or serialized.
 pub fn sha256_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     let value = serde_json::to_value(value)?;
     let bytes = serde_json::to_vec(&canonicalize(value))?;
     Ok(sha256_bytes(&bytes))
 }
 
+/// Returns the SHA-256 digest of the exact UTF-8 bytes in `value`.
 #[must_use]
 pub fn sha256_text(value: &str) -> String {
     sha256_bytes(value.as_bytes())
 }
 
 fn sha256_bytes(value: &[u8]) -> String {
+    // Lowercase hexadecimal plus an algorithm prefix gives every wire digest one
+    // self-describing textual representation.
     let digest = Sha256::digest(value)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -410,6 +666,8 @@ fn sha256_bytes(value: &[u8]) -> String {
 }
 
 fn canonicalize(value: Value) -> Value {
+    // Sort object keys recursively because input may contain arbitrary nested
+    // `Value` fields. Preserve arrays because their order is protocol content.
     match value {
         Value::Object(object) => {
             let mut entries = object.into_iter().collect::<Vec<_>>();

@@ -1,3 +1,9 @@
+//! Cosmo rule for active coordination risk recorded in agent memory.
+//!
+//! The host owns fact identity and all runtime scope. Agent-written payload fields
+//! may provide evidence hints, but cannot close a finding or become authoritative
+//! tenant, workspace, time, or stable-identity input.
+
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
@@ -11,14 +17,22 @@ use super::model::{
     validate_scope,
 };
 
+/// Closed catalog identifier for this rule.
 pub(super) const RULE_ID: &str = "cosmo-coordination-active-risk";
+/// Generated catalog commitment for the exact rule definition.
 pub(super) const DEFINITION_DIGEST: &str =
     "1367f20b5cfe85e3f901760f27d8540d15227712b86e5ca3da41122e296225a4";
+/// Required source family on runtime and event scope.
 const SOURCE_ID: &str = "cosmo";
+/// Only event kind eligible for matching.
 const EVENT_KIND: &str = "cosmo.fact";
+/// Exact provider payload schema admitted by the host.
 const SCHEMA_REF: &str = "cosmo/fact/v1";
+/// Stable finding title.
 const TITLE: &str = "Cosmo Agent Memory Coordination Risk Active";
+/// Stable current-state check identifier.
 const CHECK_ID: &str = "cosmo-coordination-active-risk-current";
+/// Operator-facing check name.
 const CHECK_NAME: &str = "Cosmo Agent Memory Coordination Risk Active (current state)";
 
 /// Closed projection of a real Cosmo fact payload. `confidence`, `value`,
@@ -52,8 +66,11 @@ struct Payload {
 #[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProjectionReceipt {
+    /// Digest of the complete bounded provider object.
     pub(super) input_digest: String,
+    /// Digest of the closed projected object.
     pub(super) output_digest: String,
+    /// Count of non-trusted unknown fields omitted by projection.
     pub(super) dropped_fields: usize,
 }
 
@@ -63,6 +80,8 @@ pub(super) struct ProjectionReceipt {
 pub(super) fn project_source_payload(
     raw: &[u8],
 ) -> Result<(Vec<u8>, ProjectionReceipt), KernelError> {
+    // Decode under the same budgets as production, then reject trusted scope
+    // fields instead of merely dropping them from the candidate-visible DTO.
     let decoded: Value = decode_payload(raw)?;
     let object = decoded.as_object().ok_or(KernelError::MalformedPayload)?;
     const TRUSTED: &[&str] = &[
@@ -95,6 +114,8 @@ pub(super) fn project_source_payload(
         if TRUSTED.contains(&key.as_str()) {
             return Err(KernelError::ScopeMismatch);
         }
+        // Unknown provider presentation fields are counted and omitted. Known
+        // fields must remain scalars so the closed decoder has one representation.
         if !ALLOWED.contains(&key.as_str()) {
             dropped_fields += 1;
             continue;
@@ -115,9 +136,11 @@ pub(super) fn project_source_payload(
 
 pub(super) fn evaluate(request: &RuleRequest) -> Result<Decision, KernelError> {
     validate_scope(request, SOURCE_ID, SCHEMA_REF)?;
+    // A valid Cosmo event outside the rule kind is a non-match.
     if !request.event.kind.trim().eq_ignore_ascii_case(EVENT_KIND) {
         return Ok(Decision::none());
     }
+    // Anchor and close paths never admit agent-written payload bytes.
     if request.operation != Operation::Evaluate && !request.event.payload.is_empty() {
         return Err(KernelError::ActionPayloadNotEmpty);
     }
@@ -132,6 +155,8 @@ pub(super) fn evaluate(request: &RuleRequest) -> Result<Decision, KernelError> {
     if request.operation == Operation::Close {
         return Ok(Decision::none());
     }
+    // Only Evaluate decodes the closed provider projection and validates host
+    // authority time.
     let payload: Payload = decode_payload(&request.event.payload)?;
     normalized_observation_time(&request.event.observed_at)?;
     match request.operation {
@@ -148,6 +173,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
     if fact_key.is_empty() {
         return Ok(Decision::none());
     }
+    // Category and lifecycle may fall back to payload, but stable fact identity
+    // must already be a trusted event attribute.
     let category = first_non_empty(&[
         attribute(&request.event, "category"),
         scalar(&payload.category),
@@ -156,6 +183,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
         return Ok(Decision::none());
     }
     let source = first_non_empty(&[attribute(&request.event, "source"), scalar(&payload.source)]);
+    // Session scope is derived only from the exact `session:` source prefix;
+    // other source values produce a deliberate sessionless recurrence identity.
     let session_id = source.strip_prefix("session:").map_or("", str::trim);
     let tenant_id = request.runtime.tenant_id.trim();
     let runtime_id = request.runtime.runtime_id.trim();
@@ -163,6 +192,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
     if risk_urn.is_empty() {
         return Ok(Decision::none());
     }
+    // Resource URNs expose only truncated stable hashes of provider fact/session
+    // values, while recurrence uses the separately scoped risk URN below.
     let fact_urn = format!(
         "urn:cerebro:{tenant_id}:cosmo_fact:{}",
         stable_external_id(fact_key)
@@ -174,6 +205,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
             stable_external_id(session_id)
         ));
     }
+    // Trusted attributes take precedence. Payload fallbacks are labelled so the
+    // host can require operator validation rather than treating memory as fact.
     let (risk_reason, risk_reason_source) = evidence(
         attribute(&request.event, "risk_reason"),
         scalar(&payload.risk_reason),
@@ -207,6 +240,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
     }
     insert_rule_attributes(&mut attributes);
     trim_empty(&mut attributes);
+    // Recurrence follows the tenant/runtime/session/fact risk URN and is stable
+    // across mutable reason, severity, and observation time.
     let fingerprint = finding_hash(&[RULE_ID, &risk_urn]);
     let observed_at = normalized_observation_time(&request.event.observed_at)?;
     Ok(Decision::open(RuleFindingDecision {
@@ -243,6 +278,8 @@ fn evaluate_open(request: &RuleRequest, payload: &Payload) -> Result<Decision, K
 }
 
 fn risk_state(request: &RuleRequest, payload: &Payload) -> &'static str {
+    // Prefer explicit state labels in trusted-attribute then payload order. Only
+    // when no label is recognized does the Boolean `resolved` fallback apply.
     let explicit = first_non_empty(&[
         attribute(&request.event, "risk_state"),
         scalar(&payload.risk_state),
@@ -267,6 +304,7 @@ fn risk_state(request: &RuleRequest, payload: &Payload) -> &'static str {
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
+    // Match the closed Boolean spellings used by the existing source path.
     match value.trim() {
         "1" | "t" | "T" | "true" | "TRUE" | "True" => Some(true),
         "0" | "f" | "F" | "false" | "FALSE" | "False" => Some(false),
@@ -275,6 +313,7 @@ fn parse_bool(value: &str) -> Option<bool> {
 }
 
 fn is_coordination_risk_category(value: &str) -> bool {
+    // Accept underscore and hyphen spellings for the two admitted risk families.
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "coordination_risk" | "coordination-risk" | "security_risk" | "security-risk"
@@ -282,6 +321,7 @@ fn is_coordination_risk_category(value: &str) -> bool {
 }
 
 fn evidence<'a>(attribute_value: &'a str, payload_value: &'a str) -> (&'a str, &'static str) {
+    // Return both the selected text and an explicit trust-origin label.
     if !attribute_value.trim().is_empty() {
         (attribute_value.trim(), "event_attribute")
     } else if !payload_value.trim().is_empty() {
@@ -292,6 +332,8 @@ fn evidence<'a>(attribute_value: &'a str, payload_value: &'a str) -> (&'a str, &
 }
 
 fn risk_urn(tenant_id: &str, runtime_id: &str, session_id: &str, fact_key: &str) -> String {
+    // Tenant, runtime, and fact key are mandatory. Session is optional but, when
+    // present, must satisfy the same control-character identity rule.
     if [tenant_id, runtime_id, fact_key, session_id]
         .iter()
         .filter(|value| !value.trim().is_empty())
@@ -321,6 +363,8 @@ fn risk_urn(tenant_id: &str, runtime_id: &str, session_id: &str, fact_key: &str)
 }
 
 fn insert_rule_attributes(attributes: &mut BTreeMap<String, String>) {
+    // Fixed metadata explains that memory-derived reason/severity remain hints
+    // and that closeout belongs to the reviewed finding workflow.
     attributes.extend([
         ("rule_maturity".into(), "test".into()),
         ("rule_severity".into(), "HIGH".into()),

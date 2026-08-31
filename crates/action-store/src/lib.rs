@@ -24,6 +24,18 @@ use tokio_postgres::{Client, Row, Transaction};
 
 /// PostgreSQL schema for tenant-isolated current operations, immutable event
 /// history, provider dispatches, and reconciliation leases.
+///
+/// The schema separates mutable current operation state from three durable
+/// authorities: finding-validation receipts, append-only operation versions,
+/// and append-only provider dispatches. Database constraints bind duplicated
+/// index columns back to their JSON documents, while deferred foreign keys let
+/// a transition append history and replace current state in one transaction.
+///
+/// Row-level security is enabled and forced on every tenant-bearing table. Each
+/// transaction must therefore set `cerebro.tenant_id` before reading or writing;
+/// an unset or different tenant setting matches no rows. Reconciliation jobs are
+/// mutable scheduler state, whereas receipts, events, and dispatches reject
+/// updates and deletes through triggers.
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS finding_validation_receipts (
   tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
@@ -408,18 +420,21 @@ impl fmt::Display for ActionStoreError {
 impl Error for ActionStoreError {}
 
 impl From<tokio_postgres::Error> for ActionStoreError {
+    /// Preserves the original database error as the durable-store failure source.
     fn from(value: tokio_postgres::Error) -> Self {
         Self::Postgres(value)
     }
 }
 
 impl From<serde_json::Error> for ActionStoreError {
+    /// Classifies encoding and decoding failures at the persistence boundary.
     fn from(value: serde_json::Error) -> Self {
         Self::Serialization(value)
     }
 }
 
 impl From<SdkError> for ActionStoreError {
+    /// Keeps optimistic or identity conflicts distinct from malformed SDK values.
     fn from(value: SdkError) -> Self {
         match value {
             SdkError::Conflict(message) => Self::Conflict(message),
@@ -429,6 +444,11 @@ impl From<SdkError> for ActionStoreError {
 }
 
 impl From<ActionCatalogError> for ActionStoreError {
+    /// Preserves proposal validation classes across the catalog boundary.
+    ///
+    /// Proposal conflicts remain ledger conflicts, ordinary SDK validation
+    /// failures remain invalid input, and definition lookup or binding errors
+    /// retain the catalog-specific variant.
     fn from(value: ActionCatalogError) -> Self {
         match value {
             ActionCatalogError::InvalidProposal(SdkError::Conflict(message)) => {
@@ -441,6 +461,7 @@ impl From<ActionCatalogError> for ActionStoreError {
 }
 
 impl From<PolicyCatalogError> for ActionStoreError {
+    /// Retains policy-catalog context for an invalid finding receipt.
     fn from(value: PolicyCatalogError) -> Self {
         Self::PolicyCatalog(value)
     }
@@ -472,6 +493,7 @@ pub struct ActionPage {
     pub next_page_token: Option<String>,
 }
 
+/// Domain separator for the canonical provider-dispatch content commitment.
 const ACTION_DISPATCH_DIGEST_SCHEMA: &str = "cerebro.action-dispatch.v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -523,6 +545,13 @@ pub struct ActionDispatch {
 }
 
 impl ActionDispatch {
+    /// Derives the only provider request admitted by an executing operation.
+    ///
+    /// The operation must already be in `Executing` state and claimed by the
+    /// authenticated requester. Catalog routing is resolved again from the
+    /// admitted proposal instead of accepting provider fields from a caller.
+    /// The placeholder digest breaks the construction cycle; it is replaced by
+    /// the digest of every other field before the result is validated.
     fn from_started_operation(
         operation: &ActionOperation,
         requested_by: &ActorId,
@@ -538,6 +567,8 @@ impl ActionDispatch {
                 "Action dispatch requires the authenticated execution claimant".to_owned(),
             ));
         }
+        // Revalidate against the current closed catalog at the moment durable
+        // provider authority is materialized.
         let definition = validate_proposal(&operation.proposal)?;
         let mut dispatch = Self {
             tenant_id: operation.proposal.tenant_id.to_string(),
@@ -561,6 +592,8 @@ impl ActionDispatch {
             idempotency_key: operation.proposal.idempotency_key.to_string(),
             requested_by: requested_by.to_string(),
             requested_at_unix_ms,
+            // `computed_digest` intentionally excludes this field. Use a valid
+            // temporary digest so the struct never contains an invalid shape.
             dispatch_digest: ContentDigest::of_bytes("unbound Action dispatch").to_string(),
         };
         dispatch.dispatch_digest = dispatch.computed_digest()?.to_string();
@@ -569,8 +602,20 @@ impl ActionDispatch {
     }
 
     /// Recomputes the content digest that seals every routing and authority field.
+    ///
+    /// The schema marker domain-separates this document from other JSON digests.
+    /// Serde emits struct fields in declaration order, making this ordered
+    /// material the canonical byte representation. `dispatch_digest` itself is
+    /// excluded so the commitment is not recursive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ActionStoreError::Serialization`] if canonical material cannot
+    /// be encoded. All current fields are directly serializable, so such a
+    /// failure represents an internal implementation defect.
     pub fn computed_digest(&self) -> Result<ContentDigest, ActionStoreError> {
         #[derive(Serialize)]
+        /// Ordered canonical material covered by an [`ActionDispatch`] digest.
         struct DigestMaterial<'a> {
             schema: &'static str,
             tenant_id: &'a str,
@@ -593,6 +638,8 @@ impl ActionDispatch {
             requested_at_unix_ms: u64,
         }
 
+        // Keep this explicit mapping adjacent to the canonical type so adding a
+        // dispatch field cannot silently omit it from the commitment.
         let material = DigestMaterial {
             schema: ACTION_DISPATCH_DIGEST_SCHEMA,
             tenant_id: &self.tenant_id,
@@ -618,7 +665,20 @@ impl ActionDispatch {
     }
 
     /// Validates field shapes, the closed catalog binding, and the content digest.
+    ///
+    /// Validation is deliberately self-contained so a dispatch loaded from JSON
+    /// can be checked before any provider sees it. It proves internal integrity;
+    /// `validate_against_operation` separately proves that the record is
+    /// the dispatch produced by the current start-execution event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ActionStoreError::Corrupt`] for malformed identity, time,
+    /// catalog, or digest content, and retains catalog lookup errors when the
+    /// referenced action kind is not in the closed catalog.
     pub fn validate(&self) -> Result<(), ActionStoreError> {
+        // Collapse individual parser failures into one bounded corruption class;
+        // the durable record is unusable regardless of which shape check failed.
         if self.operation_version <= 1
             || self.requested_at_unix_ms == 0
             || TenantId::parse(self.tenant_id.clone()).is_err()
@@ -638,6 +698,8 @@ impl ActionDispatch {
                 "Action dispatch version or request time is invalid".to_owned(),
             ));
         }
+        // Routing and effect semantics come from the catalog definition whose
+        // digest was authorized by the proposal, not from mutable dispatch JSON.
         let definition = lookup(&self.action_kind)?;
         if self.action_definition_digest != definition.definition_digest
             || self.provider != definition.provider
@@ -649,6 +711,8 @@ impl ActionDispatch {
                 "Action dispatch does not match its closed definition".to_owned(),
             ));
         }
+        // Run this last so failures in the semantic bindings remain observable
+        // even when a corrupt record also carries a self-inconsistent digest.
         if self.dispatch_digest != self.computed_digest()?.as_str() {
             return Err(ActionStoreError::Corrupt(
                 "Action dispatch digest does not match its content".to_owned(),
@@ -661,6 +725,9 @@ impl ActionDispatch {
         &self,
         operation: &ActionOperation,
     ) -> Result<(), ActionStoreError> {
+        // A dispatch can be internally valid yet belong to a different version,
+        // proposal, claimant, or target. Compare every cross-record authority
+        // field before returning a joined ledger record to a worker.
         if operation.state != ActionState::Executing
             || operation.version != self.operation_version
             || operation.proposal.tenant_id.as_str() != self.tenant_id
@@ -726,6 +793,10 @@ pub enum ActionReconciliationDisposition {
     },
 }
 
+/// Upper bound on one worker's exclusive reconciliation authority.
+///
+/// Callers may request a shorter lease, but never hold a claimed provider
+/// receipt indefinitely after a worker failure.
 const MAX_RECONCILIATION_LEASE_MS: u64 = 5 * 60 * 1_000;
 
 /// PostgreSQL authority for validated action state, history, and reconciliation.
@@ -738,7 +809,9 @@ pub struct PostgresActionLedger {
 }
 
 struct CurrentAction {
+    /// Fully decoded and SDK-validated current operation snapshot.
     operation: ActionOperation,
+    /// Storage ordering key used for stable pagination and transition authority.
     updated_at_unix_ms: u64,
 }
 

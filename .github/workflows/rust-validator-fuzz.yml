@@ -28,7 +28,7 @@ jobs:
         run: rustup toolchain install nightly-2026-06-09 --profile minimal
 
       - name: Install pinned cargo-fuzz
-        run: cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.1 --locked
+        run: cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.2 --locked
 
       - name: Validate validator fuzz input count
         env:
