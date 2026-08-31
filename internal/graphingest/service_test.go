@@ -318,6 +318,13 @@ func TestRunRuntimeStopsBeforeGraphWritesWhenRuntimeLeaseIsBusy(t *testing.T) {
 	}
 }
 
+func TestGraphIngestTelemetryClassifiesRuntimeLeaseLoss(t *testing.T) {
+	err := fmt.Errorf("release graph ingest lease: %w", ports.ErrSourceRuntimeLeaseLost)
+	if got := graphIngestTelemetryErrorKind(err); got != "lease_lost" {
+		t.Fatalf("graphIngestTelemetryErrorKind() = %q, want lease_lost", got)
+	}
+}
+
 func TestRunRuntimeUsesCallerHeldRuntimeLease(t *testing.T) {
 	runtimeStore := &graphingestLeaseRuntimeStore{
 		graphingestRuntimeStore: &graphingestRuntimeStore{},

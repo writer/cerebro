@@ -175,6 +175,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "graph query invalid", err: graphQueryConnectError(graphquery.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
 		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest lease lost", err: graphIngestConnectError(ports.ErrSourceRuntimeLeaseLost), code: connect.CodeAborted},
 		{name: "graph ingest unavailable", err: graphIngestConnectError(graphingest.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "graph ingest invalid", err: graphIngestConnectError(graphingest.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest unknown", err: graphIngestConnectError(errors.New("graph ingest failed")), code: connect.CodeInternal},
@@ -598,6 +599,14 @@ func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
 				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestWriteGraphIngestLeaseLossReturnsConflict(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeGraphIngestError(recorder, ports.ErrSourceRuntimeLeaseLost)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 }
 

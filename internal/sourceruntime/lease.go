@@ -87,7 +87,7 @@ func currentSourceRuntimeLeaseFence(ctx context.Context, runtimeID string) (port
 	}
 	fence, err := authority.reader.ReadSourceRuntimeLeaseFence(ctx, runtimeID, bound.Owner)
 	if err != nil {
-		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("refresh source runtime lease fence %q: %w", runtimeID, err)
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("%w: refresh source runtime lease fence %q: %w", ports.ErrSourceRuntimeLeaseLost, runtimeID, err)
 	}
 	fence.Owner = strings.TrimSpace(fence.Owner)
 	fence.ExpiresAt = fence.ExpiresAt.UTC()
@@ -196,16 +196,16 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		attrs = attrs.WithField(telemetry.Field{Key: "lease_conflict", Value: true})
 		return nil, fmt.Errorf("%w: %s", ErrSyncInProgress, runtimeID)
 	}
-	syncCtx, cancelSync := context.WithCancel(ctx)
+	syncCtx, cancelSync := context.WithCancelCause(ctx)
 	syncCtx, fenceErr := WithCurrentSourceRuntimeLeaseFence(syncCtx, opts.LeaseStore, runtimeID, owner)
 	if fenceErr != nil {
-		cancelSync()
+		cancelSync(fenceErr)
 		_ = releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
 		return nil, fenceErr
 	}
 	stopRenewal := startLeaseRenewal(syncCtx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
 	response, syncErr := s.Sync(syncCtx, req)
-	cancelSync()
+	cancelSync(nil)
 	renewalErr := stopRenewal()
 	releaseErr := releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
 	if errors.Is(renewalErr, ports.ErrSourceRuntimeLeaseLost) {
@@ -273,9 +273,9 @@ func DefaultAPILeaseOwner() string {
 	return fmt.Sprintf("cerebro-api:%s:%d:%d", hostname, os.Getpid(), time.Now().UnixNano())
 }
 
-func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string, ttl time.Duration, cancelWork context.CancelFunc) func() error {
+func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string, ttl time.Duration, cancelWork context.CancelCauseFunc) func() error {
 	if cancelWork == nil {
-		cancelWork = func() {}
+		cancelWork = func(error) {}
 	}
 	renewCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
@@ -283,8 +283,10 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
 		defer close(done)
 		defer func() {
+			leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
 			select {
-			case done <- panicsafe.ErrTaskPanicked:
+			case done <- leaseLost:
+				cancelWork(leaseLost)
 			default:
 			}
 		}()
@@ -298,13 +300,19 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 			case <-ticker.C:
 				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
 				if err != nil {
-					cancelWork()
-					done <- err
+					if sourceRuntimeLeaseRenewalStopped(renewCtx, err) {
+						done <- nil
+						return
+					}
+					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, err)
+					cancelWork(leaseLost)
+					done <- leaseLost
 					return
 				}
 				if !renewed {
-					cancelWork()
-					done <- fmt.Errorf("%w: %s", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, nil)
+					cancelWork(leaseLost)
+					done <- leaseLost
 					return
 				}
 			}
@@ -314,6 +322,17 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 		cancel()
 		return <-done
 	}
+}
+
+func sourceRuntimeLeaseRenewalLoss(runtimeID string, cause error) error {
+	if cause == nil {
+		return fmt.Errorf("%w: %s", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+	}
+	return fmt.Errorf("%w: renew source runtime lease %s: %w", ports.ErrSourceRuntimeLeaseLost, runtimeID, cause)
+}
+
+func sourceRuntimeLeaseRenewalStopped(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && errors.Is(err, ctx.Err())
 }
 
 func LeaseRenewalInterval(ttl time.Duration) time.Duration {
@@ -350,14 +369,16 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 	if err != nil || !acquired {
 		return ctx, noop, acquired, err
 	}
-	workCtx, cancelWork := context.WithCancel(ctx)
+	workCtx, cancelWork := context.WithCancelCause(ctx)
 	renewCtx, cancelRenew := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	panicsafe.Go(renewCtx, "source_runtime.lease_renewal", func() {
 		defer close(done)
 		defer func() {
+			leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
 			select {
-			case done <- panicsafe.ErrTaskPanicked:
+			case done <- leaseLost:
+				cancelWork(leaseLost)
 			default:
 			}
 		}()
@@ -371,21 +392,19 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 			case <-ticker.C:
 				renewed, renewErr := store.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
 				if renewErr != nil {
-					if renewCtx.Err() != nil {
+					if sourceRuntimeLeaseRenewalStopped(renewCtx, renewErr) {
 						done <- nil
 						return
 					}
-					cancelWork()
-					done <- renewErr
+					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, renewErr)
+					cancelWork(leaseLost)
+					done <- leaseLost
 					return
 				}
 				if !renewed {
-					if renewCtx.Err() != nil {
-						done <- nil
-						return
-					}
-					cancelWork()
-					done <- fmt.Errorf("%w: %s", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+					leaseLost := sourceRuntimeLeaseRenewalLoss(runtimeID, nil)
+					cancelWork(leaseLost)
+					done <- leaseLost
 					return
 				}
 			}
@@ -399,7 +418,7 @@ func AcquireRenewableLease(ctx context.Context, store ports.SourceRuntimeLeaseSt
 		releaseOnce.Do(func() {
 			cancelRenew()
 			renewalErr := <-done
-			cancelWork()
+			cancelWork(nil)
 			releaseErr = errors.Join(renewalErr, releaseLease(ctx, store, runtimeID, owner))
 		})
 		return releaseErr

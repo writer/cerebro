@@ -3,6 +3,7 @@ package sourceruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +36,16 @@ func TestPutTailscaleRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T)
 	}
 	if worker.publicConfig["tailnet"] != "example.com" || worker.publicConfig["family"] != "user" || worker.publicConfig["token"] != "" {
 		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestNormalizeSourceWorkerExecutionErrorMapsLeaseLoss(t *testing.T) {
+	err := normalizeSourceWorkerExecutionError(fmt.Errorf("seal page: %w", sourceworker.ErrWorkerLeaseLost))
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("normalizeSourceWorkerExecutionError() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	}
+	if !errors.Is(err, sourceworker.ErrWorkerLeaseLost) {
+		t.Fatalf("normalizeSourceWorkerExecutionError() error = %v, want original worker classification", err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -1310,18 +1312,102 @@ func TestOrchestratorListFilterPreservesRuntimeIDs(t *testing.T) {
 }
 
 func TestLeaseRenewalFailureCancelsRuntimeWork(t *testing.T) {
-	store := &leaseRuntimeStore{renewed: false}
+	renewErr := errors.New("lease store unavailable")
+	for _, test := range []struct {
+		name       string
+		store      *leaseRuntimeStore
+		underlying error
+	}{
+		{name: "ownership rejected", store: &leaseRuntimeStore{renewed: false}},
+		{name: "authority uncertain", store: &leaseRuntimeStore{renewErr: renewErr}, underlying: renewErr},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+			workCtx, cancelWork := context.WithCancelCause(context.Background())
+			stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), test.store, runtime, "owner-1", cancelWork, time.Millisecond)
+
+			select {
+			case <-workCtx.Done():
+			case <-time.After(time.Second):
+				t.Fatal("runtime work context was not canceled after lease renewal failed")
+			}
+			cause := context.Cause(workCtx)
+			if !errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) {
+				t.Fatalf("runtime work cancellation cause = %v, want %v", cause, ports.ErrSourceRuntimeLeaseLost)
+			}
+			if test.underlying != nil && !errors.Is(cause, test.underlying) {
+				t.Fatalf("runtime work cancellation cause = %v, want underlying %v", cause, test.underlying)
+			}
+			if err := stopRenewal(); !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+				t.Fatalf("stopRenewal() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+			} else if test.underlying != nil && !errors.Is(err, test.underlying) {
+				t.Fatalf("stopRenewal() error = %v, want underlying %v", err, test.underlying)
+			}
+		})
+	}
+}
+
+func TestOrchestratorLeaseRenewalShutdownClassifiesInFlightResult(t *testing.T) {
+	genuineErr := errors.New("lease store unavailable")
+	for _, test := range []struct {
+		name          string
+		renewErr      error
+		wantLeaseLost bool
+	}{
+		{name: "cancellation from stop", renewErr: context.Canceled},
+		{name: "genuine store failure", renewErr: genuineErr, wantLeaseLost: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			renewStarted := make(chan struct{})
+			store := &leaseRuntimeStore{
+				renewErr: test.renewErr, renewStarted: renewStarted, renewWaitForCancel: true,
+			}
+			runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+			_, cancelWork := context.WithCancelCause(context.Background())
+			stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), store, runtime, "owner-1", cancelWork, 10*time.Millisecond)
+			select {
+			case <-renewStarted:
+			case <-time.After(time.Second):
+				t.Fatal("lease renewal did not start")
+			}
+			cancelWork(nil)
+			err := stopRenewal()
+			if test.wantLeaseLost {
+				if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, genuineErr) {
+					t.Fatalf("stopRenewal() error = %v, want lease loss preserving %v", err, genuineErr)
+				}
+			} else if err != nil {
+				t.Fatalf("stopRenewal() error = %v, want nil for stop cancellation", err)
+			}
+		})
+	}
+}
+
+func TestOrchestratorLeaseRenewalFailsClosedWhenTaskPanics(t *testing.T) {
+	store := &leaseRuntimeStore{renewPanic: true}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
-	workCtx, cancelWork := context.WithCancel(context.Background())
-	stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), store, runtime, "owner-1", cancelWork, time.Millisecond)
+	workCtx, cancelWork := context.WithCancelCause(context.Background())
+	stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), store, runtime, "owner-1", cancelWork, 10*time.Millisecond)
 
 	select {
 	case <-workCtx.Done():
 	case <-time.After(time.Second):
-		t.Fatal("runtime work context was not canceled after lease renewal failed")
+		t.Fatal("renewal panic did not cancel orchestrator work")
 	}
-	if err := stopRenewal(); err == nil {
-		t.Fatal("stopRenewal() error = nil, want lease lost error")
+	if cause := context.Cause(workCtx); !errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(cause, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("work cancellation cause = %v, want lease loss preserving renewal panic", cause)
+	}
+	if err := stopRenewal(); !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("stopRenewal() error = %v, want lease loss preserving renewal panic", err)
+	}
+}
+
+func TestJoinOrchestratorRunErrorPreservesRenewalAndReleaseFailures(t *testing.T) {
+	renewErr := fmt.Errorf("%w: runtime-1", ports.ErrSourceRuntimeLeaseLost)
+	releaseErr := errors.New("release failed")
+	err := joinOrchestratorRunError(joinOrchestratorRunError(nil, renewErr), releaseErr)
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, releaseErr) {
+		t.Fatalf("joined error = %v, want renewal lease loss and release failure", err)
 	}
 }
 
@@ -1424,6 +1510,11 @@ type leaseRuntimeStore struct {
 	releaseDeadline    time.Time
 	acquired           bool
 	renewed            bool
+	renewErr           error
+	renewPanic         bool
+	renewStarted       chan struct{}
+	renewWaitForCancel bool
+	releaseErr         error
 }
 
 func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -1433,14 +1524,23 @@ func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtime
 	return s.acquired, nil
 }
 
-func (s *leaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
-	return s.renewed, nil
+func (s *leaseRuntimeStore) RenewSourceRuntimeLease(ctx context.Context, _ string, _ string, _ time.Duration) (bool, error) {
+	if s.renewStarted != nil {
+		close(s.renewStarted)
+	}
+	if s.renewWaitForCancel {
+		<-ctx.Done()
+	}
+	if s.renewPanic {
+		panic("lease renewal store panic")
+	}
+	return s.renewed, s.renewErr
 }
 
 func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ string, _ string) error {
 	s.releaseContextErr = ctx.Err()
 	s.releaseDeadline, s.releaseHasDeadline = ctx.Deadline()
-	return nil
+	return s.releaseErr
 }
 
 type orchestratorRuntimeStore struct {

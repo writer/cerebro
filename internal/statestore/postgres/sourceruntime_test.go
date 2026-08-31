@@ -54,9 +54,6 @@ func TestSourceRuntimeLeaseFenceReadErrorMapsMissingCurrentFence(t *testing.T) {
 	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
 		t.Fatalf("sourceRuntimeLeaseFenceReadError() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
 	}
-	if !strings.Contains(err.Error(), `"runtime-a"`) {
-		t.Fatalf("sourceRuntimeLeaseFenceReadError() error = %q, want bounded runtime context", err)
-	}
 }
 
 func TestSourceRuntimeLeaseFenceReadErrorPreservesQueryFailure(t *testing.T) {

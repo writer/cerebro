@@ -339,11 +339,17 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		observedFamilies       = map[string]struct{}{}
 	)
 	defer func() {
+		err = sourceRuntimeErrorWithCancellationCause(ctx, err)
+		_, leaseAuthorityBound := sourceRuntimeLeaseFenceFromContext(ctx)
 		if err != nil {
 			status = sourceRuntimeTelemetryStatus(err)
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily && !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+			// A lease-wrapped caller cannot safely persist failure health here: renewal
+			// may be failing concurrently, after this defer samples its context. Keep
+			// the failure in telemetry and let the outer lease boundary report it
+			// after joining renewal instead of risking an unfenced stale status write.
+			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily && !leaseAuthorityBound && !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
@@ -801,6 +807,17 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 
 func durationMilliseconds(duration time.Duration) float64 {
 	return float64(duration) / float64(time.Millisecond)
+}
+
+func sourceRuntimeErrorWithCancellationCause(ctx context.Context, err error) error {
+	cause := context.Cause(ctx)
+	if !errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		return err
+	}
+	if err == nil {
+		return cause
+	}
+	return errors.Join(cause, err)
 }
 
 func sourceRuntimeTelemetryStatus(err error) string {
