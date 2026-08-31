@@ -39,11 +39,40 @@
     "runtimeImplementation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contract", "durable_pull", "preview"],
+      "required": ["contract", "canonicalization", "bindings", "durable_pull", "preview"],
       "properties": {
         "contract": { "const": "compiled_go_selector_outcomes/v1" },
+        "canonicalization": { "const": "go_ast_declaration_context_sha256/v2" },
+        "bindings": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/goDeclarationBinding" }
+        },
         "durable_pull": { "$ref": "#/$defs/selectorPolicy" },
         "preview": { "$ref": "#/$defs/selectorPolicy" }
+      }
+    },
+    "goDeclarationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "symbol", "digest_sha256"],
+      "properties": {
+        "role": {
+          "enum": [
+            "durable_plan_validation",
+            "durable_pull_dispatch",
+            "durable_runtime_creation",
+            "preview_dispatch_adapter",
+            "preview_rust_selector",
+            "rust_authoritative_selector",
+            "rust_output_conversion",
+            "tailscale_authoritative_selector"
+          ]
+        },
+        "path": { "type": "string", "pattern": "^internal/.+\\.go$" },
+        "symbol": { "type": "string", "minLength": 1 },
+        "digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "selectorPolicy": {

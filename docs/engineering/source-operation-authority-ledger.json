@@ -9,6 +9,57 @@
   },
   "runtime_implementation": {
     "contract": "compiled_go_selector_outcomes/v1",
+    "canonicalization": "go_ast_declaration_context_sha256/v2",
+    "bindings": [
+      {
+        "role": "durable_plan_validation",
+        "path": "internal/sourceruntime/source_execution.go",
+        "symbol": "Service.validateRustSourceRuntimePlan",
+        "digest_sha256": "6665619585fb78d9355e4e03712c45ecbf36179b6185b7b2afbfc8f500d9442c"
+      },
+      {
+        "role": "durable_pull_dispatch",
+        "path": "internal/sourceruntime/source_execution.go",
+        "symbol": "Service.readSourcePull",
+        "digest_sha256": "2904c501405188e7c8024d92554cfa25bef12904d3c5222b79f580ce65855f33"
+      },
+      {
+        "role": "durable_runtime_creation",
+        "path": "internal/sourceruntime/service.go",
+        "symbol": "Service.preparePutRuntime",
+        "digest_sha256": "12f59c590b28397ba8f529d16a15c910ac8241eecfa3c200f1c594adf2cd6bf4"
+      },
+      {
+        "role": "preview_dispatch_adapter",
+        "path": "internal/sourceops/source_execution.go",
+        "symbol": "rustSourceFamily",
+        "digest_sha256": "634ca0073eace4a99cf9d8f7e41e845b2cb3dbaebcc3a540f310672dd93bd1f8"
+      },
+      {
+        "role": "preview_rust_selector",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "PreviewRustFamily",
+        "digest_sha256": "012b1ea1a81495d7eb18136e9c6a10a3b9801e3846ebd2e9ba9a2ecb9a292abd"
+      },
+      {
+        "role": "rust_authoritative_selector",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "RustAuthoritativeFamily",
+        "digest_sha256": "f10f45dc76969895a997b7d5e8f77b8ab59617c117dc1400833fc0b137dd1655"
+      },
+      {
+        "role": "rust_output_conversion",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "PullFromExecutionOutput",
+        "digest_sha256": "d3cd534410bb2f469f0555f489324cd2c464929d26b9b1b63ddfa6cd21fc4b76"
+      },
+      {
+        "role": "tailscale_authoritative_selector",
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "TailscaleFamily",
+        "digest_sha256": "0be6500cb79d3e99245fff79eec9d71ea1b62a4b632c87115f01dffd25f79971"
+      }
+    ],
     "durable_pull": {
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [

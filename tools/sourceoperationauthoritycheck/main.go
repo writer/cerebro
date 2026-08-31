@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,8 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"io"
@@ -31,6 +34,7 @@ const (
 	ledgerRelPath           = "docs/engineering/source-operation-authority-ledger.json"
 	ledgerSchemaV3          = "cerebro.source-operation-authority/v3"
 	selectorOutcomeContract = "compiled_go_selector_outcomes/v1"
+	goDeclarationContextV2  = "go_ast_declaration_context_sha256/v2"
 	goCompatibilityKernel   = "go_compatibility"
 	rustWorkerKernel        = "credential_free_rust_worker"
 	unknownFamilyGoPolicy   = "go_compatibility"
@@ -41,6 +45,41 @@ const (
 	unknownSourceSentinel   = "__cerebro_authority_unknown_source__"
 	unknownFamilySentinel   = "__cerebro_authority_unknown_family__"
 )
+
+var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
+	"durable_plan_validation": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "Service.validateRustSourceRuntimePlan",
+	},
+	"durable_pull_dispatch": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "Service.readSourcePull",
+	},
+	"durable_runtime_creation": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.preparePutRuntime",
+	},
+	"preview_dispatch_adapter": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "rustSourceFamily",
+	},
+	"preview_rust_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: previewSelectorName,
+	},
+	"rust_authoritative_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: durableSelectorName,
+	},
+	"rust_output_conversion": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: "PullFromExecutionOutput",
+	},
+	"tailscale_authoritative_selector": {
+		Path:   "internal/sourceruntime/sourceworker/pull.go",
+		Symbol: "TailscaleFamily",
+	},
+}
 
 var requiredSelectorCallsites = map[selectorCallsite]int{
 	{Selector: durableSelectorName, Path: "internal/sourceruntime/source_execution.go", Symbol: "Service.validateRustSourceRuntimePlan"}: 1,
@@ -120,9 +159,23 @@ type authorityOverride struct {
 }
 
 type runtimeImplementation struct {
-	Contract    string         `json:"contract"`
-	DurablePull selectorPolicy `json:"durable_pull"`
-	Preview     selectorPolicy `json:"preview"`
+	Contract         string                 `json:"contract"`
+	Canonicalization string                 `json:"canonicalization"`
+	Bindings         []goDeclarationBinding `json:"bindings"`
+	DurablePull      selectorPolicy         `json:"durable_pull"`
+	Preview          selectorPolicy         `json:"preview"`
+}
+
+type goDeclarationBinding struct {
+	Role         string `json:"role"`
+	Path         string `json:"path"`
+	Symbol       string `json:"symbol"`
+	DigestSHA256 string `json:"digest_sha256"`
+}
+
+type runtimeBindingRequirement struct {
+	Path   string
+	Symbol string
 }
 
 type selectorPolicy struct {
@@ -536,6 +589,9 @@ func validateRuntimeImplementation(root string, ledger authorityLedger, families
 	if implementation.Contract != selectorOutcomeContract {
 		return fmt.Errorf("runtime_implementation.contract must be %q", selectorOutcomeContract)
 	}
+	if err := validateRuntimeBindings(root, implementation); err != nil {
+		return err
+	}
 	selectors := []struct {
 		name     string
 		policy   selectorPolicy
@@ -556,6 +612,213 @@ func validateRuntimeImplementation(root string, ledger authorityLedger, families
 		}
 	}
 	return validateSelectorCallsites(root)
+}
+
+func validateRuntimeBindings(root string, implementation runtimeImplementation) error {
+	if implementation.Canonicalization != goDeclarationContextV2 {
+		return fmt.Errorf("runtime_implementation.canonicalization must be %q", goDeclarationContextV2)
+	}
+	if err := validateRuntimeBindingCoverage(); err != nil {
+		return err
+	}
+	if len(implementation.Bindings) != len(requiredRuntimeBindings) {
+		return fmt.Errorf("runtime_implementation.bindings must contain exactly %d required bindings", len(requiredRuntimeBindings))
+	}
+	seen := make(map[string]struct{}, len(implementation.Bindings))
+	priorRole := ""
+	for index, binding := range implementation.Bindings {
+		path := fmt.Sprintf("runtime_implementation.bindings[%d]", index)
+		requirement, ok := requiredRuntimeBindings[binding.Role]
+		if !ok {
+			return fmt.Errorf("%s.role %q is not a required runtime binding", path, binding.Role)
+		}
+		if priorRole != "" && binding.Role <= priorRole {
+			return fmt.Errorf("%s.role must be unique and sorted after %q", path, priorRole)
+		}
+		priorRole = binding.Role
+		if _, duplicate := seen[binding.Role]; duplicate {
+			return fmt.Errorf("%s duplicates role %q", path, binding.Role)
+		}
+		seen[binding.Role] = struct{}{}
+		if binding.Path != requirement.Path || binding.Symbol != requirement.Symbol {
+			return fmt.Errorf("%s must bind %s#%s", path, requirement.Path, requirement.Symbol)
+		}
+		if len(binding.DigestSHA256) != sha256.Size*2 || strings.ToLower(binding.DigestSHA256) != binding.DigestSHA256 {
+			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
+		}
+		if _, err := hex.DecodeString(binding.DigestSHA256); err != nil {
+			return fmt.Errorf("%s.digest_sha256 must be 64 lowercase hexadecimal characters", path)
+		}
+		actualDigest, err := canonicalGoDeclarationContextDigest(root, binding.Path, binding.Symbol)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if binding.DigestSHA256 != actualDigest {
+			return fmt.Errorf(
+				"runtime implementation drift for %s: ledger has digest=%s; %s#%s has contextual digest=%s; review the selector or routing change and refresh this binding only when it is deliberate",
+				binding.Role,
+				binding.DigestSHA256,
+				binding.Path,
+				binding.Symbol,
+				actualDigest,
+			)
+		}
+	}
+	return nil
+}
+
+func validateRuntimeBindingCoverage() error {
+	boundDeclarations := make(map[string]struct{}, len(requiredRuntimeBindings))
+	for _, requirement := range requiredRuntimeBindings {
+		boundDeclarations[requirement.Path+"#"+requirement.Symbol] = struct{}{}
+	}
+	for callsite := range requiredSelectorCallsites {
+		key := callsite.Path + "#" + callsite.Symbol
+		if _, ok := boundDeclarations[key]; !ok {
+			return fmt.Errorf("required selector callsite %s is not protected by a full declaration binding", selectorCallsiteString(callsite))
+		}
+	}
+	return nil
+}
+
+func canonicalGoDeclarationContextDigest(root, relPath, symbol string) (string, error) {
+	clean := filepath.Clean(relPath)
+	if relPath == "" || filepath.IsAbs(relPath) || clean != relPath || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path must be a clean repository-relative path")
+	}
+	if filepath.Ext(clean) != ".go" {
+		return "", fmt.Errorf("%s must identify Go source", relPath)
+	}
+	fullPath := filepath.Join(root, clean)
+	info, err := os.Lstat(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("stat %s: %w", relPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s must be a regular non-symlink file", relPath)
+	}
+	payload, err := os.ReadFile(fullPath) // #nosec G304 -- repository-relative path is fixed by requiredRuntimeBindings.
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", relPath, err)
+	}
+	if err := rejectGoBuildConstraints(relPath, payload); err != nil {
+		return "", err
+	}
+	parsed, matched, err := parseBoundGoDeclaration(fullPath, relPath, payload, symbol)
+	if err != nil {
+		return "", err
+	}
+	if err := requireUniqueGoDeclarationAcrossBuildContexts(root, relPath, symbol); err != nil {
+		return "", err
+	}
+
+	imports := make([]string, 0, len(parsed.Imports))
+	for _, spec := range parsed.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return "", fmt.Errorf("parse import context in %s: %w", relPath, err)
+		}
+		alias := ""
+		if spec.Name != nil {
+			alias = spec.Name.Name
+		}
+		imports = append(imports, alias+"\t"+strconv.Quote(importPath))
+	}
+	sort.Strings(imports)
+
+	var canonical bytes.Buffer
+	_, _ = io.WriteString(&canonical, goDeclarationContextV2+"\n")
+	_, _ = io.WriteString(&canonical, "package\t"+parsed.Name.Name+"\n")
+	for _, imported := range imports {
+		_, _ = io.WriteString(&canonical, "import\t"+imported+"\n")
+	}
+	_, _ = io.WriteString(&canonical, "declaration\n")
+	if err := format.Node(&canonical, token.NewFileSet(), matched); err != nil {
+		return "", fmt.Errorf("canonicalize %s#%s: %w", relPath, symbol, err)
+	}
+	digest := sha256.Sum256(canonical.Bytes())
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func rejectGoBuildConstraints(relPath string, payload []byte) error {
+	scanner := bufio.NewScanner(bytes.NewReader(payload))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if constraint.IsGoBuild(line) || constraint.IsPlusBuild(line) {
+			return fmt.Errorf("%s must not use Go build constraints because its authority binding must be identical across release build contexts", relPath)
+		}
+		if strings.HasPrefix(line, "package ") {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan build constraints in %s: %w", relPath, err)
+	}
+	return nil
+}
+
+func parseBoundGoDeclaration(fullPath, relPath string, payload []byte, symbol string) (*ast.File, *ast.FuncDecl, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), fullPath, payload, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", relPath, err)
+	}
+	var matched *ast.FuncDecl
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || goDeclarationSymbol(function) != symbol {
+			continue
+		}
+		if matched != nil {
+			return nil, nil, fmt.Errorf("%s declares %s more than once", relPath, symbol)
+		}
+		matched = function
+	}
+	if matched == nil {
+		return nil, nil, fmt.Errorf("%s does not declare %s", relPath, symbol)
+	}
+	return parsed, matched, nil
+}
+
+func requireUniqueGoDeclarationAcrossBuildContexts(root, relPath, symbol string) error {
+	directory := filepath.Dir(filepath.Join(root, filepath.FromSlash(relPath)))
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return fmt.Errorf("read declaration directory for %s: %w", relPath, err)
+	}
+	locations := make([]string, 0, 1)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		candidatePath := filepath.Join(directory, entry.Name())
+		candidateRel, err := filepath.Rel(root, candidatePath)
+		if err != nil {
+			return fmt.Errorf("resolve declaration candidate path: %w", err)
+		}
+		candidateRel = filepath.ToSlash(candidateRel)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s must not be a symlink", candidateRel)
+		}
+		payload, err := os.ReadFile(candidatePath) // #nosec G304 -- candidate is a Go file in a fixed bound declaration directory.
+		if err != nil {
+			return fmt.Errorf("read %s: %w", candidateRel, err)
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), candidatePath, payload, 0)
+		if err != nil {
+			return fmt.Errorf("parse %s across release build contexts: %w", candidateRel, err)
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if ok && goDeclarationSymbol(function) == symbol {
+				locations = append(locations, candidateRel)
+			}
+		}
+	}
+	sort.Strings(locations)
+	if len(locations) != 1 || locations[0] != filepath.ToSlash(relPath) {
+		return fmt.Errorf("%s must be declared exactly once across all release build contexts at %s; found %v", symbol, filepath.ToSlash(relPath), locations)
+	}
+	return nil
 }
 
 func validateSelectorPolicy(path string, policy selectorPolicy, families []catalogFamily) error {
