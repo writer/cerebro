@@ -45,8 +45,9 @@
         "canonicalization": { "const": "go_ast_declaration_context_sha256/v2" },
         "bindings": {
           "type": "array",
-          "minItems": 8,
-          "maxItems": 8,
+          "minItems": 22,
+          "maxItems": 22,
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/goDeclarationBinding" }
         },
         "durable_pull": { "$ref": "#/$defs/selectorPolicy" },
@@ -60,10 +61,24 @@
       "properties": {
         "role": {
           "enum": [
+            "durable_compatibility_read",
+            "durable_credential_resolution",
+            "durable_lease_fence_binding",
+            "durable_lease_fence_read",
             "durable_plan_validation",
             "durable_pull_dispatch",
+            "durable_put_entrypoint",
+            "durable_put_runtimes_entrypoint",
             "durable_runtime_creation",
+            "durable_sync_entrypoint",
+            "durable_sync_with_lease_entrypoint",
+            "preview_check_entrypoint",
+            "preview_credential_resolution",
             "preview_dispatch_adapter",
+            "preview_discover_entrypoint",
+            "preview_discovery_dispatch",
+            "preview_execution_dispatch",
+            "preview_read_entrypoint",
             "preview_rust_selector",
             "rust_authoritative_selector",
             "rust_output_conversion",

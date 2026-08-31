@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build/constraint"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -47,6 +48,22 @@ const (
 )
 
 var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
+	"durable_compatibility_read": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "readCompatibilitySourcePull",
+	},
+	"durable_credential_resolution": {
+		Path:   "internal/sourceruntime/source_execution.go",
+		Symbol: "sourceExecutionHostCredential",
+	},
+	"durable_lease_fence_binding": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "WithCurrentSourceRuntimeLeaseFence",
+	},
+	"durable_lease_fence_read": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "sourceRuntimeLeaseFenceFromContext",
+	},
 	"durable_plan_validation": {
 		Path:   "internal/sourceruntime/source_execution.go",
 		Symbol: "Service.validateRustSourceRuntimePlan",
@@ -55,13 +72,53 @@ var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
 		Path:   "internal/sourceruntime/source_execution.go",
 		Symbol: "Service.readSourcePull",
 	},
+	"durable_put_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.Put",
+	},
+	"durable_put_runtimes_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.PutRuntimes",
+	},
 	"durable_runtime_creation": {
 		Path:   "internal/sourceruntime/service.go",
 		Symbol: "Service.preparePutRuntime",
 	},
+	"durable_sync_entrypoint": {
+		Path:   "internal/sourceruntime/service.go",
+		Symbol: "Service.Sync",
+	},
+	"durable_sync_with_lease_entrypoint": {
+		Path:   "internal/sourceruntime/lease.go",
+		Symbol: "Service.SyncWithLease",
+	},
+	"preview_check_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Check",
+	},
+	"preview_credential_resolution": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.previewSourceExecutionCredential",
+	},
 	"preview_dispatch_adapter": {
 		Path:   "internal/sourceops/source_execution.go",
 		Symbol: "rustSourceFamily",
+	},
+	"preview_discover_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Discover",
+	},
+	"preview_discovery_dispatch": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.discoverRustSource",
+	},
+	"preview_execution_dispatch": {
+		Path:   "internal/sourceops/source_execution.go",
+		Symbol: "Service.executeRustSource",
+	},
+	"preview_read_entrypoint": {
+		Path:   "internal/sourceops/service.go",
+		Symbol: "Service.Read",
 	},
 	"preview_rust_selector": {
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
@@ -79,6 +136,36 @@ var requiredRuntimeBindings = map[string]runtimeBindingRequirement{
 		Path:   "internal/sourceruntime/sourceworker/pull.go",
 		Symbol: "TailscaleFamily",
 	},
+}
+
+var requiredRuntimeBindingEdges = []runtimeBindingEdge{
+	{CallerRole: "durable_plan_validation", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_compatibility_read", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_credential_resolution", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "durable_lease_fence_read", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_pull_dispatch", CalleeRole: "rust_output_conversion", Count: 1},
+	{CallerRole: "durable_put_entrypoint", CalleeRole: "durable_runtime_creation", Count: 1},
+	{CallerRole: "durable_put_runtimes_entrypoint", CalleeRole: "durable_runtime_creation", Count: 1},
+	{CallerRole: "durable_runtime_creation", CalleeRole: "durable_plan_validation", Count: 1},
+	{CallerRole: "durable_runtime_creation", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "durable_sync_entrypoint", CalleeRole: "durable_lease_fence_read", Count: 1},
+	{CallerRole: "durable_sync_entrypoint", CalleeRole: "durable_pull_dispatch", Count: 1},
+	{CallerRole: "durable_sync_with_lease_entrypoint", CalleeRole: "durable_lease_fence_binding", Count: 1},
+	{CallerRole: "durable_sync_with_lease_entrypoint", CalleeRole: "durable_sync_entrypoint", Count: 1},
+	{CallerRole: "preview_check_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_check_entrypoint", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_discover_entrypoint", CalleeRole: "preview_discovery_dispatch", Count: 1},
+	{CallerRole: "preview_discover_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_discovery_dispatch", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_dispatch_adapter", CalleeRole: "preview_rust_selector", Count: 1},
+	{CallerRole: "preview_execution_dispatch", CalleeRole: "preview_credential_resolution", Count: 1},
+	{CallerRole: "preview_execution_dispatch", CalleeRole: "rust_output_conversion", Count: 1},
+	{CallerRole: "preview_read_entrypoint", CalleeRole: "preview_dispatch_adapter", Count: 1},
+	{CallerRole: "preview_read_entrypoint", CalleeRole: "preview_execution_dispatch", Count: 1},
+	{CallerRole: "preview_rust_selector", CalleeRole: "rust_authoritative_selector", Count: 1},
+	{CallerRole: "rust_authoritative_selector", CalleeRole: "tailscale_authoritative_selector", Count: 1},
+	{CallerRole: "rust_output_conversion", CalleeRole: "rust_authoritative_selector", Count: 1},
 }
 
 var requiredSelectorCallsites = map[selectorCallsite]int{
@@ -176,6 +263,12 @@ type goDeclarationBinding struct {
 type runtimeBindingRequirement struct {
 	Path   string
 	Symbol string
+}
+
+type runtimeBindingEdge struct {
+	CallerRole string
+	CalleeRole string
+	Count      int
 }
 
 type selectorPolicy struct {
@@ -664,7 +757,7 @@ func validateRuntimeBindings(root string, implementation runtimeImplementation) 
 			)
 		}
 	}
-	return nil
+	return validateRuntimeBindingEdges(root)
 }
 
 func validateRuntimeBindingCoverage() error {
@@ -678,7 +771,346 @@ func validateRuntimeBindingCoverage() error {
 			return fmt.Errorf("required selector callsite %s is not protected by a full declaration binding", selectorCallsiteString(callsite))
 		}
 	}
+	for _, edge := range requiredRuntimeBindingEdges {
+		if _, ok := requiredRuntimeBindings[edge.CallerRole]; !ok {
+			return fmt.Errorf("required runtime binding edge names unbound caller role %q", edge.CallerRole)
+		}
+		if _, ok := requiredRuntimeBindings[edge.CalleeRole]; !ok {
+			return fmt.Errorf("required runtime binding edge names unbound callee role %q", edge.CalleeRole)
+		}
+		if edge.Count <= 0 {
+			return fmt.Errorf("required runtime binding edge %s -> %s must have a positive call count", edge.CallerRole, edge.CalleeRole)
+		}
+	}
 	return nil
+}
+
+func validateRuntimeBindingEdges(root string) error {
+	for _, edge := range requiredRuntimeBindingEdges {
+		caller := requiredRuntimeBindings[edge.CallerRole]
+		callee := requiredRuntimeBindings[edge.CalleeRole]
+		fullPath := filepath.Join(root, filepath.FromSlash(caller.Path))
+		payload, err := os.ReadFile(fullPath) // #nosec G304 -- caller path is fixed by requiredRuntimeBindings.
+		if err != nil {
+			return fmt.Errorf("read bound caller %s#%s: %w", caller.Path, caller.Symbol, err)
+		}
+		parsed, declaration, err := parseBoundGoDeclaration(fullPath, caller.Path, payload, caller.Symbol)
+		if err != nil {
+			return err
+		}
+		count := 0
+		inspectStructurallyReachableGoCalls(declaration.Body, func(call *ast.CallExpr) {
+			if goCallMatchesRuntimeBinding(parsed, declaration, caller, callee, call.Fun) {
+				count++
+			}
+		})
+		if count != edge.Count {
+			return fmt.Errorf(
+				"bound runtime call edge %s (%s#%s) -> %s (%s#%s) must occur exactly %d time(s); found %d",
+				edge.CallerRole, caller.Path, caller.Symbol,
+				edge.CalleeRole, callee.Path, callee.Symbol,
+				edge.Count, count,
+			)
+		}
+	}
+	return nil
+}
+
+func goDeclarationBaseName(symbol string) string {
+	if index := strings.LastIndex(symbol, "."); index >= 0 {
+		return symbol[index+1:]
+	}
+	return symbol
+}
+
+func goCallMatchesRuntimeBinding(parsed *ast.File, callerDeclaration *ast.FuncDecl, caller, callee runtimeBindingRequirement, expression ast.Expr) bool {
+	// ParseFile's lexical object links distinguish local shadows and receiver
+	// bindings. Cross-file package functions and imported qualifiers remain
+	// unresolved, so accept those only with an exact bound path or import path.
+	calleeName := goDeclarationBaseName(callee.Symbol)
+	callerDirectory := filepath.ToSlash(filepath.Dir(caller.Path))
+	calleeDirectory := filepath.ToSlash(filepath.Dir(callee.Path))
+	if callerDirectory == calleeDirectory {
+		if !strings.Contains(callee.Symbol, ".") {
+			identifier, ok := expression.(*ast.Ident)
+			if !ok || identifier.Name != calleeName {
+				return false
+			}
+			if caller.Path != callee.Path {
+				return identifier.Obj == nil
+			}
+			for _, candidate := range parsed.Decls {
+				function, ok := candidate.(*ast.FuncDecl)
+				if ok && goDeclarationSymbol(function) == callee.Symbol {
+					return identifier.Obj != nil && identifier.Obj == function.Name.Obj
+				}
+			}
+			return false
+		}
+		selector, ok := expression.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != calleeName {
+			return false
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+		if !ok || receiver.Obj == nil || callerDeclaration.Recv == nil {
+			return false
+		}
+		for _, field := range callerDeclaration.Recv.List {
+			for _, name := range field.Names {
+				if name.Obj != nil && name.Obj == receiver.Obj {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if strings.Contains(callee.Symbol, ".") {
+		return false
+	}
+	calleeImportPath := "github.com/writer/cerebro/" + calleeDirectory
+	for _, spec := range parsed.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil || importPath != calleeImportPath {
+			continue
+		}
+		alias := filepath.Base(importPath)
+		if spec.Name != nil {
+			alias = spec.Name.Name
+		}
+		if alias == "." {
+			return false
+		}
+		selector, ok := expression.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != calleeName {
+			return false
+		}
+		qualifier, ok := selector.X.(*ast.Ident)
+		return ok && qualifier.Name == alias && qualifier.Obj == nil
+	}
+	return false
+}
+
+// inspectStructurallyReachableGoCalls prunes only syntax known not to execute
+// without runtime values. It is deliberately not a control- or data-flow proof.
+func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr)) {
+	var inspect func(ast.Node)
+	inspect = func(node ast.Node) {
+		if node == nil {
+			return
+		}
+		ast.Inspect(node, func(candidate ast.Node) bool {
+			switch typed := candidate.(type) {
+			case nil:
+				return false
+			case *ast.FuncLit:
+				return false
+			case *ast.IfStmt:
+				inspect(typed.Init)
+				inspect(typed.Cond)
+				if condition, known := staticGoBool(typed.Cond); known {
+					if condition {
+						inspect(typed.Body)
+					} else {
+						inspect(typed.Else)
+					}
+				} else {
+					inspect(typed.Body)
+					inspect(typed.Else)
+				}
+				return false
+			case *ast.ForStmt:
+				inspect(typed.Init)
+				inspect(typed.Cond)
+				if condition, known := staticGoBool(typed.Cond); known && !condition {
+					return false
+				}
+				inspect(typed.Body)
+				inspect(typed.Post)
+				return false
+			case *ast.SwitchStmt:
+				inspect(typed.Init)
+				inspect(typed.Tag)
+				for _, statement := range typed.Body.List {
+					clause, ok := statement.(*ast.CaseClause)
+					if !ok || goSwitchCaseStaticallyExcluded(typed.Tag, clause.List) {
+						continue
+					}
+					for _, bodyStatement := range clause.Body {
+						inspect(bodyStatement)
+					}
+				}
+				return false
+			case *ast.BinaryExpr:
+				if typed.Op != token.LAND && typed.Op != token.LOR {
+					return true
+				}
+				inspect(typed.X)
+				left, known := staticGoBool(typed.X)
+				if !known || (typed.Op == token.LAND && left) || (typed.Op == token.LOR && !left) {
+					inspect(typed.Y)
+				}
+				return false
+			case *ast.CallExpr:
+				visit(typed)
+			}
+			return true
+		})
+	}
+	inspect(root)
+}
+
+func goSwitchCaseStaticallyExcluded(tag ast.Expr, cases []ast.Expr) bool {
+	if len(cases) == 0 {
+		return false
+	}
+	if tag == nil {
+		for _, expression := range cases {
+			value, known := staticGoBool(expression)
+			if !known || value {
+				return false
+			}
+		}
+		return true
+	}
+	tagValue, tagKnown := staticGoConstant(tag, make(map[*ast.Object]bool))
+	if !tagKnown {
+		return false
+	}
+	for _, expression := range cases {
+		caseValue, known := staticGoConstant(expression, make(map[*ast.Object]bool))
+		if !known || goConstantsEqual(tagValue, caseValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func staticGoBool(expression ast.Expr) (bool, bool) {
+	if expression == nil {
+		return false, false
+	}
+	value, ok := staticGoConstant(expression, make(map[*ast.Object]bool))
+	if !ok || value.Kind() != constant.Bool {
+		return false, false
+	}
+	return constant.BoolVal(value), true
+}
+
+func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value constant.Value, ok bool) {
+	defer func() {
+		if recover() != nil {
+			value, ok = nil, false
+		}
+	}()
+	switch typed := expression.(type) {
+	case *ast.BasicLit:
+		value := constant.MakeFromLiteral(typed.Value, typed.Kind, 0)
+		return value, value.Kind() != constant.Unknown
+	case *ast.ParenExpr:
+		return staticGoConstant(typed.X, visiting)
+	case *ast.Ident:
+		switch typed.Name {
+		case "true":
+			if typed.Obj == nil || typed.Obj.Decl == nil {
+				return constant.MakeBool(true), true
+			}
+		case "false":
+			if typed.Obj == nil || typed.Obj.Decl == nil {
+				return constant.MakeBool(false), true
+			}
+		}
+		if typed.Obj == nil || typed.Obj.Kind != ast.Con || visiting[typed.Obj] {
+			return nil, false
+		}
+		spec, ok := typed.Obj.Decl.(*ast.ValueSpec)
+		if !ok {
+			return nil, false
+		}
+		visiting[typed.Obj] = true
+		defer delete(visiting, typed.Obj)
+		for index, name := range spec.Names {
+			if name.Obj != typed.Obj || index >= len(spec.Values) {
+				continue
+			}
+			return staticGoConstant(spec.Values[index], visiting)
+		}
+		return nil, false
+	case *ast.UnaryExpr:
+		operand, known := staticGoConstant(typed.X, visiting)
+		if !known {
+			return nil, false
+		}
+		if typed.Op == token.NOT {
+			if operand.Kind() != constant.Bool {
+				return nil, false
+			}
+			return constant.MakeBool(!constant.BoolVal(operand)), true
+		}
+		return constant.UnaryOp(typed.Op, operand, 0), true
+	case *ast.BinaryExpr:
+		left, leftKnown := staticGoConstant(typed.X, visiting)
+		if typed.Op == token.LAND {
+			if leftKnown && left.Kind() == constant.Bool && !constant.BoolVal(left) {
+				return constant.MakeBool(false), true
+			}
+			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			if rightKnown && right.Kind() == constant.Bool && !constant.BoolVal(right) {
+				return constant.MakeBool(false), true
+			}
+			if leftKnown && rightKnown && left.Kind() == constant.Bool && right.Kind() == constant.Bool {
+				return constant.MakeBool(constant.BoolVal(left) && constant.BoolVal(right)), true
+			}
+			return nil, false
+		}
+		if typed.Op == token.LOR {
+			if leftKnown && left.Kind() == constant.Bool && constant.BoolVal(left) {
+				return constant.MakeBool(true), true
+			}
+			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			if rightKnown && right.Kind() == constant.Bool && constant.BoolVal(right) {
+				return constant.MakeBool(true), true
+			}
+			if leftKnown && rightKnown && left.Kind() == constant.Bool && right.Kind() == constant.Bool {
+				return constant.MakeBool(constant.BoolVal(left) || constant.BoolVal(right)), true
+			}
+			return nil, false
+		}
+		right, rightKnown := staticGoConstant(typed.Y, visiting)
+		if !leftKnown || !rightKnown {
+			return nil, false
+		}
+		switch typed.Op {
+		case token.EQL:
+			return constant.MakeBool(goConstantsEqual(left, right)), true
+		case token.NEQ:
+			return constant.MakeBool(!goConstantsEqual(left, right)), true
+		case token.LSS, token.LEQ, token.GTR, token.GEQ:
+			return constant.MakeBool(constant.Compare(left, typed.Op, right)), true
+		default:
+			return constant.BinaryOp(left, typed.Op, right), true
+		}
+	case *ast.CallExpr:
+		identifier, isIdentifier := typed.Fun.(*ast.Ident)
+		if !isIdentifier || identifier.Name != "bool" || len(typed.Args) != 1 || (identifier.Obj != nil && identifier.Obj.Decl != nil) {
+			return nil, false
+		}
+		operand, known := staticGoConstant(typed.Args[0], visiting)
+		if !known || operand.Kind() != constant.Bool {
+			return nil, false
+		}
+		return operand, true
+	default:
+		return nil, false
+	}
+}
+
+func goConstantsEqual(left, right constant.Value) (equal bool) {
+	defer func() {
+		if recover() != nil {
+			equal = false
+		}
+	}()
+	return constant.Compare(left, token.EQL, right)
 }
 
 func canonicalGoDeclarationContextDigest(root, relPath, symbol string) (string, error) {
