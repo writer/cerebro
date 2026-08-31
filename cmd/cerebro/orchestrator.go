@@ -1368,37 +1368,40 @@ func startOrchestratorRuntimeLeaseRenewalWithTTL(ctx context.Context, store port
 	done := make(chan error, 1)
 	panicsafe.Go(renewCtx, "orchestrator.source_runtime_lease_renewal", func() {
 		defer close(done)
+		normalExit := false
+		var taskErr error
 		defer func() {
-			leaseLost := orchestratorRuntimeLeaseRenewalLoss(runtime.GetId(), panicsafe.ErrTaskPanicked)
-			select {
-			case done <- leaseLost:
-				cancelWork(leaseLost)
-			default:
+			if !normalExit {
+				taskErr = orchestratorRuntimeLeaseRenewalLoss(runtime.GetId(), panicsafe.ErrTaskPanicked)
+				cancelWork(taskErr)
 			}
+			done <- taskErr
 		}()
 		ticker := time.NewTicker(sourceRuntimeLeaseRenewalInterval(ttl))
 		defer ticker.Stop()
 		for {
 			select {
 			case <-renewCtx.Done():
-				done <- nil
+				normalExit = true
 				return
 			case <-ticker.C:
 				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtime.GetId(), owner, ttl)
 				if err != nil {
 					if orchestratorRuntimeLeaseRenewalStopped(renewCtx, err) {
-						done <- nil
+						normalExit = true
 						return
 					}
 					leaseLost := orchestratorRuntimeLeaseRenewalLoss(runtime.GetId(), err)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 				if !renewed {
 					leaseLost := orchestratorRuntimeLeaseRenewalLoss(runtime.GetId(), nil)
 					cancelWork(leaseLost)
-					done <- leaseLost
+					taskErr = leaseLost
+					normalExit = true
 					return
 				}
 			}

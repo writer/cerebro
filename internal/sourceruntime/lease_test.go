@@ -337,8 +337,47 @@ func TestWithCurrentSourceRuntimeLeaseFencePreservesReaderFailure(t *testing.T) 
 	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, err: want}
 
 	_, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
-	if !errors.Is(err, want) {
-		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want %v", err, want)
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, want) {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want lease loss preserving %v", err, want)
+	}
+}
+
+func TestWithCurrentSourceRuntimeLeaseFencePreservesCallerCancellation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		ctx  func() context.Context
+		want error
+	}{
+		{
+			name: "canceled",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			want: context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				cancel()
+				return ctx
+			},
+			want: context.DeadlineExceeded,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := test.ctx()
+			store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, err: test.want}
+			_, err := WithCurrentSourceRuntimeLeaseFence(ctx, store, "runtime-a", "owner-a")
+			if !errors.Is(err, test.want) {
+				t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want %v", err, test.want)
+			}
+			if errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+				t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, must preserve caller cancellation", err)
+			}
+		})
 	}
 }
 
@@ -367,6 +406,55 @@ func TestSyncWithLeaseRejectsMissingFenceReaderBeforeProgressAdvances(t *testing
 		t.Fatalf("runtime progress writes = %d, want 0", runtimeStore.putCount)
 	}
 	assertLeaseAcquiredAndReleased(t, inner.snapshotEvents())
+}
+
+func TestSyncWithLeaseClassifiesInitialFenceReadUncertainty(t *testing.T) {
+	service, runtimeStore := leaseProgressProbeService(t)
+	inner := &stubLeaseStore{}
+	want := errors.New("fence store unavailable")
+	store := &fencedStubLeaseStore{stubLeaseStore: inner, err: want}
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+			LeaseStore: store,
+			LeaseOwner: "owner-a",
+		})
+		if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, want) {
+			t.Fatalf("SyncWithLease() error = %v, want lease loss preserving %v", err, want)
+		}
+	})
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync_with_lease")
+	if got := payload["status"]; got != "lease_lost" {
+		t.Fatalf("telemetry status = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "lease_lost" {
+		t.Fatalf("telemetry error_kind = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if runtimeStore.putCount != 0 {
+		t.Fatalf("runtime progress writes after initial fence read uncertainty = %d, want 0", runtimeStore.putCount)
+	}
+	assertLeaseAcquiredAndReleased(t, inner.snapshotEvents())
+}
+
+func TestSyncWithLeaseJoinsInitialFenceAndReleaseFailures(t *testing.T) {
+	service, runtimeStore := leaseProgressProbeService(t)
+	fenceErr := errors.New("fence store unavailable")
+	releaseErr := errors.New("release store unavailable")
+	store := &fencedStubLeaseStore{
+		stubLeaseStore: &stubLeaseStore{releaseErr: releaseErr},
+		err:            fenceErr,
+	}
+
+	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+		LeaseStore: store,
+		LeaseOwner: "owner-a",
+	})
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, fenceErr) || !errors.Is(err, releaseErr) {
+		t.Fatalf("SyncWithLease() error = %v, want lease loss preserving fence and release failures", err)
+	}
+	if runtimeStore.putCount != 0 {
+		t.Fatalf("runtime progress writes after initial fence and release failures = %d, want 0", runtimeStore.putCount)
+	}
 }
 
 func TestSyncWithLeaseRejectsStaleFenceBeforeProgressAdvances(t *testing.T) {
@@ -595,6 +683,21 @@ func TestStartLeaseRenewalStopsWhenSyncContextCancels(t *testing.T) {
 	}
 }
 
+func TestStartLeaseRenewalNormalStopDoesNotReportPanic(t *testing.T) {
+	cancelled := make(chan error, 1)
+	stopRenewal := startLeaseRenewal(context.Background(), &stubLeaseStore{}, "runtime-a", "owner-a", time.Hour, func(err error) {
+		cancelled <- err
+	})
+	if err := stopRenewal(); err != nil {
+		t.Fatalf("stopRenewal() error = %v, want nil", err)
+	}
+	select {
+	case cause := <-cancelled:
+		t.Fatalf("normal renewal stop canceled work with %v", cause)
+	case <-time.After(10 * time.Millisecond):
+	}
+}
+
 func TestStartLeaseRenewalClassifiesLostOwnership(t *testing.T) {
 	cancelled := make(chan struct{})
 	var cancelOnce sync.Once
@@ -686,6 +789,51 @@ func TestSyncWithLeaseSuppressesFailureWriteWhenRenewalAuthorityIsUncertain(t *t
 	}
 	if runtimeStore.putCount != 0 {
 		t.Fatalf("runtime failure writes after ambiguous renewal failure = %d, want 0", runtimeStore.putCount)
+	}
+}
+
+func TestSyncWithLeaseJoinsReleaseFailureWithRenewalLoss(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(renewalBlockingSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "renewal_blocking", TenantId: "tenant-a"},
+	}}
+	service := New(registry, runtimeStore, &appendLog{}, nil)
+	releaseErr := errors.New("release store unavailable")
+	leaseStore := &stubLeaseStore{rejectRenewal: true, releaseErr: releaseErr}
+
+	_, err = service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+		LeaseStore: leaseStore,
+		LeaseOwner: "owner-a",
+		LeaseTTL:   10 * time.Millisecond,
+	})
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, releaseErr) {
+		t.Fatalf("SyncWithLease() error = %v, want lease loss preserving release failure", err)
+	}
+}
+
+func TestSyncWithLeaseJoinsReleaseFailureWithSyncFailure(t *testing.T) {
+	syncErr := errors.New("source read failed")
+	releaseErr := errors.New("release store unavailable")
+	registry, err := sourcecdk.NewRegistry(failingSource{err: syncErr})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "failing", TenantId: "tenant-a"},
+	}}
+	service := New(registry, runtimeStore, &appendLog{}, nil)
+	leaseStore := &stubLeaseStore{releaseErr: releaseErr}
+
+	_, err = service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{
+		LeaseStore: leaseStore,
+		LeaseOwner: "owner-a",
+		LeaseTTL:   time.Hour,
+	})
+	if !errors.Is(err, syncErr) || !errors.Is(err, releaseErr) {
+		t.Fatalf("SyncWithLease() error = %v, want sync failure preserving release failure", err)
 	}
 }
 
@@ -872,6 +1020,23 @@ func TestAcquireRenewableLeaseFailsClosedWhenRenewalTaskPanics(t *testing.T) {
 	}
 	if err := release(); !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, panicsafe.ErrTaskPanicked) {
 		t.Fatalf("release() error = %v, want lease loss preserving renewal panic", err)
+	}
+}
+
+func TestAcquireRenewableLeaseNormalReleaseKeepsNormalCancellationCause(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		store := &stubLeaseStore{}
+		workCtx, release, acquired, err := AcquireRenewableLease(context.Background(), store, "runtime-a", "owner-a", time.Hour)
+		if err != nil || !acquired {
+			t.Fatalf("iteration %d: AcquireRenewableLease() = (%t, %v), want true, nil", i, acquired, err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("iteration %d: release() error = %v, want nil", i, err)
+		}
+		cause := context.Cause(workCtx)
+		if !errors.Is(cause, context.Canceled) || errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || errors.Is(cause, panicsafe.ErrTaskPanicked) {
+			t.Fatalf("iteration %d: work cancellation cause = %v, want ordinary cancellation", i, cause)
+		}
 	}
 }
 

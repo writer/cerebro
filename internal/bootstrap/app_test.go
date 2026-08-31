@@ -70,6 +70,70 @@ func TestGraphIngestLeaseConflictMappings(t *testing.T) {
 	}
 }
 
+func TestSourceRuntimeInitialFenceReadFailureMappings(t *testing.T) {
+	const privateDetail = "fence store unavailable"
+	want := errors.New(privateDetail)
+	store := &leaseAwareRuntimeStore{stubRuntimeStore: &stubRuntimeStore{}, fenceReadErr: want}
+	_, err := sourceruntime.WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, want) {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want lease loss preserving %v", err, want)
+	}
+	if got := mappedHTTPStatusCode(err, sourceRuntimeErrorMappings); got != http.StatusConflict {
+		t.Fatalf("mappedHTTPStatusCode() = %d, want %d", got, http.StatusConflict)
+	}
+	mapped := mappedConnectError(err, sourceRuntimeErrorMappings)
+	var connectErr *connect.Error
+	if !errors.As(mapped, &connectErr) || connectErr.Code() != connect.CodeAborted {
+		t.Fatalf("mappedConnectError() = %#v, want connect Aborted", mapped)
+	}
+	if connectErr.Message() != "source runtime lease conflict; retry the request" || strings.Contains(connectErr.Message(), privateDetail) {
+		t.Fatalf("connect message = %q, want canonical safe lease conflict", connectErr.Message())
+	}
+	if !errors.Is(mapped, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(mapped, want) {
+		t.Fatalf("mappedConnectError() = %v, want internal lease-loss and store-error chain", mapped)
+	}
+}
+
+func TestGraphIngestLeaseLossConnectErrorHidesUnderlyingFailure(t *testing.T) {
+	const privateDetail = "private graph lease query failed"
+	want := errors.New(privateDetail)
+	err := fmt.Errorf("%w: release graph ingest lease: %w", ports.ErrSourceRuntimeLeaseLost, want)
+	mapped := graphIngestConnectError(err)
+	var connectErr *connect.Error
+	if !errors.As(mapped, &connectErr) || connectErr.Code() != connect.CodeAborted {
+		t.Fatalf("graphIngestConnectError() = %#v, want connect Aborted", mapped)
+	}
+	if connectErr.Message() != "graph ingest lease conflict; retry the request" || strings.Contains(connectErr.Message(), privateDetail) {
+		t.Fatalf("connect message = %q, want canonical safe graph-ingest conflict", connectErr.Message())
+	}
+	if !errors.Is(mapped, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(mapped, want) {
+		t.Fatalf("graphIngestConnectError() = %v, want internal lease-loss and store-error chain", mapped)
+	}
+}
+
+func TestFindingLeaseLossMappingsHideUnderlyingFailure(t *testing.T) {
+	const privateDetail = "private finding lease query failed"
+	want := errors.New(privateDetail)
+	err := errors.Join(
+		fmt.Errorf("finding lookup failed: %w", ports.ErrFindingNotFound),
+		fmt.Errorf("%w: renew finding evaluation lease: %w", ports.ErrSourceRuntimeLeaseLost, want),
+	)
+	if got := mappedHTTPStatusCode(err, findingErrorMappings); got != http.StatusConflict {
+		t.Fatalf("mappedHTTPStatusCode() = %d, want %d", got, http.StatusConflict)
+	}
+	mapped := findingConnectError(err)
+	var connectErr *connect.Error
+	if !errors.As(mapped, &connectErr) || connectErr.Code() != connect.CodeAborted {
+		t.Fatalf("findingConnectError() = %#v, want connect Aborted", mapped)
+	}
+	if connectErr.Message() != "finding evaluation lease conflict; retry the request" || strings.Contains(connectErr.Message(), privateDetail) {
+		t.Fatalf("connect message = %q, want canonical safe finding lease conflict", connectErr.Message())
+	}
+	if !errors.Is(mapped, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(mapped, want) {
+		t.Fatalf("findingConnectError() = %v, want internal lease-loss and store-error chain", mapped)
+	}
+}
+
 func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
@@ -219,6 +283,46 @@ func TestConnectInternalErrorsHideDetails(t *testing.T) {
 				t.Fatalf("connect error = %q, want generic internal error", connectErr.Message())
 			}
 		})
+	}
+}
+
+func TestConnectCancellationErrorsHideJoinedCleanupDetails(t *testing.T) {
+	const privateDetail = "private lease cleanup query failed"
+	privateErr := errors.New(privateDetail)
+	for _, helper := range []struct {
+		name     string
+		mapError func(error) error
+	}{
+		{name: "source runtime", mapError: sourceRuntimeConnectError},
+		{name: "graph ingest", mapError: graphIngestConnectError},
+	} {
+		for _, cancellation := range []struct {
+			name    string
+			cause   error
+			code    connect.Code
+			message string
+		}{
+			{name: "canceled", cause: context.Canceled, code: connect.CodeCanceled, message: context.Canceled.Error()},
+			{name: "deadline exceeded", cause: context.DeadlineExceeded, code: connect.CodeDeadlineExceeded, message: context.DeadlineExceeded.Error()},
+		} {
+			t.Run(helper.name+"/"+cancellation.name, func(t *testing.T) {
+				joined := errors.Join(
+					fmt.Errorf("runtime operation stopped: %w", cancellation.cause),
+					fmt.Errorf("release runtime lease: %w", privateErr),
+				)
+				mapped := helper.mapError(joined)
+				var connectErr *connect.Error
+				if !errors.As(mapped, &connectErr) || connectErr.Code() != cancellation.code {
+					t.Fatalf("mapped error = %#v, want connect %s", mapped, cancellation.code)
+				}
+				if connectErr.Message() != cancellation.message || strings.Contains(connectErr.Message(), privateDetail) {
+					t.Fatalf("connect message = %q, want canonical %q", connectErr.Message(), cancellation.message)
+				}
+				if !errors.Is(mapped, cancellation.cause) || !errors.Is(mapped, privateErr) {
+					t.Fatalf("mapped error = %v, want internal cancellation and cleanup chains", mapped)
+				}
+			})
+		}
 	}
 }
 
@@ -834,11 +938,12 @@ type stubRuntimeStore struct {
 // path.
 type leaseAwareRuntimeStore struct {
 	*stubRuntimeStore
-	mu         sync.Mutex
-	holder     string
-	generation uint64
-	expiresAt  time.Time
-	holdsAll   bool
+	mu           sync.Mutex
+	holder       string
+	generation   uint64
+	expiresAt    time.Time
+	holdsAll     bool
+	fenceReadErr error
 }
 
 func (s *leaseAwareRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, _ string, owner string, _ time.Duration) (bool, error) {
@@ -862,6 +967,9 @@ func (s *leaseAwareRuntimeStore) RenewSourceRuntimeLease(_ context.Context, _ st
 func (s *leaseAwareRuntimeStore) ReadSourceRuntimeLeaseFence(_ context.Context, _ string, owner string) (ports.SourceRuntimeLeaseFence, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.fenceReadErr != nil {
+		return ports.SourceRuntimeLeaseFence{}, s.fenceReadErr
+	}
 	if s.holder != owner || s.generation == 0 || !s.expiresAt.After(time.Now()) {
 		return ports.SourceRuntimeLeaseFence{}, ports.ErrSourceRuntimeLeaseLost
 	}
