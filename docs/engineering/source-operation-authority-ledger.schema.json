@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "revision", "inventory", "runtime_implementation", "defaults", "overrides"],
   "properties": {
-    "schema_version": { "const": "cerebro.source-operation-authority/v2" },
+    "schema_version": { "const": "cerebro.source-operation-authority/v3" },
     "revision": { "type": "integer", "minimum": 1 },
     "inventory": { "$ref": "#/$defs/inventory" },
     "runtime_implementation": { "$ref": "#/$defs/runtimeImplementation" },
@@ -39,15 +39,18 @@
     "runtimeImplementation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["canonicalization", "bindings"],
+      "required": ["contract", "canonicalization", "bindings", "durable_pull", "preview"],
       "properties": {
-        "canonicalization": { "const": "go_ast_declaration_sha256/v1" },
+        "contract": { "const": "compiled_go_selector_outcomes/v1" },
+        "canonicalization": { "const": "go_ast_declaration_context_sha256/v2" },
         "bindings": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 8,
+          "maxItems": 8,
           "items": { "$ref": "#/$defs/goDeclarationBinding" }
-        }
+        },
+        "durable_pull": { "$ref": "#/$defs/selectorPolicy" },
+        "preview": { "$ref": "#/$defs/selectorPolicy" }
       }
     },
     "goDeclarationBinding": {
@@ -55,11 +58,61 @@
       "additionalProperties": false,
       "required": ["role", "path", "symbol", "digest_sha256"],
       "properties": {
-        "role": { "enum": ["durable_pull_dispatch", "preview_rust_selector", "rust_authoritative_selector", "tailscale_authoritative_selector"] },
+        "role": {
+          "enum": [
+            "durable_plan_validation",
+            "durable_pull_dispatch",
+            "durable_runtime_creation",
+            "preview_dispatch_adapter",
+            "preview_rust_selector",
+            "rust_authoritative_selector",
+            "rust_output_conversion",
+            "tailscale_authoritative_selector"
+          ]
+        },
         "path": { "type": "string", "pattern": "^internal/.+\\.go$" },
         "symbol": { "type": "string", "minLength": 1 },
         "digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
+    },
+    "selectorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_kernel", "rust_kernel_rules"],
+      "properties": {
+        "default_kernel": { "const": "go_compatibility" },
+        "rust_kernel_rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/selectorRule" }
+        }
+      }
+    },
+    "selectorRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "unknown_family_policy"],
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "all_catalog_families": { "const": true },
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "default_family": { "type": "string", "minLength": 1 },
+        "unknown_family_policy": { "enum": ["go_compatibility", "rust_fail_closed"] }
+      },
+      "oneOf": [
+        {
+          "required": ["all_catalog_families"],
+          "not": { "required": ["families"] }
+        },
+        {
+          "required": ["families"],
+          "not": { "required": ["all_catalog_families"] }
+        }
+      ]
     },
     "operations": {
       "type": "object",
