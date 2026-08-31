@@ -323,12 +323,20 @@ WHERE id = $1
   AND lease_owner = $2
   AND lease_generation > 0
   AND lease_expires_at > NOW()`, id, leaseOwner).Scan(&generation, &expiresAt); err != nil {
-		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: %w", id, err)
+		return ports.SourceRuntimeLeaseFence{}, sourceRuntimeLeaseFenceReadError(id, err)
 	}
 	if generation <= 0 {
 		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: invalid generation", id)
 	}
 	return ports.SourceRuntimeLeaseFence{Owner: leaseOwner, Generation: uint64(generation), ExpiresAt: expiresAt.UTC()}, nil
+}
+
+func sourceRuntimeLeaseFenceReadError(runtimeID string, err error) error {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: source runtime lease fence %q is not current", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+	}
+	return fmt.Errorf("read source runtime lease fence %q: %w", runtimeID, err)
 }
 
 func validateSourceRuntimeLeaseRequest(owner string, ttl time.Duration) (string, error) {

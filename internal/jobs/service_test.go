@@ -455,6 +455,27 @@ func TestRunClassifiesRetryableFailure(t *testing.T) {
 	}
 }
 
+func TestRunClassifiesSourceRuntimeLeaseLossAsRetryable(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-lease-lost"] = &ports.Job{ID: "job-lease-lost", Kind: KindSourceRuntimeSync, Status: ports.JobStatusQueued}
+	service := New(store)
+	service.WithRunner(KindSourceRuntimeSync, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return nil, nil, fmt.Errorf("sync runtime: %w", ports.ErrSourceRuntimeLeaseLost)
+	})
+
+	runErr := service.Run(context.Background(), "job-lease-lost")
+	if !errors.Is(runErr, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("Run() error = %v, want %v", runErr, ports.ErrSourceRuntimeLeaseLost)
+	}
+	stored, err := store.GetJob(context.Background(), "job-lease-lost")
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.Status != ports.JobStatusFailed || stored.FailureClass != JobFailureRetryable {
+		t.Fatalf("job = %+v, want failed/retryable lease loss", stored)
+	}
+}
+
 func TestRunRenewsLeaseDuringLongExecution(t *testing.T) {
 	store := newMemoryJobStore()
 	store.jobs["job-heartbeat"] = &ports.Job{ID: "job-heartbeat", Kind: KindReportRun, Status: ports.JobStatusQueued}

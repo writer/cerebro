@@ -39,13 +39,13 @@
         "role": "durable_plan_validation",
         "path": "internal/sourceruntime/source_execution.go",
         "symbol": "Service.validateRustSourceRuntimePlan",
-        "digest_sha256": "6665619585fb78d9355e4e03712c45ecbf36179b6185b7b2afbfc8f500d9442c"
+        "digest_sha256": "0f65c371c324e206c9b72666a49ecbe25741d244ecdb4074f7713dd04db7f64e"
       },
       {
         "role": "durable_pull_dispatch",
         "path": "internal/sourceruntime/source_execution.go",
         "symbol": "Service.readSourcePull",
-        "digest_sha256": "2904c501405188e7c8024d92554cfa25bef12904d3c5222b79f580ce65855f33"
+        "digest_sha256": "c3acce8c2667b3e663fbe1dc40e24b06973fa8d0075a0a0b69411ee0c9e6ca1b"
       },
       {
         "role": "durable_put_entrypoint",

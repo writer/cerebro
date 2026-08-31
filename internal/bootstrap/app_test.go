@@ -148,6 +148,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "source invalid", err: sourceConnectError(sourceops.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "source unknown", err: sourceConnectError(errors.New("transport failed")), code: connect.CodeInternal},
 		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "runtime lease lost", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeLeaseLost), code: connect.CodeAborted},
 		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "runtime invalid", err: sourceRuntimeConnectError(sourceruntime.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
@@ -174,6 +175,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "graph query invalid", err: graphQueryConnectError(graphquery.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
 		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest lease lost", err: graphIngestConnectError(ports.ErrSourceRuntimeLeaseLost), code: connect.CodeAborted},
 		{name: "graph ingest unavailable", err: graphIngestConnectError(graphingest.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "graph ingest invalid", err: graphIngestConnectError(graphingest.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest unknown", err: graphIngestConnectError(errors.New("graph ingest failed")), code: connect.CodeInternal},
@@ -329,6 +331,12 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+
+	leaseLost := httptest.NewRecorder()
+	writeSourceRuntimeError(leaseLost, ports.ErrSourceRuntimeLeaseLost)
+	if leaseLost.Code != http.StatusConflict {
+		t.Fatalf("lease-lost runtime status = %d, want %d", leaseLost.Code, http.StatusConflict)
 	}
 }
 
@@ -591,6 +599,14 @@ func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
 				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestWriteGraphIngestLeaseLossReturnsConflict(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeGraphIngestError(recorder, ports.ErrSourceRuntimeLeaseLost)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 }
 

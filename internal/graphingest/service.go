@@ -236,6 +236,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 			spanAttributes = graphIngestTelemetryAttributes(spanAttributes, result)
 		}
 		if err != nil {
+			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "graph.ingest.error.count", 1)
 		}
@@ -392,6 +393,8 @@ func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *Run
 
 func graphIngestTelemetryErrorKind(err error) string {
 	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeLeaseLost):
+		return "lease_lost"
 	case errors.Is(err, sourceruntime.ErrSyncInProgress):
 		return "sync_in_progress"
 	case errors.Is(err, ErrInvalidRequest):

@@ -2,11 +2,13 @@ package sourceruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
@@ -74,9 +76,9 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	if s == nil || s.sourceWorker == nil {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for %s.%s", ErrRuntimeUnavailable, runtime.GetSourceId(), familyID)
 	}
-	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
-	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
-		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
+	fence, err := currentSourceRuntimeLeaseFence(ctx, runtime.GetId())
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
 	}
 	reference, credential, err := sourceExecutionHostCredential(ctx, runtime.GetSourceId(), source, runtime.GetConfig(), cfg)
 	if err != nil {
@@ -111,11 +113,18 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 		},
 	})
 	if err != nil {
-		return sourcecdk.Pull{}, false, err
+		return sourcecdk.Pull{}, false, normalizeSourceWorkerExecutionError(err)
 	}
 	pull, err := sourceworker.PullFromExecutionOutput(output, runtime.GetTenantId())
 	if err != nil {
-		return sourcecdk.Pull{}, false, err
+		return sourcecdk.Pull{}, false, normalizeSourceWorkerExecutionError(err)
 	}
 	return pull, true, nil
+}
+
+func normalizeSourceWorkerExecutionError(err error) error {
+	if err == nil || !errors.Is(err, sourceworker.ErrWorkerLeaseLost) {
+		return err
+	}
+	return fmt.Errorf("%w: Rust source worker: %w", ports.ErrSourceRuntimeLeaseLost, err)
 }

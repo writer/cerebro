@@ -1866,6 +1866,34 @@ func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeTelemetryClassifiesLeaseLoss(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(failingSource{err: ports.ErrSourceRuntimeLeaseLost})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-failing": {Id: "writer-failing", SourceId: "failing"},
+	}}
+	service := New(registry, store, &appendLog{}, nil)
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-failing"})
+		if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+			t.Fatalf("Sync() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+		}
+	})
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync")
+	if got := payload["status"]; got != "lease_lost" {
+		t.Fatalf("telemetry status = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "lease_lost" {
+		t.Fatalf("telemetry error_kind = %#v, want lease_lost; payload=%#v", got, payload)
+	}
+	if store.putCount != 0 {
+		t.Fatalf("runtime writes after lease loss = %d, want 0", store.putCount)
+	}
+}
+
 func TestSyncRuntimeTelemetryKeepsTenantContextOnEarlyFailure(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry()
 	if err != nil {

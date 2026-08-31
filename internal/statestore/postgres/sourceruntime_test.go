@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -44,6 +46,24 @@ func TestAcquireSourceRuntimeLeaseRejectsNonPositiveTTL(t *testing.T) {
 	store := &Store{}
 	if _, err := store.AcquireSourceRuntimeLease(context.Background(), "runtime", "owner", 0); err == nil {
 		t.Fatal("AcquireSourceRuntimeLease() error = nil, want non-nil")
+	}
+}
+
+func TestSourceRuntimeLeaseFenceReadErrorMapsMissingCurrentFence(t *testing.T) {
+	err := sourceRuntimeLeaseFenceReadError(" runtime-a ", sql.ErrNoRows)
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("sourceRuntimeLeaseFenceReadError() error = %v, want %v", err, ports.ErrSourceRuntimeLeaseLost)
+	}
+}
+
+func TestSourceRuntimeLeaseFenceReadErrorPreservesQueryFailure(t *testing.T) {
+	want := errors.New("query failed")
+	err := sourceRuntimeLeaseFenceReadError("runtime-a", want)
+	if !errors.Is(err, want) {
+		t.Fatalf("sourceRuntimeLeaseFenceReadError() error = %v, want wrapped %v", err, want)
+	}
+	if errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("sourceRuntimeLeaseFenceReadError() error = %v, must not classify query failure as lease loss", err)
 	}
 }
 
