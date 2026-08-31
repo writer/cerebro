@@ -5,8 +5,10 @@ on:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Every merged SHA needs its own terminal receipt. A later main push must not
+  # cancel evidence collection for an earlier merge.
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   post-merge-health:

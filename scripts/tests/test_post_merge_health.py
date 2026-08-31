@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import scripts.post_merge_health as pm
@@ -17,6 +18,18 @@ def successful_required_runs(head_sha="abc"):
 
 
 class PostMergeHealthTests(unittest.TestCase):
+    def test_workflow_preserves_a_terminal_receipt_for_each_main_sha(self):
+        workflow = (
+            Path(__file__).resolve().parents[2]
+            / ".github"
+            / "workflows"
+            / "post-merge-health.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("group: ${{ github.workflow }}-${{ github.sha }}", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
+
     def test_collect_runs_queries_encoded_exact_push_head(self):
         response = {
             "workflow_runs": [
