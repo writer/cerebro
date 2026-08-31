@@ -10,6 +10,7 @@ import re
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Collection
 from pathlib import Path
@@ -44,8 +45,24 @@ def request_json(path: str, token: str, repository: str) -> object:
         return json.load(response)
 
 
-def collect_runs(branch: str, token: str, repository: str, limit: int) -> list[dict[str, object]]:
-    raw = request_json(f"/actions/runs?branch={branch}&per_page={limit}", token, repository)
+def collect_runs(
+    branch: str,
+    head_sha: str,
+    token: str,
+    repository: str,
+    limit: int,
+) -> list[dict[str, object]]:
+    if not head_sha:
+        return []
+    query = urllib.parse.urlencode(
+        {
+            "branch": branch,
+            "head_sha": head_sha,
+            "event": "push",
+            "per_page": limit,
+        }
+    )
+    raw = request_json(f"/actions/runs?{query}", token, repository)
     runs = raw.get("workflow_runs") if isinstance(raw, dict) else []
     if not isinstance(runs, list):
         return []
@@ -287,7 +304,7 @@ def main() -> int:
             context = wait_for_terminal_summary(
                 args.branch,
                 args.head,
-                lambda: collect_runs(args.branch, token, repository, args.limit),
+                lambda: collect_runs(args.branch, args.head, token, repository, args.limit),
                 current_run_id=os.environ.get("GITHUB_RUN_ID", ""),
                 release_status=release_status,
                 wait_seconds=args.wait_seconds,
