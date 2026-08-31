@@ -272,6 +272,28 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	}
 }
 
+func TestPreviewRustFamilyPreservesTheClosedPreviewRoutes(t *testing.T) {
+	for name, test := range map[string]struct {
+		source, family, wantFamily string
+		wantPreview                bool
+	}{
+		"selected default":         {" jumpcloud ", "", "users", true},
+		"selected family":          {"asana", " projects ", "projects", true},
+		"selected unknown closed":  {"tailscale", "future-family", "future-family", true},
+		"restricted selected":      {"azure", "authorization_policy", "authorization_policy", true},
+		"restricted compatibility": {"azure", "user", "user", false},
+		"durable-only Twilio":      {"twilio", "accounts", "", false},
+		"compatibility source":     {"gcp", "audit", "", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			family, preview := PreviewRustFamily(test.source, test.family)
+			if family != test.wantFamily || preview != test.wantPreview {
+				t.Fatalf("PreviewRustFamily() = (%q, %v), want (%q, %v)", family, preview, test.wantFamily, test.wantPreview)
+			}
+		})
+	}
+}
+
 func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 	for name, test := range map[string]struct {
 		source                      string
