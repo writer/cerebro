@@ -11,13 +11,24 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from pathlib import Path
 
 COMMENT_MARKER = "<!-- post-merge-health -->"
 POST_MERGE_HEALTH_WORKFLOW = "Post-Merge Health"
 STABLE_RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 SUCCESSFUL_CONCLUSIONS = {"success", "skipped", "neutral"}
+REQUIRED_WORKFLOW_NAMES = frozenset(
+    {
+        "Candidate Build",
+        "CI",
+        "CodeQL",
+        "Leak Check",
+        "Rust-only Candidate",
+        "Secret Scan",
+        "Semgrep",
+    }
+)
 
 
 def request_json(path: str, token: str, repository: str) -> object:
@@ -119,6 +130,7 @@ def summarize(
     runs: list[dict[str, object]],
     current_run_id: str = "",
     release_status: dict[str, object] | None = None,
+    required_workflows: Collection[str] = REQUIRED_WORKFLOW_NAMES,
 ) -> dict[str, object]:
     relevant = [
         run
@@ -128,6 +140,9 @@ def summarize(
         and (not current_run_id or str(run.get("id") or "") != current_run_id)
         and run.get("workflow_name") != POST_MERGE_HEALTH_WORKFLOW
     ]
+    required = {name.strip() for name in required_workflows if name.strip()}
+    observed = {str(run.get("workflow_name") or "") for run in relevant}
+    missing = sorted(required - observed)
     failures = [
         run
         for run in relevant
@@ -141,8 +156,10 @@ def summarize(
         "runs": relevant,
         "failed_runs": failures,
         "pending_runs": pending,
+        "required_workflows": sorted(required),
+        "missing_workflows": missing,
         "release_status": release_status or {},
-        "healthy": bool(relevant) and not failures and not pending,
+        "healthy": bool(relevant) and not failures and not pending and not missing,
     }
 
 
@@ -153,6 +170,7 @@ def wait_for_terminal_summary(
     *,
     current_run_id: str = "",
     release_status: dict[str, object] | None = None,
+    required_workflows: Collection[str] = REQUIRED_WORKFLOW_NAMES,
     wait_seconds: float = 0,
     poll_seconds: float = 30,
     sleep: Callable[[float], None] = time.sleep,
@@ -167,6 +185,7 @@ def wait_for_terminal_summary(
             collect(),
             current_run_id=current_run_id,
             release_status=release_status,
+            required_workflows=required_workflows,
         )
         if context["healthy"] or context["failed_runs"] or not head_sha:
             return context
@@ -179,6 +198,7 @@ def wait_for_terminal_summary(
 def render_markdown(context: dict[str, object]) -> str:
     failed = context.get("failed_runs") if isinstance(context.get("failed_runs"), list) else []
     pending = context.get("pending_runs") if isinstance(context.get("pending_runs"), list) else []
+    missing = context.get("missing_workflows") if isinstance(context.get("missing_workflows"), list) else []
     release_status = context.get("release_status") if isinstance(context.get("release_status"), dict) else {}
     lines = [
         COMMENT_MARKER,
@@ -191,6 +211,7 @@ def render_markdown(context: dict[str, object]) -> str:
         f"- Healthy: `{context.get('healthy', False)}`",
         f"- Failed runs: `{len(failed)}`",
         f"- Pending runs: `{len(pending)}`",
+        f"- Missing required workflows: `{len(missing)}`",
         f"- Latest release tag: `{release_status.get('latest_tag', '')}`",
         f"- Latest tag on head: `{release_status.get('latest_tag_on_head', False)}`",
         f"- Commits since latest release tag: `{release_status.get('commits_since_latest_tag', '')}`",
@@ -218,10 +239,14 @@ def render_markdown(context: dict[str, object]) -> str:
         for run in pending:
             if isinstance(run, dict):
                 lines.append(f"- `{run.get('workflow_name', '')}` {run.get('status', '')}: {run.get('url', '')}")
+    if missing:
+        lines.extend(["### Missing Required Workflows", ""])
+        for workflow_name in missing:
+            lines.append(f"- `{workflow_name}`")
     runs = context.get("runs") if isinstance(context.get("runs"), list) else []
     if not runs:
         lines.append("No exact-head sibling workflow evidence was found; health remains false.")
-    elif not failed and not pending:
+    elif not failed and not pending and not missing:
         lines.append("All observed exact-head sibling workflow runs are terminal and non-failing.")
     return "\n".join(lines).rstrip() + "\n"
 
