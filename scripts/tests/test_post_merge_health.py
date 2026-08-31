@@ -17,6 +17,30 @@ def successful_required_runs(head_sha="abc"):
     ]
 
 
+def workflow_concurrency(text):
+    lines = text.splitlines()
+    headers = [
+        (len(line) - len(line.lstrip()), index)
+        for index, line in enumerate(lines)
+        if not line.lstrip().startswith("#") and line.strip() == "concurrency:"
+    ]
+    if len(headers) != 1 or headers[0][0] != 0:
+        raise ValueError("workflow must have exactly one top-level concurrency mapping")
+
+    values = {}
+    for line in lines[headers[0][1] + 1 :]:
+        if line and not line[0].isspace():
+            break
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, separator, value = stripped.partition(":")
+        if not separator or key in values:
+            raise ValueError("workflow concurrency mapping must contain unique scalar values")
+        values[key] = value.strip()
+    return values
+
+
 class PostMergeHealthTests(unittest.TestCase):
     def test_workflow_preserves_a_terminal_receipt_for_each_main_sha(self):
         workflow = (
@@ -26,9 +50,30 @@ class PostMergeHealthTests(unittest.TestCase):
             / "post-merge-health.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("group: ${{ github.workflow }}-${{ github.sha }}", workflow)
-        self.assertIn("cancel-in-progress: false", workflow)
-        self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
+        self.assertEqual(
+            workflow_concurrency(workflow),
+            {
+                "group": "${{ github.workflow }}-${{ github.sha }}",
+                "cancel-in-progress": "false",
+            },
+        )
+
+    def test_workflow_concurrency_rejects_commented_expectations_and_job_override(self):
+        branch_wide = """
+# group: ${{ github.workflow }}-${{ github.sha }}
+# cancel-in-progress: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  post-merge-health:
+    concurrency:
+      group: post-merge-${{ github.ref }}
+      cancel-in-progress: true
+"""
+
+        with self.assertRaisesRegex(ValueError, "exactly one top-level concurrency"):
+            workflow_concurrency(branch_wide)
 
     def test_collect_runs_queries_encoded_exact_push_head(self):
         response = {
