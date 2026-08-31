@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-operation-authority/v3",
-  "revision": 5,
+  "revision": 6,
   "inventory": {
     "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
     "family_count": 4399,
@@ -27,7 +27,7 @@
         "role": "durable_lease_fence_binding",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "WithCurrentSourceRuntimeLeaseFence",
-        "digest_sha256": "4bccaa95d8bf62bb18a2e6a18d9c44481ddec69d3e851405c54c5da8a29233cd"
+        "digest_sha256": "3d5dc9e60f2ba5c4a5c3a08c41813d4ef6e5eb8d67b4dc0719694f820b8a6d62"
       },
       {
         "role": "durable_lease_fence_read",
@@ -39,7 +39,7 @@
         "role": "durable_lease_fence_refresh",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "currentSourceRuntimeLeaseFence",
-        "digest_sha256": "5d50fb3cbf9571424807b385f49ebeed84acee5b4b485a86c0604b9a9709f324"
+        "digest_sha256": "eda349e6fcdf825b5ea6ba0cdaab913ab152ff50b5615b90eaddae6fc1279392"
       },
       {
         "role": "durable_plan_validation",
@@ -81,7 +81,7 @@
         "role": "durable_sync_with_lease_entrypoint",
         "path": "internal/sourceruntime/lease.go",
         "symbol": "Service.SyncWithLease",
-        "digest_sha256": "075e760e7e65d865b94db1b03c662ad12af055d29044e42f0eaa6c2bd5c517e5"
+        "digest_sha256": "3736b87bd1652c5b02bb49a66885e396e4d7cff5889508d9661b4797ecd57523"
       },
       {
         "role": "preview_check_entrypoint",
