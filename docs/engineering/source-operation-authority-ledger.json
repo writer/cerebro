@@ -1,6 +1,6 @@
 {
-  "schema_version": "cerebro.source-operation-authority/v2",
-  "revision": 2,
+  "schema_version": "cerebro.source-operation-authority/v3",
+  "revision": 3,
   "inventory": {
     "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
     "family_count": 4399,
@@ -8,33 +8,92 @@
     "push_family_count": 10
   },
   "runtime_implementation": {
-    "canonicalization": "go_ast_declaration_sha256/v1",
-    "bindings": [
-      {
-        "role": "durable_pull_dispatch",
-        "path": "internal/sourceruntime/source_execution.go",
-        "symbol": "Service.readSourcePull",
-        "digest_sha256": "a7c7c98bb7224338a72470beecd6ddc0486f7d37bbbc686f2b8fe9eef13d2dc4"
-      },
-      {
-        "role": "preview_rust_selector",
-        "path": "internal/sourceops/source_execution.go",
-        "symbol": "rustSourceFamily",
-        "digest_sha256": "8bb8db5c7d3bc0aae3092274eb3533e1d8ffe75c58eb213d5857421c2860c0ea"
-      },
-      {
-        "role": "rust_authoritative_selector",
-        "path": "internal/sourceruntime/sourceworker/pull.go",
-        "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "5c0cef9a9f59810c8b6012b0fabc0a8b8486064eba27ae7e8470c87dec5f4c30"
-      },
-      {
-        "role": "tailscale_authoritative_selector",
-        "path": "internal/sourceruntime/sourceworker/pull.go",
-        "symbol": "TailscaleFamily",
-        "digest_sha256": "86d165bfc20f62fb27ad0a6e625268fea8ea7bf82bb9e9dcafcb3ed3675b03db"
-      }
-    ]
+    "contract": "compiled_go_selector_outcomes/v1",
+    "durable_pull": {
+      "default_kernel": "go_compatibility",
+      "rust_kernel_rules": [
+        { "source_id": "anthropic", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "asana", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "aws_bedrock", "all_catalog_families": true, "default_family": "foundation_models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
+        { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "digitalocean", "all_catalog_families": true, "default_family": "droplets", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "discord", "all_catalog_families": true, "default_family": "audit_log", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "elevenlabs", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "fireworks_ai", "all_catalog_families": true, "default_family": "model_deployments", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "google_gemini", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "google_vertex_ai", "all_catalog_families": true, "default_family": "models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "groq", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "huggingface", "all_catalog_families": true, "default_family": "organization_members", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "ibm_watsonx_ai", "all_catalog_families": true, "default_family": "foundation_model_specs", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "jumpcloud", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "langchain", "all_catalog_families": true, "default_family": "organization", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "langfuse", "all_catalog_families": true, "default_family": "project", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "linode", "families": ["issue"], "default_family": "issue", "unknown_family_policy": "go_compatibility" },
+        { "source_id": "microsoft_foundry", "all_catalog_families": true, "default_family": "agents", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "mistral", "all_catalog_families": true, "default_family": "workspaces", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "openai", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "openrouter", "all_catalog_families": true, "default_family": "organization_members", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "pagerduty", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "perplexity", "all_catalog_families": true, "default_family": "api_groups", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "pinecone", "all_catalog_families": true, "default_family": "indexes", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "qdrant_cloud", "all_catalog_families": true, "default_family": "accounts", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "replicate", "all_catalog_families": true, "default_family": "models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "sentinelone", "families": ["activity", "agent", "application", "exclusion", "group", "site", "threat"], "unknown_family_policy": "go_compatibility" },
+        { "source_id": "stability_ai", "all_catalog_families": true, "default_family": "engines", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "tailscale", "all_catalog_families": true, "default_family": "device", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "together_ai", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "twilio", "families": ["accounts", "audit_events", "keys"], "unknown_family_policy": "go_compatibility" },
+        { "source_id": "writer", "all_catalog_families": true, "default_family": "application", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "xai", "all_catalog_families": true, "default_family": "api_keys", "unknown_family_policy": "rust_fail_closed" }
+      ]
+    },
+    "preview": {
+      "default_kernel": "go_compatibility",
+      "rust_kernel_rules": [
+        { "source_id": "anthropic", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "asana", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "aws_bedrock", "all_catalog_families": true, "default_family": "foundation_models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
+        { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "digitalocean", "all_catalog_families": true, "default_family": "droplets", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "discord", "all_catalog_families": true, "default_family": "audit_log", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "elevenlabs", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "fireworks_ai", "all_catalog_families": true, "default_family": "model_deployments", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "google_gemini", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "google_vertex_ai", "all_catalog_families": true, "default_family": "models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "groq", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "huggingface", "all_catalog_families": true, "default_family": "organization_members", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "ibm_watsonx_ai", "all_catalog_families": true, "default_family": "foundation_model_specs", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "jumpcloud", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "langchain", "all_catalog_families": true, "default_family": "organization", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "langfuse", "all_catalog_families": true, "default_family": "project", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "linode", "families": ["issue"], "default_family": "issue", "unknown_family_policy": "go_compatibility" },
+        { "source_id": "microsoft_foundry", "all_catalog_families": true, "default_family": "agents", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "mistral", "all_catalog_families": true, "default_family": "workspaces", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "openai", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "openrouter", "all_catalog_families": true, "default_family": "organization_members", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "pagerduty", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "perplexity", "all_catalog_families": true, "default_family": "api_groups", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "pinecone", "all_catalog_families": true, "default_family": "indexes", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "qdrant_cloud", "all_catalog_families": true, "default_family": "accounts", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "replicate", "all_catalog_families": true, "default_family": "models", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "sentinelone", "families": ["activity", "agent", "application", "exclusion", "group", "site", "threat"], "unknown_family_policy": "go_compatibility" },
+        { "source_id": "stability_ai", "all_catalog_families": true, "default_family": "engines", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "tailscale", "all_catalog_families": true, "default_family": "device", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "together_ai", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "writer", "all_catalog_families": true, "default_family": "application", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "xai", "all_catalog_families": true, "default_family": "api_keys", "unknown_family_policy": "rust_fail_closed" }
+      ]
+    }
   },
   "defaults": {
     "pull": {

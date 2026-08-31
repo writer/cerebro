@@ -41,24 +41,7 @@ func (s *Service) WithSourceExecutionWorkerPath(path string) *Service {
 }
 
 func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
-	sourceID = strings.TrimSpace(sourceID)
-	// Preview authority is promoted separately from the durable runtime. A new
-	// runtime-authoritative provider must keep its existing sourceops path until
-	// its preview credential adapter and product-surface parity are ready.
-	switch sourceID {
-	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
-		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
-	case "jumpcloud":
-		family := strings.TrimSpace(config["family"])
-		if family == "" {
-			family = "users"
-		}
-		// The Rust dispatcher owns the closed family catalog. Keeping unknown
-		// names authoritative makes them fail closed instead of reaching Go.
-		return family, true
-	default:
-		return "", false
-	}
+	return sourceworker.PreviewRustFamily(sourceID, config["family"])
 }
 
 func (s *Service) executeRustSource(ctx context.Context, sourceID, family string, config map[string]string, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
