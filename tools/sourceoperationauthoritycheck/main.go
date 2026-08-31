@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build/constraint"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -798,12 +799,10 @@ func validateRuntimeBindingEdges(root string) error {
 			return err
 		}
 		count := 0
-		ast.Inspect(declaration.Body, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if ok && goCallMatchesRuntimeBinding(parsed, declaration, caller, callee, call.Fun) {
+		inspectStructurallyReachableGoCalls(declaration.Body, func(call *ast.CallExpr) {
+			if goCallMatchesRuntimeBinding(parsed, declaration, caller, callee, call.Fun) {
 				count++
 			}
-			return true
 		})
 		if count != edge.Count {
 			return fmt.Errorf(
@@ -825,25 +824,40 @@ func goDeclarationBaseName(symbol string) string {
 }
 
 func goCallMatchesRuntimeBinding(parsed *ast.File, callerDeclaration *ast.FuncDecl, caller, callee runtimeBindingRequirement, expression ast.Expr) bool {
+	// ParseFile's lexical object links distinguish local shadows and receiver
+	// bindings. Cross-file package functions and imported qualifiers remain
+	// unresolved, so accept those only with an exact bound path or import path.
 	calleeName := goDeclarationBaseName(callee.Symbol)
 	callerDirectory := filepath.ToSlash(filepath.Dir(caller.Path))
 	calleeDirectory := filepath.ToSlash(filepath.Dir(callee.Path))
 	if callerDirectory == calleeDirectory {
 		if !strings.Contains(callee.Symbol, ".") {
 			identifier, ok := expression.(*ast.Ident)
-			return ok && identifier.Name == calleeName
+			if !ok || identifier.Name != calleeName {
+				return false
+			}
+			if caller.Path != callee.Path {
+				return identifier.Obj == nil
+			}
+			for _, candidate := range parsed.Decls {
+				function, ok := candidate.(*ast.FuncDecl)
+				if ok && goDeclarationSymbol(function) == callee.Symbol {
+					return identifier.Obj != nil && identifier.Obj == function.Name.Obj
+				}
+			}
+			return false
 		}
 		selector, ok := expression.(*ast.SelectorExpr)
 		if !ok || selector.Sel.Name != calleeName {
 			return false
 		}
 		receiver, ok := selector.X.(*ast.Ident)
-		if !ok || callerDeclaration.Recv == nil {
+		if !ok || receiver.Obj == nil || callerDeclaration.Recv == nil {
 			return false
 		}
 		for _, field := range callerDeclaration.Recv.List {
 			for _, name := range field.Names {
-				if name.Name == receiver.Name {
+				if name.Obj != nil && name.Obj == receiver.Obj {
 					return true
 				}
 			}
@@ -864,17 +878,239 @@ func goCallMatchesRuntimeBinding(parsed *ast.File, callerDeclaration *ast.FuncDe
 			alias = spec.Name.Name
 		}
 		if alias == "." {
-			identifier, ok := expression.(*ast.Ident)
-			return ok && identifier.Name == calleeName
+			return false
 		}
 		selector, ok := expression.(*ast.SelectorExpr)
 		if !ok || selector.Sel.Name != calleeName {
 			return false
 		}
 		qualifier, ok := selector.X.(*ast.Ident)
-		return ok && qualifier.Name == alias
+		return ok && qualifier.Name == alias && qualifier.Obj == nil
 	}
 	return false
+}
+
+// inspectStructurallyReachableGoCalls prunes only syntax known not to execute
+// without runtime values. It is deliberately not a control- or data-flow proof.
+func inspectStructurallyReachableGoCalls(root ast.Node, visit func(*ast.CallExpr)) {
+	var inspect func(ast.Node)
+	inspect = func(node ast.Node) {
+		if node == nil {
+			return
+		}
+		ast.Inspect(node, func(candidate ast.Node) bool {
+			switch typed := candidate.(type) {
+			case nil:
+				return false
+			case *ast.FuncLit:
+				return false
+			case *ast.IfStmt:
+				inspect(typed.Init)
+				inspect(typed.Cond)
+				if condition, known := staticGoBool(typed.Cond); known {
+					if condition {
+						inspect(typed.Body)
+					} else {
+						inspect(typed.Else)
+					}
+				} else {
+					inspect(typed.Body)
+					inspect(typed.Else)
+				}
+				return false
+			case *ast.ForStmt:
+				inspect(typed.Init)
+				inspect(typed.Cond)
+				if condition, known := staticGoBool(typed.Cond); known && !condition {
+					return false
+				}
+				inspect(typed.Body)
+				inspect(typed.Post)
+				return false
+			case *ast.SwitchStmt:
+				inspect(typed.Init)
+				inspect(typed.Tag)
+				for _, statement := range typed.Body.List {
+					clause, ok := statement.(*ast.CaseClause)
+					if !ok || goSwitchCaseStaticallyExcluded(typed.Tag, clause.List) {
+						continue
+					}
+					for _, bodyStatement := range clause.Body {
+						inspect(bodyStatement)
+					}
+				}
+				return false
+			case *ast.BinaryExpr:
+				if typed.Op != token.LAND && typed.Op != token.LOR {
+					return true
+				}
+				inspect(typed.X)
+				left, known := staticGoBool(typed.X)
+				if !known || (typed.Op == token.LAND && left) || (typed.Op == token.LOR && !left) {
+					inspect(typed.Y)
+				}
+				return false
+			case *ast.CallExpr:
+				visit(typed)
+			}
+			return true
+		})
+	}
+	inspect(root)
+}
+
+func goSwitchCaseStaticallyExcluded(tag ast.Expr, cases []ast.Expr) bool {
+	if len(cases) == 0 {
+		return false
+	}
+	if tag == nil {
+		for _, expression := range cases {
+			value, known := staticGoBool(expression)
+			if !known || value {
+				return false
+			}
+		}
+		return true
+	}
+	tagValue, tagKnown := staticGoConstant(tag, make(map[*ast.Object]bool))
+	if !tagKnown {
+		return false
+	}
+	for _, expression := range cases {
+		caseValue, known := staticGoConstant(expression, make(map[*ast.Object]bool))
+		if !known || goConstantsEqual(tagValue, caseValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func staticGoBool(expression ast.Expr) (bool, bool) {
+	if expression == nil {
+		return false, false
+	}
+	value, ok := staticGoConstant(expression, make(map[*ast.Object]bool))
+	if !ok || value.Kind() != constant.Bool {
+		return false, false
+	}
+	return constant.BoolVal(value), true
+}
+
+func staticGoConstant(expression ast.Expr, visiting map[*ast.Object]bool) (value constant.Value, ok bool) {
+	defer func() {
+		if recover() != nil {
+			value, ok = nil, false
+		}
+	}()
+	switch typed := expression.(type) {
+	case *ast.BasicLit:
+		value := constant.MakeFromLiteral(typed.Value, typed.Kind, 0)
+		return value, value.Kind() != constant.Unknown
+	case *ast.ParenExpr:
+		return staticGoConstant(typed.X, visiting)
+	case *ast.Ident:
+		switch typed.Name {
+		case "true":
+			if typed.Obj == nil || typed.Obj.Decl == nil {
+				return constant.MakeBool(true), true
+			}
+		case "false":
+			if typed.Obj == nil || typed.Obj.Decl == nil {
+				return constant.MakeBool(false), true
+			}
+		}
+		if typed.Obj == nil || typed.Obj.Kind != ast.Con || visiting[typed.Obj] {
+			return nil, false
+		}
+		spec, ok := typed.Obj.Decl.(*ast.ValueSpec)
+		if !ok {
+			return nil, false
+		}
+		visiting[typed.Obj] = true
+		defer delete(visiting, typed.Obj)
+		for index, name := range spec.Names {
+			if name.Obj != typed.Obj || index >= len(spec.Values) {
+				continue
+			}
+			return staticGoConstant(spec.Values[index], visiting)
+		}
+		return nil, false
+	case *ast.UnaryExpr:
+		operand, known := staticGoConstant(typed.X, visiting)
+		if !known {
+			return nil, false
+		}
+		if typed.Op == token.NOT {
+			if operand.Kind() != constant.Bool {
+				return nil, false
+			}
+			return constant.MakeBool(!constant.BoolVal(operand)), true
+		}
+		return constant.UnaryOp(typed.Op, operand, 0), true
+	case *ast.BinaryExpr:
+		left, leftKnown := staticGoConstant(typed.X, visiting)
+		if typed.Op == token.LAND {
+			if leftKnown && left.Kind() == constant.Bool && !constant.BoolVal(left) {
+				return constant.MakeBool(false), true
+			}
+			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			if rightKnown && right.Kind() == constant.Bool && !constant.BoolVal(right) {
+				return constant.MakeBool(false), true
+			}
+			if leftKnown && rightKnown && left.Kind() == constant.Bool && right.Kind() == constant.Bool {
+				return constant.MakeBool(constant.BoolVal(left) && constant.BoolVal(right)), true
+			}
+			return nil, false
+		}
+		if typed.Op == token.LOR {
+			if leftKnown && left.Kind() == constant.Bool && constant.BoolVal(left) {
+				return constant.MakeBool(true), true
+			}
+			right, rightKnown := staticGoConstant(typed.Y, visiting)
+			if rightKnown && right.Kind() == constant.Bool && constant.BoolVal(right) {
+				return constant.MakeBool(true), true
+			}
+			if leftKnown && rightKnown && left.Kind() == constant.Bool && right.Kind() == constant.Bool {
+				return constant.MakeBool(constant.BoolVal(left) || constant.BoolVal(right)), true
+			}
+			return nil, false
+		}
+		right, rightKnown := staticGoConstant(typed.Y, visiting)
+		if !leftKnown || !rightKnown {
+			return nil, false
+		}
+		switch typed.Op {
+		case token.EQL:
+			return constant.MakeBool(goConstantsEqual(left, right)), true
+		case token.NEQ:
+			return constant.MakeBool(!goConstantsEqual(left, right)), true
+		case token.LSS, token.LEQ, token.GTR, token.GEQ:
+			return constant.MakeBool(constant.Compare(left, typed.Op, right)), true
+		default:
+			return constant.BinaryOp(left, typed.Op, right), true
+		}
+	case *ast.CallExpr:
+		identifier, isIdentifier := typed.Fun.(*ast.Ident)
+		if !isIdentifier || identifier.Name != "bool" || len(typed.Args) != 1 || (identifier.Obj != nil && identifier.Obj.Decl != nil) {
+			return nil, false
+		}
+		operand, known := staticGoConstant(typed.Args[0], visiting)
+		if !known || operand.Kind() != constant.Bool {
+			return nil, false
+		}
+		return operand, true
+	default:
+		return nil, false
+	}
+}
+
+func goConstantsEqual(left, right constant.Value) (equal bool) {
+	defer func() {
+		if recover() != nil {
+			equal = false
+		}
+	}()
+	return constant.Compare(left, token.EQL, right)
 }
 
 func canonicalGoDeclarationContextDigest(root, relPath, symbol string) (string, error) {

@@ -241,6 +241,165 @@ func TestAuthorityLedgerRejectsRetainedUnusedRoutingHelpersAfterBindingRefresh(t
 	}
 }
 
+func TestAuthorityLedgerRejectsDeadRuntimeBindingEdgesAfterDigestRefresh(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "never invoked closure",
+			body: `{
+	_ = func() bool {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "literal false branch",
+			body: `{
+	if false {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "named false constant branch",
+			body: `{
+	const routeThroughAuthority = false
+	if routeThroughAuthority {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "converted false constant branch",
+			body: `{
+	if bool(false) {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "shadowed predeclared true constant",
+			body: `{
+	const true = false
+	if true {
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "false switch case",
+			body: `{
+	switch {
+	case false:
+		_ = sourceRuntimeLeaseFenceFromContext()
+		return s.readSourcePull(sourceID, familyID)
+	}
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "short circuited false conjunction",
+			body: `{
+	_ = false && sourceRuntimeLeaseFenceFromContext()
+	_ = false && s.readSourcePull(sourceID, familyID)
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+		{
+			name: "short circuited true disjunction",
+			body: `{
+	_ = true || sourceRuntimeLeaseFenceFromContext()
+	_ = true || s.readSourcePull(sourceID, familyID)
+	return sourceID == "manual" && familyID == "route"
+}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			replaceBoundDeclarationBody(t, root, requiredRuntimeBindings["durable_sync_entrypoint"], test.body)
+			refreshRuntimeBinding(t, root, &ledger, "durable_sync_entrypoint")
+			writeLedger(t, root, ledger)
+
+			_, err := checkRepository(root)
+			if err == nil || !strings.Contains(err.Error(), "bound runtime call edge durable_sync_entrypoint") {
+				t.Fatalf("check error = %v, want dead authority-edge rejection", err)
+			}
+		})
+	}
+}
+
+func TestAuthorityLedgerRejectsShadowedRuntimeBindingEdgesAfterDigestRefresh(t *testing.T) {
+	tests := []struct {
+		name       string
+		callerRole string
+		body       string
+	}{
+		{
+			name:       "same package function",
+			callerRole: "durable_pull_dispatch",
+			body: `{
+	_, selected := sourceworker.RustAuthoritativeFamily(sourceID, familyID)
+	readCompatibilitySourcePull := func() bool { return true }
+	_ = readCompatibilitySourcePull()
+	_ = sourceRuntimeLeaseFenceFromContext()
+	_ = sourceExecutionHostCredential()
+	_ = sourceworker.PullFromExecutionOutput(sourceID, familyID)
+	return selected && sourceID == "manual"
+}`,
+		},
+		{
+			name:       "imported package qualifier",
+			callerRole: "preview_execution_dispatch",
+			body: `{
+	_ = s.previewSourceExecutionCredential()
+	sourceworker := struct {
+		PullFromExecutionOutput func(string, string) bool
+	}{PullFromExecutionOutput: func(string, string) bool { return true }}
+	_ = sourceworker.PullFromExecutionOutput(sourceID, familyID)
+	return sourceID == "manual"
+}`,
+		},
+		{
+			name:       "method receiver",
+			callerRole: "preview_check_entrypoint",
+			body: `{
+	familyID, selected := rustSourceFamily(sourceID, map[string]string{"family": familyID})
+	{
+		s := &alternateService{}
+		_ = s.executeRustSource(sourceID, familyID)
+	}
+	return selected && sourceID == "manual"
+}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, ledger := fixtureRepository(t)
+			replaceBoundDeclarationBody(t, root, requiredRuntimeBindings[test.callerRole], test.body)
+			refreshRuntimeBinding(t, root, &ledger, test.callerRole)
+			writeLedger(t, root, ledger)
+
+			_, err := checkRepository(root)
+			if err == nil || !strings.Contains(err.Error(), "bound runtime call edge "+test.callerRole) {
+				t.Fatalf("check error = %v, want shadowed authority-edge rejection", err)
+			}
+		})
+	}
+}
+
 func TestAuthorityLedgerRejectsTaggedTransitiveFenceHelpers(t *testing.T) {
 	root, ledger := fixtureRepository(t)
 	writeFile(t, root, "internal/sourceruntime/fence_linux.go", `
@@ -297,6 +456,39 @@ func route() { worker.PullFromExecutionOutput() }
 			want:   false,
 		},
 		{
+			name: "shadowed imported package alias",
+			source: `package sourceops
+import worker "github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+func route() {
+	worker := struct{ PullFromExecutionOutput func() }{PullFromExecutionOutput: func() {}}
+	worker.PullFromExecutionOutput()
+}
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceops/source_execution.go", Symbol: "route"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/sourceworker/pull.go", Symbol: "PullFromExecutionOutput"},
+			want:   false,
+		},
+		{
+			name: "exact same-file function",
+			source: `package sourceruntime
+func helper() {}
+func route() { helper() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "route"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "helper"},
+			want:   true,
+		},
+		{
+			name: "shadowed same-package function",
+			source: `package sourceruntime
+func helper() {}
+func route() { helper := func() {}; helper() }
+`,
+			caller: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "route"},
+			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "helper"},
+			want:   false,
+		},
+		{
 			name: "caller receiver",
 			source: `package sourceruntime
 type Service struct{}
@@ -308,11 +500,11 @@ func (s *Service) SyncWithLease() { s.Sync() }
 			want:   true,
 		},
 		{
-			name: "unrelated receiver",
+			name: "shadowed receiver",
 			source: `package sourceruntime
 type Service struct{}
 func (s *Service) Sync() {}
-func (s *Service) SyncWithLease() { other := &Service{}; other.Sync() }
+func (s *Service) SyncWithLease() { { s := &Service{}; s.Sync() } }
 `,
 			caller: runtimeBindingRequirement{Path: "internal/sourceruntime/lease.go", Symbol: "Service.SyncWithLease"},
 			callee: runtimeBindingRequirement{Path: "internal/sourceruntime/service.go", Symbol: "Service.Sync"},
@@ -662,6 +854,12 @@ func (s *Service) previewSourceExecutionCredential() bool {
 `)
 	writeFile(t, root, "internal/sourceops/service.go", `
 package sourceops
+
+type alternateService struct{}
+
+func (s *alternateService) executeRustSource(sourceID, familyID string) bool {
+	return true
+}
 
 func (s *Service) Check(sourceID, familyID string) bool {
 	familyID, selected := rustSourceFamily(sourceID, map[string]string{"family": familyID})
