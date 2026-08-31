@@ -1871,6 +1871,7 @@ var claimErrorMappings = []bootstrapErrorMapping{
 var findingErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(ports.ErrSourceRuntimeNotFound, findings.ErrRuleNotFound, ports.ErrFindingNotFound, ports.ErrFindingCandidateNotFound, ports.ErrFindingEvaluationRunNotFound, ports.ErrFindingEvidenceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
 	{match: matchesAnyError(ports.ErrFindingStatusPreconditionFailed), httpStatus: http.StatusConflict, code: connect.CodeAborted},
+	{match: matchesAnyError(ports.ErrSourceRuntimeLeaseLost), httpStatus: http.StatusConflict, code: connect.CodeAborted, connectMessage: "finding evaluation lease conflict; retry the request"},
 	{match: matchesAnyError(findings.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(findings.ErrRuleSelectionRequired, findings.ErrRuleUnsupported, findings.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 	{match: matchesAnyError(findings.ErrRuleUnavailable), httpStatus: http.StatusPreconditionFailed, code: connect.CodeFailedPrecondition},
@@ -1930,8 +1931,13 @@ func defaultConnectErrorCode(err error) connect.Code {
 
 func defaultConnectError(err error) error {
 	code := defaultConnectErrorCode(err)
-	if code == connect.CodeInternal {
+	switch code {
+	case connect.CodeInternal:
 		return connect.NewError(code, errors.New("internal error"))
+	case connect.CodeCanceled:
+		return connect.NewError(code, safeConnectCause{message: context.Canceled.Error(), cause: err})
+	case connect.CodeDeadlineExceeded:
+		return connect.NewError(code, safeConnectCause{message: context.DeadlineExceeded.Error(), cause: err})
 	}
 	return connect.NewError(code, err)
 }

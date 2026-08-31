@@ -1511,7 +1511,7 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 	if !acquired {
 		return nil, nil, false, fmt.Errorf("%w: source runtime %q is busy", ErrRuntimeUnavailable, runtimeID)
 	}
-	workCtx, cancelWork := context.WithCancel(ctx)
+	workCtx, cancelWork := context.WithCancelCause(ctx)
 	renewCtx, cancelRenew := context.WithCancel(ctx)
 	renewalDone := make(chan error, 1)
 	renewalInterval := ttl / 3
@@ -1520,37 +1520,42 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 	}
 	panicsafe.Go(renewCtx, "finding.source_runtime_lease_renewal", func() {
 		defer close(renewalDone)
+		normalExit := false
+		var taskErr error
 		defer func() {
-			select {
-			case renewalDone <- panicsafe.ErrTaskPanicked:
-			default:
+			if !normalExit {
+				taskErr = findingEvaluationLeaseRenewalLoss(runtimeID, panicsafe.ErrTaskPanicked)
+				cancelWork(taskErr)
 			}
+			renewalDone <- taskErr
 		}()
 		ticker := time.NewTicker(renewalInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-renewCtx.Done():
-				renewalDone <- nil
+				normalExit = true
 				return
 			case <-ticker.C:
 				renewed, renewErr := leaser.RenewSourceRuntimeLease(renewCtx, runtimeID, owner, ttl)
 				if renewErr != nil {
-					if renewCtx.Err() != nil {
-						renewalDone <- nil
+					if renewCtx.Err() != nil && errors.Is(renewErr, renewCtx.Err()) {
+						normalExit = true
 						return
 					}
-					cancelWork()
-					renewalDone <- fmt.Errorf("renew source runtime %q during finding evaluation: %w", runtimeID, renewErr)
+					taskErr = findingEvaluationLeaseRenewalLoss(runtimeID, renewErr)
+					cancelWork(taskErr)
+					normalExit = true
 					return
 				}
 				if !renewed {
 					if renewCtx.Err() != nil {
-						renewalDone <- nil
+						normalExit = true
 						return
 					}
-					cancelWork()
-					renewalDone <- fmt.Errorf("%w: source runtime %q lease was lost during finding evaluation", ErrRuntimeUnavailable, runtimeID)
+					taskErr = findingEvaluationLeaseRenewalLoss(runtimeID, nil)
+					cancelWork(taskErr)
+					normalExit = true
 					return
 				}
 			}
@@ -1559,7 +1564,7 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 	return workCtx, func() error {
 		cancelRenew()
 		renewalErr := <-renewalDone
-		cancelWork()
+		cancelWork(nil)
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), findingEvaluationLeaseReleaseTimeout)
 		defer cancel()
 		if err := leaser.ReleaseSourceRuntimeLease(releaseCtx, runtimeID, owner); err != nil {
@@ -1567,6 +1572,13 @@ func (s *Service) acquireFindingEvaluationLease(ctx context.Context, runtimeID s
 		}
 		return renewalErr
 	}, true, nil
+}
+
+func findingEvaluationLeaseRenewalLoss(runtimeID string, cause error) error {
+	if cause == nil {
+		return fmt.Errorf("%w: source runtime %q lease was lost during finding evaluation", ports.ErrSourceRuntimeLeaseLost, runtimeID)
+	}
+	return fmt.Errorf("%w: renew source runtime %q during finding evaluation: %w", ports.ErrSourceRuntimeLeaseLost, runtimeID, cause)
 }
 
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")

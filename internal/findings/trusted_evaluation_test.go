@@ -9,6 +9,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/panicsafe"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -146,11 +147,101 @@ func TestTrustedFindingEvaluationCancelsWhenRuntimeLeaseIsLost(t *testing.T) {
 	service.findingEvaluationLeaseTTL = 30 * time.Millisecond
 
 	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: runtimeID, RuleID: "rule-a"})
-	if !errors.Is(err, ErrRuntimeUnavailable) {
-		t.Fatalf("EvaluateSourceRuntime() error = %v, want runtime unavailable after lease loss", err)
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want source runtime lease loss", err)
 	}
 	if runtimeStore.renewCalls.Load() == 0 || runtimeStore.releaseCalls != 1 || runtimeStore.held {
 		t.Fatalf("renew/release/state = %d/%d/%t, want renewal attempt, release, and no held lease", runtimeStore.renewCalls.Load(), runtimeStore.releaseCalls, runtimeStore.held)
+	}
+}
+
+func TestTrustedFindingEvaluationCancelsWhenRuntimeLeaseRenewalPanics(t *testing.T) {
+	runtimeID := "runtime-okta"
+	registry, err := NewRegistry(&emittingRule{
+		spec: &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"}, supportedSourceIDs: map[string]struct{}{"okta": {}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &findingLeaseRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtimeID: trustedFindingRuntime(runtimeID, "okta", "audit", time.Now().UTC())}},
+		available:        true,
+		renewPanic:       true,
+	}
+	cancellationCause := make(chan error, 1)
+	store := &stubFindingStore{}
+	service := NewWithRegistry(runtimeStore, findingLeaseBlockingReplayer{cancellationCause: cancellationCause}, store, store, store, store, registry).WithTrustedSourceResolution()
+	service.findingEvaluationLeaseTTL = 30 * time.Millisecond
+
+	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: runtimeID, RuleID: "rule-a"})
+	if !errors.Is(err, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(err, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want lease loss preserving renewal panic", err)
+	}
+	select {
+	case cause := <-cancellationCause:
+		if !errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || !errors.Is(cause, panicsafe.ErrTaskPanicked) {
+			t.Fatalf("evaluation cancellation cause = %v, want lease loss preserving renewal panic", cause)
+		}
+	default:
+		t.Fatal("evaluation did not observe renewal panic cancellation")
+	}
+	if store.upsertCount != 0 || len(store.evidence) != 0 {
+		t.Fatalf("post-loss finding/evidence writes = %d/%d, want 0/0", store.upsertCount, len(store.evidence))
+	}
+	if runtimeStore.releaseCalls != 1 || runtimeStore.held {
+		t.Fatalf("release calls/state = %d/%t, want 1/false", runtimeStore.releaseCalls, runtimeStore.held)
+	}
+}
+
+func TestFindingEvaluationLeaseNormalReleaseDoesNotReportPanic(t *testing.T) {
+	runtimeStore := &findingLeaseRuntimeStore{available: true, renewAvailable: true}
+	service := &Service{
+		runtimeStore:              runtimeStore,
+		requireTrustedResolution:  true,
+		findingEvaluationLeaseTTL: time.Hour,
+	}
+	for i := 0; i < 200; i++ {
+		workCtx, release, trusted, err := service.acquireFindingEvaluationLease(context.Background(), "runtime-okta", false)
+		if err != nil || !trusted {
+			t.Fatalf("iteration %d: acquireFindingEvaluationLease() = (%t, %v), want true, nil", i, trusted, err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("iteration %d: release() error = %v, want nil", i, err)
+		}
+		cause := context.Cause(workCtx)
+		if !errors.Is(cause, context.Canceled) || errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || errors.Is(cause, panicsafe.ErrTaskPanicked) {
+			t.Fatalf("iteration %d: work cancellation cause = %v, want ordinary cancellation", i, cause)
+		}
+	}
+}
+
+func TestFindingEvaluationLeaseNormalReleaseSuppressesCanceledFalseRenewal(t *testing.T) {
+	renewStarted := make(chan struct{}, 1)
+	runtimeStore := &findingLeaseRuntimeStore{
+		available:          true,
+		renewStarted:       renewStarted,
+		renewWaitForCancel: true,
+	}
+	service := &Service{
+		runtimeStore:              runtimeStore,
+		requireTrustedResolution:  true,
+		findingEvaluationLeaseTTL: 10 * time.Millisecond,
+	}
+	workCtx, release, trusted, err := service.acquireFindingEvaluationLease(context.Background(), "runtime-okta", false)
+	if err != nil || !trusted {
+		t.Fatalf("acquireFindingEvaluationLease() = (%t, %v), want true, nil", trusted, err)
+	}
+	select {
+	case <-renewStarted:
+	case <-time.After(time.Second):
+		t.Fatal("lease renewal did not start")
+	}
+	if err := release(); err != nil {
+		t.Fatalf("release() error = %v, want nil for cancellation-attributable false renewal", err)
+	}
+	cause := context.Cause(workCtx)
+	if !errors.Is(cause, context.Canceled) || errors.Is(cause, ports.ErrSourceRuntimeLeaseLost) || errors.Is(cause, panicsafe.ErrTaskPanicked) {
+		t.Fatalf("work cancellation cause = %v, want ordinary cancellation", cause)
 	}
 }
 
@@ -279,6 +370,9 @@ type findingLeaseRuntimeStore struct {
 	*stubRuntimeStore
 	available            bool
 	renewAvailable       bool
+	renewPanic           bool
+	renewStarted         chan<- struct{}
+	renewWaitForCancel   bool
 	unavailableRuntimeID string
 	held                 bool
 	replayWithoutLease   bool
@@ -298,8 +392,21 @@ func (s *findingLeaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, 
 	return available, nil
 }
 
-func (s *findingLeaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+func (s *findingLeaseRuntimeStore) RenewSourceRuntimeLease(ctx context.Context, _ string, _ string, _ time.Duration) (bool, error) {
 	s.renewCalls.Add(1)
+	if s.renewStarted != nil {
+		select {
+		case s.renewStarted <- struct{}{}:
+		default:
+		}
+	}
+	if s.renewWaitForCancel {
+		<-ctx.Done()
+		return false, nil
+	}
+	if s.renewPanic {
+		panic("finding evaluation lease renewal panic")
+	}
 	return s.renewAvailable, nil
 }
 
@@ -318,9 +425,14 @@ func (r findingLeaseCheckingReplayer) Replay(context.Context, ports.ReplayReques
 	return nil, nil
 }
 
-type findingLeaseBlockingReplayer struct{}
+type findingLeaseBlockingReplayer struct {
+	cancellationCause chan<- error
+}
 
-func (findingLeaseBlockingReplayer) Replay(ctx context.Context, _ ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+func (r findingLeaseBlockingReplayer) Replay(ctx context.Context, _ ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	<-ctx.Done()
+	if r.cancellationCause != nil {
+		r.cancellationCause <- context.Cause(ctx)
+	}
 	return nil, ctx.Err()
 }
