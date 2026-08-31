@@ -11,7 +11,10 @@ concurrency:
 jobs:
   post-merge-health:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    # Candidate workflows serialize behind at most one active run. Cover one
+    # full 90-minute predecessor and the selected head's 90-minute CI gate,
+    # then leave five minutes to write and upload the terminal receipt.
+    timeout-minutes: 185
     permissions:
       contents: read
       actions: read
@@ -26,7 +29,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           POST_MERGE_HEAD: ${{ github.sha }}
           POST_MERGE_STRICT: "true"
-          POST_MERGE_WAIT_SECONDS: "3600"
+          POST_MERGE_WAIT_SECONDS: "10800"
           POST_MERGE_POLL_SECONDS: "30"
           POST_MERGE_OUT: tmp/post-merge-health.md
           POST_MERGE_JSON_OUT: tmp/post-merge-health.json
