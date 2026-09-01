@@ -619,7 +619,7 @@ func declaredRelationshipFacts(
 	links []*ports.ProjectedLink,
 	primary semanticEntity,
 ) ([]factWire, error) {
-	facts := make([]factWire, 0, len(family.Projection.Relationships)*4)
+	var facts []factWire
 	for _, relationship := range family.Projection.Relationships {
 		if !relationshipAttributesPresent(attributes, relationship) {
 			continue
