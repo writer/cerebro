@@ -11,6 +11,7 @@ use crate::source_execution::{
     SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
     seal_page_program_v2,
 };
+use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::{
     AddigyFamily,
@@ -441,4 +442,44 @@ fn addigy_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         }),
         Err(SourceExecutionError::MissingConfiguration)
     );
+}
+
+#[test]
+fn closed_dispatcher_registers_exactly_the_addigy_families() {
+    let dispatcher = SourceExecutionDispatcher;
+    assert_eq!(ADDIGY_SOURCE_EXECUTION_ADAPTERS.len(), 5);
+    for adapter in &ADDIGY_SOURCE_EXECUTION_ADAPTERS {
+        let compiled = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "addigy".to_owned(),
+                family_id: adapter.family_id().to_owned(),
+            })
+            .unwrap();
+        assert_eq!(compiled, adapter.compiled_plan());
+        assert_eq!(compiled.source_id, "addigy");
+        assert_eq!(compiled.family_id, adapter.family_id());
+        assert_eq!(compiled.provider_kernel, adapter.provider_kernel());
+        let registered = dispatcher.adapter_for(&compiled).unwrap();
+        assert_eq!(
+            (
+                registered.source_id(),
+                registered.family_id(),
+                registered.provider_kernel()
+            ),
+            (
+                adapter.source_id(),
+                adapter.family_id(),
+                adapter.provider_kernel()
+            )
+        );
+    }
+    for family in ["", "future"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "addigy".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
+        );
+    }
 }

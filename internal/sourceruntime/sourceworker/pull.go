@@ -175,6 +175,62 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every portable Asana family is closed in the Rust dispatcher. Unknown
 		// families fail there instead of restoring the retired Go provider path.
 		return familyID, true
+	case "abnormal_security":
+		if familyID == "" {
+			familyID = "resources"
+		}
+		// Every cataloged Abnormal Security family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "activtrak":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every cataloged ActivTrak family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "ada_support":
+		if familyID == "" {
+			familyID = "end_users"
+		}
+		// Every cataloged Ada Support family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "addigy":
+		if familyID == "" {
+			familyID = "devices"
+		}
+		// Every cataloged Addigy family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "aha":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every cataloged Aha! family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "akeneo":
+		if familyID == "" {
+			familyID = "attribute"
+		}
+		// Every cataloged Akeneo family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "amplitude":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every cataloged Amplitude family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
 	case "azure":
 		return familyID, familyID == "authorization_policy"
 	case "digitalocean":
@@ -239,7 +295,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // intentionally excludes durable-only routes such as Twilio.
 func PreviewRustFamily(sourceID, familyID string) (string, bool) {
 	switch strings.TrimSpace(sourceID) {
-	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
+	case "abnormal_security", "activtrak", "ada_support", "addigy", "aha", "akeneo", "amplitude", "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return RustAuthoritativeFamily(sourceID, familyID)
 	default:
 		return "", false
