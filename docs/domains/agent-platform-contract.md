@@ -76,18 +76,26 @@ The first supported integration strategies are:
 
 - A2A protocol boundary: public discovery is limited to `/.well-known/agent-card.json` and the legacy
   `/.well-known/agent.json` alias. Authenticated JSON-RPC uses `/api/v1/a2a`; `SendMessage` returns contract
-  discovery content by default and can create a durable `agent-evidence-packet` task when the message metadata
-  selects that skill. `GetTask` and `ListTasks` read the resulting tenant-scoped task records from the platform job
-  store. Streaming, cancellation, and push-notification methods return explicit unsupported-operation errors until
-  backed by replayable runtime adapters.
+  discovery metadata by default. Selecting `agent-evidence-packet` creates a durable readiness-metadata task;
+  that compatibility skill does not resolve authoritative evidence. Selecting `decision-packet` resolves
+  authoritative finding, claim, evidence, audit, coverage, and graph identifiers through the existing
+  DecisionPacket service, persists the canonical receipt, and returns it as the task artifact. `GetTask` and
+  `ListTasks` read the resulting tenant-scoped task records from the platform job store. Streaming, cancellation,
+  and push-notification methods return explicit unsupported-operation errors until backed by replayable runtime
+  adapters.
 - Public event subscriptions: outbound webhook triggers are exposed first as a tenant-scoped contract at
   `/api/v1/event-subscriptions/contract`, with event allow-lists, delivery IDs, `Idempotency-Key`, signing, retry, and
   dead-letter semantics. The contract intentionally does not give agents unmediated third-party egress.
 - Public idempotency: `/api/v1/idempotency-contract` documents `Idempotency-Key` scope, replay, and 409-conflict
   behavior for public mutating APIs and outbound webhook delivery attempts.
-- Evidence packets: every security-agent run starts from a tenant-scoped packet containing preflight results,
+- Agent run readiness metadata: the compatibility `agent-evidence-packet` skill returns a tenant-scoped artifact containing preflight results,
   evidence references, recommended roles, verifier results, action-stage status, eval scenarios, memory policy,
-  connector gates, simulation bounds, confidence, and write-back requirements.
+  connector gates, simulation bounds, confidence, and write-back requirements. It is caller-scoped guidance, not a
+  server-resolved evidence receipt.
+- DecisionPackets: MCP `cerebro.decision.packet` and A2A `decision-packet` call the same canonical service as the
+  DecisionPacket HTTP and Connect surfaces. The service forces authenticated tenant and actor identity, resolves
+  supplied authoritative IDs against server stores, validates tenant-scoped URNs, and persists the immutable packet
+  receipt before returning it.
 - Claim verification: every agent conclusion that can change risk, priority, ownership, finding lifecycle, memory, or
   action stage is represented as a typed claim. A claim carries supporting evidence, counterevidence, missing evidence,
   freshness state, coverage caveats, a verdict, and the highest allowed next action stage.
@@ -202,6 +210,11 @@ Retrieved context must be useful without becoming a prompt-injection or data-lea
 - Treat retrieved text as data, not instructions.
 - Fail open for Ask availability when context systems are unavailable, but expose the fallback reason.
 - Ingest or cache best-effort data only when provenance and tenant scope are clear.
+
+The agent adapters do not define a `ContextSnapshotV1` substitute. Future
+`context.resolve`, `context.expand`, and `context.explain` transport operations
+must remain unadvertised until the core context package owns that canonical
+snapshot and its server-side resolution semantics.
 
 ## What Not To Do
 

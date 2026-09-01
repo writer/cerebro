@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/decisionpacket"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -27,6 +28,7 @@ type RequestedTenantRecorder func(context.Context, string)
 type Handler struct {
 	Store                 ports.JobStore
 	Card                  agentplatform.A2AAgentCard
+	DecisionPackets       DecisionPacketBuilder
 	Resolve               Resolver
 	CoverageContext       CoverageContextFunc
 	AuthorizeEvidence     EvidenceAuthorizer
@@ -67,18 +69,23 @@ func (h Handler) sendMessage(ctx context.Context, request agentplatform.A2AJSONR
 		}
 		return agentplatform.A2AJSONRPCResponseFor(request, h.Card)
 	}
-	if skillID != agentplatform.A2AWorkSkillAgentEvidencePacket {
+	if skillID != agentplatform.A2AWorkSkillAgentEvidencePacket && skillID != agentplatform.A2AWorkSkillDecisionPacket {
 		response.Error = &agentplatform.A2AJSONError{
 			Code:    -32004,
 			Message: "UnsupportedOperationError",
 			Data: map[string]any{
-				"supportedSkills": []string{"agent-platform-contract", agentplatform.A2AWorkSkillAgentEvidencePacket, "event-subscription-contract", "idempotency-contract"},
+				"supportedSkills": []string{"agent-platform-contract", agentplatform.A2AWorkSkillAgentEvidencePacket, agentplatform.A2AWorkSkillDecisionPacket, "event-subscription-contract", "idempotency-contract"},
 				"reason":          "The requested A2A skill is not supported by this Cerebro endpoint.",
 			},
 		}
 		return response
 	}
-	task, err := h.createEvidencePacketTask(ctx, params)
+	var task agentplatform.A2ATask
+	if skillID == agentplatform.A2AWorkSkillDecisionPacket {
+		task, err = h.createDecisionPacketTask(ctx, params)
+	} else {
+		task, err = h.createEvidencePacketTask(ctx, params)
+	}
 	if err != nil {
 		response.Error = jsonRPCErrorFromError(err)
 		return response
@@ -508,6 +515,12 @@ func jsonRPCErrorFromError(err error) *agentplatform.A2AJSONError {
 		}
 	}
 	if errors.Is(err, ports.ErrJobNotFound) {
+		return &agentplatform.A2AJSONError{Code: -32001, Message: "TaskNotFoundError"}
+	}
+	if errors.Is(err, decisionpacket.ErrInvalidRequest) || errors.Is(err, decisionpacket.ErrInvalidBudget) {
+		return invalidParams("DecisionPacket request is invalid")
+	}
+	if errors.Is(err, decisionpacket.ErrProtectedReference) {
 		return &agentplatform.A2AJSONError{Code: -32001, Message: "TaskNotFoundError"}
 	}
 	return &agentplatform.A2AJSONError{Code: -32603, Message: "InternalError", Data: map[string]any{"reason": "A2A task processing failed"}}

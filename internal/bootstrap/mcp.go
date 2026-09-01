@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/connectordefinitionrecords"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/decisionpacket"
 	"github.com/writer/cerebro/internal/findingapi"
 	findingdomain "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
@@ -575,6 +576,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpTaskRiskExplain(r, args)
 	case "cerebro.evidence.packet":
 		return app.mcpTaskEvidencePacket(r, args)
+	case "cerebro.decision.packet":
+		return app.mcpDecisionPacket(r, args)
 	case "cerebro.sources.health":
 		return app.mcpTaskSourcesHealth(r, args)
 	case "cerebro.action.plan":
@@ -2836,6 +2839,7 @@ func mcpTools() []mcpTool {
 		},
 	}
 	tools = append(tools, mcpAssessmentTools()...)
+	tools = append(tools, decisionPacketMCPTool())
 	for _, definition := range mcpoperations.TaskToolDefinitions(mcpoperations.TaskToolLimits{Evidence: maxMCPEvidenceLimit, Assets: maxMCPAssetLimit, Actions: riskplan.MaxCandidateLimit, Findings: maxMCPRiskLimit, ResourceRoots: maxMCPRiskActionRoots, Graph: maxMCPRiskActionGraph}) {
 		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: mcpoperations.TaskOutputSchema(), Annotations: mcpReadOnlyAnnotations(definition.Title)})
 	}
@@ -4705,6 +4709,8 @@ func safeMCPToolError(err error) string {
 	case errors.Is(err, errTenantForbidden):
 		return "tenant forbidden"
 	case errors.Is(err, errInvalidHTTPRequest),
+		errors.Is(err, decisionpacket.ErrInvalidRequest),
+		errors.Is(err, decisionpacket.ErrInvalidBudget),
 		errors.Is(err, sourceops.ErrInvalidRequest),
 		errors.Is(err, sourcecdk.ErrInvalidConfig),
 		errors.Is(err, graphagent.ErrInvalidRequest),
@@ -4717,6 +4723,8 @@ func safeMCPToolError(err error) string {
 		return err.Error()
 	case errors.Is(err, sourceops.ErrSourceNotFound):
 		return "source not found"
+	case errors.Is(err, decisionpacket.ErrProtectedReference):
+		return "decision packet reference not found"
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		return "source runtime not found"
 	case errors.Is(err, ports.ErrFindingNotFound):
@@ -4733,6 +4741,7 @@ func safeMCPToolError(err error) string {
 		errors.Is(err, complianceremediation.ErrNotFound):
 		return "compliance record not found"
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable),
+		errors.Is(err, decisionpacket.ErrResolverUnavailable),
 		errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findingdomain.ErrRuntimeUnavailable),
 		errors.Is(err, graphfacts.ErrRuntimeUnavailable),

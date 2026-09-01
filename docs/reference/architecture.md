@@ -122,6 +122,12 @@ context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
 
+The DecisionPacket MCP and A2A adapters reuse the persistent
+`internal/decisionpacket` service already exposed through HTTP and Connect.
+Bootstrap maps authenticated MCP identity into that service, while the A2A
+gateway owns its durable task artifact. Neither adapter defines a competing
+context snapshot model.
+
 Policy evaluation experiments add operator-scoped request mapping, generic
 platform-job normalization, and evaluator dependency wiring in bootstrap.
 Immutable candidate and checkpoint pins, lifecycle transitions, checkpoint
