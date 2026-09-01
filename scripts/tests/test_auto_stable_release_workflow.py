@@ -9,6 +9,7 @@ AUTO_WORKFLOW = ROOT / ".github" / "workflows" / "auto-stable-release.yml"
 CANDIDATE_WORKFLOW = ROOT / ".github" / "workflows" / "cut-release.yml"
 RUST_GRAPH_WORKFLOW = ROOT / ".github" / "workflows" / "rust-graph-replacement.yml"
 EPHEMERAL_WORKFLOW = ROOT / ".github" / "workflows" / "ephemeral-cerebro.yml"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
 
 class AutoStableReleaseWorkflowTest(unittest.TestCase):
@@ -152,6 +153,40 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("${{ inputs.candidate_sha ||", run_name[0])
         self.assertIn("github.event.pull_request.head.sha", run_name[0])
         self.assertIn("(${{ inputs.image_source || 'source' }})", run_name[0])
+
+    def test_publication_runs_are_matched_by_run_name_not_head_sha(self) -> None:
+        workflow = AUTO_WORKFLOW.read_text(encoding="utf-8")
+        publication = workflow.split(
+            "      - name: Dispatch stable publication\n", 1
+        )[1]
+
+        # Stable Release is dispatched with --ref main too, so the same headSha
+        # mismatch applies whenever main moves in the gap after the final
+        # current-main check. release.yml has no candidate_sha input, so the
+        # match keys on the reserved tag and candidate run this step passes.
+        self.assertNotIn(".headSha ==", publication)
+        self.assertNotIn(",headSha,", publication)
+        self.assertIn(
+            'publication_title="${RELEASE_TAG} (candidate run ${CANDIDATE_RUN_ID})"',
+            publication,
+        )
+        self.assertIn("--workflow \"Stable Release\"", publication)
+        self.assertIn("--json databaseId,displayTitle,", publication)
+        self.assertIn(
+            '.displayTitle | contains(\\"${publication_title}\\")', publication
+        )
+        self.assertIn("--event workflow_dispatch --branch main", publication)
+        self.assertIn('.createdAt >= \\"${requested_at}\\"', publication)
+
+        release = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        run_name = [
+            line for line in release.splitlines() if line.startswith("run-name:")
+        ]
+        self.assertEqual(len(run_name), 1)
+        self.assertIn("${{ inputs.release_tag ||", run_name[0])
+        self.assertIn(
+            "(candidate run ${{ inputs.candidate_run_id ||", run_name[0]
+        )
 
     def test_rust_graph_proof_has_a_cold_build_budget(self) -> None:
         workflow = RUST_GRAPH_WORKFLOW.read_text(encoding="utf-8")

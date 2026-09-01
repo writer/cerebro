@@ -301,6 +301,10 @@ jobs:
           PUBLICATION_DEADLINE_SECONDS: "7200"
         run: |
           set -euo pipefail
+          # Stable Release is dispatched with --ref main, so its headSha is the head
+          # of main at dispatch time. Match on the run name, which embeds the
+          # reserved tag and candidate run this step dispatched with.
+          publication_title="${RELEASE_TAG} (candidate run ${CANDIDATE_RUN_ID})"
           requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref main \
             -f candidate_run_id="${CANDIDATE_RUN_ID}" -f release_tag="${RELEASE_TAG}" \
@@ -313,8 +317,8 @@ jobs:
             discovered="$({
               gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Stable Release" \
                 --event workflow_dispatch --branch main --limit 20 \
-                --json databaseId,headSha,url,createdAt \
-                --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\" and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
+                --json databaseId,displayTitle,url,createdAt \
+                --jq ".[] | select((.displayTitle | contains(\"${publication_title}\")) and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
             } | head -n 1)"
             if [[ -n "${discovered}" ]]; then
               IFS=$'\t' read -r run_id run_url <<< "${discovered}"
