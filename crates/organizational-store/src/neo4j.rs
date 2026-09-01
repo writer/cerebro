@@ -6491,9 +6491,9 @@ fn legacy_context_edge(
             "legacy relation collection completeness is invalid".to_owned(),
         ));
     }
-    let observed_at_unix_ms = legacy_u64_property(&properties, "observed_at_unix_ms")?;
+    let observed_at_unix_ms = legacy_i64_property(&properties, "observed_at_unix_ms")?;
     let collection_observed_at_unix_ms =
-        legacy_u64_property(&properties, "collection_observed_at_unix_ms")?;
+        legacy_i64_property(&properties, "collection_observed_at_unix_ms")?;
     let assertion_graph_revision = legacy_u64_property(&properties, "graph_revision")?;
     let records = match (
         properties.get("observation_id"),
@@ -6576,6 +6576,21 @@ fn legacy_u64_property(
         value.parse::<u64>().map_err(|_| {
             ContextError::BackendUnavailable(format!("legacy relation {field} is invalid"))
         })
+    })
+}
+
+fn legacy_i64_property(
+    properties: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<i64, ContextError> {
+    properties.get(field).map_or(Ok(0), |value| {
+        value
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| {
+                ContextError::BackendUnavailable(format!("legacy relation {field} is invalid"))
+            })
     })
 }
 
