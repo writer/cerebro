@@ -58,10 +58,11 @@ pub use parity::{
 pub use postgres::{
     AskQueryRecord, AskQueryWrite, AuditEventPageQuery, ConsumerFamilyProgress,
     ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection, ConsumerRunProgress,
-    ConsumerRunReceiptState, ConsumerSkipCategory, IdentityDirectoryQuery, LegacyProjectionReceipt,
-    POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
-    SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
-    StoredAuditEventPage, StoredIdentityOrganization, StoredIdentityUser, StoredSourceRuntime,
+    ConsumerRunReceiptState, ConsumerSkipCategory, ContextSnapshotReceipt, IdentityDirectoryQuery,
+    LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
+    SourceEventReceipt, SourceRuntimeCollectionObservation, SourceRuntimeObservation,
+    StoredAuditEvent, StoredAuditEventPage, StoredIdentityOrganization, StoredIdentityUser,
+    StoredSourceRuntime,
 };
 pub use promotion::{
     CutoverDecision, ProjectionAuthority, ProjectionAuthorityRecord, ProjectionPromotionRequest,
