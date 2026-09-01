@@ -618,6 +618,15 @@ var rustAuthoritativeKinds = map[string][]string{
 		"openai.user",
 		"openai.user_role",
 	},
+	"pagerduty": {
+		"pagerduty.escalation_policy",
+		"pagerduty.integration",
+		"pagerduty.schedule",
+		"pagerduty.service",
+		"pagerduty.team",
+		"pagerduty.user",
+		"pagerduty.vendor",
+	},
 	"qdrant_cloud": {
 		"qdrant_cloud.account_members",
 		"qdrant_cloud.accounts",
