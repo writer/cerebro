@@ -183,7 +183,7 @@ func projectRecord(
 		Payload:    payload,
 		Attributes: attributes,
 	}
-	entities, links, err := sourceprojection.ProjectEvent(event)
+	entities, links, err := projectCompatibilityEvent(event)
 	if err != nil {
 		return nil, fmt.Errorf("project observation %q: %w", record.ObservationID, err)
 	}
@@ -206,6 +206,119 @@ func projectRecord(
 	default:
 		return entityFacts(run, record, family, template, attributes, entities, links)
 	}
+}
+
+// projectCompatibilityEvent keeps the retired Doppler projector's bounded
+// semantic oracle inside this migration CLI. It is not registered with product
+// projection and cannot become a production writer.
+func projectCompatibilityEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	if event.GetSourceId() == "doppler" {
+		return compatibilityOnlyDopplerProjection(event)
+	}
+	return sourceprojection.ProjectEvent(event)
+}
+
+func compatibilityOnlyDopplerProjection(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	attributes := event.GetAttributes()
+	entity := func(kind, id, label string, values map[string]string) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN:        compatibilityURN(kind, id),
+			TenantID:   event.GetTenantId(),
+			SourceID:   "doppler",
+			EntityType: kind,
+			Label:      label,
+			Attributes: values,
+		}
+	}
+	link := func(from, relation, to string) *ports.ProjectedLink {
+		return &ports.ProjectedLink{
+			TenantID: event.GetTenantId(),
+			SourceID: "doppler",
+			FromURN:  from,
+			ToURN:    to,
+			Relation: relation,
+		}
+	}
+
+	switch event.GetKind() {
+	case "doppler.secrets":
+		secretID := first(attributes, "secret_id")
+		if secretID == "" {
+			secretID = event.GetId()
+		}
+		secretLabel := first(attributes, "secret_name")
+		if secretLabel == "" {
+			secretLabel = secretID
+		}
+		secret := entity("secret", secretID, secretLabel, map[string]string{"secret_id": secretID})
+		entities := []*ports.ProjectedEntity{secret}
+		var links []*ports.ProjectedLink
+		if projectID := first(attributes, "project_id"); projectID != "" {
+			project := entity("doppler.project", projectID, projectID, map[string]string{"project_id": projectID})
+			entities = append(entities, project)
+			links = append(links, link(secret.URN, "belongs_to", project.URN))
+		}
+		if evidenceID := first(attributes, "evidence_id"); evidenceID != "" {
+			evidence := entity("runtime_evidence", evidenceID, evidenceID, map[string]string{"evidence_id": evidenceID})
+			entities = append(entities, evidence)
+			links = append(links, link(secret.URN, "has_evidence", evidence.URN))
+		}
+		return entities, links, nil
+	case "doppler.projects":
+		projectID := first(attributes, "resource_id", "external_id")
+		if projectID == "" {
+			projectID = event.GetId()
+		}
+		projectLabel := first(attributes, "resource_name")
+		if projectLabel == "" {
+			projectLabel = projectID
+		}
+		project := entity("doppler.project", projectID, projectLabel, map[string]string{"resource_id": projectID})
+		entities := []*ports.ProjectedEntity{project}
+		var links []*ports.ProjectedLink
+		if evidenceID := first(attributes, "evidence_id"); evidenceID != "" {
+			evidence := entity("runtime.evidence", evidenceID, evidenceID, map[string]string{"evidence_id": evidenceID})
+			entities = append(entities, evidence)
+			links = append(links, link(project.URN, "has_evidence", evidence.URN))
+		}
+		return entities, links, nil
+	case "doppler.audit_events":
+		actorID := first(attributes, "actor_id", "actor_email")
+		resourceID := first(attributes, "resource_id", "target_id", "app_id", "group_id", "role_id")
+		resourceType := first(attributes, "resource_type", "target_type")
+		if resourceType == "" {
+			resourceType = "resource"
+		}
+		var entities []*ports.ProjectedEntity
+		var links []*ports.ProjectedLink
+		var actor *ports.ProjectedEntity
+		if actorID != "" {
+			actorLabel := first(attributes, "actor_name", "actor_email", "actor_alternate_id", "actor_id")
+			actor = entity("doppler.user", actorID, actorLabel, map[string]string{"actor_id": first(attributes, "actor_id")})
+			entities = append(entities, actor)
+		}
+		if resourceID != "" {
+			resourceLabel := first(attributes, "resource_name", "target_name", "resource_email")
+			if resourceLabel == "" {
+				resourceLabel = resourceID
+			}
+			resource := entity("doppler."+resourceType, resourceID, resourceLabel, map[string]string{
+				"resource_id":   resourceID,
+				"resource_type": resourceType,
+			})
+			entities = append(entities, resource)
+			if actor != nil {
+				links = append(links, link(actor.URN, "acted_on", resource.URN))
+			}
+		}
+		return entities, links, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported compatibility-only Doppler kind %q", event.GetKind())
+	}
+}
+
+func compatibilityURN(kind, id string) string {
+	return "compatibility:doppler:" + kind + ":" + lengthPrefixedID(id)
 }
 
 func identityUserFacts(
