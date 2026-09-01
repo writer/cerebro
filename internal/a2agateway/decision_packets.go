@@ -111,7 +111,12 @@ func (h Handler) createDecisionPacketTask(ctx context.Context, params agentplatf
 		h.failDecisionPacketTask(ctx, job, err)
 		return agentplatform.A2ATask{}, err
 	}
-	task := agentplatform.BuildA2ADecisionPacketTask(job.ID, contextID, params.Message, packet, packet.ID, packet.SchemaVersion, packet.GeneratedAt)
+	packetJSON, err := json.Marshal(packet)
+	if err != nil {
+		h.failDecisionPacketTask(ctx, job, err)
+		return agentplatform.A2ATask{}, err
+	}
+	task := agentplatform.BuildA2ADecisionPacketTask(job.ID, contextID, params.Message, packetJSON, packet.ID, packet.SchemaVersion, packet.GeneratedAt)
 	finishedAt := time.Now().UTC()
 	updatedJob, err = h.Store.UpdateJob(ctx, job.ID, ports.JobUpdate{
 		Status: ports.JobStatusCompleted, Progress: uint32Pointer(100), Message: "A2A DecisionPacket completed.",

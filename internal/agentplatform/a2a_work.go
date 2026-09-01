@@ -248,7 +248,7 @@ func BuildA2AEvidencePacketTask(taskID string, contextID string, input A2AMessag
 	}
 }
 
-func BuildA2ADecisionPacketTask(taskID string, contextID string, input A2AMessage, packet any, packetID string, schemaVersion string, generatedAt time.Time) A2ATask {
+func BuildA2ADecisionPacketTask(taskID string, contextID string, input A2AMessage, packet json.RawMessage, packetID string, schemaVersion string, generatedAt time.Time) A2ATask {
 	taskID = strings.TrimSpace(taskID)
 	contextID = strings.TrimSpace(contextID)
 	if contextID == "" {
