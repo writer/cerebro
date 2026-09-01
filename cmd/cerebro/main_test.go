@@ -419,17 +419,17 @@ func TestPrepareGRCReadModelsSkipsStoresWithoutPreparer(t *testing.T) {
 	}
 }
 
-func TestDependencyGraphRawCypherStoreRequiresConfiguredAuthority(t *testing.T) {
+func TestDependencyFindingGraphRuleStoreRequiresConfiguredAuthority(t *testing.T) {
 	legacy := &graphTestStore{}
 	authority := &graphTestStore{}
 	deps := bootstrap.Dependencies{GraphStore: legacy, GraphReads: bootstrap.NewGraphReadCapabilities(authority)}
 
-	if got := deps.GraphReads.RawCypher; got != authority {
-		t.Fatalf("dependencyGraphRawCypherStore() = %#v, want configured authority", got)
+	if got := deps.GraphReads.FindingGraphRules; got != authority {
+		t.Fatalf("FindingGraphRules = %#v, want configured authority", got)
 	}
 	deps.GraphReads = bootstrap.GraphReadCapabilities{}
-	if got := deps.GraphReads.RawCypher; got != nil {
-		t.Fatalf("dependencyGraphRawCypherStore() fallback = %#v, want nil without configured authority", got)
+	if got := deps.GraphReads.FindingGraphRules; got != nil {
+		t.Fatalf("FindingGraphRules fallback = %#v, want nil without configured authority", got)
 	}
 }
 

@@ -59,6 +59,22 @@ class RustMigrationLedgerDocTest(unittest.TestCase):
     def test_matching_doc_passes(self) -> None:
         self.assertEqual(rust_migration_ledger_doc_failures(LEDGER, doc(COMPAT_ROWS, PERMANENT_PROSE)), [])
 
+    def test_no_compat_callers_pass_without_table(self) -> None:
+        no_compat_ledger = ledger(
+            ("internal/findings", "migrated"),
+            ("internal/graphagent", "permanent"),
+            ("internal/graphquery", "migrated"),
+            ("internal/policycandidate", "permanent"),
+        )
+        body = (
+            "# Rust Organizational Platform\n\n"
+            "## Remaining compatibility callers\n\n"
+            "No migratable compatibility callers remain.\n\n"
+            f"{PERMANENT_PROSE}\n\n"
+            "## Next section\n"
+        )
+        self.assertEqual(rust_migration_ledger_doc_failures(no_compat_ledger, body), [])
+
     def test_missing_section_fails(self) -> None:
         failures = rust_migration_ledger_doc_failures(LEDGER, "# Doc\n\n## Other\n")
         self.assertEqual(len(failures), 1)

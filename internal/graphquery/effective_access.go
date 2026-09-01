@@ -324,11 +324,8 @@ func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request Effective
 	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	typedStore, ok := s.neighborhoods.(ports.EffectiveAccessPathStore)
-	if !ok || typedStore == nil {
-		typedStore, ok = s.rawCypher.(ports.EffectiveAccessPathStore)
-	}
-	if !ok || typedStore == nil {
+	typedStore := s.effective
+	if typedStore == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -505,7 +502,7 @@ func effectiveAccessAttributesJSON(raw string) map[string]string {
 		return map[string]string{}
 	}
 	for key, value := range anyAttributes {
-		if text := strings.TrimSpace(cypherAnyString(value)); text != "" {
+		if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
 			attributes[key] = text
 		}
 	}

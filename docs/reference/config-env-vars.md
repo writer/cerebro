@@ -120,6 +120,7 @@ deployment secret store, not checked-in configuration.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CEREBRO_SLACK_AGENT_ENABLED` | `false` | Enable the Rust Slack operating loop. Production Slack fails startup unless this is `true`. |
+| `CEREBRO_SLACK_AGENT_RUNTIME_TOKEN` | unset | Host-only bearer token for Slack agent turn, progress, delivery, and wake routes. Required when the Rust Slack agent is enabled; store as a secret in both the companion host and Rust authority environments. |
 | `CEREBRO_SLACK_AGENT_SESSION_V2_ENABLED` | `false` | Enable durable Rust agent sessions. The Rust Slack agent fails startup unless this is `true`. |
 | `CEREBRO_SLACK_AGENT_MODEL_PROVIDER` | unset | Must be `amazon-bedrock` for the Rust Slack agent. |
 | `CEREBRO_SLACK_AGENT_MODEL` | unset | Amazon Bedrock Claude Opus model identifier used for the complete session loop and independent claim review. Other model families fail startup. |
@@ -129,7 +130,7 @@ deployment secret store, not checked-in configuration.
 | `CEREBRO_SLACK_AGENT_MCP_TOOLSETS` | `task` | MCP toolset selection sent as `X-Cerebro-MCP-Toolsets`. Use the bounded task surface by default; deployment owners may select additional domain toolsets. |
 | `CEREBRO_SLACK_AGENT_MCP_OBSERVE_TOOLS` | unset | Comma-separated read-only MCP tools admitted as observe capabilities. Provider annotations are consistency checks only; unlisted tools are omitted. |
 | `CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS` | unset | Comma-separated read-only MCP tools that return proposals. These tools may run in investigation lanes but cannot apply changes. |
-| `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS` | unset | Comma-separated write-capable MCP tools admitted to the exact effect-approval path. Unlisted write tools are omitted. Every admitted call still requires request-, actor-, thread-, tool-, and input-digest-bound authorization plus independent verification. |
+| `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS` | unset | Retired. Any non-empty value fails startup. Mutations must use a closed Action definition and trusted broker adapter. |
 
 Every MCP tool requires a host-owned authority assignment. Server-declared
 `readOnlyHint` metadata must agree with that assignment but cannot grant it. A

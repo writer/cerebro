@@ -9,14 +9,11 @@ import (
 )
 
 type awsExposureStubStore struct {
-	requests          []ports.CypherQueryRequest
-	responses         [][]ports.CypherRow
 	exposureRequests  []ports.ExposureCoverageRequest
 	result            *ports.ExposureCoverageResult
 	err               error
 	personRequests    []ports.PersonAccessPathRequest
 	personResult      *ports.PersonAccessPathResult
-	rawReads          int
 	effectiveRequests []ports.EffectiveAccessPathRequest
 	effectiveResult   *ports.EffectiveAccessPathResult
 }
@@ -25,20 +22,6 @@ func (s *awsExposureStubStore) Ping(context.Context) error { return s.err }
 
 func (s *awsExposureStubStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, nil
-}
-
-func (s *awsExposureStubStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	s.rawReads++
-	s.requests = append(s.requests, request)
-	if s.err != nil {
-		return nil, s.err
-	}
-	if len(s.responses) == 0 {
-		return nil, nil
-	}
-	rows := s.responses[0]
-	s.responses = s.responses[1:]
-	return rows, nil
 }
 
 func (s *awsExposureStubStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
@@ -90,8 +73,8 @@ func TestGetAWSPublicEndpointInsightsUsesOneTypedBoundedRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAWSPublicEndpointInsights() error = %v", err)
 	}
-	if len(store.exposureRequests) != 1 || store.rawReads != 0 {
-		t.Fatalf("typed requests = %d, raw reads = %d; want 1, 0", len(store.exposureRequests), store.rawReads)
+	if len(store.exposureRequests) != 1 {
+		t.Fatalf("typed requests = %d, want 1", len(store.exposureRequests))
 	}
 	request := store.exposureRequests[0]
 	if request.TenantID != "writer" || request.AccountID != "account-a" || request.Region != "us-east-1" || request.Query != "App" || request.Limit != maxAWSExposureLimit {

@@ -26,6 +26,7 @@
 
 mod credential_vault;
 mod cutover;
+mod finding_graph_rules;
 mod neo4j;
 mod page_publication;
 mod parity;
@@ -37,16 +38,17 @@ pub use cutover::CutoverPolicy;
 pub use neo4j::{
     CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
     CloudAttackPathOwnership, CloudAttackPathPage, ComplianceImpactDependency,
-    ComplianceImpactFact, ComplianceImpactPage, EffectiveAccessPath, EffectiveAccessPathEdge,
-    EffectiveAccessPathPage, EntityCatalogDirection, EntityCatalogFilter, EntityCatalogKindCount,
-    EntityCatalogKindPage, EntityCatalogPage, EntityCatalogRelation, EntityCatalogRelationCount,
-    EntityCatalogRelationCountFilter, EntityCatalogRelationKindCount,
-    EntityCatalogRelationKindPage, EntityCatalogRelationPage, ExposureCoverageAccount,
-    ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly, ExposureCoverageCounts,
-    ExposureCoverageEntity, ExposureCoverageKindCount, ExposureCoverageOverlap,
-    ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery, ExposureCoverageResult,
-    LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, PersonAccessPath,
-    PersonAccessPathPage, ResolvedLifecycleFinding, SourceRuntimeGraphObservation,
+    ComplianceImpactFact, ComplianceImpactPage, CrownJewelPath, CrownJewelPathPage,
+    EffectiveAccessPath, EffectiveAccessPathEdge, EffectiveAccessPathPage, EntityCatalogDirection,
+    EntityCatalogFilter, EntityCatalogKindCount, EntityCatalogKindPage, EntityCatalogPage,
+    EntityCatalogRelation, EntityCatalogRelationCount, EntityCatalogRelationCountFilter,
+    EntityCatalogRelationKindCount, EntityCatalogRelationKindPage, EntityCatalogRelationPage,
+    ExposureCoverageAccount, ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly,
+    ExposureCoverageCounts, ExposureCoverageEntity, ExposureCoverageKindCount,
+    ExposureCoverageOverlap, ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery,
+    ExposureCoverageResult, FindingGraphRulePage, LegacyRootCoverage, LegacyRootCoverageKind,
+    Neo4jProjector, PersonAccessPath, PersonAccessPathPage, ResolvedLifecycleFinding,
+    SourceRuntimeGraphObservation,
 };
 pub use page_publication::PagePublicationOutbox;
 pub use parity::{

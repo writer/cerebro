@@ -27,6 +27,7 @@ export interface SlackRuntimeConfig {
   port: number;
   production: boolean;
   rustAgentEnabled: boolean;
+  slackAgentRuntimeToken?: string;
   computerSandboxGateways: readonly ComputerSandboxGatewayRuntimeConfig[];
 }
 
@@ -71,6 +72,12 @@ export function loadSlackRuntimeConfig(
       "Production Slack requires the Rust agent runtime.",
     );
   }
+  const slackAgentRuntimeToken = env.CEREBRO_SLACK_AGENT_RUNTIME_TOKEN;
+  if (rustAgentEnabled && !validAgentRuntimeToken(slackAgentRuntimeToken)) {
+    throw new SlackRuntimeConfigError(
+      "The Rust agent runtime requires a host bearer token of 32 to 512 non-whitespace characters.",
+    );
+  }
   if (
     lifecycleNoticesEnabled
     && (lifecycleChannelIds.size === 0 || !learningTableName)
@@ -101,8 +108,16 @@ export function loadSlackRuntimeConfig(
     port: port(env.PORT),
     production,
     rustAgentEnabled,
+    ...(slackAgentRuntimeToken === undefined ? {} : { slackAgentRuntimeToken }),
     computerSandboxGateways: computerSandboxGateways(env),
   });
+}
+
+function validAgentRuntimeToken(value: string | undefined): value is string {
+  return value !== undefined
+    && value.length >= 32
+    && value.length <= 512
+    && !/\s/u.test(value);
 }
 
 function notificationPreferences(env: NodeJS.ProcessEnv): SlackNotificationPreferencesV1 {

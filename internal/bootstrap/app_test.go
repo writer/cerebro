@@ -1804,6 +1804,7 @@ func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov
 }
 
 type stubGraphStore struct {
+	stubGraphCatalogState
 	mu                      sync.Mutex
 	err                     error
 	entities                map[string]*ports.ProjectedEntity
@@ -1817,8 +1818,6 @@ type stubGraphStore struct {
 	cypherPlan              *ports.CypherPlan
 	cypherRows              [][]ports.CypherRow
 	cypherRequests          []ports.CypherQueryRequest
-	catalogRows             []ports.CypherRow
-	catalogRelationRows     []ports.CypherRow
 	exposureResult          *ports.ExposureCoverageResult
 	exposureRequests        []ports.ExposureCoverageRequest
 	personAccessResult      *ports.PersonAccessPathResult
@@ -1826,9 +1825,16 @@ type stubGraphStore struct {
 	effectiveAccessResult   *ports.EffectiveAccessPathResult
 	effectiveAccessRequests []ports.EffectiveAccessPathRequest
 	entityRequests          []ports.EntityCatalogPageRequest
-	entityRelationRequests  []ports.EntityRelationPageRequest
 	entityKindRequests      []ports.EntityKindCountRequest
 	relationRequests        []ports.RelationCountRequest
+}
+
+type stubGraphCatalogState struct {
+	catalogRows            []ports.CypherRow
+	catalogRelationRows    []ports.CypherRow
+	entityRelationRequests []ports.EntityRelationPageRequest
+	crownJewelResult       *ports.CrownJewelPathResult
+	crownJewelRequests     []ports.CrownJewelPathRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1908,6 +1914,14 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return rows, nil
 	}
 	return nil, nil
+}
+
+func (s *stubGraphStore) RunFindingGraphRule(ctx context.Context, request ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
+	rows, err := s.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Params: request.Params, RowLimit: request.RowLimit})
+	if err != nil {
+		return nil, err
+	}
+	return &ports.FindingGraphRuleResult{Rows: rows}, nil
 }
 
 func (s *stubGraphStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
@@ -2112,6 +2126,17 @@ func (s *stubGraphStore) ListEntityRelations(_ context.Context, request ports.En
 		})
 	}
 	return page, nil
+}
+
+func (s *stubGraphStore) ListCrownJewelPaths(_ context.Context, request ports.CrownJewelPathRequest) (*ports.CrownJewelPathResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.crownJewelRequests = append(s.crownJewelRequests, request)
+	if s.crownJewelResult != nil {
+		return s.crownJewelResult, nil
+	}
+	return &ports.CrownJewelPathResult{TenantID: request.TenantID}, nil
 }
 
 func entityRelationDirectionContains(items []ports.EntityRelationDirection, want ports.EntityRelationDirection) bool {
@@ -4799,23 +4824,13 @@ func TestGraphEffectiveAccessPathsEndpoint(t *testing.T) {
 }
 
 func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
-	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
-			"seed_entity_type": "aws.secret_store",
-			"seed_label":       "prod-secrets",
-		}}},
-		{{Values: map[string]any{
-			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
-			"from_urn":         "urn:cerebro:writer:aws_public_principal:public_internet",
-			"from_entity_type": "aws.public_principal",
-			"from_label":       "public_internet",
-			"relation":         "can_reach",
-			"to_urn":           "urn:cerebro:writer:aws_secret_store:prod-secrets",
-			"to_entity_type":   "aws.secret_store",
-			"to_label":         "prod-secrets",
-		}}},
-	}}
+	seed := ports.CatalogEntity{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", TenantID: "writer", EntityType: "aws.secret_store", Label: "prod-secrets"}
+	public := ports.CatalogEntity{URN: "urn:cerebro:writer:aws_public_principal:public_internet", TenantID: "writer", EntityType: "aws.public_principal", Label: "public_internet"}
+	graph := &stubGraphStore{stubGraphCatalogState: stubGraphCatalogState{crownJewelResult: &ports.CrownJewelPathResult{
+		TenantID: "writer",
+		Seeds:    []ports.CatalogEntity{seed},
+		Paths:    []ports.CrownJewelPath{{Seed: seed, Nodes: []ports.CatalogEntity{seed, public}, Relations: []string{"can_reach"}}},
+	}}}
 	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -4846,8 +4861,8 @@ func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	if body.TenantID != "writer" || body.Counts.Seeds != 1 || len(body.Rankings) == 0 {
 		t.Fatalf("body = %#v", body)
 	}
-	if len(graph.cypherRequests) != 2 || graph.cypherRequests[0].Params["entity_type"] != "aws.secret_store" {
-		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	if len(graph.crownJewelRequests) != 1 || graph.crownJewelRequests[0].EntityType != "aws.secret_store" || graph.crownJewelRequests[0].Depth != 3 || graph.crownJewelRequests[0].SeedLimit != 5 {
+		t.Fatalf("typed crown jewel requests = %#v", graph.crownJewelRequests)
 	}
 }
 

@@ -2,6 +2,7 @@ package organizationalgraph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -49,6 +50,8 @@ type graphServiceStub struct {
 	impactDependents    func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error)
 	personAccess        func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
 	cloudAttackPaths    func(context.Context, *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error)
+	crownJewelPaths     func(context.Context, *connect.Request[cerebrographv1.ListCrownJewelPathsRequest]) (*connect.Response[cerebrographv1.ListCrownJewelPathsResponse], error)
+	runFindingGraphRule func(context.Context, *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error)
 	vendorRegister      func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
 	vendorDiscoveries   func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
@@ -87,6 +90,14 @@ func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *co
 
 func (s graphServiceStub) ListCloudAttackPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error) {
 	return s.cloudAttackPaths(ctx, request)
+}
+
+func (s graphServiceStub) ListCrownJewelPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListCrownJewelPathsRequest]) (*connect.Response[cerebrographv1.ListCrownJewelPathsResponse], error) {
+	return s.crownJewelPaths(ctx, request)
+}
+
+func (s graphServiceStub) RunFindingGraphRule(ctx context.Context, request *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error) {
+	return s.runFindingGraphRule(ctx, request)
 }
 
 func (s graphServiceStub) ListVendorDiscoveries(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
@@ -841,6 +852,77 @@ func TestQueryStoreCloudAttackPathsUsesTypedRustRPC(t *testing.T) {
 	}
 	if result.Paths[0].PrivilegeEdge.AttributesJSON != `{"source_event_id":"event-a"}` || result.Paths[0].Principal.URN != principal.Urn {
 		t.Fatalf("path = %#v", result.Paths[0])
+	}
+}
+
+func TestQueryStoreCrownJewelPathsUsesTypedRustRPC(t *testing.T) {
+	entity := func(urn, kind, label string) *cerebrographv1.GraphEntity {
+		return &cerebrographv1.GraphEntity{EntityId: urn, AgentKey: urn, EntityKind: kind, Label: label, SourceRuntimeId: "runtime-a"}
+	}
+	seed := entity("urn:cerebro:tenant-a:secret:prod", "aws.secret_store", "prod")
+	account := entity("urn:cerebro:tenant-a:account:prod", "cloud.account", "prod")
+	server := newGraphTestServer(t, graphServiceStub{
+		crownJewelPaths: func(_ context.Context, request *connect.Request[cerebrographv1.ListCrownJewelPathsRequest]) (*connect.Response[cerebrographv1.ListCrownJewelPathsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetAccountId() != "prod" || request.Msg.GetEntityKind() != "aws.secret_store" || request.Msg.GetLimit() != ports.MaxCypherQueryRows || request.Msg.GetSeedLimit() != 5 || request.Msg.GetMaxDepth() != 3 || request.Msg.GetExpectedGraphRevision() != 41 {
+				t.Fatalf("crown jewel authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ListCrownJewelPathsResponse{
+				TenantId: "tenant-a", GraphRevision: 41, Seeds: []*cerebrographv1.GraphEntity{seed},
+				Paths: []*cerebrographv1.CrownJewelPath{{Seed: seed, Nodes: []*cerebrographv1.GraphEntity{seed, account}, Relations: []string{"belongs_to"}}},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.ListCrownJewelPaths(context.Background(), ports.CrownJewelPathRequest{
+		TenantID: " tenant-a ", AccountID: " prod ", EntityType: " aws.secret_store ", Limit: ports.MaxCypherQueryRows, SeedLimit: 5, Depth: 3, ExpectedRevision: 41,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.GraphRevision != 41 || len(result.Seeds) != 1 || len(result.Paths) != 1 || result.Paths[0].Nodes[1].URN != account.AgentKey {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestQueryStoreFindingGraphRuleUsesClosedRustRPC(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		runFindingGraphRule: func(_ context.Context, request *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetRuntimeId() != "runtime-a" || request.Msg.GetRuleId() != "rule-a" || request.Msg.GetRowLimit() != 2 {
+				t.Fatalf("finding graph rule authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			params := map[string]any{}
+			if err := json.Unmarshal(request.Msg.GetParametersJson(), &params); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := params["tenant_id"]; ok {
+				t.Fatal("tenant_id crossed the closed rule parameter boundary")
+			}
+			if params["threshold"] != float64(7) {
+				t.Fatalf("parameters = %#v", params)
+			}
+			return connect.NewResponse(&cerebrographv1.RunFindingGraphRuleResponse{
+				TenantId: "tenant-a", RuleId: "rule-a", RowsJson: [][]byte{[]byte(`{"primary_urn":"urn:one","count":7}`)},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.RunFindingGraphRule(context.Background(), ports.FindingGraphRuleRequest{
+		TenantID: " tenant-a ", RuntimeID: " runtime-a ", RuleID: " rule-a ", RowLimit: 2,
+		Params: map[string]any{"tenant_id": "spoofed", "row_limit": 999, "threshold": 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0].Values["primary_urn"] != "urn:one" || result.Truncated {
+		t.Fatalf("result = %#v", result)
 	}
 }
 

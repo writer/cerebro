@@ -26,13 +26,13 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newClaimFeatureDeps(deps); got.Runtimes != nil || got.Claims != nil || got.ProjectionState != nil || got.ProjectionGraph != nil {
 		t.Fatalf("newClaimFeatureDeps() = %#v, want nil stores", got)
 	}
-	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil || got.GraphRawCypher != nil || got.AppendLog != nil {
+	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil || got.FindingGraphRules != nil || got.AppendLog != nil {
 		t.Fatalf("newFindingFeatureDeps() = %#v, want nil dependencies", got)
 	}
 	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.GraphCatalog != nil || got.AppendLog != nil {
 		t.Fatalf("newKnowledgeFeatureDeps() = %#v, want nil dependencies", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphAttackPaths != nil {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphPersonAccess != nil || got.GraphEffective != nil || got.GraphAttackPaths != nil || got.GraphCrownJewels != nil {
 		t.Fatalf("newGraphQueryFeatureDeps() = %#v, want nil graph query store", got)
 	}
 	if got := newGraphIngestFeatureDeps(deps, nil); got.Sources != nil || got.Runtimes != nil || got.Projector != nil || got.GraphStore != nil || got.RuntimeConfigStore != nil {
@@ -67,7 +67,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newReportFeatureDeps(deps).GraphNeighborhoods; got != authority {
 		t.Fatalf("report graph neighborhoods = %#v, want configured authority", got)
 	}
-	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != authority {
+	if got := newFindingFeatureDeps(deps).FindingGraphRules; got != authority {
 		t.Fatalf("finding raw Cypher graph = %#v, want configured authority", got)
 	}
 	if got := newFindingFeatureDeps(deps).GraphCatalog; got != authority {
@@ -79,7 +79,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != authority {
 		t.Fatalf("workflow replay relation catalog = %#v, want configured authority", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority || got.GraphAttackPaths != attackPaths {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphCatalog != authority || got.GraphExposure != authority || got.GraphPersonAccess != authority || got.GraphEffective != authority || got.GraphAttackPaths != attackPaths || got.GraphCrownJewels != authority {
 		t.Fatalf("graph query service = %#v, want configured authority for all capabilities", got)
 	}
 	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads.Neighborhoods != authority || got.GraphReads.RawCypher != authority || got.GraphReads.EntityKindCounts != authority || got.GraphReads.RelationCounts != authority {
@@ -96,7 +96,7 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	if got := newReportFeatureDeps(deps).GraphNeighborhoods; got != nil {
 		t.Fatalf("report graph queries = %#v, want nil without configured authority", got)
 	}
-	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != nil {
+	if got := newFindingFeatureDeps(deps).FindingGraphRules; got != nil {
 		t.Fatalf("finding graph queries = %#v, want nil without configured authority", got)
 	}
 	if got := newFindingFeatureDeps(deps).GraphCatalog; got != nil {
@@ -108,7 +108,7 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != nil {
 		t.Fatalf("workflow replay relation catalog = %#v, want nil without configured authority", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphAttackPaths != nil {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphPersonAccess != nil || got.GraphEffective != nil || got.GraphAttackPaths != nil || got.GraphCrownJewels != nil {
 		t.Fatalf("graph query service = %#v, want nil without configured authority", got)
 	}
 	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads != (ports.GraphReadCapabilities{}) {

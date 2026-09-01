@@ -329,13 +329,19 @@ live read mode in the current image.
 
 ## Remaining compatibility callers
 
-The raw-Cypher compatibility port serves the callers below. None are
-expressible through `QueryFacts` today, and each migrates only after the
-listed capability lands in the Rust read API. The machine ledger
+Fixed finding graph rules now execute through `RunFindingGraphRule`: the Go
+caller supplies a closed rule ID, tenant/runtime scope, bounded row limit, and
+schema-checked parameters; Rust owns the embedded query catalog and Neo4j
+execution. Returned JSON rows retain the existing Go finding interpretation
+contract without exposing a raw-Cypher capability to `internal/findings`.
+
+The machine ledger
 [`rust-migration-ledger.json`](rust-migration-ledger.json) is the source of
-truth for which packages still reference the port; `make docs-drift-check`
-fails when this table's row set differs from the ledger's `compat` entries or
-the permanent callers named below differ from its `permanent` entries.
+truth for which packages still reference the port. No migratable `compat`
+callers remain, so there is no migration table in this section.
+`make docs-drift-check` fails if a ledger `compat` caller is missing from the
+table, a table row is not `compat`, or the permanent callers named below differ
+from the ledger's `permanent` entries.
 
 One structural prerequisite applies to every caller: `QueryFacts` and
 `FindPaths` run against the organizational graph (`OrganizationalEntity` /
@@ -346,13 +352,6 @@ One structural prerequisite applies to every caller: `QueryFacts` and
 kinds and relations into the organizational schema first, and path callers
 additionally need URN-keyed (or `agent_key`) `FindPaths` endpoints because
 Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
-
-| Caller | Query shape | Required Rust capability |
-| --- | --- | --- |
-| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
-| `internal/graphquery` person access | person anchor to reachable targets | variable-length traversal with relation whitelist, label/attribute substring anchor lookup |
-| `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
-| `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
 
 Two callers are permanent residents of the compatibility port because their
 query text is authored at runtime rather than in code: the

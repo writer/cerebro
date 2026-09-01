@@ -322,6 +322,27 @@ pub struct EffectAuthorization {
     pub input_digest: String,
 }
 
+/// Versioned, content-addressed proof that an effect target came from fresh
+/// authoritative observations under the exact tool definition being approved.
+pub const EFFECT_AUTHORITY_BINDING_V1: &str = "agent-effect-authority-binding/v1";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct EffectAuthorityBinding {
+    /// Must equal [`EFFECT_AUTHORITY_BINDING_V1`].
+    pub schema_version: String,
+    /// Digest of the exact tool descriptor that governed the effect.
+    pub tool_definition_digest: String,
+    /// Canonical targets extracted from the effect input.
+    pub target_refs: Vec<String>,
+    /// Fresh evidence records whose semantic atoms prove every target.
+    pub evidence_refs: Vec<String>,
+    /// Digest of the selected authoritative evidence atoms.
+    pub evidence_digest: String,
+    /// Digest binding tool definition, input, targets, and evidence together.
+    pub binding_digest: String,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 /// Maximum authority embodied by a tool adapter.
@@ -762,6 +783,137 @@ pub struct ApprovalRequest {
     pub input_preview: String,
     /// Request-specific reason the effect is needed.
     pub purpose: String,
+    /// Machine-verifiable target and evidence binding shown alongside approval.
+    pub authority: EffectAuthorityBinding,
+}
+
+/// Compiles the exact authority proof required before an actuating tool can be
+/// approved. Every target-like input must be backed by a complete, fresh atom
+/// from a successful read observation. Model prose and display labels therefore
+/// cannot become effect selectors on their own.
+pub fn effect_authority_binding(
+    descriptor: &ToolDescriptor,
+    call: &ToolCall,
+    observations: &[ToolObservation],
+    assessment_at: &str,
+) -> Result<EffectAuthorityBinding, AgentRuntimeError> {
+    let assessment_at = OffsetDateTime::parse(assessment_at, &Rfc3339)
+        .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+    let target_refs = effect_target_refs(&call.input)
+        .into_iter()
+        .collect::<Vec<_>>();
+    if target_refs.is_empty() {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "actuation requires at least one canonical target field".into(),
+        ));
+    }
+    let targets = target_refs.iter().collect::<BTreeSet<_>>();
+    let mut covered_targets = BTreeSet::new();
+    let mut evidence_refs = BTreeSet::new();
+    let mut evidence_atoms = Vec::new();
+    for observation in observations {
+        if observation.descriptor.authority_class != ToolAuthorityClass::Observe
+            || observation.result.state != ToolResultState::Succeeded
+        {
+            continue;
+        }
+        for evidence in &observation.result.evidence {
+            if !evidence.complete {
+                continue;
+            }
+            for atom in &evidence.atoms {
+                let Some(subject_ref) = atom.subject_ref.as_ref() else {
+                    continue;
+                };
+                if !targets.contains(subject_ref)
+                    || !atom.complete
+                    || !matches!(
+                        OffsetDateTime::parse(&atom.observed_at, &Rfc3339),
+                        Ok(observed_at) if observed_at <= assessment_at
+                    )
+                    || atom
+                        .fresh_until
+                        .as_deref()
+                        .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+                        .is_none_or(|fresh_until| fresh_until < assessment_at)
+                {
+                    continue;
+                }
+                covered_targets.insert(subject_ref.clone());
+                evidence_refs.insert(evidence.evidence_ref.clone());
+                evidence_atoms.push(serde_json::to_value(atom).map_err(|error| {
+                    AgentRuntimeError::InvalidToolCall(format!(
+                        "effect evidence could not be serialized: {error}"
+                    ))
+                })?);
+            }
+        }
+    }
+    if covered_targets.len() != targets.len() {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "every effect target requires a complete fresh authoritative observation".into(),
+        ));
+    }
+    evidence_atoms.sort_by_key(|atom| atom.to_string());
+    let evidence_refs = evidence_refs.into_iter().collect::<Vec<_>>();
+    let descriptor_value = serde_json::to_value(descriptor).map_err(|error| {
+        AgentRuntimeError::InvalidToolCall(format!(
+            "effect tool definition could not be serialized: {error}"
+        ))
+    })?;
+    let tool_definition_digest = digest_json(&descriptor_value);
+    let evidence_digest = digest_json(&Value::Array(evidence_atoms));
+    let binding_digest = digest_json(&serde_json::json!({
+        "schema_version": EFFECT_AUTHORITY_BINDING_V1,
+        "tool_definition_digest": tool_definition_digest,
+        "tool_id": call.tool_id,
+        "input_digest": call.input_digest(),
+        "target_refs": target_refs,
+        "evidence_refs": evidence_refs,
+        "evidence_digest": evidence_digest,
+    }));
+    Ok(EffectAuthorityBinding {
+        schema_version: EFFECT_AUTHORITY_BINDING_V1.into(),
+        tool_definition_digest,
+        target_refs,
+        evidence_refs,
+        evidence_digest,
+        binding_digest,
+    })
+}
+
+/// Returns canonical target-like identifiers from a typed tool input.
+#[must_use]
+pub fn effect_target_refs(input: &Value) -> BTreeSet<String> {
+    fn collect(value: &Value, key: Option<&str>, refs: &mut BTreeSet<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, value) in map {
+                    collect(value, Some(key), refs);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    collect(item, key, refs);
+                }
+            }
+            Value::String(value)
+                if key.is_some_and(|key| {
+                    let key = key.to_ascii_lowercase();
+                    key.ends_with("_ref")
+                        || key.ends_with("_id")
+                        || key == "target"
+                        || key == "subject"
+                }) && !value.trim().is_empty() =>
+            {
+                refs.insert(value.clone());
+            }
+            _ => {}
+        }
+    }
+    let mut refs = BTreeSet::new();
+    collect(input, None, &mut refs);
+    refs
 }
 
 fn approval_input_preview(input: &Value) -> String {
@@ -1016,11 +1168,11 @@ impl Error for AgentRuntimeError {}
 
 /// Executes one validated request through routing, bounded tools, critique, and presentation.
 ///
-/// State-changing tools require an [`EffectAuthorization`] bound to the exact
-/// call input. A successful effect cannot support a completed claim until a
-/// later read observation verifies the resulting state. The returned content
-/// remains [`AgentTurnOutcome::PendingDelivery`] until the host separately
-/// supplies and validates an [`AgentDeliveryReceipt`].
+/// This stateless entry point can prepare an evidence-bound approval request but
+/// never dispatches a state-changing tool. Hosts that execute effects must use
+/// the recorded session API so approval consumption is durable before provider
+/// dispatch. Returned content remains [`AgentTurnOutcome::PendingDelivery`]
+/// until the host separately supplies and validates an [`AgentDeliveryReceipt`].
 ///
 /// # Errors
 ///
@@ -1079,7 +1231,6 @@ pub async fn run_turn(
     let mut observations = Vec::new();
     let mut call_ids = BTreeSet::new();
     let mut call_fingerprints = BTreeSet::new();
-    let mut consumed_effect_authorizations = BTreeSet::new();
     let mut selected_tools = BTreeSet::new();
     let mut revision_feedback = Vec::new();
     let mut operating_repairs = 0;
@@ -1190,30 +1341,33 @@ pub async fn run_turn(
                         ));
                     }
                     let input_digest = call.input_digest();
-                    let Some(approval_ref) = effect_authorization(&request, &call)
-                        .map(|authorization| authorization.approval_ref.clone())
-                    else {
+                    let authority = effect_authority_binding(
+                        &descriptor,
+                        &call,
+                        &observations,
+                        &request.assessment_at,
+                    )?;
+                    if effect_authorization(&request, &call, &authority).is_none() {
                         return Ok(AgentTurnOutcome::ApprovalRequired {
                             schema_version: AGENT_TURN_RESULT_V1,
                             lane,
                             request: ApprovalRequest {
                                 approval_ref: format!(
                                     "approval://agent-effect/{}",
-                                    input_digest.trim_start_matches("sha256:")
+                                    authority.binding_digest.trim_start_matches("sha256:")
                                 ),
                                 tool_id: call.tool_id.clone(),
                                 input_digest,
                                 input_preview: approval_input_preview(&call.input),
                                 purpose: call.purpose.clone(),
+                                authority,
                             },
                             tool_call_count: observations.len(),
                         });
-                    };
-                    if !consumed_effect_authorizations.insert(approval_ref) {
-                        return Err(AgentRuntimeError::InvalidToolCall(
-                            "effect authorization was already consumed".into(),
-                        ));
                     }
+                    return Err(AgentRuntimeError::InvalidToolCall(
+                        "effect execution requires a durable recorded session".into(),
+                    ));
                 }
                 let result = tools.invoke(&request, &call).await?;
                 if descriptor.authority_class == ToolAuthorityClass::Actuate {
@@ -3884,16 +4038,21 @@ fn finalize_unknown_effect(
 fn effect_authorization<'a>(
     request: &'a AgentTurnRequest,
     call: &ToolCall,
+    authority: &EffectAuthorityBinding,
 ) -> Option<&'a EffectAuthorization> {
     let input_digest = call.input_digest();
+    let expected_approval_ref = format!(
+        "approval://agent-effect/{}",
+        authority.binding_digest.trim_start_matches("sha256:")
+    );
     request.effect_authorizations.iter().find(|authorization| {
-        authorization.tenant_id == request.tenant_id
+        authorization.approval_ref == expected_approval_ref
+            && authorization.tenant_id == request.tenant_id
             && authorization.request_id == request.request_id
             && authorization.thread_ref == request.thread_ref
             && authorization.actor_ref == request.actor_ref
             && authorization.tool_id == call.tool_id
             && authorization.input_digest == input_digest
-            && bounded_text(&authorization.approval_ref)
     })
 }
 
@@ -4781,6 +4940,118 @@ mod grounding_tests {
         assert!(!preview.contains("third-secret"));
         assert!(preview.contains("target-one"));
         assert_eq!(preview.matches("<redacted>").count(), 3);
+    }
+
+    #[test]
+    fn effect_authority_uses_dispatch_time_for_fresh_target_evidence() {
+        let effect_descriptor = ToolDescriptor {
+            tool_id: "connector.update".into(),
+            title: "Update connector".into(),
+            summary: "Update one connector.".into(),
+            authority_class: ToolAuthorityClass::Actuate,
+            effect_class: ToolEffectClass::Write,
+            input_schema_ref: "schema://connector-update/input/v1".into(),
+            result_schema_ref: "schema://connector-update/result/v1".into(),
+        };
+        let call = ToolCall {
+            call_id: "call:update-alpha".into(),
+            tool_id: effect_descriptor.tool_id.clone(),
+            purpose: "Disable connector alpha.".into(),
+            input: json!({"connector_ref": "connector:alpha", "enabled": false}),
+        };
+        assert!(
+            effect_authority_binding(&effect_descriptor, &call, &[], "2026-07-31T00:01:00Z")
+                .is_err()
+        );
+
+        let observation = ToolObservation {
+            sequence: 1,
+            recorded_at: Some("2026-07-31T00:02:00Z".into()),
+            call: ToolCall {
+                call_id: "call:read-alpha".into(),
+                tool_id: "connector.read".into(),
+                purpose: "Resolve connector alpha.".into(),
+                input: json!({"connector_ref": "connector:alpha"}),
+            },
+            descriptor: ToolDescriptor {
+                tool_id: "connector.read".into(),
+                title: "Read connector".into(),
+                summary: "Read one connector.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://connector-read/input/v1".into(),
+                result_schema_ref: "schema://connector-read/result/v1".into(),
+            },
+            result: ToolResult {
+                state: ToolResultState::Succeeded,
+                summary: "Connector alpha is enabled.".into(),
+                data: json!({"connector_ref": "connector:alpha", "enabled": true}),
+                evidence: vec![EvidenceRecord {
+                    evidence_ref: "evidence://connector/alpha/current".into(),
+                    statement: "Connector alpha current state was read.".into(),
+                    observed_at: "2026-07-31T00:02:00Z".into(),
+                    fresh_until: Some("2026-07-31T00:05:00Z".into()),
+                    complete: true,
+                    atoms: vec![session::EvidenceAtom {
+                        atom_ref: "evidence://connector/alpha/current#enabled".into(),
+                        subject_ref: Some("connector:alpha".into()),
+                        assertion: session::EvidenceAssertion::Value {
+                            predicate: "/enabled".into(),
+                            value: json!(true),
+                        },
+                        observed_at: "2026-07-31T00:02:00Z".into(),
+                        fresh_until: Some("2026-07-31T00:05:00Z".into()),
+                        complete: true,
+                    }],
+                }],
+                blocker: None,
+            },
+        };
+        assert!(
+            effect_authority_binding(
+                &effect_descriptor,
+                &call,
+                std::slice::from_ref(&observation),
+                "2026-07-31T00:01:00Z",
+            )
+            .is_err(),
+            "an observation after turn entry is not yet authoritative at turn-entry time"
+        );
+        let binding = effect_authority_binding(
+            &effect_descriptor,
+            &call,
+            std::slice::from_ref(&observation),
+            "2026-07-31T00:03:00Z",
+        )
+        .unwrap();
+        assert_eq!(binding.target_refs, vec!["connector:alpha"]);
+        assert_eq!(
+            binding.evidence_refs,
+            vec!["evidence://connector/alpha/current"]
+        );
+
+        let mut changed_policy = effect_descriptor.clone();
+        changed_policy.summary = "Update one connector under revised policy.".into();
+        let changed = effect_authority_binding(
+            &changed_policy,
+            &call,
+            std::slice::from_ref(&observation),
+            "2026-07-31T00:03:00Z",
+        )
+        .unwrap();
+        assert_ne!(binding.binding_digest, changed.binding_digest);
+
+        let mut stale = observation;
+        stale.result.evidence[0].atoms[0].fresh_until = Some("2026-07-31T00:02:59Z".into());
+        assert!(
+            effect_authority_binding(
+                &effect_descriptor,
+                &call,
+                std::slice::from_ref(&stale),
+                "2026-07-31T00:03:00Z"
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -39,7 +39,7 @@ func TestExecuteAuthorizeFindingError(t *testing.T) {
 			return authErr
 		},
 	}
-	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123"})
+	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123", DryRun: true})
 	if !errors.Is(err, authErr) {
 		t.Fatalf("expected auth error, got %v", err)
 	}
@@ -47,7 +47,7 @@ func TestExecuteAuthorizeFindingError(t *testing.T) {
 
 func TestExecuteReturnsErrNotConfiguredWhenNoService(t *testing.T) {
 	e := Executor{}
-	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123"})
+	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123", DryRun: true})
 	if !errors.Is(err, graphactions.ErrNotConfigured) {
 		t.Fatalf("expected ErrNotConfigured, got %v", err)
 	}
@@ -75,24 +75,28 @@ func TestReconcileTrimsFindingID(t *testing.T) {
 	}
 }
 
-func TestReconcileAuthorizeFindingError(t *testing.T) {
-	authErr := errors.New("forbidden")
+func TestExecuteRejectsCallerAssertedApprovalBeforeProviderMutation(t *testing.T) {
+	authorized := false
 	e := Executor{
 		AuthorizeFinding: func(_ context.Context, _ string) error {
-			return authErr
+			authorized = true
+			return nil
 		},
 	}
-	_, err := e.Reconcile(context.Background(), graphactions.ReconcileInput{FindingID: "f-123"})
-	if !errors.Is(err, authErr) {
-		t.Fatalf("expected auth error, got %v", err)
+	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123", Approved: true})
+	if !errors.Is(err, graphactions.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+	if authorized {
+		t.Fatal("caller-asserted approval reached finding authorization")
 	}
 }
 
-func TestReconcileReturnsErrNotConfiguredWhenNoService(t *testing.T) {
+func TestReconcileRequiresDurableActionAuthority(t *testing.T) {
 	e := Executor{}
 	_, err := e.Reconcile(context.Background(), graphactions.ReconcileInput{FindingID: "f-123"})
-	if !errors.Is(err, graphactions.ErrNotConfigured) {
-		t.Fatalf("expected ErrNotConfigured, got %v", err)
+	if !errors.Is(err, graphactions.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
 	}
 }
 
@@ -104,7 +108,7 @@ func TestServiceNewServiceFallback(t *testing.T) {
 			return nil, nil
 		},
 	}
-	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123"})
+	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123", DryRun: true})
 	if !called {
 		t.Fatal("NewService was not called")
 	}
@@ -120,7 +124,7 @@ func TestServiceNewServiceError(t *testing.T) {
 			return nil, serviceErr
 		},
 	}
-	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123"})
+	_, err := e.Execute(context.Background(), graphactions.Input{FindingID: "f-123", DryRun: true})
 	if !errors.Is(err, serviceErr) {
 		t.Fatalf("expected service error, got %v", err)
 	}

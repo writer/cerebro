@@ -80,6 +80,29 @@ type RawCypherQueryStore interface {
 	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
 }
 
+// FindingGraphRuleRequest selects one closed Rust-owned graph rule. Params may
+// contain only the non-tenant parameters declared by that rule's catalog entry.
+type FindingGraphRuleRequest struct {
+	TenantID  string
+	RuntimeID string
+	RuleID    string
+	Params    map[string]any
+	RowLimit  int
+}
+
+// FindingGraphRuleResult contains the bounded rows returned by one rule.
+type FindingGraphRuleResult struct {
+	Rows      []CypherRow
+	Truncated bool
+}
+
+// FindingGraphRuleStore exposes closed finding rule reads without accepting
+// caller-supplied Cypher.
+type FindingGraphRuleStore interface {
+	GraphStore
+	RunFindingGraphRule(context.Context, FindingGraphRuleRequest) (*FindingGraphRuleResult, error)
+}
+
 type GraphReadCapabilities struct {
 	Neighborhoods     GraphNeighborhoodStore
 	RawCypher         RawCypherQueryStore
@@ -87,7 +110,11 @@ type GraphReadCapabilities struct {
 	Exposure          ExposureCoverageStore
 	EntityKindCounts  EntityKindCountStore
 	RelationCounts    RelationCountStore
+	PersonAccess      PersonAccessPathStore
+	EffectiveAccess   EffectiveAccessPathStore
 	CloudAttackPaths  CloudAttackPathStore
+	CrownJewelPaths   CrownJewelPathStore
+	FindingGraphRules FindingGraphRuleStore
 	VendorRegister    VendorRegisterStore
 	VendorDiscoveries VendorDiscoveryRegisterStore
 	ComplianceImpact  ComplianceImpactGraph
@@ -116,8 +143,20 @@ func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
 	if relationCounts, ok := store.(RelationCountStore); ok && !isNilGraphReadCapability(relationCounts) {
 		capabilities.RelationCounts = relationCounts
 	}
+	if personAccess, ok := store.(PersonAccessPathStore); ok && !isNilGraphReadCapability(personAccess) {
+		capabilities.PersonAccess = personAccess
+	}
+	if effectiveAccess, ok := store.(EffectiveAccessPathStore); ok && !isNilGraphReadCapability(effectiveAccess) {
+		capabilities.EffectiveAccess = effectiveAccess
+	}
 	if cloudAttackPaths, ok := store.(CloudAttackPathStore); ok && !isNilGraphReadCapability(cloudAttackPaths) {
 		capabilities.CloudAttackPaths = cloudAttackPaths
+	}
+	if crownJewelPaths, ok := store.(CrownJewelPathStore); ok && !isNilGraphReadCapability(crownJewelPaths) {
+		capabilities.CrownJewelPaths = crownJewelPaths
+	}
+	if findingGraphRules, ok := store.(FindingGraphRuleStore); ok && !isNilGraphReadCapability(findingGraphRules) {
+		capabilities.FindingGraphRules = findingGraphRules
 	}
 	if vendorRegister, ok := store.(VendorRegisterStore); ok && !isNilGraphReadCapability(vendorRegister) {
 		capabilities.VendorRegister = vendorRegister

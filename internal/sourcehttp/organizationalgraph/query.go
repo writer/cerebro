@@ -4,7 +4,9 @@
 package organizationalgraph
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -993,6 +995,176 @@ func (s *QueryStore) ListCloudAttackPaths(ctx context.Context, request ports.Clo
 		return nil, errors.New("rust cloud attack paths returned an invalid truncation")
 	}
 	return result, nil
+}
+
+func (s *QueryStore) ListCrownJewelPaths(ctx context.Context, request ports.CrownJewelPathRequest) (*ports.CrownJewelPathResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("crown jewel path tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > ports.MaxCypherQueryRows {
+		return nil, fmt.Errorf("crown jewel path limit must be between 1 and %d", ports.MaxCypherQueryRows)
+	}
+	if request.SeedLimit < 1 || request.SeedLimit > 100 {
+		return nil, errors.New("crown jewel path seed limit must be between 1 and 100")
+	}
+	if request.Depth < 1 || request.Depth > 3 {
+		return nil, errors.New("crown jewel path depth must be between 1 and 3")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListCrownJewelPathsRequest{
+		TenantId:              tenantID,
+		AccountId:             strings.TrimSpace(request.AccountID),
+		EntityKind:            strings.TrimSpace(request.EntityType),
+		Limit:                 uint32(request.Limit),     // #nosec G115 -- validated above to 1..3000.
+		SeedLimit:             uint32(request.SeedLimit), // #nosec G115 -- validated above to 1..100.
+		MaxDepth:              uint32(request.Depth),     // #nosec G115 -- validated above to 1..3.
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListCrownJewelPaths(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list crown jewel paths", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetSeeds()) > request.SeedLimit || len(response.Msg.GetPaths()) > request.Limit {
+		return nil, errors.New("rust crown jewel paths returned an invalid tenant or bound")
+	}
+	result := &ports.CrownJewelPathResult{
+		TenantID:      tenantID,
+		GraphRevision: response.Msg.GetGraphRevision(),
+		Truncated:     response.Msg.GetTruncated(),
+	}
+	entities := make(map[string]ports.CatalogEntity, len(response.Msg.GetSeeds()))
+	seedURNs := make(map[string]struct{}, len(response.Msg.GetSeeds()))
+	for _, seed := range response.Msg.GetSeeds() {
+		converted, convertErr := catalogEntity(tenantID, seed)
+		if convertErr != nil {
+			return nil, fmt.Errorf("rust crown jewel paths returned an invalid seed: %w", convertErr)
+		}
+		if registerErr := registerCrownJewelEntity(entities, converted); registerErr != nil {
+			return nil, registerErr
+		}
+		seedURNs[converted.URN] = struct{}{}
+		result.Seeds = append(result.Seeds, converted)
+	}
+	for _, path := range response.Msg.GetPaths() {
+		converted, convertErr := crownJewelPathFromProto(tenantID, request.Depth, path)
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		if _, ok := seedURNs[converted.Seed.URN]; !ok {
+			return nil, errors.New("rust crown jewel path returned an unknown seed")
+		}
+		if registerErr := registerCrownJewelEntity(entities, converted.Seed); registerErr != nil {
+			return nil, registerErr
+		}
+		for _, node := range converted.Nodes {
+			if registerErr := registerCrownJewelEntity(entities, node); registerErr != nil {
+				return nil, registerErr
+			}
+		}
+		result.Paths = append(result.Paths, converted)
+	}
+	if result.Truncated && len(result.Paths) != request.Limit {
+		return nil, errors.New("rust crown jewel paths returned an invalid truncation")
+	}
+	return result, nil
+}
+
+// RunFindingGraphRule executes one server-registered rule without accepting
+// Cypher from the Go caller.
+func (s *QueryStore) RunFindingGraphRule(ctx context.Context, request ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	ruleID := strings.TrimSpace(request.RuleID)
+	if tenantID == "" || ruleID == "" {
+		return nil, errors.New("finding graph rule tenant_id and rule_id are required")
+	}
+	if request.RowLimit < 1 || request.RowLimit > ports.MaxCypherQueryRows {
+		return nil, fmt.Errorf("finding graph rule row limit must be between 1 and %d", ports.MaxCypherQueryRows)
+	}
+	params := maps.Clone(request.Params)
+	if params == nil {
+		params = map[string]any{}
+	}
+	delete(params, "tenant_id")
+	delete(params, "row_limit")
+	parametersJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("encode finding graph rule parameters: %w", err)
+	}
+	message := connect.NewRequest(&cerebrographv1.RunFindingGraphRuleRequest{
+		TenantId:       tenantID,
+		RuntimeId:      strings.TrimSpace(request.RuntimeID),
+		RuleId:         ruleID,
+		RowLimit:       uint32(request.RowLimit), // #nosec G115 -- validated above to 1..3000.
+		ParametersJson: parametersJSON,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.RunFindingGraphRule(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("run finding graph rule", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || response.Msg.GetRuleId() != ruleID || len(response.Msg.GetRowsJson()) > request.RowLimit {
+		return nil, errors.New("rust finding graph rule returned an invalid tenant, rule, or bound")
+	}
+	result := &ports.FindingGraphRuleResult{Truncated: response.Msg.GetTruncated()}
+	for _, encoded := range response.Msg.GetRowsJson() {
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.UseNumber()
+		values := map[string]any{}
+		if err := decoder.Decode(&values); err != nil {
+			return nil, fmt.Errorf("decode finding graph rule row: %w", err)
+		}
+		result.Rows = append(result.Rows, ports.CypherRow{Values: values})
+	}
+	if result.Truncated && len(result.Rows) != request.RowLimit {
+		return nil, errors.New("rust finding graph rule returned an invalid truncation")
+	}
+	return result, nil
+}
+
+func registerCrownJewelEntity(entities map[string]ports.CatalogEntity, entity ports.CatalogEntity) error {
+	existing, ok := entities[entity.URN]
+	if !ok {
+		entities[entity.URN] = entity
+		return nil
+	}
+	if existing.TenantID != entity.TenantID || existing.EntityType != entity.EntityType || existing.Label != entity.Label || existing.SourceID != entity.SourceID || existing.RuntimeID != entity.RuntimeID || !maps.Equal(existing.Attributes, entity.Attributes) {
+		return errors.New("rust crown jewel paths returned conflicting duplicate entity identities")
+	}
+	return nil
+}
+
+func crownJewelPathFromProto(tenantID string, depth int, path *cerebrographv1.CrownJewelPath) (ports.CrownJewelPath, error) {
+	if path == nil || len(path.GetNodes()) < 2 || len(path.GetNodes()) > depth+1 || len(path.GetRelations()) != len(path.GetNodes())-1 {
+		return ports.CrownJewelPath{}, errors.New("rust crown jewel paths returned an invalid path shape")
+	}
+	seed, err := catalogEntity(tenantID, path.GetSeed())
+	if err != nil {
+		return ports.CrownJewelPath{}, fmt.Errorf("rust crown jewel paths returned an invalid path seed: %w", err)
+	}
+	converted := ports.CrownJewelPath{Seed: seed}
+	for _, node := range path.GetNodes() {
+		entity, convertErr := catalogEntity(tenantID, node)
+		if convertErr != nil {
+			return ports.CrownJewelPath{}, fmt.Errorf("rust crown jewel paths returned an invalid path node: %w", convertErr)
+		}
+		converted.Nodes = append(converted.Nodes, entity)
+	}
+	if converted.Nodes[0].URN != converted.Seed.URN {
+		return ports.CrownJewelPath{}, errors.New("rust crown jewel path does not begin at its seed")
+	}
+	for _, relation := range path.GetRelations() {
+		relation = strings.TrimSpace(relation)
+		if relation == "" {
+			return ports.CrownJewelPath{}, errors.New("rust crown jewel path returned a blank relation")
+		}
+		converted.Relations = append(converted.Relations, relation)
+	}
+	return converted, nil
 }
 
 func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {

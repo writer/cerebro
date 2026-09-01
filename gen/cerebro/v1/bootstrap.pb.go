@@ -3638,7 +3638,10 @@ type ExecuteGraphActionRequest struct {
 	Parameters map[string]string `protobuf:"bytes,7,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// When true, validate and return the provider plan without mutating provider or finding state.
 	DryRun bool `protobuf:"varint,8,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
-	// Required for mutating execution. Dry runs do not require approval.
+	// Deprecated. Caller assertions do not authorize mutation; use the durable
+	// Action proposal, approval, claim, and execution API.
+	//
+	// Deprecated: Marked as deprecated in cerebro/v1/bootstrap.proto.
 	Approved      bool `protobuf:"varint,9,opt,name=approved,proto3" json:"approved,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3730,6 +3733,7 @@ func (x *ExecuteGraphActionRequest) GetDryRun() bool {
 	return false
 }
 
+// Deprecated: Marked as deprecated in cerebro/v1/bootstrap.proto.
 func (x *ExecuteGraphActionRequest) GetApproved() bool {
 	if x != nil {
 		return x.Approved
@@ -7539,7 +7543,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\vobserved_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\"O\n" +
 	"\x1eLinkFindingExternalRefResponse\x12-\n" +
-	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"\x95\x03\n" +
+	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"\x99\x03\n" +
 	"\x19ExecuteGraphActionRequest\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x1d\n" +
 	"\n" +
@@ -7552,8 +7556,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"parameters\x18\a \x03(\v25.cerebro.v1.ExecuteGraphActionRequest.ParametersEntryR\n" +
 	"parameters\x12\x17\n" +
-	"\adry_run\x18\b \x01(\bR\x06dryRun\x12\x1a\n" +
-	"\bapproved\x18\t \x01(\bR\bapproved\x1a=\n" +
+	"\adry_run\x18\b \x01(\bR\x06dryRun\x12\x1e\n" +
+	"\bapproved\x18\t \x01(\bB\x02\x18\x01R\bapproved\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +

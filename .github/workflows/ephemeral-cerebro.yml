@@ -1,4 +1,8 @@
 name: Ephemeral Cerebro
+# The run name carries the exercised commit and image source so dispatchers
+# can find this run by title. A workflow_dispatch run's headSha is the head
+# of the dispatch ref, not the candidate input, so headSha cannot be used.
+run-name: Ephemeral Cerebro ${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }} (${{ inputs.image_source || 'source' }})
 
 on:
   pull_request:

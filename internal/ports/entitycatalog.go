@@ -246,6 +246,34 @@ type CloudAttackPathStore interface {
 	ListCloudAttackPaths(context.Context, CloudAttackPathRequest) (*CloudAttackPathResult, error)
 }
 
+type CrownJewelPath struct {
+	Seed      CatalogEntity
+	Nodes     []CatalogEntity
+	Relations []string
+}
+
+type CrownJewelPathRequest struct {
+	TenantID         string
+	AccountID        string
+	EntityType       string
+	Limit            int
+	SeedLimit        int
+	Depth            int
+	ExpectedRevision uint64
+}
+
+type CrownJewelPathResult struct {
+	TenantID      string
+	GraphRevision uint64
+	Seeds         []CatalogEntity
+	Paths         []CrownJewelPath
+	Truncated     bool
+}
+
+type CrownJewelPathStore interface {
+	ListCrownJewelPaths(context.Context, CrownJewelPathRequest) (*CrownJewelPathResult, error)
+}
+
 type EntityRelationDirection string
 
 const (

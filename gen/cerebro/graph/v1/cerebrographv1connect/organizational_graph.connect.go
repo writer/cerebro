@@ -76,6 +76,12 @@ const (
 	// OrganizationalGraphServiceListCloudAttackPathsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListCloudAttackPaths RPC.
 	OrganizationalGraphServiceListCloudAttackPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths"
+	// OrganizationalGraphServiceListCrownJewelPathsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ListCrownJewelPaths RPC.
+	OrganizationalGraphServiceListCrownJewelPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListCrownJewelPaths"
+	// OrganizationalGraphServiceRunFindingGraphRuleProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's RunFindingGraphRule RPC.
+	OrganizationalGraphServiceRunFindingGraphRuleProcedure = "/cerebro.graph.v1.OrganizationalGraphService/RunFindingGraphRule"
 	// OrganizationalGraphServiceListEntityRelationsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListEntityRelations RPC.
 	OrganizationalGraphServiceListEntityRelationsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations"
@@ -128,6 +134,10 @@ type OrganizationalGraphServiceClient interface {
 	ListEffectiveAccessPaths(context.Context, *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error)
 	// ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
+	// ListCrownJewelPaths returns bounded paths rooted at explicitly classified crown jewels.
+	ListCrownJewelPaths(context.Context, *connect.Request[v1.ListCrownJewelPathsRequest]) (*connect.Response[v1.ListCrownJewelPathsResponse], error)
+	// RunFindingGraphRule executes one closed, Rust-owned finding rule query.
+	RunFindingGraphRule(context.Context, *connect.Request[v1.RunFindingGraphRuleRequest]) (*connect.Response[v1.RunFindingGraphRuleResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
@@ -238,6 +248,18 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListCloudAttackPaths")),
 			connect.WithClientOptions(opts...),
 		),
+		listCrownJewelPaths: connect.NewClient[v1.ListCrownJewelPathsRequest, v1.ListCrownJewelPathsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListCrownJewelPathsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListCrownJewelPaths")),
+			connect.WithClientOptions(opts...),
+		),
+		runFindingGraphRule: connect.NewClient[v1.RunFindingGraphRuleRequest, v1.RunFindingGraphRuleResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceRunFindingGraphRuleProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("RunFindingGraphRule")),
+			connect.WithClientOptions(opts...),
+		),
 		listEntityRelations: connect.NewClient[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceListEntityRelationsProcedure,
@@ -293,6 +315,8 @@ type organizationalGraphServiceClient struct {
 	listPersonAccessPaths          *connect.Client[v1.ListPersonAccessPathsRequest, v1.ListPersonAccessPathsResponse]
 	listEffectiveAccessPaths       *connect.Client[v1.ListEffectiveAccessPathsRequest, v1.ListEffectiveAccessPathsResponse]
 	listCloudAttackPaths           *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
+	listCrownJewelPaths            *connect.Client[v1.ListCrownJewelPathsRequest, v1.ListCrownJewelPathsResponse]
+	runFindingGraphRule            *connect.Client[v1.RunFindingGraphRuleRequest, v1.RunFindingGraphRuleResponse]
 	listEntityRelations            *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
 	getComplianceImpactFact        *connect.Client[v1.GetComplianceImpactFactRequest, v1.GetComplianceImpactFactResponse]
 	listComplianceImpactDependents *connect.Client[v1.ListComplianceImpactDependentsRequest, v1.ListComplianceImpactDependentsResponse]
@@ -373,6 +397,16 @@ func (c *organizationalGraphServiceClient) ListCloudAttackPaths(ctx context.Cont
 	return c.listCloudAttackPaths.CallUnary(ctx, req)
 }
 
+// ListCrownJewelPaths calls cerebro.graph.v1.OrganizationalGraphService.ListCrownJewelPaths.
+func (c *organizationalGraphServiceClient) ListCrownJewelPaths(ctx context.Context, req *connect.Request[v1.ListCrownJewelPathsRequest]) (*connect.Response[v1.ListCrownJewelPathsResponse], error) {
+	return c.listCrownJewelPaths.CallUnary(ctx, req)
+}
+
+// RunFindingGraphRule calls cerebro.graph.v1.OrganizationalGraphService.RunFindingGraphRule.
+func (c *organizationalGraphServiceClient) RunFindingGraphRule(ctx context.Context, req *connect.Request[v1.RunFindingGraphRuleRequest]) (*connect.Response[v1.RunFindingGraphRuleResponse], error) {
+	return c.runFindingGraphRule.CallUnary(ctx, req)
+}
+
 // ListEntityRelations calls cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations.
 func (c *organizationalGraphServiceClient) ListEntityRelations(ctx context.Context, req *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {
 	return c.listEntityRelations.CallUnary(ctx, req)
@@ -437,6 +471,10 @@ type OrganizationalGraphServiceHandler interface {
 	ListEffectiveAccessPaths(context.Context, *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error)
 	// ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
+	// ListCrownJewelPaths returns bounded paths rooted at explicitly classified crown jewels.
+	ListCrownJewelPaths(context.Context, *connect.Request[v1.ListCrownJewelPathsRequest]) (*connect.Response[v1.ListCrownJewelPathsResponse], error)
+	// RunFindingGraphRule executes one closed, Rust-owned finding rule query.
+	RunFindingGraphRule(context.Context, *connect.Request[v1.RunFindingGraphRuleRequest]) (*connect.Response[v1.RunFindingGraphRuleResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
@@ -542,6 +580,18 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListCloudAttackPaths")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceListCrownJewelPathsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListCrownJewelPathsProcedure,
+		svc.ListCrownJewelPaths,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListCrownJewelPaths")),
+		connect.WithHandlerOptions(opts...),
+	)
+	organizationalGraphServiceRunFindingGraphRuleHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceRunFindingGraphRuleProcedure,
+		svc.RunFindingGraphRule,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("RunFindingGraphRule")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceListEntityRelationsHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceListEntityRelationsProcedure,
 		svc.ListEntityRelations,
@@ -608,6 +658,10 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceListEffectiveAccessPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListCloudAttackPathsProcedure:
 			organizationalGraphServiceListCloudAttackPathsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListCrownJewelPathsProcedure:
+			organizationalGraphServiceListCrownJewelPathsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceRunFindingGraphRuleProcedure:
+			organizationalGraphServiceRunFindingGraphRuleHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListEntityRelationsProcedure:
 			organizationalGraphServiceListEntityRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetComplianceImpactFactProcedure:
@@ -683,6 +737,14 @@ func (UnimplementedOrganizationalGraphServiceHandler) ListEffectiveAccessPaths(c
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListCrownJewelPaths(context.Context, *connect.Request[v1.ListCrownJewelPathsRequest]) (*connect.Response[v1.ListCrownJewelPathsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListCrownJewelPaths is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) RunFindingGraphRule(context.Context, *connect.Request[v1.RunFindingGraphRuleRequest]) (*connect.Response[v1.RunFindingGraphRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.RunFindingGraphRule is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {

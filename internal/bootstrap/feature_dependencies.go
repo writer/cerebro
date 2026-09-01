@@ -105,34 +105,34 @@ func newClaimFeatureService(deps claimFeatureDeps) *claims.Service {
 }
 
 type findingFeatureDeps struct {
-	Runtimes        ports.SourceRuntimeStore
-	EventReplayer   ports.EventReplayer
-	Findings        ports.FindingStore
-	EvaluationRuns  ports.FindingEvaluationRunStore
-	Evidence        ports.FindingEvidenceStore
-	Claims          ports.ClaimStore
-	Candidates      ports.FindingCandidateStore
-	ProjectionGraph ports.ProjectionGraphStore
-	GraphCatalog    ports.EntityCatalogStore
-	GraphRawCypher  ports.RawCypherQueryStore
-	AppendLog       ports.AppendLog
-	Rules           *findings.Registry
+	Runtimes          ports.SourceRuntimeStore
+	EventReplayer     ports.EventReplayer
+	Findings          ports.FindingStore
+	EvaluationRuns    ports.FindingEvaluationRunStore
+	Evidence          ports.FindingEvidenceStore
+	Claims            ports.ClaimStore
+	Candidates        ports.FindingCandidateStore
+	ProjectionGraph   ports.ProjectionGraphStore
+	GraphCatalog      ports.EntityCatalogStore
+	FindingGraphRules ports.FindingGraphRuleStore
+	AppendLog         ports.AppendLog
+	Rules             *findings.Registry
 }
 
 func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
 	return findingFeatureDeps{
-		Runtimes:        sourceRuntimeStore(deps.StateStore),
-		EventReplayer:   eventReplayer(deps.AppendLog),
-		Findings:        findingStore(deps.StateStore),
-		EvaluationRuns:  findingEvaluationRunStore(deps.StateStore),
-		Evidence:        findingEvidenceStore(deps.StateStore),
-		Claims:          claimStore(deps.StateStore),
-		Candidates:      findingCandidateStore(deps.StateStore),
-		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
-		GraphCatalog:    deps.GraphReads.Catalog,
-		GraphRawCypher:  deps.GraphReads.RawCypher,
-		AppendLog:       deps.AppendLog,
-		Rules:           deps.FindingRules,
+		Runtimes:          sourceRuntimeStore(deps.StateStore),
+		EventReplayer:     eventReplayer(deps.AppendLog),
+		Findings:          findingStore(deps.StateStore),
+		EvaluationRuns:    findingEvaluationRunStore(deps.StateStore),
+		Evidence:          findingEvidenceStore(deps.StateStore),
+		Claims:            claimStore(deps.StateStore),
+		Candidates:        findingCandidateStore(deps.StateStore),
+		ProjectionGraph:   sourceProjectionGraphStore(deps.GraphStore),
+		GraphCatalog:      deps.GraphReads.Catalog,
+		FindingGraphRules: deps.GraphReads.FindingGraphRules,
+		AppendLog:         deps.AppendLog,
+		Rules:             deps.FindingRules,
 	}
 }
 
@@ -148,7 +148,7 @@ func newFindingWorkflowFeatureService(deps findingFeatureDeps) *findings.Service
 	return newFindingCandidateFeatureService(deps).
 		WithGraphStore(deps.ProjectionGraph).
 		WithEntityCatalogStore(deps.GraphCatalog).
-		WithRawCypherQueryStore(deps.GraphRawCypher).WithTrustedSourceResolution().
+		WithFindingGraphRuleStore(deps.FindingGraphRules).WithTrustedSourceResolution().
 		WithAppendLog(deps.AppendLog)
 }
 
@@ -184,24 +184,28 @@ func newDecisionOutcomeService(deps Dependencies) *decisionops.Service {
 
 type graphQueryFeatureDeps struct {
 	GraphNeighborhoods ports.GraphNeighborhoodStore
-	GraphRawCypher     ports.RawCypherQueryStore
 	GraphCatalog       ports.EntityCatalogStore
 	GraphExposure      ports.ExposureCoverageStore
+	GraphPersonAccess  ports.PersonAccessPathStore
+	GraphEffective     ports.EffectiveAccessPathStore
 	GraphAttackPaths   ports.CloudAttackPathStore
+	GraphCrownJewels   ports.CrownJewelPathStore
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
 	return graphQueryFeatureDeps{
 		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
-		GraphRawCypher:     deps.GraphReads.RawCypher,
 		GraphCatalog:       deps.GraphReads.Catalog,
 		GraphExposure:      deps.GraphReads.Exposure,
+		GraphPersonAccess:  deps.GraphReads.PersonAccess,
+		GraphEffective:     deps.GraphReads.EffectiveAccess,
 		GraphAttackPaths:   deps.GraphReads.CloudAttackPaths,
+		GraphCrownJewels:   deps.GraphReads.CrownJewelPaths,
 	}
 }
 
 func newGraphQueryFeatureService(deps graphQueryFeatureDeps) *graphquery.Service {
-	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphRawCypher, deps.GraphCatalog, deps.GraphExposure, deps.GraphAttackPaths)
+	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphCatalog, deps.GraphExposure, deps.GraphPersonAccess, deps.GraphEffective, deps.GraphAttackPaths, deps.GraphCrownJewels)
 }
 
 type graphIngestFeatureDeps struct {

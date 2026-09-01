@@ -12,14 +12,14 @@ import (
 )
 
 type graphTestStore struct {
-	mu                sync.Mutex
-	entities          map[string]*ports.ProjectedEntity
-	links             map[string]*ports.ProjectedLink
-	checkpoints       map[string]graphstore.IngestCheckpoint
-	runs              map[string]graphstore.IngestRun
-	cypherRows        []ports.CypherRow
-	cypherErr         error
-	lastCypherRequest ports.CypherQueryRequest
+	mu                     sync.Mutex
+	entities               map[string]*ports.ProjectedEntity
+	links                  map[string]*ports.ProjectedLink
+	checkpoints            map[string]graphstore.IngestCheckpoint
+	runs                   map[string]graphstore.IngestRun
+	cypherRows             []ports.CypherRow
+	cypherErr              error
+	lastFindingRuleRequest ports.FindingGraphRuleRequest
 }
 
 func newGraphTestStore() *graphTestStore {
@@ -307,13 +307,13 @@ func (s *graphTestStore) GetIngestRun(_ context.Context, id string) (graphstore.
 	return run, ok, nil
 }
 
-func (s *graphTestStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *graphTestStore) RunFindingGraphRule(_ context.Context, request ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cypherErr != nil {
 		return nil, s.cypherErr
 	}
-	s.lastCypherRequest = request
+	s.lastFindingRuleRequest = request
 	rows := make([]ports.CypherRow, 0, len(s.cypherRows))
 	for _, row := range s.cypherRows {
 		clone := ports.CypherRow{Values: make(map[string]any, len(row.Values))}
@@ -322,7 +322,7 @@ func (s *graphTestStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		}
 		rows = append(rows, clone)
 	}
-	return rows, nil
+	return &ports.FindingGraphRuleResult{Rows: rows}, nil
 }
 
 func (s *graphTestStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {

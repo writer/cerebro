@@ -19,10 +19,18 @@ type Executor struct {
 	BeforeLink       func(context.Context, *ports.FindingRecord, *graphactions.GraphAction, string) error
 }
 
+const durableActionAuthorityMessage = "mutating graph action execution requires the durable Action proposal, approval, claim, and execution API"
+
 func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graphactions.Result, error) {
 	input.FindingID = strings.TrimSpace(input.FindingID)
 	if input.FindingID == "" {
 		return nil, fmt.Errorf("%w: finding_id is required", graphactions.ErrInvalidRequest)
+	}
+	// The compatibility endpoint accepts dry-run planning only. Its legacy
+	// caller-supplied approved bit is not an authority record and must never
+	// unlock provider mutation.
+	if !input.DryRun {
+		return nil, fmt.Errorf("%w: %s", graphactions.ErrInvalidRequest, durableActionAuthorityMessage)
 	}
 	if e.AuthorizeFinding != nil {
 		if err := e.AuthorizeFinding(ctx, input.FindingID); err != nil {
@@ -44,27 +52,12 @@ func (e Executor) Execute(ctx context.Context, input graphactions.Input) (*graph
 }
 
 func (e Executor) Reconcile(ctx context.Context, input graphactions.ReconcileInput) (*graphactions.Result, error) {
+	_ = ctx
 	input.FindingID = strings.TrimSpace(input.FindingID)
 	if input.FindingID == "" {
 		return nil, fmt.Errorf("%w: finding_id is required", graphactions.ErrInvalidRequest)
 	}
-	if e.AuthorizeFinding != nil {
-		if err := e.AuthorizeFinding(ctx, input.FindingID); err != nil {
-			return nil, err
-		}
-	}
-	service, err := e.service()
-	if err != nil {
-		return nil, err
-	}
-	result, err := service.Reconcile(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	if result.Finding != nil && e.BumpFinding != nil {
-		e.BumpFinding(ctx, result.Finding)
-	}
-	return result, nil
+	return nil, fmt.Errorf("%w: %s", graphactions.ErrInvalidRequest, durableActionAuthorityMessage)
 }
 
 func (e Executor) service() (*graphactions.Service, error) {
