@@ -350,7 +350,6 @@ Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
 | `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
 | `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
 | `internal/complianceimpact` | single-key fact lookup, dependency list/count, paged dependents | organizational kinds/relations for compliance facts, edge properties in results, keyset cursors, count aggregate |
-| `internal/policycandidate` grounding | closed key re-resolution of declared evidence | organizational schema mapping, edge properties in results |
 | `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
 | `internal/grcpolicylifecycle` | per-type entity scan plus relation scan | attribute substring predicates, per-type subqueries |
 | `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |

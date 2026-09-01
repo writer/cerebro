@@ -3615,6 +3615,7 @@ type ListEntityRelationsRequest struct {
 	ExpectedGraphRevision uint64                    `protobuf:"varint,8,opt,name=expected_graph_revision,json=expectedGraphRevision,proto3" json:"expected_graph_revision,omitempty"`
 	AfterRelation         string                    `protobuf:"bytes,9,opt,name=after_relation,json=afterRelation,proto3" json:"after_relation,omitempty"`
 	AfterDirection        EntityRelationDirection   `protobuf:"varint,10,opt,name=after_direction,json=afterDirection,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"after_direction,omitempty"`
+	NeighborAgentKeys     []string                  `protobuf:"bytes,11,rep,name=neighbor_agent_keys,json=neighborAgentKeys,proto3" json:"neighbor_agent_keys,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -3719,13 +3720,22 @@ func (x *ListEntityRelationsRequest) GetAfterDirection() EntityRelationDirection
 	return EntityRelationDirection_ENTITY_RELATION_DIRECTION_UNSPECIFIED
 }
 
+func (x *ListEntityRelationsRequest) GetNeighborAgentKeys() []string {
+	if x != nil {
+		return x.NeighborAgentKeys
+	}
+	return nil
+}
+
 type EntityRelation struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Direction     EntityRelationDirection `protobuf:"varint,1,opt,name=direction,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"direction,omitempty"`
-	Relation      string                  `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	Entity        *GraphEntity            `protobuf:"bytes,3,opt,name=entity,proto3" json:"entity,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	Direction      EntityRelationDirection `protobuf:"varint,1,opt,name=direction,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"direction,omitempty"`
+	Relation       string                  `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
+	Entity         *GraphEntity            `protobuf:"bytes,3,opt,name=entity,proto3" json:"entity,omitempty"`
+	SourceId       string                  `protobuf:"bytes,4,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	AttributesJson string                  `protobuf:"bytes,5,opt,name=attributes_json,json=attributesJson,proto3" json:"attributes_json,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EntityRelation) Reset() {
@@ -3777,6 +3787,20 @@ func (x *EntityRelation) GetEntity() *GraphEntity {
 		return x.Entity
 	}
 	return nil
+}
+
+func (x *EntityRelation) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *EntityRelation) GetAttributesJson() string {
+	if x != nil {
+		return x.AttributesJson
+	}
+	return ""
 }
 
 type ListEntityRelationsResponse struct {
@@ -6886,7 +6910,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12?\n" +
 	"\x06counts\x18\x03 \x01(\v2'.cerebro.graph.v1.CloudAttackPathCountsR\x06counts\x127\n" +
 	"\x05paths\x18\x04 \x03(\v2!.cerebro.graph.v1.CloudAttackPathR\x05paths\x12\x1c\n" +
-	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"\xd7\x03\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"\x87\x04\n" +
 	"\x1aListEntityRelationsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12I\n" +
@@ -6900,11 +6924,14 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x17expected_graph_revision\x18\b \x01(\x04R\x15expectedGraphRevision\x12%\n" +
 	"\x0eafter_relation\x18\t \x01(\tR\rafterRelation\x12R\n" +
 	"\x0fafter_direction\x18\n" +
-	" \x01(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\x0eafterDirection\"\xac\x01\n" +
+	" \x01(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\x0eafterDirection\x12.\n" +
+	"\x13neighbor_agent_keys\x18\v \x03(\tR\x11neighborAgentKeys\"\xf2\x01\n" +
 	"\x0eEntityRelation\x12G\n" +
 	"\tdirection\x18\x01 \x01(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\tdirection\x12\x1a\n" +
 	"\brelation\x18\x02 \x01(\tR\brelation\x125\n" +
-	"\x06entity\x18\x03 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x06entity\"\xfd\x02\n" +
+	"\x06entity\x18\x03 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x06entity\x12\x1b\n" +
+	"\tsource_id\x18\x04 \x01(\tR\bsourceId\x12'\n" +
+	"\x0fattributes_json\x18\x05 \x01(\tR\x0eattributesJson\"\xfd\x02\n" +
 	"\x1bListEntityRelationsResponse\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12>\n" +

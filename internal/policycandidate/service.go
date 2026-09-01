@@ -21,13 +21,14 @@ var domainPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 var accountIDPattern = regexp.MustCompile(`(^|[^0-9])[0-9]{12}([^0-9]|$)`)
 
 type Service struct {
-	Store       Store
-	Experiments ExperimentStore
-	Datasets    PolicyEvaluationDatasetStore
-	Author      *agentauthoring.Service
-	Graph       ports.RawCypherQueryStore
-	Catalog     CoverageCatalog
-	Now         func() time.Time
+	Store          Store
+	Experiments    ExperimentStore
+	Datasets       PolicyEvaluationDatasetStore
+	Author         *agentauthoring.Service
+	Graph          ports.RawCypherQueryStore
+	GroundingGraph ports.EntityCatalogStore
+	Catalog        CoverageCatalog
+	Now            func() time.Time
 }
 
 func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate, error) {
@@ -57,7 +58,7 @@ func (s Service) Create(ctx context.Context, request CreateRequest) (*Candidate,
 	if containsLiveIdentifier(request.Hypothesis) {
 		return nil, fmt.Errorf("%w: hypothesis must be redacted before authoring", ErrInvalidRequest)
 	}
-	grounding, err := groundGraphEvidence(ctx, s.Graph, request.TenantID, *request.GraphEvidence, request.Grounding, s.now)
+	grounding, err := groundGraphEvidence(ctx, s.GroundingGraph, request.TenantID, *request.GraphEvidence, request.Grounding, s.now)
 	if err != nil {
 		return nil, err
 	}

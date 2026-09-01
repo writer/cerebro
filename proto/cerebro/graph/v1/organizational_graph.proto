@@ -460,12 +460,15 @@ message ListEntityRelationsRequest {
   uint64 expected_graph_revision = 8;
   string after_relation = 9;
   EntityRelationDirection after_direction = 10;
+  repeated string neighbor_agent_keys = 11;
 }
 
 message EntityRelation {
   EntityRelationDirection direction = 1;
   string relation = 2;
   GraphEntity entity = 3;
+  string source_id = 4;
+  string attributes_json = 5;
 }
 
 message ListEntityRelationsResponse {

@@ -253,22 +253,25 @@ const (
 )
 
 type EntityCatalogRelation struct {
-	Direction EntityRelationDirection
-	Relation  string
-	Entity    CatalogEntity
+	Direction      EntityRelationDirection
+	Relation       string
+	Entity         CatalogEntity
+	SourceID       string
+	AttributesJSON string
 }
 
 type EntityRelationPageRequest struct {
-	TenantID         string
-	AgentKey         string
-	Directions       []EntityRelationDirection
-	Relations        []string
-	NeighborKinds    []string
-	Limit            int
-	AfterAgentKey    string
-	AfterRelation    string
-	AfterDirection   EntityRelationDirection
-	ExpectedRevision uint64
+	TenantID          string
+	AgentKey          string
+	Directions        []EntityRelationDirection
+	Relations         []string
+	NeighborKinds     []string
+	NeighborAgentKeys []string
+	Limit             int
+	AfterAgentKey     string
+	AfterRelation     string
+	AfterDirection    EntityRelationDirection
+	ExpectedRevision  uint64
 }
 
 type EntityRelationPage struct {

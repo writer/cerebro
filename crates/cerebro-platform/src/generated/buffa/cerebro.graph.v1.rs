@@ -11371,6 +11371,14 @@ pub struct ListEntityRelationsRequest {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
     )]
     pub after_direction: ::buffa::EnumValue<EntityRelationDirection>,
+    /// Field 11: `neighbor_agent_keys`
+    #[serde(
+        rename = "neighborAgentKeys",
+        alias = "neighbor_agent_keys",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub neighbor_agent_keys: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -11388,6 +11396,7 @@ impl ::core::fmt::Debug for ListEntityRelationsRequest {
             .field("expected_graph_revision", &self.expected_graph_revision)
             .field("after_relation", &self.after_relation)
             .field("after_direction", &self.after_direction)
+            .field("neighbor_agent_keys", &self.neighbor_agent_keys)
             .finish()
     }
 }
@@ -11463,6 +11472,9 @@ impl ::buffa::Message for ListEntityRelationsRequest {
                 size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
             }
         }
+        for v in &self.neighbor_agent_keys {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -11513,6 +11525,9 @@ impl ::buffa::Message for ListEntityRelationsRequest {
             if val != 0 {
                 ::buffa::types::put_int32_field(10u32, val, buf);
             }
+        }
+        for v in &self.neighbor_agent_keys {
+            ::buffa::types::put_string_field(11u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -11638,6 +11653,17 @@ impl ::buffa::Message for ListEntityRelationsRequest {
                     ::buffa::types::decode_int32(buf)?,
                 );
             }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.neighbor_agent_keys.push(__elem);
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -11656,6 +11682,7 @@ impl ::buffa::Message for ListEntityRelationsRequest {
         self.expected_graph_revision = 0u64;
         self.after_relation.clear();
         self.after_direction = ::buffa::EnumValue::from(0);
+        self.neighbor_agent_keys.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -11712,6 +11739,22 @@ pub struct EntityRelation {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
     )]
     pub entity: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 4: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 5: `attributes_json`
+    #[serde(
+        rename = "attributesJson",
+        alias = "attributes_json",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub attributes_json: ::buffa::alloc::string::String,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -11722,6 +11765,8 @@ impl ::core::fmt::Debug for EntityRelation {
             .field("direction", &self.direction)
             .field("relation", &self.relation)
             .field("entity", &self.entity)
+            .field("source_id", &self.source_id)
+            .field("attributes_json", &self.attributes_json)
             .finish()
     }
 }
@@ -11769,6 +11814,14 @@ impl ::buffa::Message for EntityRelation {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.attributes_json.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.attributes_json) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -11795,6 +11848,12 @@ impl ::buffa::Message for EntityRelation {
                 buf,
             );
             self.entity.write_to(__cache, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+        }
+        if !self.attributes_json.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.attributes_json, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -11836,6 +11895,20 @@ impl ::buffa::Message for EntityRelation {
                     ctx,
                 )?;
             }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.attributes_json, buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -11847,6 +11920,8 @@ impl ::buffa::Message for EntityRelation {
         self.direction = ::buffa::EnumValue::from(0);
         self.relation.clear();
         self.entity = ::buffa::MessageField::none();
+        self.source_id.clear();
+        self.attributes_json.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -40669,6 +40744,8 @@ pub mod __buffa {
             pub after_direction: ::buffa::EnumValue<
                 super::super::EntityRelationDirection,
             >,
+            /// Field 11: `neighbor_agent_keys`
+            pub neighbor_agent_keys: ::buffa::RepeatedView<'a, &'a str>,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for ListEntityRelationsRequestView<'a> {
@@ -40811,6 +40888,17 @@ pub mod __buffa {
                         )?;
                         view.neighbor_kinds.push(__elem);
                     }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.neighbor_agent_keys.push(__elem);
+                    }
                     _ => {
                         ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                         let span_len = before_tag.len() - cur.len();
@@ -40854,6 +40942,11 @@ pub mod __buffa {
                     expected_graph_revision: self.expected_graph_revision,
                     after_relation: self.after_relation.to_string(),
                     after_direction: self.after_direction,
+                    neighbor_agent_keys: self
+                        .neighbor_agent_keys
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -40922,6 +41015,9 @@ pub mod __buffa {
                         size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
                     }
                 }
+                for v in &self.neighbor_agent_keys {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -40977,6 +41073,9 @@ pub mod __buffa {
                     if val != 0 {
                         ::buffa::types::put_int32_field(10u32, val, buf);
                     }
+                }
+                for v in &self.neighbor_agent_keys {
+                    ::buffa::types::put_string_field(11u32, v, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -41046,6 +41145,13 @@ pub mod __buffa {
                     &self.after_direction,
                 ) {
                     __map.serialize_entry("afterDirection", &self.after_direction)?;
+                }
+                if !self.neighbor_agent_keys.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "neighborAgentKeys",
+                            &*self.neighbor_agent_keys,
+                        )?;
                 }
                 __map.end()
             }
@@ -41203,6 +41309,11 @@ pub mod __buffa {
             ) -> ::buffa::EnumValue<super::super::EntityRelationDirection> {
                 self.0.reborrow().after_direction
             }
+            /// Field 11: `neighbor_agent_keys`
+            #[must_use]
+            pub fn neighbor_agent_keys(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().neighbor_agent_keys
+            }
         }
         impl ::core::convert::From<
             ::buffa::OwnedView<ListEntityRelationsRequestView<'static>>,
@@ -41250,6 +41361,10 @@ pub mod __buffa {
             pub entity: ::buffa::MessageFieldView<
                 super::super::__buffa::view::GraphEntityView<'a>,
             >,
+            /// Field 4: `source_id`
+            pub source_id: &'a str,
+            /// Field 5: `attributes_json`
+            pub attributes_json: &'a str,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for EntityRelationView<'a> {
@@ -41325,6 +41440,20 @@ pub mod __buffa {
                             }
                         }
                     }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.attributes_json = ::buffa::types::borrow_str(&mut cur)?;
+                    }
                     _ => {
                         ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                         let span_len = before_tag.len() - cur.len();
@@ -41365,6 +41494,8 @@ pub mod __buffa {
                         }
                         None => ::buffa::MessageField::none(),
                     },
+                    source_id: self.source_id.to_string(),
+                    attributes_json: self.attributes_json.to_string(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -41398,6 +41529,17 @@ pub mod __buffa {
                         += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                             + inner_size as u64;
                 }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.attributes_json.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.attributes_json)
+                                as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -41425,6 +41567,12 @@ pub mod __buffa {
                         buf,
                     );
                     self.entity.write_to(__cache, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+                }
+                if !self.attributes_json.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.attributes_json, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -41459,6 +41607,12 @@ pub mod __buffa {
                     if let ::core::option::Option::Some(__v) = self.entity.as_option() {
                         __map.serialize_entry("entity", __v)?;
                     }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.attributes_json) {
+                    __map.serialize_entry("attributesJson", self.attributes_json)?;
                 }
                 __map.end()
             }
@@ -41575,6 +41729,16 @@ pub mod __buffa {
                 super::super::__buffa::view::GraphEntityView<'_>,
             > {
                 &self.0.reborrow().entity
+            }
+            /// Field 4: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 5: `attributes_json`
+            #[must_use]
+            pub fn attributes_json(&self) -> &'_ str {
+                self.0.reborrow().attributes_json
             }
         }
         impl ::core::convert::From<::buffa::OwnedView<EntityRelationView<'static>>>
