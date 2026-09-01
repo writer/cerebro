@@ -69,8 +69,8 @@ func graphTypedAttackPath(tenantID, suffix string) ports.CloudAttackPath {
 	node := func(kind, id, label string) ports.CloudAttackPathNode {
 		return ports.CloudAttackPathNode{URN: "urn:cerebro:" + tenantID + ":" + id + ":" + suffix, EntityType: kind, Label: label}
 	}
-	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode, direction string) ports.CloudAttackPathEdge {
-		return ports.CloudAttackPathEdge{From: from, Relation: relation, To: to, Direction: direction, SourceID: "aws", SourceRuntimeID: "runtime-1"}
+	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode) ports.CloudAttackPathEdge {
+		return ports.CloudAttackPathEdge{From: from, Relation: relation, To: to, Direction: "forward", SourceID: "aws", SourceRuntimeID: "runtime-1"}
 	}
 	public := node("aws.public_principal", "public", "public internet")
 	exposed := node("aws.network.interface", "resource", "prod-web")
@@ -82,10 +82,10 @@ func graphTypedAttackPath(tenantID, suffix string) ports.CloudAttackPath {
 		ReachRelation:         "can_reach",
 		AccessRelation:        "can_admin",
 		RelationChain:         []string{"runs_as"},
-		ExposureEdge:          edge(public, "can_reach", exposed, "forward"),
-		ResourceAccountEdge:   edge(exposed, "belongs_to", account, "forward"),
-		TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "runs_as", principal, "forward")},
-		PrivilegeEdge:         edge(principal, "can_admin", permission, "forward"),
-		PermissionAccountEdge: edge(permission, "belongs_to", account, "forward"),
+		ExposureEdge:          edge(public, "can_reach", exposed),
+		ResourceAccountEdge:   edge(exposed, "belongs_to", account),
+		TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "runs_as", principal)},
+		PrivilegeEdge:         edge(principal, "can_admin", permission),
+		PermissionAccountEdge: edge(permission, "belongs_to", account),
 	}
 }
