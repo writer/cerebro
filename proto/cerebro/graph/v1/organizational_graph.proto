@@ -74,6 +74,36 @@ message GraphEdge {
   string to_entity_id = 4;
   string source_runtime_id = 5;
   bool identity_binding = 6;
+  string application_workspace_id = 7;
+  GraphEdgeProvenance provenance = 8;
+  GraphIdentityBinding identity_binding_detail = 9;
+}
+
+// GraphRecordProvenance identifies one direct source record supporting an assertion.
+message GraphRecordProvenance {
+  string observation_id = 1;
+  string source_record = 2;
+}
+
+// GraphEdgeProvenance retains bounded collection and producer evidence for an assertion.
+message GraphEdgeProvenance {
+  string source_collection_id = 1;
+  string collection_scope = 2;
+  repeated GraphRecordProvenance records = 3;
+  string producer = 4;
+  string producer_version = 5;
+  int64 observed_at_unix_ms = 6;
+  string collection_completeness = 7;
+  int64 collection_observed_at_unix_ms = 8;
+  uint64 assertion_graph_revision = 9;
+  bool truncated = 10;
+}
+
+// GraphIdentityBinding preserves the decision state and method of an identity assertion.
+message GraphIdentityBinding {
+  string state = 1;
+  string method = 2;
+  bool canonical = 3;
 }
 
 // GraphPath is an ordered directed path.

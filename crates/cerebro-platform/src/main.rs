@@ -6174,6 +6174,22 @@ mod tests {
             source_runtime_id: "github-prod".to_owned(),
             application_workspace_id: String::new(),
             identity_binding: false,
+            provenance: cerebro_agent_context::ContextEdgeProvenance {
+                source_collection_id: "collection-github".to_owned(),
+                collection_scope: "writer".to_owned(),
+                records: vec![cerebro_agent_context::ContextRecordProvenance {
+                    observation_id: "observation-access".to_owned(),
+                    source_record: "repository:writer/cerebro".to_owned(),
+                }],
+                producer: "github-source".to_owned(),
+                producer_version: "1".to_owned(),
+                observed_at_unix_ms: 1,
+                collection_completeness: "complete".to_owned(),
+                collection_observed_at_unix_ms: 1,
+                assertion_graph_revision: 7,
+                truncated: false,
+            },
+            identity_binding_detail: None,
         };
         (
             root_urn,
