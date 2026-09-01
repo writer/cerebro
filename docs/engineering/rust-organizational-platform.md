@@ -335,6 +335,14 @@ schema-checked parameters; Rust owns the embedded query catalog and Neo4j
 execution. Returned JSON rows retain the existing Go finding interpretation
 contract without exposing a raw-Cypher capability to `internal/findings`.
 
+The machine ledger
+[`rust-migration-ledger.json`](rust-migration-ledger.json) is the source of
+truth for which packages still reference the port. No migratable `compat`
+callers remain, so there is no migration table in this section.
+`make docs-drift-check` fails if a ledger `compat` caller is missing from the
+table, a table row is not `compat`, or the permanent callers named below differ
+from the ledger's `permanent` entries.
+
 One structural prerequisite applies to every caller: `QueryFacts` and
 `FindPaths` run against the organizational graph (`OrganizationalEntity` /
 `ORGANIZATIONAL_RELATION`, closed kind and relation vocabularies, sealed
@@ -346,9 +354,12 @@ additionally need URN-keyed (or `agent_key`) `FindPaths` endpoints because
 Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
 
 Two callers are permanent residents of the compatibility port because their
-query text is authored at runtime rather than in code: the `graphagent` ask
-flow (LLM-drafted Cypher) and `policycandidate` shadow/experiment evaluation
-(`rule.Spec.Graph.Query`). The port exists for them; it is not migrated away.
+query text is authored at runtime rather than in code: the
+`internal/graphagent` ask flow (LLM-drafted Cypher, isolated behind the
+validated read-only boundary; its deterministic probe counts already use typed
+Rust capabilities) and `internal/policycandidate` shadow/experiment evaluation
+(`rule.Spec.Graph.Query`; grounding already uses revision-bound typed Rust
+reads). The port exists for them; it is not migrated away.
 
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
