@@ -19,6 +19,10 @@ COMMENT_MARKER = "<!-- post-merge-health -->"
 POST_MERGE_HEALTH_WORKFLOW = "Post-Merge Health"
 STABLE_RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 SUCCESSFUL_CONCLUSIONS = {"success", "skipped", "neutral"}
+# Workflows that intentionally serialize behind one active run per branch. A
+# run of one of these cancelled behind a newer main commit was superseded, not
+# broken; the newer commit's run carries the evidence.
+SERIALIZED_WORKFLOW_NAMES = frozenset({"Candidate Build", "Rust-only Candidate"})
 REQUIRED_WORKFLOW_NAMES = frozenset(
     {
         "Candidate Build",
@@ -63,6 +67,22 @@ def collect_runs(
         }
     )
     raw = request_json(f"/actions/runs?{query}", token, repository)
+    return normalize_runs(raw)
+
+
+def collect_branch_runs(
+    branch: str,
+    token: str,
+    repository: str,
+    limit: int,
+) -> list[dict[str, object]]:
+    """Recent push runs for the whole branch, used only to detect superseded runs."""
+    query = urllib.parse.urlencode({"branch": branch, "event": "push", "per_page": limit})
+    raw = request_json(f"/actions/runs?{query}", token, repository)
+    return normalize_runs(raw)
+
+
+def normalize_runs(raw: object) -> list[dict[str, object]]:
     runs = raw.get("workflow_runs") if isinstance(raw, dict) else []
     if not isinstance(runs, list):
         return []
@@ -82,6 +102,22 @@ def collect_runs(
             }
         )
     return results
+
+
+def superseded_by_newer_run(run: dict[str, object], branch_runs: list[dict[str, object]]) -> bool:
+    """True only for a cancelled serialized workflow run that a newer commit's run replaced."""
+    if run.get("conclusion") != "cancelled" or run.get("workflow_name") not in SERIALIZED_WORKFLOW_NAMES:
+        return False
+    created = str(run.get("created_at") or "")
+    if not created:
+        return False
+    return any(
+        candidate.get("workflow_name") == run.get("workflow_name")
+        and candidate.get("head_sha")
+        and candidate.get("head_sha") != run.get("head_sha")
+        and str(candidate.get("created_at") or "") > created
+        for candidate in branch_runs
+    )
 
 
 def git_output(args: list[str]) -> str:
@@ -148,6 +184,7 @@ def summarize(
     current_run_id: str = "",
     release_status: dict[str, object] | None = None,
     required_workflows: Collection[str] = REQUIRED_WORKFLOW_NAMES,
+    branch_runs: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     relevant = [
         run
@@ -160,11 +197,15 @@ def summarize(
     required = {name.strip() for name in required_workflows if name.strip()}
     observed = {str(run.get("workflow_name") or "") for run in relevant}
     missing = sorted(required - observed)
-    failures = [
-        run
-        for run in relevant
-        if run.get("status") == "completed" and run.get("conclusion") not in SUCCESSFUL_CONCLUSIONS
-    ]
+    failures: list[dict[str, object]] = []
+    superseded: list[dict[str, object]] = []
+    for run in relevant:
+        if run.get("status") != "completed" or run.get("conclusion") in SUCCESSFUL_CONCLUSIONS:
+            continue
+        if superseded_by_newer_run(run, branch_runs or []):
+            superseded.append(run)
+        else:
+            failures.append(run)
     pending = [run for run in relevant if run.get("status") != "completed"]
     return {
         "kind": "post_merge_health",
@@ -172,6 +213,7 @@ def summarize(
         "head_sha": head_sha,
         "runs": relevant,
         "failed_runs": failures,
+        "superseded_runs": superseded,
         "pending_runs": pending,
         "required_workflows": sorted(required),
         "missing_workflows": missing,
@@ -192,6 +234,7 @@ def wait_for_terminal_summary(
     poll_seconds: float = 30,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    collect_branch: Callable[[], list[dict[str, object]]] | None = None,
 ) -> dict[str, object]:
     deadline = monotonic() + max(wait_seconds, 0)
     interval = max(poll_seconds, 1)
@@ -203,6 +246,7 @@ def wait_for_terminal_summary(
             current_run_id=current_run_id,
             release_status=release_status,
             required_workflows=required_workflows,
+            branch_runs=collect_branch() if collect_branch else None,
         )
         if context["healthy"] or context["failed_runs"] or not head_sha:
             return context
@@ -214,6 +258,7 @@ def wait_for_terminal_summary(
 
 def render_markdown(context: dict[str, object]) -> str:
     failed = context.get("failed_runs") if isinstance(context.get("failed_runs"), list) else []
+    superseded = context.get("superseded_runs") if isinstance(context.get("superseded_runs"), list) else []
     pending = context.get("pending_runs") if isinstance(context.get("pending_runs"), list) else []
     missing = context.get("missing_workflows") if isinstance(context.get("missing_workflows"), list) else []
     release_status = context.get("release_status") if isinstance(context.get("release_status"), dict) else {}
@@ -227,6 +272,7 @@ def render_markdown(context: dict[str, object]) -> str:
         f"- Head: `{context.get('head_sha', '')}`",
         f"- Healthy: `{context.get('healthy', False)}`",
         f"- Failed runs: `{len(failed)}`",
+        f"- Superseded runs: `{len(superseded)}`",
         f"- Pending runs: `{len(pending)}`",
         f"- Missing required workflows: `{len(missing)}`",
         f"- Latest release tag: `{release_status.get('latest_tag', '')}`",
@@ -251,6 +297,14 @@ def render_markdown(context: dict[str, object]) -> str:
         for run in failed:
             if isinstance(run, dict):
                 lines.append(f"- `{run.get('workflow_name', '')}` {run.get('conclusion', '')}: {run.get('url', '')}")
+    if superseded:
+        lines.extend(["### Superseded", ""])
+        for run in superseded:
+            if isinstance(run, dict):
+                lines.append(
+                    f"- `{run.get('workflow_name', '')}` cancelled behind a newer main commit; "
+                    f"that commit's run carries the evidence: {run.get('url', '')}"
+                )
     if pending:
         lines.extend(["### Pending", ""])
         for run in pending:
@@ -309,6 +363,7 @@ def main() -> int:
                 release_status=release_status,
                 wait_seconds=args.wait_seconds,
                 poll_seconds=args.poll_seconds,
+                collect_branch=lambda: collect_branch_runs(args.branch, token, repository, args.limit),
             )
         except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
             context = {
