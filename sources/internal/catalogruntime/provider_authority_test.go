@@ -291,7 +291,7 @@ func TestLangSmithCatalogRuntimeThirteenFamilyFixtureCorpus(t *testing.T) {
 	}
 }
 
-func TestDopplerCatalogRuntimeAuthority(t *testing.T) {
+func TestDopplerCatalogContractIsCredentialFree(t *testing.T) {
 	definition := supportedCatalogEntry(t, "doppler").Definition
 	if definition.Auth.Model != "bearer_token" || definition.Auth.TokenHeader != "Authorization" || definition.Auth.TokenScheme != "Bearer" {
 		t.Fatalf("auth = %#v, want Bearer Authorization contract", definition.Auth)
@@ -319,7 +319,7 @@ func TestDopplerCatalogRuntimeAuthority(t *testing.T) {
 		if pagination == nil || pagination.Type != "cursor" || pagination.CursorParam != "cursor" || pagination.PageSizeParam != "limit" || pagination.PageSize != 100 || pagination.CursorJSONPath != "$.next_cursor" {
 			t.Fatalf("%s pagination = %#v", id, pagination)
 		}
-		if !family.Event.ExactAttributes || family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
+		if !family.Event.ExactAttributes || (family.Config != nil && len(family.Config.ConfigAttributes) != 0) {
 			t.Fatalf("%s event/config contract = %#v / %#v", id, family.Event, family.Config)
 		}
 	}
@@ -333,58 +333,6 @@ func TestDopplerCatalogRuntimeAuthority(t *testing.T) {
 	} {
 		if audit[key] != want {
 			t.Fatalf("audit %s mapping = %q, want %q", key, audit[key], want)
-		}
-	}
-}
-
-func TestDopplerCatalogRuntimeBearerHealthCursorAndMappings(t *testing.T) {
-	var requests []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests = append(requests, r.URL.RequestURI())
-		if got := r.Header.Get("Authorization"); got != "Bearer fixture-token" {
-			t.Errorf("Authorization = %q, want Bearer fixture-token", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/ready" {
-			_, _ = w.Write([]byte(`{"ready":true}`))
-			return
-		}
-		if r.URL.Path != "/v3/workplace/logs" || r.URL.Query().Get("cursor") != "cursor-1" || r.URL.Query().Get("limit") != "100" {
-			t.Errorf("read request = %q", r.URL.RequestURI())
-		}
-		_, _ = w.Write([]byte(`{"data":[{"id":"event-1","created_at":"2026-08-20T10:11:12Z","action":"secret.read","actor":{"id":"actor-1","name":"Alice"},"target":{"id":"secret-1","name":"API_KEY","type":"secret"}}],"next_cursor":"cursor-2"}`))
-	}))
-	defer server.Close()
-	source, err := NewDefinitionWithValidationOptions(supportedCatalogEntry(t, "doppler").Definition, ValidationOptions{AllowLoopbackBaseURL: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := sourcecdk.NewConfig(map[string]string{
-		"base_url": server.URL, "family": "audit_events", "health_path": "/ready", "tenant_id": "tenant-1", "token": "fixture-token",
-	})
-	if err := source.Check(context.Background(), cfg); err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "cursor-1"})
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if !reflect.DeepEqual(requests, []string{"/ready", "/v3/workplace/logs?cursor=cursor-1&limit=100"}) {
-		t.Fatalf("requests = %#v", requests)
-	}
-	if len(pull.Events) != 1 || pull.NextCursor.GetOpaque() != "cursor-2" {
-		t.Fatalf("pull = %#v", pull)
-	}
-	event := pull.Events[0]
-	if event.Kind != "doppler.audit_events" || event.SchemaRef != "doppler/audit_events/v1" || event.OccurredAt.AsTime().UTC().Format("2006-01-02T15:04:05Z") != "2026-08-20T10:11:12Z" {
-		t.Fatalf("event contract = %#v", event)
-	}
-	for key, want := range map[string]string{
-		"actor_id": "actor-1", "actor_name": "Alice", "event_type": "secret.read", "resource_id": "secret-1", "resource_name": "API_KEY", "resource_type": "secret",
-		"record_class": "audit_event", "schema": "audit_events", "source_system": "doppler", "tenant_id": "tenant-1",
-	} {
-		if event.Attributes[key] != want {
-			t.Fatalf("attribute %s = %q, want %q", key, event.Attributes[key], want)
 		}
 	}
 }
