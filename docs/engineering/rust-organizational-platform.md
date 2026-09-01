@@ -331,7 +331,11 @@ live read mode in the current image.
 
 The raw-Cypher compatibility port serves the callers below. None are
 expressible through `QueryFacts` today, and each migrates only after the
-listed capability lands in the Rust read API.
+listed capability lands in the Rust read API. The machine ledger
+[`rust-migration-ledger.json`](rust-migration-ledger.json) is the source of
+truth for which packages still reference the port; `make docs-drift-check`
+fails when this table's row set differs from the ledger's `compat` entries or
+the permanent callers named below differ from its `permanent` entries.
 
 One structural prerequisite applies to every caller: `QueryFacts` and
 `FindPaths` run against the organizational graph (`OrganizationalEntity` /
@@ -345,18 +349,18 @@ Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
 
 | Caller | Query shape | Required Rust capability |
 | --- | --- | --- |
-| `internal/attackpath` | variable-length paths with counts and samples | relation-filtered variable-length traversal, aggregations, attribute substring predicates, optional ownership match |
+| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
 | `internal/graphquery` person access | person anchor to reachable targets | variable-length traversal with relation whitelist, label/attribute substring anchor lookup |
 | `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
 | `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
-| `internal/complianceimpact` | single-key fact lookup, dependency list/count, paged dependents | organizational kinds/relations for compliance facts, edge properties in results, keyset cursors, count aggregate |
-| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
-| `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |
 
 Two callers are permanent residents of the compatibility port because their
-query text is authored at runtime rather than in code: the `graphagent` ask
-flow (LLM-drafted Cypher) and `policycandidate` shadow/experiment evaluation
-(`rule.Spec.Graph.Query`). The port exists for them; it is not migrated away.
+query text is authored at runtime rather than in code: the
+`internal/graphagent` ask flow (LLM-drafted Cypher, isolated behind the
+validated read-only boundary; its deterministic probe counts already use typed
+Rust capabilities) and `internal/policycandidate` shadow/experiment evaluation
+(`rule.Spec.Graph.Query`; grounding already uses revision-bound typed Rust
+reads). The port exists for them; it is not migrated away.
 
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
