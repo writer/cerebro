@@ -820,7 +820,7 @@ func runGraphImpact(args []string) error {
 	if store == nil {
 		return fmt.Errorf("graph read store is required for impact traversals")
 	}
-	result, err := graphquery.NewWithCapabilities(store, deps.GraphReads.RawCypher, deps.GraphReads.Catalog, deps.GraphReads.Exposure).GetImpact(ctx, request)
+	result, err := graphquery.NewWithCapabilities(store, deps.GraphReads.Catalog, deps.GraphReads.Exposure).GetImpact(ctx, request)
 	if err != nil {
 		return err
 	}

@@ -1288,7 +1288,6 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 	}
 	response, err := graphquery.NewWithCapabilities(
 		s.deps.GraphReads.Neighborhoods,
-		s.deps.GraphReads.RawCypher,
 		s.deps.GraphReads.Catalog,
 		s.deps.GraphReads.Exposure,
 	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{

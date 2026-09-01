@@ -35,6 +35,8 @@ service OrganizationalGraphService {
   rpc ListEffectiveAccessPaths(ListEffectiveAccessPathsRequest) returns (ListEffectiveAccessPathsResponse);
   // ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
   rpc ListCloudAttackPaths(ListCloudAttackPathsRequest) returns (ListCloudAttackPathsResponse);
+  // ListCrownJewelPaths returns bounded paths rooted at explicitly classified crown jewels.
+  rpc ListCrownJewelPaths(ListCrownJewelPathsRequest) returns (ListCrownJewelPathsResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
@@ -443,6 +445,30 @@ message ListCloudAttackPathsResponse {
   uint64 graph_revision = 2;
   CloudAttackPathCounts counts = 3;
   repeated CloudAttackPath paths = 4;
+  bool truncated = 5;
+}
+
+message CrownJewelPath {
+  GraphEntity seed = 1;
+  repeated GraphEntity nodes = 2;
+  repeated string relations = 3;
+}
+
+message ListCrownJewelPathsRequest {
+  string tenant_id = 1;
+  string account_id = 2;
+  string entity_kind = 3;
+  uint32 limit = 4;
+  uint32 seed_limit = 5;
+  uint32 max_depth = 6;
+  uint64 expected_graph_revision = 7;
+}
+
+message ListCrownJewelPathsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated GraphEntity seeds = 3;
+  repeated CrownJewelPath paths = 4;
   bool truncated = 5;
 }
 

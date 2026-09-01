@@ -46,10 +46,6 @@ func (s *impactStubStore) GetEntityNeighborhood(_ context.Context, rootURN strin
 	return neighborhood, nil
 }
 
-func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	return nil, nil
-}
-
 func TestSortedImpactRelationsOrdersByRelationFields(t *testing.T) {
 	relations := map[string]*ports.NeighborhoodRelation{
 		"shuffled-1": rel("urn:cerebro:writer:asset:b", "depends_on", "urn:cerebro:writer:asset:a"),

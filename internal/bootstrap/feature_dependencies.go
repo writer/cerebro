@@ -184,24 +184,28 @@ func newDecisionOutcomeService(deps Dependencies) *decisionops.Service {
 
 type graphQueryFeatureDeps struct {
 	GraphNeighborhoods ports.GraphNeighborhoodStore
-	GraphRawCypher     ports.RawCypherQueryStore
 	GraphCatalog       ports.EntityCatalogStore
 	GraphExposure      ports.ExposureCoverageStore
+	GraphPersonAccess  ports.PersonAccessPathStore
+	GraphEffective     ports.EffectiveAccessPathStore
 	GraphAttackPaths   ports.CloudAttackPathStore
+	GraphCrownJewels   ports.CrownJewelPathStore
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
 	return graphQueryFeatureDeps{
 		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
-		GraphRawCypher:     deps.GraphReads.RawCypher,
 		GraphCatalog:       deps.GraphReads.Catalog,
 		GraphExposure:      deps.GraphReads.Exposure,
+		GraphPersonAccess:  deps.GraphReads.PersonAccess,
+		GraphEffective:     deps.GraphReads.EffectiveAccess,
 		GraphAttackPaths:   deps.GraphReads.CloudAttackPaths,
+		GraphCrownJewels:   deps.GraphReads.CrownJewelPaths,
 	}
 }
 
 func newGraphQueryFeatureService(deps graphQueryFeatureDeps) *graphquery.Service {
-	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphRawCypher, deps.GraphCatalog, deps.GraphExposure, deps.GraphAttackPaths)
+	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphCatalog, deps.GraphExposure, deps.GraphPersonAccess, deps.GraphEffective, deps.GraphAttackPaths, deps.GraphCrownJewels)
 }
 
 type graphIngestFeatureDeps struct {
