@@ -82,7 +82,7 @@ func TestStubFindingStoreFilterParity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("postgres ListFindings: %v", err)
 			}
-			listed, err := findings.ListFindingsForParity(testCase.request, stored)
+			listed, err := findings.ListFindingsForParity(ctx, testCase.request, stored)
 			if err != nil {
 				t.Fatalf("stub ListFindings: %v", err)
 			}

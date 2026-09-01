@@ -6709,12 +6709,12 @@ func trimmedNonEmpty(values []string) []string {
 // limit) over the given records for the Postgres-backed parity test, which
 // lives in package findings_test because internal/statestore/postgres imports
 // this package.
-func ListFindingsForParity(request ports.ListFindingsRequest, records []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
+func ListFindingsForParity(ctx context.Context, request ports.ListFindingsRequest, records []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{}}
 	for _, record := range records {
 		store.findings[record.ID] = cloneFinding(record)
 	}
-	return store.ListFindings(context.Background(), request)
+	return store.ListFindings(ctx, request)
 }
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
