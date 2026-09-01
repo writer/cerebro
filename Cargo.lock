@@ -1028,6 +1028,7 @@ dependencies = [
  "async-trait",
  "cerebro-agent-context",
  "cerebro-control-kernel",
+ "cerebro-organizational-graph",
  "cerebro-organizational-model",
  "serde",
  "serde_jcs",

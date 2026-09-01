@@ -59,7 +59,13 @@ semantics.
   and bounded dependency set. Later authoritative temporal diffs produce
   explicit unchanged, changed, or invalidated outcomes; missing, incomplete,
   or digest-mismatched evidence produces unknown. Bindings and evaluations are
-  self-validating records and introduce no additional snapshot or store.
+  self-validating records and introduce no additional snapshot or store. The
+  snapshot adapter accepts only a verified, complete `ContextSnapshotV1` and
+  requires dependency coverage for every referenced entity and assertion;
+  partial snapshots fail closed because later evidence could resolve an absent
+  or ambiguous subject under a previously unknown identity. Exact dependency
+  invalidation can satisfy a digest-bound mission wake condition. Unchanged,
+  unrelated changed, and unknown evaluations do not emit that wake signal.
 - Simulations are read-only. Mutations use governed Action contracts.
 - An Action proposal binds the validated finding revision, action-definition
   revision, target, simulation, rollback, and verification plan. A worker can

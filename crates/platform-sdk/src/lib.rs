@@ -46,7 +46,8 @@ pub use cerebro_agent_context::{
 pub use cerebro_control_kernel::{
     ActorId, AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionId,
     DecisionReceipt, Mandate, Mission, MissionEvent, MissionEventEnvelope, VerificationId,
-    VerificationReceipt,
+    VerificationReceipt, WakeCondition, WakeConditionError, WakeConditionId, WakeConditionKind,
+    WakeConditionState, WakeSignal,
 };
 pub use cerebro_organizational_model::{
     AssertionId, EntityId, EntityKind, RelationKind, SourceRuntimeId, TenantId,
