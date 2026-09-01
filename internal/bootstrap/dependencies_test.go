@@ -78,6 +78,9 @@ func TestOpenDependenciesAllowsRustGraphWithoutGoGraphStore(t *testing.T) {
 	if deps.GraphReads.RawCypher == nil {
 		t.Fatal("GraphReads.RawCypher = nil, want Rust graph client")
 	}
+	if deps.GraphReads.CloudAttackPaths == nil {
+		t.Fatal("GraphReads.CloudAttackPaths = nil, want typed Rust graph client")
+	}
 	if _, err := deps.GraphReads.RawCypher.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
 		t.Fatalf("ExecuteReadCypher() error = %v", err)
 	}

@@ -14,8 +14,8 @@ type recordingPolicyGraphStore struct {
 	links        []*ports.ProjectedLink
 	deletedLinks []*ports.ProjectedLink
 	deleted      []string
-	request      ports.CypherQueryRequest
-	rows         []ports.CypherRow
+	request      PolicyGraphEvaluationRequest
+	rows         []map[string]any
 	entityErrAt  int
 }
 
@@ -60,7 +60,7 @@ func (s *recordingPolicyGraphStore) DeleteProjectedEntity(_ context.Context, urn
 	s.deleted = append(s.deleted, urn)
 	return nil
 }
-func (s *recordingPolicyGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *recordingPolicyGraphStore) EvaluatePolicyGraph(_ context.Context, request PolicyGraphEvaluationRequest) ([]map[string]any, error) {
 	s.request = request
 	return s.rows, nil
 }
@@ -117,21 +117,21 @@ func TestRunPolicyGraphFixtureProjectsTopologyAndExecutesPolicyCypher(t *testing
 		{FromURN: "a", ToURN: "b", SourceID: "okta", Relation: "member_of"},
 		{FromURN: "b", ToURN: "c", SourceID: "okta", Relation: "assigned_to"},
 	}}
-	store := &recordingPolicyGraphStore{rows: []ports.CypherRow{{Values: map[string]any{
+	store := &recordingPolicyGraphStore{rows: []map[string]any{{
 		"primary_urn": "a", "fingerprint_key": "a|c", "summary": "multi-hop access", "resource_urns": []string{"a", "b", "c"},
 		"evidence": []any{map[string]any{"urn": "b"}, map[string]any{"urn": "c"}},
-	}}}}
+	}}}
 	if err := runPolicyGraphFixture(context.Background(), store, rule, PolicyRuleTestCase{Name: "complete path", GraphFixture: fixture, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true}); err != nil {
 		t.Fatalf("runPolicyGraphFixture() error = %v", err)
 	}
 	if len(store.entities) != 3 || len(store.links) != 2 || len(store.deletedLinks) != 2 || len(store.deleted) != 3 {
 		t.Fatalf("projection counts = nodes %d links %d deleted links %d deleted nodes %d", len(store.entities), len(store.links), len(store.deletedLinks), len(store.deleted))
 	}
-	if !strings.Contains(store.request.Query, "(a)-[:RELATION]->(b)-[:RELATION]->(c)") {
-		t.Fatalf("executed query = %q, want policy Cypher", store.request.Query)
+	if !strings.Contains(store.request.Rule.Spec.Graph.Query, "(a)-[:RELATION]->(b)-[:RELATION]->(c)") {
+		t.Fatalf("executed query = %q, want policy Cypher", store.request.Rule.Spec.Graph.Query)
 	}
-	if store.request.Params["tenant_id"] != "fixture" || store.request.Params["row_limit"] != int64(25) {
-		t.Fatalf("executed params = %#v", store.request.Params)
+	if store.request.TenantID != "fixture" || store.request.Rule.Spec.Graph.RowLimit != 25 {
+		t.Fatalf("evaluation request = %#v", store.request)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 )
 
 type stubGraphStore struct {
-	requests      []ports.CypherQueryRequest
+	requests      []ports.EntityCatalogPageRequest
 	entityFilters []ports.EntityCatalogFilter
 	rows          [][]ports.CypherRow
 	neighborhood  *ports.EntityNeighborhood
@@ -24,24 +24,11 @@ type stubGraphStore struct {
 
 func (s *stubGraphStore) Ping(context.Context) error { return s.err }
 
-func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-	s.requests = append(s.requests, request)
-	if len(s.rows) == 0 {
-		return nil, nil
-	}
-	rows := s.rows[0]
-	s.rows = s.rows[1:]
-	return rows, nil
-}
-
 func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "application_workspace_id": request.Filter.ApplicationWorkspaceID, "limit": request.Limit}})
+	s.requests = append(s.requests, request)
 	s.entityFilters = append(s.entityFilters, request.Filter)
 	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: s.graphRevision}
 	if len(s.rows) == 0 {
@@ -155,13 +142,13 @@ func TestListVendorsDerivesPostureAndAppliesFilters(t *testing.T) {
 		t.Fatalf("typed relation counts = %#v", vendor.VendorRecordCounts)
 	}
 	if len(store.requests) != 1 {
-		t.Fatalf("cypher requests = %d, want 1", len(store.requests))
+		t.Fatalf("catalog requests = %d, want 1", len(store.requests))
 	}
-	if store.requests[0].Params["tenant_id"] != "writer" {
-		t.Fatalf("tenant param = %#v, want writer", store.requests[0].Params["tenant_id"])
+	if store.requests[0].Filter.TenantID != "writer" {
+		t.Fatalf("tenant = %#v, want writer", store.requests[0].Filter.TenantID)
 	}
-	if store.requests[0].Params["limit"] != maxVendorLimit {
-		t.Fatalf("typed limit = %v, want derived filter limit %d", store.requests[0].Params["limit"], maxVendorLimit)
+	if store.requests[0].Limit != maxVendorLimit {
+		t.Fatalf("typed limit = %v, want derived filter limit %d", store.requests[0].Limit, maxVendorLimit)
 	}
 
 	vendor.OpenFindings = 2
@@ -375,8 +362,8 @@ func TestListVendorsCanDeferLimitUntilAfterEnrichment(t *testing.T) {
 	if len(vendors) != 2 {
 		t.Fatalf("vendors len = %d, want deferred untruncated rows", len(vendors))
 	}
-	if store.requests[0].Params["limit"] != maxVendorLimit {
-		t.Fatalf("typed limit = %v, want queue prefetch limit %d", store.requests[0].Params["limit"], maxVendorLimit)
+	if store.requests[0].Limit != maxVendorLimit {
+		t.Fatalf("typed limit = %v, want queue prefetch limit %d", store.requests[0].Limit, maxVendorLimit)
 	}
 	for index := range vendors {
 		if vendors[index].VendorID == "critical-finding" {
@@ -511,8 +498,8 @@ func TestGetVendorWorkspaceScopeDoesNotTraverseUnscopedRelationships(t *testing.
 	if err != nil {
 		t.Fatalf("GetVendor(workspace-a) error = %v", err)
 	}
-	if store.requests[0].Params["application_workspace_id"] != "workspace-a" {
-		t.Fatalf("catalog request params = %#v, want workspace-a", store.requests[0].Params)
+	if store.requests[0].Filter.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("catalog request = %#v, want workspace-a", store.requests[0])
 	}
 	if len(store.entityFilters) != 1 || store.entityFilters[0].RelationCounts == nil {
 		t.Fatalf("workspace detail relation-count filter = %#v", store.entityFilters)
@@ -570,8 +557,8 @@ func TestGetVendorAcceptsVendorID(t *testing.T) {
 	if detail.Vendor.URN != urn {
 		t.Fatalf("vendor urn = %q, want %q", detail.Vendor.URN, urn)
 	}
-	if store.requests[0].Params["tenant_id"] != "writer" {
-		t.Fatalf("detail params = %#v", store.requests[0].Params)
+	if store.requests[0].Filter.TenantID != "writer" {
+		t.Fatalf("detail request = %#v", store.requests[0])
 	}
 	if store.rootURN != urn {
 		t.Fatalf("neighborhood root = %q, want %q", store.rootURN, urn)

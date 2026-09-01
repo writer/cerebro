@@ -202,7 +202,7 @@ func (s *agentGraphStore) DeleteProjectedEntity(_ context.Context, urn string) e
 	}
 	return nil
 }
-func (s *agentGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *agentGraphStore) EvaluatePolicyGraph(context.Context, findingdsl.PolicyGraphEvaluationRequest) ([]map[string]any, error) {
 	s.executions++
 	for _, launch := range s.links {
 		if launch.Relation != "acted_on" {
@@ -221,10 +221,10 @@ func (s *agentGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRe
 				for _, urn := range resourceURNs {
 					evidence = append(evidence, map[string]any{"urn": urn})
 				}
-				return []ports.CypherRow{{Values: map[string]any{
+				return []map[string]any{{
 					"primary_urn": dependency.ToURN, "fingerprint_key": dependency.ToURN + "|" + role.ToURN,
 					"summary": "causal path", "resource_urns": resourceURNs, "evidence": evidence,
-				}}}, nil
+				}}, nil
 			}
 		}
 	}

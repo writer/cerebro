@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/policycandidate"
 	"github.com/writer/cerebro/internal/ports"
+	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
 func (a *App) handleCreatePolicyCandidate(w http.ResponseWriter, r *http.Request) {
@@ -185,8 +186,9 @@ func (a *App) policyCandidateService() policycandidate.Service {
 	var author *agentauthoring.Service
 	if a.deps.PolicyAuthoring != nil {
 		copy := *a.deps.PolicyAuthoring
-		if graphStore, ok := a.deps.GraphStore.(findingdsl.PolicyGraphTestStore); ok {
-			copy.PolicyGraphStore = graphStore
+		fixtureStore, fixtureOK := a.deps.GraphStore.(findingdsl.PolicyGraphFixtureStore)
+		if fixtureOK && !isNilInterface(fixtureStore) && !isNilInterface(graph) {
+			copy.PolicyGraphStore = policyauthor.NewCompatibilityGraphTestStore(fixtureStore, graph)
 		}
 		author = &copy
 	}

@@ -44,6 +44,31 @@ func TestNewCachesJobServiceForAsyncLifecycle(t *testing.T) {
 	}
 }
 
+type runtimeAttackPathReader struct{}
+
+func (*runtimeAttackPathReader) ListCloudAttackPaths(context.Context, ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	return &ports.CloudAttackPathResult{}, nil
+}
+
+func TestRuntimeOrchestrationServiceRequiresTypedAttackPathReader(t *testing.T) {
+	graph := &stubGraphStore{}
+	deps := Dependencies{
+		StateStore: &stubRuntimeStore{},
+		GraphStore: graph,
+		GraphReads: NewGraphReadCapabilities(graph),
+	}
+	app := New(config.Config{}, deps, nil)
+	if _, err := app.runtimeOrchestrationService(); !errors.Is(err, platformjobs.ErrRuntimeUnavailable) {
+		t.Fatalf("runtimeOrchestrationService() raw-only error = %v, want ErrRuntimeUnavailable", err)
+	}
+
+	deps.GraphReads.CloudAttackPaths = &runtimeAttackPathReader{}
+	app = New(config.Config{}, deps, nil)
+	if service, err := app.runtimeOrchestrationService(); err != nil || service == nil {
+		t.Fatalf("runtimeOrchestrationService() typed service = %#v, error = %v", service, err)
+	}
+}
+
 func TestJobDirectIDHandlersNormalizeForeignTenantLookup(t *testing.T) {
 	store := newA2ATestJobStore()
 	store.jobs["foreign-job"] = &ports.Job{

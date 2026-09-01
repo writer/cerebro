@@ -254,7 +254,7 @@ func TestProveExcludesOriginAndSourceHandlesFromModelContext(t *testing.T) {
 	rule := graphRule()
 	raw, _ := json.Marshal(rule)
 	model := &draftModel{raw: raw}
-	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: graph}, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, Catalog: noOverlapCatalog()}
 	candidate, err := service.Create(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestProveRechecksCatalogBeforeAuthoring(t *testing.T) {
 	graph := newGraphStore()
 	catalog := noOverlapCatalog()
 	model := &draftModel{raw: []byte(`{}`)}
-	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: graph}, Graph: graph, Catalog: catalog}
+	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, Catalog: catalog}
 	candidate, err := service.Create(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatal(err)

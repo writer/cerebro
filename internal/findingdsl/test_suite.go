@@ -33,9 +33,10 @@ type PolicyRuleTestCase struct {
 	WantFinding      bool                `json:"wantFinding" yaml:"wantFinding"`
 }
 
-// PolicyGraphFixture is a deterministic projected graph used to execute a
-// policy's real Cypher. Multi-hop fixtures require a connected path spanning
-// at least two edges; precomputed query rows do not satisfy this contract.
+// PolicyGraphFixture is a deterministic projected graph used to evaluate a
+// policy through the typed test-authoring boundary. Multi-hop fixtures require
+// a connected path spanning at least two edges; precomputed query rows do not
+// satisfy this contract.
 type PolicyGraphFixture struct {
 	TenantID string                   `json:"tenantId" yaml:"tenantId"`
 	Nodes    []PolicyGraphFixtureNode `json:"nodes" yaml:"nodes"`
@@ -60,11 +61,25 @@ type PolicyGraphFixtureEdge struct {
 	Attributes map[string]string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
 
-type PolicyGraphTestStore interface {
-	ports.RawCypherQueryStore
+type PolicyGraphFixtureStore interface {
 	ports.ProjectionGraphStore
 	ports.ProjectionLinkDeleter
 	ports.ProjectionEntityDeleter
+}
+
+// PolicyGraphEvaluationRequest identifies one validated authored policy query
+// and the isolated fixture tenant against which it must run.
+type PolicyGraphEvaluationRequest struct {
+	Rule     PolicyFindingRule
+	TenantID string
+}
+
+// PolicyGraphTestStore is the typed test-authoring boundary used by policy
+// proofs. Product and domain packages do not receive the retained raw-query
+// compatibility port.
+type PolicyGraphTestStore interface {
+	PolicyGraphFixtureStore
+	EvaluatePolicyGraph(context.Context, PolicyGraphEvaluationRequest) ([]map[string]any, error)
 }
 
 func DiscoverPolicyTestSuites(root string) ([]string, error) {
@@ -238,7 +253,7 @@ func RunPolicyRuleTestSuite(root string, suitePath string) []Issue {
 }
 
 // RunPolicyRuleTestSuiteWithGraphStore projects each authored topology and
-// executes the policy's real Cypher through the production graph boundary.
+// evaluates the policy through the typed test-authoring graph boundary.
 func RunPolicyRuleTestSuiteWithGraphStore(ctx context.Context, root string, suitePath string, store PolicyGraphTestStore) []Issue {
 	suite, issues, err := LoadPolicyRuleTestSuite(root, suitePath)
 	if err != nil {

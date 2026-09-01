@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/projectionmeta"
+	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -775,6 +776,7 @@ func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
 
 func runAuthoredPolicyGraphFixtures(t *testing.T, ctx context.Context, store *Store) {
 	t.Helper()
+	graphTestStore := policyauthor.NewCompatibilityGraphTestStore(store, store)
 	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
 	paths, err := findingdsl.DiscoverPolicyTestSuites(repoRoot)
 	if err != nil {
@@ -792,7 +794,7 @@ func runAuthoredPolicyGraphFixtures(t *testing.T, ctx context.Context, store *St
 		if !hasGraphFixture {
 			continue
 		}
-		if issues := findingdsl.RunPolicyRuleTestSuiteWithGraphStore(ctx, repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)), store); len(issues) != 0 {
+		if issues := findingdsl.RunPolicyRuleTestSuiteWithGraphStore(ctx, repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)), graphTestStore); len(issues) != 0 {
 			t.Fatalf("authored graph policy suite %s failed: %#v", path, issues)
 		}
 	}

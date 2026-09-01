@@ -188,23 +188,13 @@ func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule
 		}
 		projectedLinks = append(projectedLinks, link)
 	}
-	params := make(map[string]any, len(rule.Spec.Graph.Params)+2)
-	for key, value := range rule.Spec.Graph.Params {
-		params[key] = value
-	}
-	params["tenant_id"] = fixture.TenantID
-	params["row_limit"] = int64(rule.Spec.Graph.RowLimit)
-	rows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: rule.Spec.Graph.Query, Params: params, RowLimit: rule.Spec.Graph.RowLimit})
+	rows, err := store.EvaluatePolicyGraph(ctx, PolicyGraphEvaluationRequest{Rule: rule, TenantID: fixture.TenantID})
 	if err != nil {
 		return fmt.Errorf("execute policy graph query: %w", err)
 	}
-	queryRows := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		queryRows = append(queryRows, row.Values)
-	}
 	rowCase := testCase
 	rowCase.GraphFixture = nil
-	rowCase.QueryRows = queryRows
+	rowCase.QueryRows = rows
 	if issues := validatePolicyRuleTestCaseAgainstRule("<graph-fixture>", rule, 0, rowCase); len(issues) != 0 {
 		return fmt.Errorf("query result violates graph finding contract: %s", issues[0].Message)
 	}
@@ -221,13 +211,13 @@ func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule
 	return nil
 }
 
-func validateGraphFixtureEvidence(rows []ports.CypherRow, expectedURNs []string) error {
+func validateGraphFixtureEvidence(rows []map[string]any, expectedURNs []string) error {
 	if len(expectedURNs) == 0 {
 		return nil
 	}
 	actual := map[string]struct{}{}
 	for _, row := range rows {
-		items, _ := row.Values["evidence"].([]any)
+		items, _ := row["evidence"].([]any)
 		for _, item := range items {
 			values, ok := item.(map[string]any)
 			if !ok {

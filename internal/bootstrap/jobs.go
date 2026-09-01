@@ -378,12 +378,22 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 func (a *App) runtimeOrchestrationService() (*runtimeorchestration.SecurityPathService, error) {
 	runtimeStore, runtimeOK := a.deps.StateStore.(ports.SourceRuntimeStore)
 	checkpoints, checkpointOK := a.deps.GraphStore.(runtimeorchestration.CheckpointStore)
-	if !runtimeOK || isNilInterface(runtimeStore) || !checkpointOK || isNilInterface(checkpoints) {
+	var assertionCoverage ports.ProjectionAssertionCoverageStore
+	if store, ok := a.deps.GraphStore.(ports.ProjectionAssertionCoverageStore); ok && !isNilInterface(store) {
+		assertionCoverage = store
+	}
+	var assertionMigrator ports.ProjectionAssertionMigrator
+	if store, ok := a.deps.GraphStore.(ports.ProjectionAssertionMigrator); ok && !isNilInterface(store) {
+		assertionMigrator = store
+	}
+	attackPaths := a.deps.GraphReads.CloudAttackPaths
+	if !runtimeOK || isNilInterface(runtimeStore) || !checkpointOK || isNilInterface(checkpoints) || isNilInterface(attackPaths) {
 		return nil, fmt.Errorf("%w: runtime orchestration storage is unavailable", platformjobs.ErrRuntimeUnavailable)
 	}
 	return runtimeorchestration.NewSecurityPathService(runtimeorchestration.SecurityPathDependencies{
-		RawCypher: a.deps.GraphReads.RawCypher, GraphIngest: a.graphIngestService(), Checkpoints: checkpoints,
-		RuntimeStore: runtimeStore, LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore), RuntimeSync: a.runtimeService(),
+		AttackPaths: attackPaths, AssertionCoverage: assertionCoverage, AssertionMigrator: assertionMigrator,
+		GraphIngest: a.graphIngestService(), Checkpoints: checkpoints, RuntimeStore: runtimeStore,
+		LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore), RuntimeSync: a.runtimeService(),
 	}), nil
 }
 

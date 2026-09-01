@@ -32,10 +32,6 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	return nil, ports.ErrGraphEntityNotFound
 }
 
-func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	return nil, nil
-}
-
 func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
 	if s.upsertErr != nil {
 		return s.upsertErr

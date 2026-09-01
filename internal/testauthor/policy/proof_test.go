@@ -216,9 +216,9 @@ func (s *proofGraphStore) DeleteProjectedEntity(_ context.Context, urn string) e
 	}
 	return nil
 }
-func (s *proofGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *proofGraphStore) EvaluatePolicyGraph(_ context.Context, request findingdsl.PolicyGraphEvaluationRequest) ([]map[string]any, error) {
 	s.executions++
-	query := strings.ToLower(request.Query)
+	query := strings.ToLower(request.Rule.Spec.Graph.Query)
 	for _, launch := range s.links {
 		if launch.Relation != "acted_on" {
 			continue
@@ -243,10 +243,10 @@ func (s *proofGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyp
 				for _, urn := range resourceURNs {
 					evidence = append(evidence, map[string]any{"urn": urn})
 				}
-				return []ports.CypherRow{{Values: map[string]any{
+				return []map[string]any{{
 					"primary_urn": roleEdge.FromURN, "fingerprint_key": roleEdge.FromURN + "|" + roleEdge.ToURN,
 					"summary": "causal ECS role path", "resource_urns": resourceURNs, "evidence": evidence,
-				}}}, nil
+				}}, nil
 			}
 		}
 	}

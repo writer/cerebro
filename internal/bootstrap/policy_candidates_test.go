@@ -26,8 +26,8 @@ func TestPolicyCandidateReadsUseConfiguredAuthority(t *testing.T) {
 	if service.Graph != authority {
 		t.Fatalf("policy candidate graph = %#v, want configured authority", service.Graph)
 	}
-	if service.Author == nil || any(service.Author.PolicyGraphStore) != any(legacy) {
-		t.Fatalf("policy fixture store = %#v, want explicit compatibility store", service.Author)
+	if service.Author == nil || service.Author.PolicyGraphStore == nil || any(service.Author.PolicyGraphStore) == any(legacy) {
+		t.Fatalf("policy fixture store = %#v, want test-author compatibility adapter", service.Author)
 	}
 }
 

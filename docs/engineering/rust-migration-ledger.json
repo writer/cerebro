@@ -15,18 +15,18 @@
     { "package": "apps/web/scripts/testdata/grc-e2e-seed", "role": "e2e seed fixture" }
   ],
   "callers": [
-    { "package": "internal/agentauthoring", "status": "compat" },
+    { "package": "internal/agentauthoring", "status": "migrated" },
     { "package": "internal/attackpath", "status": "compat", "blocked_on": "relation-filtered variable-length traversal, aggregations, attribute substring predicates" },
-    { "package": "internal/findingdsl", "status": "compat" },
+    { "package": "internal/findingdsl", "status": "migrated" },
     { "package": "internal/findings", "status": "compat", "blocked_on": "aggregations, optional match, variable-length traversal (per graph rule)" },
     { "package": "internal/graphagent", "status": "compat", "note": "ask flow is a permanent resident (LLM-drafted Cypher); probe counts still migrate, then flip this entry to permanent" },
     { "package": "internal/graphquery", "status": "compat", "blocked_on": "variable-length traversal with relation whitelist, union variants, substring predicates, batched traversal" },
     { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
-    { "package": "internal/grcvendor", "status": "compat" },
-    { "package": "internal/knowledge", "status": "compat" },
+    { "package": "internal/grcvendor", "status": "migrated" },
+    { "package": "internal/knowledge", "status": "migrated" },
     { "package": "internal/policycandidate", "status": "compat", "note": "shadow/experiment evaluation is a permanent resident (rule.Spec.Graph.Query); grounding still migrates, then flip this entry to permanent" },
-    { "package": "internal/reports", "status": "compat" },
-    { "package": "internal/runtimeorchestration", "status": "compat" },
+    { "package": "internal/reports", "status": "migrated" },
+    { "package": "internal/runtimeorchestration", "status": "migrated" },
     { "package": "internal/workflowprojection", "status": "compat", "blocked_on": "keyset cursors, organizational mapping for finding kinds" }
   ]
 }

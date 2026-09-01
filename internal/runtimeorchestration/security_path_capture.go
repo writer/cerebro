@@ -42,12 +42,14 @@ type runtimeSyncService interface {
 }
 
 type SecurityPathDependencies struct {
-	RawCypher    ports.RawCypherQueryStore
-	GraphIngest  graphIngestService
-	Checkpoints  CheckpointStore
-	RuntimeStore ports.SourceRuntimeStore
-	LeaseStore   ports.SourceRuntimeLeaseStore
-	RuntimeSync  runtimeSyncService
+	AttackPaths       ports.CloudAttackPathStore
+	AssertionCoverage ports.ProjectionAssertionCoverageStore
+	AssertionMigrator ports.ProjectionAssertionMigrator
+	GraphIngest       graphIngestService
+	Checkpoints       CheckpointStore
+	RuntimeStore      ports.SourceRuntimeStore
+	LeaseStore        ports.SourceRuntimeLeaseStore
+	RuntimeSync       runtimeSyncService
 }
 
 type SecurityPathService struct {
@@ -104,7 +106,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 	if tenantID == "" || runtimeID == "" {
 		return securitypathdelta.Snapshot{}, errors.New("source runtime tenant and id are required for security path capture")
 	}
-	if s == nil || s.deps.RawCypher == nil {
+	if s == nil || s.deps.AttackPaths == nil {
 		return securitypathdelta.Snapshot{}, attackpath.ErrRuntimeUnavailable
 	}
 	migrationLimitations, err := s.migrateLegacyAssertions(ctx, tenantID)
@@ -112,7 +114,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 		return securitypathdelta.Snapshot{}, err
 	}
 	observedAt := time.Now().UTC()
-	result, err := attackpath.New(s.deps.RawCypher).Traverse(ctx, attackpath.Request{
+	result, err := attackpath.NewWithCapabilities(nil, s.deps.AttackPaths).Traverse(ctx, attackpath.Request{
 		TenantID:              tenantID,
 		AccountID:             strings.TrimSpace(request.AccountID),
 		RequireAssertionProof: true,
@@ -129,8 +131,8 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 	limitations := append([]string(nil), request.GraphReceipt.limitations...)
 	limitations = append(limitations, migrationLimitations...)
 	limitations = append(limitations, sourceruntime.CollectionIncompletenessReasons(runtime)...)
-	coverageStore, ok := s.deps.RawCypher.(ports.ProjectionAssertionCoverageStore)
-	if !ok || coverageStore == nil {
+	coverageStore := s.deps.AssertionCoverage
+	if coverageStore == nil {
 		limitations = append(limitations, "material_link_assertion_coverage_unavailable")
 	} else {
 		missing, coverageErr := coverageStore.CountProjectedLinksMissingAssertions(ctx, tenantID, securityPathMaterialRelations())
@@ -199,8 +201,8 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 }
 
 func (s *SecurityPathService) migrateLegacyAssertions(ctx context.Context, tenantID string) ([]string, error) {
-	migrator, ok := s.deps.RawCypher.(ports.ProjectionAssertionMigrator)
-	if !ok || migrator == nil {
+	migrator := s.deps.AssertionMigrator
+	if migrator == nil {
 		return []string{"material_link_assertion_migration_unavailable"}, nil
 	}
 	quarantined := false
