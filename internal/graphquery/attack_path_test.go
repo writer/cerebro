@@ -22,7 +22,7 @@ func (s *graphAttackPathStore) ListCloudAttackPaths(_ context.Context, request p
 
 func TestGetAttackPathsRequiresTenant(t *testing.T) {
 	store := &graphAttackPathStore{}
-	_, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{})
+	_, err := NewWithCapabilities(nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("GetAttackPaths() error = %v, want %v", err, ErrInvalidRequest)
 	}
@@ -35,7 +35,7 @@ func TestGetAttackPathsUsesTypedCapability(t *testing.T) {
 		Counts:   ports.CloudAttackPathCounts{Paths: 1, ExposedResources: 1, PrivilegedPrincipals: 1, CloudAccounts: 1},
 		Paths:    []ports.CloudAttackPath{path},
 	}}
-	result, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{
+	result, err := NewWithCapabilities(nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{
 		TenantID:  "writer",
 		AccountID: "123456789012",
 		Limit:     500,
@@ -54,14 +54,11 @@ func TestGetAttackPathsUsesTypedCapability(t *testing.T) {
 	}
 }
 
-func TestGetAttackPathsDoesNotUseRawCypherFallback(t *testing.T) {
-	raw := &awsExposureStubStore{}
-	_, err := New(raw).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "writer"})
+func TestGetAttackPathsFailsClosedWithoutTypedCapability(t *testing.T) {
+	store := &awsExposureStubStore{}
+	_, err := New(store).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "writer"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetAttackPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
-	}
-	if len(raw.requests) != 0 {
-		t.Fatalf("raw Cypher requests = %d, want none", len(raw.requests))
 	}
 }
 

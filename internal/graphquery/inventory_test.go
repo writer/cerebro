@@ -59,7 +59,7 @@ func TestInventoryReadsIsolateApplicationWorkspacesAndPreserveTenantWideDefault(
 		{workspaceID: "workspace-a", entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:asset:a", TenantID: "tenant-a", EntityType: "asset", Label: "Asset A"}},
 		{workspaceID: "workspace-b", entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:asset:b", TenantID: "tenant-a", EntityType: "asset", Label: "Asset B"}},
 	}}
-	service := NewWithCapabilities(nil, nil, store, nil)
+	service := NewWithCapabilities(nil, store, nil)
 
 	assetsA, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", Limit: 10})
 	if err != nil {

@@ -28,7 +28,7 @@ func TestAttackPathsSyntheticTraversalProofEvals(t *testing.T) {
 			TenantID: "synthetic",
 			Paths:    []ports.CloudAttackPath{syntheticAttackPath(tc)},
 		}}
-		result, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "synthetic"})
+		result, err := NewWithCapabilities(nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "synthetic"})
 		if err != nil {
 			t.Fatalf("%s: GetAttackPaths() error = %v", tc.id, err)
 		}

@@ -19,8 +19,8 @@ use cerebro_organizational_store::{
     CloudAttackPathOwnership as StoreCloudAttackPathOwnership,
     CloudAttackPathPage as StoreCloudAttackPathPage,
     ComplianceImpactFact as StoreComplianceImpactFact,
-    ComplianceImpactPage as StoreComplianceImpactPage,
-    EffectiveAccessPath as StoreEffectiveAccessPath,
+    ComplianceImpactPage as StoreComplianceImpactPage, CrownJewelPath as StoreCrownJewelPath,
+    CrownJewelPathPage as StoreCrownJewelPathPage, EffectiveAccessPath as StoreEffectiveAccessPath,
     EffectiveAccessPathEdge as StoreEffectiveAccessPathEdge,
     EffectiveAccessPathPage as StoreEffectiveAccessPathPage,
     EntityCatalogDirection as StoreCatalogDirection, EntityCatalogFilter as StoreCatalogFilter,
@@ -1053,6 +1053,39 @@ impl OrganizationalGraphService for GraphRpc {
         .map_err(|_| ConnectError::unavailable("Cloud attack path read exceeded 2 seconds."))?
         .map_err(catalog_store_error)?;
         Response::ok(cloud_attack_path_response(result))
+    }
+
+    async fn list_crown_jewel_paths(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListCrownJewelPathsRequest>,
+    ) -> ServiceResult<ListCrownJewelPathsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let seed_limit = usize::try_from(request.seed_limit)
+            .map_err(|_| ConnectError::invalid_argument("seed_limit exceeds usize"))?;
+        let depth = usize::try_from(request.max_depth)
+            .map_err(|_| ConnectError::invalid_argument("max_depth exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_crown_jewel_paths(
+                &tenant,
+                request.account_id.trim(),
+                request.entity_kind.trim(),
+                limit,
+                seed_limit,
+                depth,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Crown jewel path read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(crown_jewel_path_response(result))
     }
 
     async fn list_entity_relations(
@@ -2156,6 +2189,26 @@ fn cloud_attack_path_response(page: StoreCloudAttackPathPage) -> ListCloudAttack
         counts: cloud_attack_path_counts(page.counts).into(),
         paths: page.paths.into_iter().map(cloud_attack_path).collect(),
         truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn crown_jewel_path_response(page: StoreCrownJewelPathPage) -> ListCrownJewelPathsResponse {
+    ListCrownJewelPathsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        seeds: page.seeds.into_iter().map(graph_entity).collect(),
+        paths: page.paths.into_iter().map(crown_jewel_path).collect(),
+        truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn crown_jewel_path(path: StoreCrownJewelPath) -> CrownJewelPath {
+    CrownJewelPath {
+        seed: graph_entity(path.seed).into(),
+        nodes: path.nodes.into_iter().map(graph_entity).collect(),
+        relations: path.relations,
         ..Default::default()
     }
 }

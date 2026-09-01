@@ -198,23 +198,3 @@ func boundedExposureInt(value uint64) int {
 	}
 	return int(value)
 }
-
-// cypherString remains shared by the raw-query consumers that have not moved
-// behind typed graph operations yet. Exposure coverage does not call it.
-func cypherString(row ports.CypherRow, key string) string {
-	if row.Values == nil {
-		return ""
-	}
-	value, ok := row.Values[key]
-	if !ok || value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	default:
-		return fmt.Sprint(typed)
-	}
-}

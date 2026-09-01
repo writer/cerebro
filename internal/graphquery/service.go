@@ -26,11 +26,12 @@ var (
 // Service exposes the first bounded graph neighborhood query.
 type Service struct {
 	neighborhoods ports.GraphNeighborhoodStore
-	rawCypher     ports.RawCypherQueryStore
 	catalog       ports.EntityCatalogStore
 	exposure      ports.ExposureCoverageStore
 	personAccess  ports.PersonAccessPathStore
+	effective     ports.EffectiveAccessPathStore
 	attackPaths   ports.CloudAttackPathStore
+	crownJewels   ports.CrownJewelPathStore
 }
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
@@ -45,47 +46,56 @@ type NeighborhoodRequest struct {
 func New(store ports.GraphNeighborhoodStore) *Service {
 	return NewWithCapabilities(
 		store,
-		graphRawCypherCapability(store),
 		graphCatalogCapability(store),
 		graphExposureCapability(store),
 		graphPersonAccessCapability(store),
+		graphEffectiveAccessCapability(store),
 		graphAttackPathCapability(store),
+		graphCrownJewelPathCapability(store),
 	)
 }
 
-func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore, extraCapabilities ...any) *Service {
+func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore, extraCapabilities ...any) *Service {
 	var personAccessStores []ports.PersonAccessPathStore
 	var attackPathStore ports.CloudAttackPathStore
+	var crownJewelPathStore ports.CrownJewelPathStore
+	var effectiveAccessStore ports.EffectiveAccessPathStore
 	for _, capability := range extraCapabilities {
-		switch typed := capability.(type) {
-		case ports.PersonAccessPathStore:
+		if typed, ok := capability.(ports.PersonAccessPathStore); ok {
 			personAccessStores = append(personAccessStores, typed)
-		case ports.CloudAttackPathStore:
+		}
+		if typed, ok := capability.(ports.CloudAttackPathStore); ok {
 			attackPathStore = typed
+		}
+		if typed, ok := capability.(ports.CrownJewelPathStore); ok {
+			crownJewelPathStore = typed
+		}
+		if typed, ok := capability.(ports.EffectiveAccessPathStore); ok {
+			effectiveAccessStore = typed
 		}
 	}
 	personAccessStore := firstPersonAccessCapability(personAccessStores)
 	if personAccessStore == nil {
-		personAccessStore = graphPersonAccessCapability(neighborhoods, rawCypher, catalog, exposure)
+		personAccessStore = graphPersonAccessCapability(neighborhoods, catalog, exposure)
 	}
 	if attackPathStore == nil {
-		attackPathStore = graphAttackPathCapability(neighborhoods, rawCypher, catalog, exposure, personAccessStore)
+		attackPathStore = graphAttackPathCapability(neighborhoods, catalog, exposure, personAccessStore)
+	}
+	if crownJewelPathStore == nil {
+		crownJewelPathStore = graphCrownJewelPathCapability(neighborhoods, catalog, exposure, personAccessStore, attackPathStore)
+	}
+	if effectiveAccessStore == nil {
+		effectiveAccessStore = graphEffectiveAccessCapability(neighborhoods, catalog, exposure, personAccessStore, attackPathStore, crownJewelPathStore)
 	}
 	return &Service{
 		neighborhoods: neighborhoods,
-		rawCypher:     rawCypher,
 		catalog:       catalog,
 		exposure:      exposure,
 		personAccess:  personAccessStore,
+		effective:     effectiveAccessStore,
 		attackPaths:   attackPathStore,
+		crownJewels:   crownJewelPathStore,
 	}
-}
-
-func graphRawCypherCapability(store ports.GraphNeighborhoodStore) ports.RawCypherQueryStore {
-	if rawCypher, ok := store.(ports.RawCypherQueryStore); ok {
-		return rawCypher
-	}
-	return nil
 }
 
 func graphCatalogCapability(store ports.GraphNeighborhoodStore) ports.EntityCatalogStore {
@@ -115,6 +125,24 @@ func graphAttackPathCapability(stores ...any) ports.CloudAttackPathStore {
 	for _, store := range stores {
 		if attackPaths, ok := store.(ports.CloudAttackPathStore); ok {
 			return attackPaths
+		}
+	}
+	return nil
+}
+
+func graphCrownJewelPathCapability(stores ...any) ports.CrownJewelPathStore {
+	for _, store := range stores {
+		if crownJewelPaths, ok := store.(ports.CrownJewelPathStore); ok {
+			return crownJewelPaths
+		}
+	}
+	return nil
+}
+
+func graphEffectiveAccessCapability(stores ...any) ports.EffectiveAccessPathStore {
+	for _, store := range stores {
+		if effectiveAccess, ok := store.(ports.EffectiveAccessPathStore); ok {
+			return effectiveAccess
 		}
 	}
 	return nil
