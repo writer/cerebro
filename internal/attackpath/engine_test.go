@@ -160,9 +160,9 @@ func validTypedPath(tenantID string) ports.CloudAttackPath {
 	node := func(kind, suffix, label string) ports.CloudAttackPathNode {
 		return ports.CloudAttackPathNode{URN: "urn:cerebro:" + tenantID + ":" + suffix, EntityType: kind, Label: label}
 	}
-	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode, direction string) ports.CloudAttackPathEdge {
+	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode) ports.CloudAttackPathEdge {
 		return ports.CloudAttackPathEdge{
-			From: from, Relation: relation, To: to, Direction: direction,
+			From: from, Relation: relation, To: to, Direction: "forward",
 			SourceRuntimeID: "runtime-1", AssertionRuntimeIDs: []string{"runtime-2"},
 			AttributesJSON: `{"source_event_id":"event-1","observed_at":"2026-07-15T08:00:00Z"}`,
 		}
@@ -175,14 +175,14 @@ func validTypedPath(tenantID string) ports.CloudAttackPath {
 	owner := node("team", "team:security", "Security")
 	return ports.CloudAttackPath{
 		PublicPrincipal: public, ExposedResource: exposed, CloudAccount: account, Principal: principal, Permission: permission,
-		Ownerships:            []ports.CloudAttackPathOwnership{{Owner: owner, Edge: edge(exposed, "owned_by", owner, "forward")}},
+		Ownerships:            []ports.CloudAttackPathOwnership{{Owner: owner, Edge: edge(exposed, "owned_by", owner)}},
 		ReachRelation:         "can_reach",
 		AccessRelation:        "can_admin",
 		RelationChain:         []string{"attached_to"},
-		ExposureEdge:          edge(public, "can_reach", exposed, "forward"),
-		ResourceAccountEdge:   edge(exposed, "belongs_to", account, "forward"),
-		TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "attached_to", principal, "forward")},
-		PrivilegeEdge:         edge(principal, "can_admin", permission, "forward"),
-		PermissionAccountEdge: edge(permission, "belongs_to", account, "forward"),
+		ExposureEdge:          edge(public, "can_reach", exposed),
+		ResourceAccountEdge:   edge(exposed, "belongs_to", account),
+		TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "attached_to", principal)},
+		PrivilegeEdge:         edge(principal, "can_admin", permission),
+		PermissionAccountEdge: edge(permission, "belongs_to", account),
 	}
 }
