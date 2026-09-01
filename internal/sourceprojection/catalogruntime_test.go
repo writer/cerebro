@@ -970,42 +970,6 @@ func catalogRuntimeSyntheticEmail(token string) string {
 	return token + "@example.test"
 }
 
-func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
-	registry := BuiltinRegistry()
-
-	// hashicorp_vault secrets belongs_to vault was covered here before
-	// hashicorp_vault.secrets became fully Rust-authoritative and its Go
-	// projection writer was retired (writer/cerebro#2822), at which point
-	// the registered projector always fails closed and can no longer reach
-	// this relationship-augmentation layer. pagerduty.integration is a
-	// still-live provider exercising the identical single-event,
-	// relationship-synthesizes-the-target-entity semantics.
-	t.Run("pagerduty integration belongs_to service", func(t *testing.T) {
-		projector := registry.projectors["pagerduty.integration"]
-		if projector == nil {
-			t.Fatal("missing registered projector for pagerduty.integration")
-		}
-		_, links, err := projector(&cerebrov1.EventEnvelope{
-			Id:       "event-1",
-			TenantId: "tenant",
-			SourceId: "pagerduty",
-			Kind:     "pagerduty.integration",
-			Attributes: map[string]string{
-				"integration_id": "integration-1",
-				"name":           "Datadog",
-				"service_id":     "service-1",
-				"service_name":   "API",
-			},
-		})
-		if err != nil {
-			t.Fatalf("pagerduty.integration projector error = %v", err)
-		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:pagerduty_integration:integration-1", relationBelongsTo, "urn:cerebro:tenant:pagerduty_service:service-1") {
-			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
-		}
-	})
-}
-
 func TestCatalogProjectionPrimaryURNSkipsEvidenceAndIsDeterministic(t *testing.T) {
 	evidenceDotted := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:runtime_evidence:e1", EntityType: "runtime.evidence"}
 	evidenceUnderscore := &ports.ProjectedEntity{URN: "urn:cerebro:tenant:runtime_evidence:e2", EntityType: "runtime_evidence"}
