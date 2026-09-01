@@ -35,6 +35,7 @@ mod deposit;
 mod digitalocean;
 mod discord;
 mod docker_hub;
+mod doppler;
 mod egress;
 mod email_domain_health;
 mod evidence_cas;

@@ -44,7 +44,7 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 	if runtimeID == "" {
 		return result, errors.New("source runtime id is required for security path capture")
 	}
-	if s == nil || s.deps.RawCypher == nil || s.deps.GraphIngest == nil || s.deps.Checkpoints == nil || s.deps.RuntimeStore == nil || s.deps.RuntimeSync == nil || s.deps.LeaseStore == nil {
+	if s == nil || s.deps.AttackPaths == nil || s.deps.GraphIngest == nil || s.deps.Checkpoints == nil || s.deps.RuntimeStore == nil || s.deps.RuntimeSync == nil || s.deps.LeaseStore == nil {
 		return result, errors.New("security path capture dependencies are unavailable")
 	}
 	owner := strings.TrimSpace(request.LeaseOwner)

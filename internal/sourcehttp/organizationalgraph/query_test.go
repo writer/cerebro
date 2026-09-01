@@ -47,6 +47,7 @@ type graphServiceStub struct {
 	impactFact        func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error)
 	impactDependents  func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error)
 	personAccess      func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
+	cloudAttackPaths  func(context.Context, *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error)
 	vendorRegister    func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
 	vendorDiscoveries func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
@@ -77,6 +78,10 @@ func (s graphServiceStub) ListComplianceImpactDependents(ctx context.Context, re
 
 func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error) {
 	return s.personAccess(ctx, request)
+}
+
+func (s graphServiceStub) ListCloudAttackPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error) {
+	return s.cloudAttackPaths(ctx, request)
 }
 
 func (s graphServiceStub) ListVendorDiscoveries(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
@@ -730,6 +735,64 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	}
 	if access.GraphRevision != 9 || len(access.Paths) != 1 || access.Paths[0].AccessTarget.EntityType != "aws.role" {
 		t.Fatalf("access = %#v", access)
+	}
+}
+
+func TestQueryStoreCloudAttackPathsUsesTypedRustRPC(t *testing.T) {
+	node := func(kind, urn, label string) *cerebrographv1.CloudAttackPathNode {
+		return &cerebrographv1.CloudAttackPathNode{Urn: urn, EntityKind: kind, Label: label}
+	}
+	edge := func(from *cerebrographv1.CloudAttackPathNode, relation string, to *cerebrographv1.CloudAttackPathNode) *cerebrographv1.CloudAttackPathEdge {
+		return &cerebrographv1.CloudAttackPathEdge{
+			From: from, Relation: relation, To: to, Direction: "forward", SourceId: "aws", SourceRuntimeId: "runtime-a",
+			AssertionRuntimeIds: []string{"runtime-a"}, AttributesJson: `{"source_event_id":"event-a"}`,
+		}
+	}
+	public := node("aws.public_principal", "urn:cerebro:tenant-a:public:internet", "public")
+	exposed := node("aws.network_interface", "urn:cerebro:tenant-a:resource:eni-1", "eni-1")
+	account := node("cloud.account", "urn:cerebro:tenant-a:account:prod", "prod")
+	principal := node("aws.role", "urn:cerebro:tenant-a:principal:admin", "admin")
+	permission := node("aws.policy", "urn:cerebro:tenant-a:permission:admin", "AdministratorAccess")
+	owner := node("team", "urn:cerebro:tenant-a:team:security", "Security")
+	server := newGraphTestServer(t, graphServiceStub{
+		cloudAttackPaths: func(_ context.Context, request *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetAccountId() != "prod" || request.Msg.GetRuntimeId() != "runtime-a" || !request.Msg.GetRequireAssertionProof() || request.Msg.GetLimit() != 10 || request.Msg.GetMaxDepth() != 4 || request.Msg.GetExpectedGraphRevision() != 41 {
+				t.Fatalf("cloud attack path authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ListCloudAttackPathsResponse{
+				TenantId: "tenant-a", GraphRevision: 41,
+				Counts: &cerebrographv1.CloudAttackPathCounts{Paths: 1, ExposedResources: 1, PrivilegedPrincipals: 1, CloudAccounts: 1},
+				Paths: []*cerebrographv1.CloudAttackPath{{
+					PublicPrincipal: public, ExposedResource: exposed, CloudAccount: account, Principal: principal, Permission: permission,
+					Ownerships:            []*cerebrographv1.CloudAttackPathOwnership{{Owner: owner, Edge: edge(exposed, "owned_by", owner)}},
+					ReachRelation:         "can_reach",
+					AccessRelation:        "can_admin",
+					RelationChain:         []string{"runs_as"},
+					ExposureEdge:          edge(public, "can_reach", exposed),
+					ResourceAccountEdge:   edge(exposed, "belongs_to", account),
+					TraversalEdges:        []*cerebrographv1.CloudAttackPathEdge{edge(exposed, "runs_as", principal)},
+					PrivilegeEdge:         edge(principal, "can_admin", permission),
+					PermissionAccountEdge: edge(permission, "belongs_to", account),
+				}},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.ListCloudAttackPaths(context.Background(), ports.CloudAttackPathRequest{
+		TenantID: " tenant-a ", AccountID: " prod ", RuntimeID: " runtime-a ", RequireAssertionProof: true, Limit: 10, Depth: 4, ExpectedRevision: 41,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.GraphRevision != 41 || result.Counts.Paths != 1 || len(result.Paths) != 1 || len(result.Paths[0].Ownerships) != 1 || len(result.Paths[0].TraversalEdges) != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Paths[0].PrivilegeEdge.AttributesJSON != `{"source_event_id":"event-a"}` || result.Paths[0].Principal.URN != principal.Urn {
+		t.Fatalf("path = %#v", result.Paths[0])
 	}
 }
 

@@ -353,7 +353,6 @@ Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
 | `internal/policycandidate` grounding | closed key re-resolution of declared evidence | organizational schema mapping, edge properties in results |
 | `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
 | `internal/grcpolicylifecycle` | per-type entity scan plus relation scan | attribute substring predicates, per-type subqueries |
-| `internal/workflowprojection` pruning | keyset-paged edge enumeration | keyset cursors, organizational mapping for finding kinds |
 | `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |
 
 Two callers are permanent residents of the compatibility port because their

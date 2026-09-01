@@ -12,7 +12,7 @@ use cerebro_organizational_model::{
     IdentityClaim, IdentityResolutionMethod, ModelError, ObservationRef, ProviderIdentity,
     ProviderKind, RelationKind, RelationshipAssertion, TenantId,
 };
-use cerebro_source_catalog::{CompiledFamily, CompiledSource};
+use cerebro_source_catalog::{CompiledFamily, CompiledSource, ProjectionEntity};
 use serde_json::Value;
 
 use crate::{CollectedBatch, CollectedScope, GraphMapper, SourceRecord};
@@ -301,9 +301,26 @@ impl CatalogGraphMapper {
                 "identity_user" => {
                     self.map_identity_user(batch, record, family, projected, &mut builder)?
                 }
+                "audit_event" if self.source.id() == "doppler" => {
+                    self.map_doppler_audit_event(batch, record, projected, &mut builder)?
+                }
                 template if entity_kind(template).is_some() => {
-                    let entity = self.map_entity(batch, record, family, projected)?;
+                    let entity = self.map_entity(batch, record, family, projected.clone())?;
+                    let related = self
+                        .map_declared_relationships(batch, record, family, &projected, &entity)?;
+                    let evidence = self.map_evidence(batch, record, &projected, &entity)?;
                     builder.add_entity(entity)?;
+                    for (from, to, assertion) in related {
+                        if let Some(from) = from {
+                            builder.add_entity(from)?;
+                        }
+                        builder.add_entity(to)?;
+                        builder.add_assertion(GraphAssertion::Relationship(assertion))?;
+                    }
+                    if let Some((evidence, assertion)) = evidence {
+                        builder.add_entity(evidence)?;
+                        builder.add_assertion(GraphAssertion::Relationship(assertion))?;
+                    }
                 }
                 template => {
                     return Err(CatalogMapperError::UnsupportedTemplate(template.to_owned()));
@@ -337,19 +354,220 @@ impl CatalogGraphMapper {
         projected: BTreeMap<String, String>,
     ) -> Result<Entity, CatalogMapperError> {
         let template = family.projection().template();
-        let kind = entity_kind(template)
-            .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))?;
-        let label = label_for(template, &projected, family, record);
-        let provider_kind = self.provider_kind(template)?;
+        let (kind, label, provider_kind, provider_id) = if let Some(spec) =
+            family.projection().entity()
+        {
+            let (kind, provider_kind) =
+                projection_entity_contract(self.source.id(), spec, &projected)?;
+            (
+                kind,
+                projection_entity_label(spec, &projected)?,
+                provider_kind,
+                projection_entity_id(family.id(), spec, &projected)?,
+            )
+        } else {
+            (
+                entity_kind(template)
+                    .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))?,
+                label_for(template, &projected, family, record),
+                self.provider_kind(template)?,
+                projected_id(template, &projected, record).to_owned(),
+            )
+        };
         let entity = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
             provider_kind,
-            projected_id(template, &projected, record),
+            provider_id,
             kind,
             label,
         )?;
         add_properties(entity, projected)
+    }
+
+    fn map_declared_relationships(
+        &self,
+        batch: &CollectedBatch,
+        record: &SourceRecord,
+        family: &CompiledFamily,
+        projected: &BTreeMap<String, String>,
+        primary: &Entity,
+    ) -> Result<Vec<(Option<Entity>, Entity, RelationshipAssertion)>, CatalogMapperError> {
+        let mut relationships = Vec::new();
+        for relationship in family.projection().relationships() {
+            let required = if relationship.required_attributes().is_empty() {
+                relationship
+                    .from()
+                    .into_iter()
+                    .flat_map(ProjectionEntity::id_attributes)
+                    .chain(relationship.to().id_attributes())
+                    .collect::<Vec<_>>()
+            } else {
+                relationship
+                    .required_attributes()
+                    .iter()
+                    .collect::<Vec<_>>()
+            };
+            if required.iter().any(|attribute| {
+                projected
+                    .get(attribute.as_str())
+                    .is_none_or(|value| value.trim().is_empty())
+            }) {
+                continue;
+            }
+            let additional_from = match relationship.from() {
+                Some(spec) => Some(self.map_projection_entity(batch, family, projected, spec)?),
+                None => None,
+            };
+            let from = additional_from.as_ref().unwrap_or(primary);
+            let to = self.map_projection_entity(batch, family, projected, relationship.to())?;
+            let relation = RelationKind::from_wire(relationship.relation()).ok_or_else(|| {
+                CatalogMapperError::UnsupportedTemplate(format!(
+                    "relationship {}",
+                    relationship.relation()
+                ))
+            })?;
+            let assertion = RelationshipAssertion::new(
+                from,
+                relation,
+                &to,
+                self.assertion_provenance(batch, record)?,
+                batch.scope.receipt().observed_at_unix_ms(),
+            )?;
+            relationships.push((additional_from, to, assertion));
+        }
+        Ok(relationships)
+    }
+
+    fn map_projection_entity(
+        &self,
+        batch: &CollectedBatch,
+        family: &CompiledFamily,
+        projected: &BTreeMap<String, String>,
+        spec: &ProjectionEntity,
+    ) -> Result<Entity, CatalogMapperError> {
+        let (kind, provider_kind) = projection_entity_contract(self.source.id(), spec, projected)?;
+        Entity::provider(
+            batch.scope.receipt().tenant_id().clone(),
+            batch.scope.receipt().source_runtime_id().clone(),
+            provider_kind.clone(),
+            projection_entity_id(family.id(), spec, projected)?,
+            kind,
+            projection_entity_label(spec, projected)?,
+        )
+        .map_err(Into::into)
+    }
+
+    fn map_evidence(
+        &self,
+        batch: &CollectedBatch,
+        record: &SourceRecord,
+        projected: &BTreeMap<String, String>,
+        primary: &Entity,
+    ) -> Result<Option<(Entity, RelationshipAssertion)>, CatalogMapperError> {
+        let Some(evidence_id) = projected
+            .get("evidence_id")
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let evidence = Entity::provider(
+            batch.scope.receipt().tenant_id().clone(),
+            batch.scope.receipt().source_runtime_id().clone(),
+            ProviderKind::parse(format!("{}.runtime_evidence", self.source.id()))?,
+            evidence_id,
+            EntityKind::Evidence,
+            evidence_id,
+        )?;
+        let evidence = add_properties(
+            evidence,
+            projected
+                .iter()
+                .filter(|(key, _)| key.starts_with("evidence_"))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+        )?;
+        let assertion = RelationshipAssertion::new(
+            primary,
+            RelationKind::HasEvidence,
+            &evidence,
+            self.assertion_provenance(batch, record)?,
+            batch.scope.receipt().observed_at_unix_ms(),
+        )?;
+        Ok(Some((evidence, assertion)))
+    }
+
+    fn map_doppler_audit_event<Mode>(
+        &self,
+        batch: &CollectedBatch,
+        record: &SourceRecord,
+        projected: BTreeMap<String, String>,
+        builder: &mut GraphDeltaBuilder<Mode>,
+    ) -> Result<(), CatalogMapperError> {
+        let resource_id = first(&projected, &["resource_id", "target_id"])
+            .unwrap_or(&record.provider_id)
+            .to_owned();
+        let resource_type = first(&projected, &["resource_type", "target_type"])
+            .unwrap_or("resource")
+            .to_owned();
+        let resource_label = first(
+            &projected,
+            &["resource_name", "target_name", "resource_email"],
+        )
+        .unwrap_or(&resource_id)
+        .to_owned();
+        let resource = add_properties(
+            Entity::provider(
+                batch.scope.receipt().tenant_id().clone(),
+                batch.scope.receipt().source_runtime_id().clone(),
+                ProviderKind::parse("doppler.audit_resource")?,
+                format!(
+                    "{}:{resource_type}{}:{resource_id}",
+                    resource_type.len(),
+                    resource_id.len()
+                ),
+                EntityKind::Resource,
+                resource_label,
+            )?,
+            projected.clone(),
+        )?;
+
+        if let Some(actor_id) = first(&projected, &["actor_id", "actor_email"]) {
+            let actor = add_properties(
+                ProviderIdentity::new(
+                    batch.scope.receipt().tenant_id().clone(),
+                    batch.scope.receipt().source_runtime_id().clone(),
+                    ProviderKind::parse("doppler.identity_user")?,
+                    actor_id,
+                    first(&projected, &["actor_name", "actor_email"]).unwrap_or(actor_id),
+                )?
+                .into_entity(),
+                projected
+                    .iter()
+                    .filter(|(key, _)| key.starts_with("actor_"))
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect(),
+            )?;
+            let acted_on = RelationshipAssertion::new(
+                &actor,
+                RelationKind::ActedOn,
+                &resource,
+                self.assertion_provenance(batch, record)?,
+                batch.scope.receipt().observed_at_unix_ms(),
+            )?;
+            builder.add_entity(actor)?;
+            builder.add_assertion(GraphAssertion::Relationship(acted_on))?;
+        }
+
+        if let Some((evidence, assertion)) =
+            self.map_evidence(batch, record, &projected, &resource)?
+        {
+            builder.add_entity(evidence)?;
+            builder.add_assertion(GraphAssertion::Relationship(assertion))?;
+        }
+        builder.add_entity(resource)?;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -602,6 +820,82 @@ fn projected_fields(
     values
 }
 
+fn projection_entity_contract(
+    source_id: &str,
+    spec: &ProjectionEntity,
+    projected: &BTreeMap<String, String>,
+) -> Result<(EntityKind, ProviderKind), CatalogMapperError> {
+    let entity_type = if spec.entity_type().contains('|') {
+        spec.entity_type()
+            .split('|')
+            .map(str::trim)
+            .find_map(|attribute| {
+                projected
+                    .get(attribute)
+                    .map(String::as_str)
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .ok_or_else(|| CatalogMapperError::MissingField {
+                family: source_id.to_owned(),
+                field: spec.entity_type().to_owned(),
+            })?
+    } else {
+        spec.entity_type()
+    };
+    let provider_kind = if entity_type.contains('.') {
+        ProviderKind::parse(entity_type)?
+    } else {
+        ProviderKind::parse(format!("{source_id}.{entity_type}"))?
+    };
+    let kind =
+        entity_kind(entity_type).unwrap_or_else(|| EntityKind::Provider(provider_kind.clone()));
+    Ok((kind, provider_kind))
+}
+
+fn projection_entity_id(
+    family: &str,
+    spec: &ProjectionEntity,
+    projected: &BTreeMap<String, String>,
+) -> Result<String, CatalogMapperError> {
+    let values = spec
+        .id_attributes()
+        .iter()
+        .map(|attribute| {
+            projected
+                .get(attribute)
+                .map(String::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| CatalogMapperError::MissingField {
+                    family: family.to_owned(),
+                    field: attribute.clone(),
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if let [value] = values.as_slice() {
+        return Ok((*value).to_owned());
+    }
+    let mut id = String::new();
+    for value in values {
+        use std::fmt::Write as _;
+        write!(&mut id, "{}:{value}", value.len())
+            .map_err(|_| CatalogMapperError::Domain(ModelError::Invalid("projection id")))?;
+    }
+    Ok(id)
+}
+
+fn projection_entity_label(
+    spec: &ProjectionEntity,
+    projected: &BTreeMap<String, String>,
+) -> Result<String, CatalogMapperError> {
+    if let Some(label) = projected
+        .get(spec.label_attribute())
+        .filter(|label| !label.trim().is_empty())
+    {
+        return Ok(label.clone());
+    }
+    projection_entity_id("projection", spec, projected)
+}
+
 fn scalar_at_path(value: &Value, path: &str) -> Option<String> {
     let mut value = value;
     for part in path.trim_start_matches("$.").split('.') {
@@ -788,7 +1082,10 @@ fn add_properties(
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{
+        collections::BTreeSet,
+        path::{Path, PathBuf},
+    };
 
     use cerebro_organizational_model::{
         CanonicalIdentity, CanonicalIdentityId, CollectionId, CompleteCollection, IdentityClaim,
@@ -1006,6 +1303,177 @@ mod tests {
             panic!("expected relationship")
         };
         assert_eq!(assertion.relation(), RelationKind::MemberOf);
+    }
+
+    #[test]
+    fn doppler_catalog_families_project_only_through_the_rust_mapper() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("doppler").unwrap().clone();
+        assert!(
+            source
+                .families()
+                .iter()
+                .all(cerebro_source_catalog::CompiledFamily::is_projection_authoritative)
+        );
+        let mut project_ids = BTreeSet::new();
+
+        for (
+            family,
+            provider_id,
+            fields,
+            expected_kind,
+            expected_label,
+            expected_entities,
+            expected_assertions,
+        ) in [
+            (
+                "secrets",
+                "secret-1",
+                BTreeMap::from([
+                    ("secret_id".to_owned(), "secret-1".to_owned()),
+                    ("secret_name".to_owned(), "DATABASE_URL".to_owned()),
+                    ("project_id".to_owned(), "project-1".to_owned()),
+                    ("evidence_id".to_owned(), "evidence-1".to_owned()),
+                    (
+                        "evidence_cas_uri".to_owned(),
+                        "cas://cases/evidence-1".to_owned(),
+                    ),
+                    ("evidence_cas_digest".to_owned(), "sha256:test".to_owned()),
+                ]),
+                EntityKind::Resource,
+                "DATABASE_URL",
+                3,
+                2,
+            ),
+            (
+                "projects",
+                "project-1",
+                BTreeMap::from([
+                    ("resource_id".to_owned(), "project-1".to_owned()),
+                    ("resource_name".to_owned(), "Platform".to_owned()),
+                    ("resource_type".to_owned(), "project".to_owned()),
+                ]),
+                EntityKind::Provider(ProviderKind::parse("doppler.project").unwrap()),
+                "Platform",
+                1,
+                0,
+            ),
+            (
+                "audit_events",
+                "event-1",
+                BTreeMap::from([
+                    ("actor_email".to_owned(), "actor@example.test".to_owned()),
+                    ("actor_id".to_owned(), "user-1".to_owned()),
+                    ("actor_name".to_owned(), "Ada".to_owned()),
+                    ("event_type".to_owned(), "user.login".to_owned()),
+                    ("resource_id".to_owned(), "application-1".to_owned()),
+                    ("resource_name".to_owned(), "Console".to_owned()),
+                    ("resource_type".to_owned(), "application".to_owned()),
+                ]),
+                EntityKind::Resource,
+                "Console",
+                2,
+                1,
+            ),
+        ] {
+            let batch = CollectedBatch {
+                scope: CollectedScope::Complete(
+                    CompleteCollection::new(
+                        TenantId::parse("tenant-a").unwrap(),
+                        SourceRuntimeId::parse("doppler-prod").unwrap(),
+                        CollectionId::parse(format!("collection-doppler-{family}")).unwrap(),
+                        format!("doppler.{family}"),
+                        10,
+                    )
+                    .unwrap(),
+                ),
+                records: vec![SourceRecord {
+                    observation_id: ObservationId::parse(format!("observation-doppler-{family}"))
+                        .unwrap(),
+                    family: family.to_owned(),
+                    provider_kind: format!("doppler.{family}"),
+                    provider_id: provider_id.to_owned(),
+                    fields,
+                    payload: serde_json::json!({"id": provider_id}),
+                }],
+                next_cursor: None,
+            };
+            let delta = CatalogGraphMapper::new(source.clone(), "doppler-rust-v1")
+                .unwrap()
+                .map(&batch)
+                .unwrap();
+            assert_eq!(delta.entities().len(), expected_entities, "family {family}");
+            assert_eq!(
+                delta.assertions().len(),
+                expected_assertions,
+                "family {family}"
+            );
+            let primary = delta
+                .entities()
+                .iter()
+                .find(|entity| entity.label() == expected_label)
+                .unwrap();
+            assert_eq!(primary.kind(), &expected_kind, "family {family}");
+            for entity in delta.entities().iter().filter(|entity| {
+                entity.kind()
+                    == &EntityKind::Provider(ProviderKind::parse("doppler.project").unwrap())
+            }) {
+                project_ids.insert(entity.id().as_str().to_owned());
+            }
+            if family == "secrets" {
+                let relations = delta
+                    .assertions()
+                    .iter()
+                    .map(|assertion| match assertion {
+                        GraphAssertion::Relationship(assertion) => assertion.relation(),
+                        GraphAssertion::IdentityBinding(_) => panic!("unexpected identity binding"),
+                    })
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(
+                    relations,
+                    BTreeSet::from([RelationKind::BelongsTo, RelationKind::HasEvidence])
+                );
+                assert!(delta.entities().iter().any(|entity| {
+                    entity.kind()
+                        == &EntityKind::Provider(ProviderKind::parse("doppler.project").unwrap())
+                        && entity.label() == "project-1"
+                }));
+                assert!(
+                    delta
+                        .entities()
+                        .iter()
+                        .any(|entity| entity.kind() == &EntityKind::Evidence)
+                );
+            }
+            if family == "audit_events" {
+                assert!(delta.entities().iter().any(|entity| {
+                    entity.kind() == &EntityKind::Identity && entity.label() == "Ada"
+                }));
+                assert_eq!(
+                    delta
+                        .assertions()
+                        .iter()
+                        .map(|assertion| match assertion {
+                            GraphAssertion::Relationship(assertion) => assertion.relation(),
+                            GraphAssertion::IdentityBinding(_) => {
+                                panic!("unexpected identity binding")
+                            }
+                        })
+                        .collect::<BTreeSet<_>>(),
+                    BTreeSet::from([RelationKind::ActedOn])
+                );
+            }
+        }
+        assert_eq!(
+            project_ids.len(),
+            1,
+            "a project record and a secret relationship must share one stable project identity"
+        );
     }
 
     #[test]

@@ -3,79 +3,39 @@ package graphquery
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/ports"
 )
 
+type graphAttackPathStore struct {
+	requests []ports.CloudAttackPathRequest
+	result   *ports.CloudAttackPathResult
+	err      error
+}
+
+func (s *graphAttackPathStore) ListCloudAttackPaths(_ context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	s.requests = append(s.requests, request)
+	return s.result, s.err
+}
+
 func TestGetAttackPathsRequiresTenant(t *testing.T) {
-	_, err := New(&awsExposureStubStore{}).GetAttackPaths(context.Background(), AttackPathRequest{})
+	store := &graphAttackPathStore{}
+	_, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("GetAttackPaths() error = %v, want %v", err, ErrInvalidRequest)
 	}
 }
 
-func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
-	store := &awsExposureStubStore{responses: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"path_count":                 int64(2),
-			"exposed_resource_count":     int64(1),
-			"privileged_principal_count": int64(1),
-			"cloud_account_count":        int64(1),
-		}}},
-		{{Values: map[string]any{
-			"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
-			"public_entity_type":     "aws.public_principal",
-			"public_label":           "public internet",
-			"exposed_urn":            "urn:cerebro:writer:aws_network_interface:eni-1",
-			"exposed_entity_type":    "aws.network.interface",
-			"exposed_label":          "prod-web",
-			"account_urn":            "urn:cerebro:writer:cloud_account:123456789012",
-			"account_entity_type":    "cloud.account",
-			"account_label":          "123456789012",
-			"principal_urn":          "urn:cerebro:writer:aws_user:admin@writer.com",
-			"principal_entity_type":  "aws.user",
-			"principal_label":        "admin@writer.com",
-			"permission_urn":         "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess",
-			"permission_entity_type": "aws.aws.iam.policy",
-			"permission_label":       "AdministratorAccess",
-			"reach_relation":         "can_reach",
-			"access_relation":        "can_perform",
-			"relation_chain":         []any{"attached_to", "runs_as"},
-			"exposure_edge": map[string]any{
-				"from_urn": "urn:cerebro:writer:aws_public_principal:public_internet", "from_entity_type": "aws.public_principal", "from_label": "public internet",
-				"relation": "can_reach",
-				"to_urn":   "urn:cerebro:writer:aws_network_interface:eni-1", "to_entity_type": "aws.network.interface", "to_label": "prod-web",
-				"direction": "forward",
-			},
-			"resource_account_edge": map[string]any{
-				"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_entity_type": "aws.network.interface", "from_label": "prod-web",
-				"relation": "belongs_to",
-				"to_urn":   "urn:cerebro:writer:cloud_account:123456789012", "to_entity_type": "cloud.account", "to_label": "123456789012",
-				"direction": "forward",
-			},
-			"traversal_edges": []any{
-				map[string]any{"from_urn": "urn:cerebro:writer:aws_network_interface:eni-1", "from_entity_type": "aws.network.interface", "from_label": "prod-web", "relation": "attached_to", "to_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "to_entity_type": "aws.ec2.instance", "to_label": "prod-web", "direction": "forward"},
-				map[string]any{"from_urn": "urn:cerebro:writer:aws_ec2_instance:i-1", "from_entity_type": "aws.ec2.instance", "from_label": "prod-web", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "to_entity_type": "aws.user", "to_label": "admin@writer.com", "direction": "forward"},
-			},
-			"privilege_edge": map[string]any{
-				"from_urn": "urn:cerebro:writer:aws_user:admin@writer.com", "from_entity_type": "aws.user", "from_label": "admin@writer.com",
-				"relation": "can_perform",
-				"to_urn":   "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess", "to_entity_type": "aws.aws.iam.policy", "to_label": "AdministratorAccess",
-				"direction": "forward",
-			},
-			"permission_account_edge": map[string]any{
-				"from_urn": "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess", "from_entity_type": "aws.aws.iam.policy", "from_label": "AdministratorAccess",
-				"relation": "belongs_to",
-				"to_urn":   "urn:cerebro:writer:cloud_account:123456789012", "to_entity_type": "cloud.account", "to_label": "123456789012",
-				"direction": "forward",
-			},
-		}}},
+func TestGetAttackPathsUsesTypedCapability(t *testing.T) {
+	path := graphTypedAttackPath("writer", "typed")
+	store := &graphAttackPathStore{result: &ports.CloudAttackPathResult{
+		TenantID: "writer",
+		Counts:   ports.CloudAttackPathCounts{Paths: 1, ExposedResources: 1, PrivilegedPrincipals: 1, CloudAccounts: 1},
+		Paths:    []ports.CloudAttackPath{path},
 	}}
-
-	result, err := New(store).GetAttackPaths(context.Background(), AttackPathRequest{
+	result, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{
 		TenantID:  "writer",
 		AccountID: "123456789012",
 		Limit:     500,
@@ -83,72 +43,49 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAttackPaths() error = %v", err)
 	}
-	if len(store.requests) != 2 {
-		t.Fatalf("query count = %d, want 2", len(store.requests))
+	if len(store.requests) != 1 || store.requests[0].TenantID != "writer" || store.requests[0].AccountID != "123456789012" || store.requests[0].Limit != attackpath.MaxLimit {
+		t.Fatalf("typed requests = %#v", store.requests)
 	}
-	for _, fragment := range []string{
-		"MATCH proof_path = (exposed)-[:RELATION*1..4]-(principal:Entity {tenant_id: $tenant_id})",
-		"relationships(proof_path)[idx].relation = 'member_of'",
-		"startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx + 1]",
-		"relationships(proof_path)[idx].relation <> 'member_of'",
-		"startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx]",
-		"traversal_edges",
-	} {
-		if !strings.Contains(store.requests[1].Query, fragment) {
-			t.Fatalf("sample query missing %q:\n%s", fragment, store.requests[1].Query)
-		}
+	if result.Counts.Paths != 1 || len(result.Paths) != 1 || result.Paths[0].Principal.Label != "admin" {
+		t.Fatalf("result = %#v", result)
 	}
-	if got := store.requests[0].Params["tenant_id"]; got != "writer" {
-		t.Fatalf("tenant_id param = %v, want writer", got)
-	}
-	if got := store.requests[0].Params["account_id"]; got != "123456789012" {
-		t.Fatalf("account_id param = %v, want 123456789012", got)
-	}
-	if got := store.requests[0].Params["traversal_relations"]; len(got.([]string)) == 0 {
-		t.Fatalf("traversal_relations param = %v, want relation allowlist", got)
-	}
-	if got := store.requests[1].RowLimit; got != attackpath.MaxLimit {
-		t.Fatalf("sample row limit = %d, want %d", got, attackpath.MaxLimit)
-	}
-	if result.Counts.Paths != 2 || result.Counts.ExposedResources != 1 {
-		t.Fatalf("counts = %#v", result.Counts)
-	}
-	if len(result.Paths) != 1 || result.Paths[0].Principal.Label != "admin@writer.com" {
-		t.Fatalf("paths = %#v", result.Paths)
-	}
-	if got := result.Paths[0].RelationChain; len(got) != 2 || got[0] != "attached_to" || got[1] != "runs_as" {
-		t.Fatalf("relation chain = %#v, want attached_to -> runs_as", got)
-	}
-	if got := result.Paths[0].TraversalEdges; len(got) != 2 || got[0].Relation != "attached_to" || got[1].To.URN != "urn:cerebro:writer:aws_user:admin@writer.com" {
-		t.Fatalf("traversal edges = %#v", got)
-	}
-	if result.NeighborhoodURN != "urn:cerebro:writer:aws_network_interface:eni-1" {
+	if result.NeighborhoodURN != path.ExposedResource.URN {
 		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
 	}
 }
 
-func TestAttackPathsFromRowsRequiresTraversalProof(t *testing.T) {
-	paths := attackpath.PathsFromRows([]ports.CypherRow{{Values: map[string]any{
-		"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
-		"public_entity_type":     "aws.public_principal",
-		"public_label":           "public internet",
-		"exposed_urn":            "urn:cerebro:writer:aws_network_interface:eni-1",
-		"exposed_entity_type":    "aws.network.interface",
-		"exposed_label":          "prod-web",
-		"account_urn":            "urn:cerebro:writer:cloud_account:123456789012",
-		"account_entity_type":    "cloud.account",
-		"account_label":          "123456789012",
-		"principal_urn":          "urn:cerebro:writer:aws_user:admin@writer.com",
-		"principal_entity_type":  "aws.user",
-		"principal_label":        "admin@writer.com",
-		"permission_urn":         "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess",
-		"permission_entity_type": "aws.aws.iam.policy",
-		"permission_label":       "AdministratorAccess",
-		"reach_relation":         "can_reach",
-		"access_relation":        "can_perform",
-		"relation_chain":         []any{"runs_as"},
-	}}})
-	if len(paths) != 0 {
-		t.Fatalf("len(paths) = %d, want 0 without traversal edge proof", len(paths))
+func TestGetAttackPathsDoesNotUseRawCypherFallback(t *testing.T) {
+	raw := &awsExposureStubStore{}
+	_, err := New(raw).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "writer"})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("GetAttackPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+	if len(raw.requests) != 0 {
+		t.Fatalf("raw Cypher requests = %d, want none", len(raw.requests))
+	}
+}
+
+func graphTypedAttackPath(tenantID, suffix string) ports.CloudAttackPath {
+	node := func(kind, id, label string) ports.CloudAttackPathNode {
+		return ports.CloudAttackPathNode{URN: "urn:cerebro:" + tenantID + ":" + id + ":" + suffix, EntityType: kind, Label: label}
+	}
+	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode) ports.CloudAttackPathEdge {
+		return ports.CloudAttackPathEdge{From: from, Relation: relation, To: to, Direction: "forward", SourceID: "aws", SourceRuntimeID: "runtime-1"}
+	}
+	public := node("aws.public_principal", "public", "public internet")
+	exposed := node("aws.network.interface", "resource", "prod-web")
+	account := node("cloud.account", "account", "123456789012")
+	principal := node("aws.user", "principal", "admin")
+	permission := node("aws.iam.policy", "permission", "AdministratorAccess")
+	return ports.CloudAttackPath{
+		PublicPrincipal: public, ExposedResource: exposed, CloudAccount: account, Principal: principal, Permission: permission,
+		ReachRelation:         "can_reach",
+		AccessRelation:        "can_admin",
+		RelationChain:         []string{"runs_as"},
+		ExposureEdge:          edge(public, "can_reach", exposed),
+		ResourceAccountEdge:   edge(exposed, "belongs_to", account),
+		TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "runs_as", principal)},
+		PrivilegeEdge:         edge(principal, "can_admin", permission),
+		PermissionAccountEdge: edge(permission, "belongs_to", account),
 	}
 }

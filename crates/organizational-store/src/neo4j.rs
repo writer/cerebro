@@ -6778,6 +6778,148 @@ mod tests {
     }
 
     #[test]
+    fn cloud_attack_path_query_is_closed_tenant_scoped_and_bounded() {
+        let tenant = TenantId::parse("writer").expect("tenant");
+        assert!(validate_cloud_attack_path_request("", "", 1, 1).is_ok());
+        assert!(validate_cloud_attack_path_request("prod", "runtime-a", 100, 6).is_ok());
+        assert!(validate_cloud_attack_path_request("", "", 0, 4).is_err());
+        assert!(validate_cloud_attack_path_request("", "", 101, 4).is_err());
+        assert!(validate_cloud_attack_path_request("", "", 10, 0).is_err());
+        assert!(validate_cloud_attack_path_request("", "", 10, 7).is_err());
+        assert!(validate_cloud_attack_path_request(&"a".repeat(257), "", 10, 4).is_err());
+        assert!(tenant.as_str().starts_with("writer"));
+
+        for relation_type in ["RELATION", "RELATION_ASSERTION"] {
+            let counts = cloud_attack_path_counts_statement(6, relation_type);
+            let samples = cloud_attack_path_samples_statement(6, relation_type);
+            for statement in [&counts, &samples] {
+                assert!(statement.contains("tenant_id: $tenant_id"));
+                assert!(statement.contains(&format!("[:{relation_type}*1..6]")));
+                assert!(statement.contains("rel.relation IN $traversal_relations"));
+                assert!(statement.contains("access.relation IN $access_relations"));
+                assert!(statement.contains("$runtime_id = ''"));
+                assert!(!statement.contains("__RELATION_TYPE__"));
+                assert!(!statement.contains("__DEPTH__"));
+            }
+            assert!(counts.contains("count(DISTINCT exposed)"));
+            assert!(samples.contains("relation: 'owned_by'"));
+            assert!(samples.contains(
+                "ORDER BY account.label, exposed.label, principal.label, permission.label"
+            ));
+            assert!(samples.ends_with("LIMIT $row_limit"));
+        }
+        assert_eq!(cloud_attack_path_traversal_relations().len(), 7);
+        assert_eq!(cloud_attack_path_access_relations().len(), 4);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn cloud_attack_path_fixture_is_served_by_typed_rust_read() -> Result<(), Box<dyn Error>>
+    {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant = format!("tenant-cloud-attack-path-{}", std::process::id());
+        let tenant_id = TenantId::parse(tenant.clone())?;
+        let runtime = "runtime-cloud-a";
+        let public = format!("urn:cerebro:{tenant}:public:internet");
+        let exposed = format!("urn:cerebro:{tenant}:resource:eni-1");
+        let account = format!("urn:cerebro:{tenant}:account:prod");
+        let principal = format!("urn:cerebro:{tenant}:principal:admin");
+        let permission = format!("urn:cerebro:{tenant}:permission:admin");
+        let owner = format!("urn:cerebro:{tenant}:team:security");
+        graph
+            .run(
+                query(
+                    r#"CREATE (public:Entity {tenant_id: $tenant, urn: $public, entity_type: 'aws.public_principal', label: 'public internet'})
+CREATE (exposed:Entity {tenant_id: $tenant, urn: $exposed, entity_type: 'aws.network.interface', label: 'eni-1'})
+CREATE (account:Entity {tenant_id: $tenant, urn: $account, entity_type: 'cloud.account', label: 'prod'})
+CREATE (principal:Entity {tenant_id: $tenant, urn: $principal, entity_type: 'aws.role', label: 'admin'})
+CREATE (permission:Entity {tenant_id: $tenant, urn: $permission, entity_type: 'aws.policy', label: 'AdministratorAccess'})
+CREATE (owner:Entity {tenant_id: $tenant, urn: $owner, entity_type: 'team', label: 'Security'})
+CREATE (public)-[:RELATION {tenant_id: $tenant, relation: 'can_reach', source_id: 'aws', runtime_id: $runtime, attributes_json: '{"source_event_id":"event-exposure","at":"2026-08-31T12:00:00Z"}'}]->(exposed)
+CREATE (exposed)-[:RELATION {tenant_id: $tenant, relation: 'belongs_to', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(account)
+CREATE (exposed)-[:RELATION {tenant_id: $tenant, relation: 'runs_as', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(principal)
+CREATE (principal)-[:RELATION {tenant_id: $tenant, relation: 'can_admin', source_id: 'aws', runtime_id: $runtime, attributes_json: '{"is_admin":"true"}'}]->(permission)
+CREATE (permission)-[:RELATION {tenant_id: $tenant, relation: 'belongs_to', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(account)
+CREATE (exposed)-[:RELATION {tenant_id: $tenant, relation: 'owned_by', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(owner)
+CREATE (public)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'can_reach', source_id: 'aws', runtime_id: $runtime, attributes_json: '{"source_event_id":"event-exposure","at":"2026-08-31T12:00:00Z"}'}]->(exposed)
+CREATE (exposed)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'belongs_to', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(account)
+CREATE (exposed)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'runs_as', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(principal)
+CREATE (principal)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'can_admin', source_id: 'aws', runtime_id: $runtime, attributes_json: '{"is_admin":"true"}'}]->(permission)
+CREATE (permission)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'belongs_to', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(account)
+CREATE (exposed)-[:RELATION_ASSERTION {tenant_id: $tenant, relation: 'owned_by', source_id: 'aws', runtime_id: $runtime, attributes_json: '{}'}]->(owner)
+CREATE (:OrganizationalGraphRevision {tenant_id: $tenant, graph_revision: 42})"#,
+                )
+                .param("tenant", tenant.clone())
+                .param("runtime", runtime)
+                .param("public", public.clone())
+                .param("exposed", exposed.clone())
+                .param("account", account.clone())
+                .param("principal", principal.clone())
+                .param("permission", permission.clone())
+                .param("owner", owner.clone()),
+            )
+            .await?;
+
+        let projector = Neo4jProjector::from_graph(graph.clone());
+        let page = projector
+            .list_cloud_attack_paths(&tenant_id, "prod", runtime, true, 10, 4, 42)
+            .await?;
+        assert_eq!(page.tenant_id, tenant);
+        assert_eq!(page.graph_revision, 42);
+        assert_eq!(page.counts.paths, 1);
+        assert_eq!(page.paths.len(), 1);
+        assert!(!page.truncated);
+        let path = &page.paths[0];
+        assert_eq!(path.public_principal.urn, public);
+        assert_eq!(path.exposed_resource.urn, exposed);
+        assert_eq!(path.cloud_account.urn, account);
+        assert_eq!(path.principal.urn, principal);
+        assert_eq!(path.permission.urn, permission);
+        assert_eq!(path.relation_chain, ["runs_as".to_owned()]);
+        assert_eq!(path.ownerships.len(), 1);
+        assert_eq!(path.ownerships[0].owner.urn, owner);
+        assert_eq!(
+            path.exposure_edge.assertion_runtime_ids,
+            [runtime.to_owned()]
+        );
+        assert!(
+            path.exposure_edge
+                .attributes_json
+                .contains("event-exposure")
+        );
+
+        let logical = projector
+            .list_cloud_attack_paths(&tenant_id, "", "", false, 10, 4, 42)
+            .await?;
+        assert_eq!(logical.counts.paths, 1);
+        assert_eq!(logical.paths.len(), 1);
+        let unrelated = projector
+            .list_cloud_attack_paths(&tenant_id, "", "runtime-other", true, 10, 4, 42)
+            .await?;
+        assert_eq!(unrelated.counts.paths, 0);
+        assert!(unrelated.paths.is_empty());
+        assert!(
+            projector
+                .list_cloud_attack_paths(&tenant_id, "", "", true, 10, 4, 41)
+                .await
+                .is_err()
+        );
+
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant}) DETACH DELETE node")
+                    .param("tenant", tenant),
+            )
+            .await?;
+        Ok(())
+    }
+
+    #[test]
     fn effective_access_query_is_closed_tenant_scoped_and_bounded() {
         let statement = effective_access_path_statement();
         assert_eq!(statement.matches("\n  UNION\n").count(), 6);

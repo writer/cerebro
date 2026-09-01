@@ -25,7 +25,8 @@ func TestCollectVerificationRefreshesEveryContributingRuntime(t *testing.T) {
 	graph := &verificationGraph{now: now, checkpoints: map[string]graphstore.IngestCheckpoint{}}
 	leases := &verificationLeaseStore{}
 	service := NewSecurityPathService(SecurityPathDependencies{
-		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: runtimes, LeaseStore: leases,
+		AttackPaths: graph, AssertionCoverage: graph, AssertionMigrator: graph,
+		GraphIngest: graph, Checkpoints: graph, RuntimeStore: runtimes, LeaseStore: leases,
 	})
 	reference := verificationReferenceSnapshot(t, now)
 	current := verificationCurrentSnapshot(now, map[string]string{"runtime-a": "current-a", "runtime-b": "current-b"})
@@ -72,7 +73,10 @@ func TestCollectVerificationStopsBeforeReadsWhenContributorLeaseIsHeld(t *testin
 	now := time.Now().UTC().Add(-2 * time.Minute)
 	graph := &verificationGraph{now: now, checkpoints: map[string]graphstore.IngestCheckpoint{}}
 	leases := &verificationLeaseStore{blockedRuntime: "runtime-b"}
-	service := NewSecurityPathService(SecurityPathDependencies{RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now), LeaseStore: leases})
+	service := NewSecurityPathService(SecurityPathDependencies{
+		AttackPaths: graph, AssertionCoverage: graph, AssertionMigrator: graph,
+		GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now), LeaseStore: leases,
+	})
 
 	_, err := service.collectVerification(context.Background(), verificationRequest{
 		PrimaryRuntimeID: "runtime-a", LeaseOwner: "owner-a", Current: verificationCurrentSnapshot(now, nil),
@@ -92,7 +96,8 @@ func TestSecurityPathCaptureRejectsLeaseStoreWithoutFenceReaderBeforeSync(t *tes
 	leases := &verificationLeaseStore{}
 	syncer := &securityPathRuntimeSyncProbe{}
 	service := NewSecurityPathService(SecurityPathDependencies{
-		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
+		AttackPaths: graph, AssertionCoverage: graph, AssertionMigrator: graph,
+		GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
 		LeaseStore: leases, RuntimeSync: syncer,
 	})
 
@@ -120,7 +125,8 @@ func TestSecurityPathCaptureReadsLeaseGenerationBeforeSync(t *testing.T) {
 	want := errors.New("stop after fenced sync entry")
 	syncer := &securityPathRuntimeSyncProbe{leaseStore: leases, err: want}
 	service := NewSecurityPathService(SecurityPathDependencies{
-		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
+		AttackPaths: graph, AssertionCoverage: graph, AssertionMigrator: graph,
+		GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now),
 		LeaseStore: leases, RuntimeSync: syncer,
 	})
 
@@ -226,11 +232,11 @@ func (s *verificationGraph) Ping(context.Context) error { return nil }
 func (s *verificationGraph) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, ports.ErrGraphEntityNotFound
 }
-func (s *verificationGraph) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *verificationGraph) ListCloudAttackPaths(_ context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
 	if len(s.requests) == 0 {
 		return nil, errors.New("verification graph collection must precede path query")
 	}
-	return []ports.CypherRow{{Values: map[string]any{"path_count": int64(0)}}}, nil
+	return &ports.CloudAttackPathResult{TenantID: request.TenantID}, nil
 }
 func (s *verificationGraph) CountProjectedLinksMissingAssertions(context.Context, string, []string) (uint32, error) {
 	return 0, nil

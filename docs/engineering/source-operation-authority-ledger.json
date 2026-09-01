@@ -129,13 +129,13 @@
         "role": "preview_rust_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "PreviewRustFamily",
-        "digest_sha256": "012b1ea1a81495d7eb18136e9c6a10a3b9801e3846ebd2e9ba9a2ecb9a292abd"
+        "digest_sha256": "56b5c44da5095f267eb725bf76a3919c1ae3d322b8a0be4a98dfd6ef00c948dd"
       },
       {
         "role": "rust_authoritative_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "f10f45dc76969895a997b7d5e8f77b8ab59617c117dc1400833fc0b137dd1655"
+        "digest_sha256": "135f2c9dd69cbefbfab20044910ad84cd12a121df72bbb46b6b4920d8130baa5"
       },
       {
         "role": "rust_output_conversion",
@@ -164,6 +164,7 @@
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "digitalocean", "all_catalog_families": true, "default_family": "droplets", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "discord", "all_catalog_families": true, "default_family": "audit_log", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "doppler", "all_catalog_families": true, "default_family": "secrets", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "elevenlabs", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "fireworks_ai", "all_catalog_families": true, "default_family": "model_deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "google_gemini", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
@@ -207,6 +208,7 @@
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "digitalocean", "all_catalog_families": true, "default_family": "droplets", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "discord", "all_catalog_families": true, "default_family": "audit_log", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "doppler", "all_catalog_families": true, "default_family": "secrets", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "elevenlabs", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "fireworks_ai", "all_catalog_families": true, "default_family": "model_deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "google_gemini", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },

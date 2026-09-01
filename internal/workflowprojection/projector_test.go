@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/mitre"
@@ -13,8 +12,10 @@ import (
 )
 
 type projectionRecorder struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities         map[string]*ports.ProjectedEntity
+	links            map[string]*ports.ProjectedLink
+	relationRequests []ports.EntityRelationPageRequest
+	graphRevision    uint64
 }
 
 func (r *projectionRecorder) Ping(context.Context) error { return nil }
@@ -53,75 +54,134 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	return nil
 }
 
-func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	findingURN, _ := request.Params["finding_urn"].(string)
-	tenantID, _ := request.Params["tenant_id"].(string)
-	lastSeen, _ := request.Params["last_seen"].(string)
-	limit := request.RowLimit
-	if limit <= 0 {
-		limit = ports.MaxCypherQueryRows
+func (r *projectionRecorder) ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	return nil, fmt.Errorf("unexpected entity catalog read")
+}
+
+func (r *projectionRecorder) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return nil, fmt.Errorf("unexpected entity kind count")
+}
+
+func (r *projectionRecorder) ListEntityRelations(_ context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	r.relationRequests = append(r.relationRequests, ports.EntityRelationPageRequest{
+		TenantID:         request.TenantID,
+		AgentKey:         request.AgentKey,
+		Directions:       append([]ports.EntityRelationDirection(nil), request.Directions...),
+		Relations:        append([]string(nil), request.Relations...),
+		NeighborKinds:    append([]string(nil), request.NeighborKinds...),
+		Limit:            request.Limit,
+		AfterAgentKey:    request.AfterAgentKey,
+		AfterRelation:    request.AfterRelation,
+		AfterDirection:   request.AfterDirection,
+		ExpectedRevision: request.ExpectedRevision,
+	})
+	revision := r.graphRevision
+	if revision == 0 {
+		revision = 17
 	}
-	if strings.Contains(request.Query, "context_urn") {
-		allowedTypes := map[string]struct{}{}
-		if entityTypes, ok := request.Params["entity_types"].([]string); ok {
-			for _, entityType := range entityTypes {
-				allowedTypes[entityType] = struct{}{}
-			}
-		}
-		matching := make([]string, 0, len(r.links))
-		for _, link := range r.links {
-			if link == nil || link.FromURN != findingURN || link.Relation != relationHasContext {
-				continue
-			}
-			if tenantID != "" && link.TenantID != tenantID {
-				continue
-			}
-			if link.ToURN <= lastSeen {
-				continue
-			}
-			entity := r.entities[link.ToURN]
-			if len(allowedTypes) != 0 {
-				if entity == nil {
-					continue
-				}
-				if _, ok := allowedTypes[entity.EntityType]; !ok {
-					continue
-				}
-			}
-			matching = append(matching, link.ToURN)
-		}
-		sort.Strings(matching)
-		if len(matching) > limit {
-			matching = matching[:limit]
-		}
-		rows := make([]ports.CypherRow, 0, len(matching))
-		for _, urn := range matching {
-			rows = append(rows, ports.CypherRow{Values: map[string]any{"context_urn": urn}})
-		}
-		return rows, nil
+	if request.ExpectedRevision != 0 && request.ExpectedRevision != revision {
+		return nil, fmt.Errorf("graph revision changed")
 	}
-	matching := make([]string, 0, len(r.links))
+	if request.Limit < 1 || request.Limit > findingRelationPageLimit {
+		return nil, fmt.Errorf("invalid relation page limit %d", request.Limit)
+	}
+	directions := make(map[ports.EntityRelationDirection]struct{}, len(request.Directions))
+	for _, direction := range request.Directions {
+		directions[direction] = struct{}{}
+	}
+	relations := make(map[string]struct{}, len(request.Relations))
+	for _, relation := range request.Relations {
+		relations[relation] = struct{}{}
+	}
+	neighborKinds := make(map[string]struct{}, len(request.NeighborKinds))
+	for _, kind := range request.NeighborKinds {
+		neighborKinds[kind] = struct{}{}
+	}
+	matching := make([]ports.EntityCatalogRelation, 0, len(r.links))
 	for _, link := range r.links {
-		if link == nil || link.ToURN != findingURN || link.Relation != relationHasFinding {
+		if link == nil || link.TenantID != request.TenantID {
 			continue
 		}
-		if tenantID != "" && link.TenantID != tenantID {
+		direction := ports.EntityRelationDirection("")
+		neighborURN := ""
+		switch {
+		case link.FromURN == request.AgentKey:
+			direction = ports.EntityRelationOutgoing
+			neighborURN = link.ToURN
+		case link.ToURN == request.AgentKey:
+			direction = ports.EntityRelationIncoming
+			neighborURN = link.FromURN
+		default:
 			continue
 		}
-		if link.FromURN <= lastSeen {
+		if len(directions) != 0 {
+			if _, ok := directions[direction]; !ok {
+				continue
+			}
+		}
+		if len(relations) != 0 {
+			if _, ok := relations[link.Relation]; !ok {
+				continue
+			}
+		}
+		entity := ports.CatalogEntity{URN: neighborURN, TenantID: request.TenantID}
+		if projected := r.entities[neighborURN]; projected != nil {
+			entity.EntityType = projected.EntityType
+			entity.Label = projected.Label
+			entity.SourceID = projected.SourceID
+			entity.RuntimeID = projected.RuntimeID
+			entity.Attributes = projected.Attributes
+		}
+		if len(neighborKinds) != 0 {
+			if _, ok := neighborKinds[entity.EntityType]; !ok {
+				continue
+			}
+		}
+		if !relationAfterCursor(entity.URN, link.Relation, direction, request) {
 			continue
 		}
-		matching = append(matching, link.FromURN)
+		matching = append(matching, ports.EntityCatalogRelation{Direction: direction, Relation: link.Relation, Entity: entity})
 	}
-	sort.Strings(matching)
-	if len(matching) > limit {
-		matching = matching[:limit]
+	sort.Slice(matching, func(i, j int) bool {
+		left, right := matching[i], matching[j]
+		if left.Entity.URN != right.Entity.URN {
+			return left.Entity.URN < right.Entity.URN
+		}
+		if left.Relation != right.Relation {
+			return left.Relation < right.Relation
+		}
+		return left.Direction < right.Direction
+	})
+	truncated := len(matching) > request.Limit
+	if truncated {
+		matching = matching[:request.Limit]
 	}
-	rows := make([]ports.CypherRow, 0, len(matching))
-	for _, urn := range matching {
-		rows = append(rows, ports.CypherRow{Values: map[string]any{"resource_urn": urn}})
+	page := &ports.EntityRelationPage{
+		TenantID:      request.TenantID,
+		GraphRevision: revision,
+		Relations:     matching,
+		Truncated:     truncated,
 	}
-	return rows, nil
+	if truncated {
+		last := matching[len(matching)-1]
+		page.NextAfterAgentKey = last.Entity.URN
+		page.NextAfterRelation = last.Relation
+		page.NextAfterDirection = last.Direction
+	}
+	return page, nil
+}
+
+func relationAfterCursor(agentKey, relation string, direction ports.EntityRelationDirection, request ports.EntityRelationPageRequest) bool {
+	if request.AfterAgentKey == "" {
+		return true
+	}
+	if agentKey != request.AfterAgentKey {
+		return agentKey > request.AfterAgentKey
+	}
+	if relation != request.AfterRelation {
+		return relation > request.AfterRelation
+	}
+	return direction > request.AfterDirection
 }
 
 func assertWorkflowLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
@@ -843,13 +903,26 @@ func TestProjectFindingRecordedPrunesStaleMITREContextLinks(t *testing.T) {
 	if _, ok := graph.links[anchorURN+"|has_context|"+updatedCoverageURN]; ok {
 		t.Fatal("MITRE ATT&CK coverage link remained after clearing metadata")
 	}
+	contextReadFound := false
+	for _, request := range graph.relationRequests {
+		if len(request.Relations) != 1 || request.Relations[0] != relationHasContext {
+			continue
+		}
+		contextReadFound = true
+		if request.AgentKey != anchorURN || len(request.Directions) != 1 || request.Directions[0] != ports.EntityRelationOutgoing || len(request.NeighborKinds) != 6 || request.Limit != findingRelationPageLimit {
+			t.Fatalf("typed MITRE context request = %+v", request)
+		}
+	}
+	if !contextReadFound {
+		t.Fatal("typed MITRE context relation read was not issued")
+	}
 }
 
-func TestProjectFindingRecordedPrunesBeyondCypherRowLimit(t *testing.T) {
+func TestProjectFindingRecordedPrunesBeyondRustRelationPageLimit(t *testing.T) {
 	graph := &projectionRecorder{links: map[string]*ports.ProjectedLink{}}
 	service := New(graph)
 	anchorURN := "urn:cerebro:writer:finding:legacy-overflow"
-	staleCount := ports.MaxCypherQueryRows + 25
+	staleCount := findingRelationPageLimit + 25
 	for i := 0; i < staleCount; i++ {
 		resourceURN := fmt.Sprintf("urn:cerebro:writer:resource:legacy-%06d", i)
 		graph.links[resourceURN+"|has_finding|"+anchorURN] = &ports.ProjectedLink{
@@ -894,6 +967,21 @@ func TestProjectFindingRecordedPrunesBeyondCypherRowLimit(t *testing.T) {
 		if link.FromURN != "urn:cerebro:writer:resource:keep" {
 			t.Fatalf("stale legacy link %s survived pruning", key)
 		}
+	}
+	var activePages []ports.EntityRelationPageRequest
+	for _, request := range graph.relationRequests {
+		if len(request.Relations) == 1 && request.Relations[0] == relationHasFinding {
+			activePages = append(activePages, request)
+		}
+	}
+	if len(activePages) != 2 {
+		t.Fatalf("typed active-link pages = %d, want 2", len(activePages))
+	}
+	if activePages[0].Limit != findingRelationPageLimit || activePages[0].ExpectedRevision != 0 {
+		t.Fatalf("first typed active-link request = %+v", activePages[0])
+	}
+	if activePages[1].ExpectedRevision != 17 || activePages[1].AfterAgentKey == "" || activePages[1].AfterRelation != relationHasFinding || activePages[1].AfterDirection != ports.EntityRelationIncoming {
+		t.Fatalf("second typed active-link request = %+v", activePages[1])
 	}
 }
 

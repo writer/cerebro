@@ -184,6 +184,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every public DigitalOcean family is closed in the Rust dispatcher. An
 		// unknown future family must fail there instead of restoring Go authority.
 		return familyID, true
+	case "doppler":
+		if familyID == "" {
+			familyID = "secrets"
+		}
+		// Every cataloged Doppler family is closed in the Rust dispatcher. Unknown
+		// families fail there instead of restoring the catalog-runtime Go path.
+		return familyID, true
 	case "discord":
 		if familyID == "" {
 			familyID = "audit_log"
@@ -232,7 +239,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // intentionally excludes durable-only routes such as Twilio.
 func PreviewRustFamily(sourceID, familyID string) (string, bool) {
 	switch strings.TrimSpace(sourceID) {
-	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
+	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return RustAuthoritativeFamily(sourceID, familyID)
 	default:
 		return "", false

@@ -17,26 +17,27 @@ import (
 )
 
 const (
-	decisionEntityType    = "decision"
-	actionEntityType      = "action"
-	outcomeEntityType     = "outcome"
-	evidenceEntityType    = "evidence"
-	findingEntityType     = "finding"
-	annotationEntityType  = "annotation"
-	ticketEntityType      = "ticket"
-	externalRefEntityType = "external_ref"
-	relationTargets       = fabriccontract.RelationTargets
-	relationBasedOn       = fabriccontract.RelationBasedOn
-	relationExecutedBy    = fabriccontract.RelationExecutedBy
-	relationEvaluates     = fabriccontract.RelationEvaluates
-	relationHasFinding    = fabriccontract.RelationHasFinding
-	relationHasContext    = fabriccontract.RelationHasContext
-	relationBelongsTo     = fabriccontract.RelationBelongsTo
-	relationSupports      = fabriccontract.RelationSupports
-	relationHasEvidence   = fabriccontract.RelationHasEvidence
-	relationAnnotatedWith = fabriccontract.RelationAnnotatedWith
-	relationTrackedBy     = fabriccontract.RelationTrackedBy
-	graphEntityLabelLimit = 160
+	decisionEntityType       = "decision"
+	actionEntityType         = "action"
+	outcomeEntityType        = "outcome"
+	evidenceEntityType       = "evidence"
+	findingEntityType        = "finding"
+	annotationEntityType     = "annotation"
+	ticketEntityType         = "ticket"
+	externalRefEntityType    = "external_ref"
+	relationTargets          = fabriccontract.RelationTargets
+	relationBasedOn          = fabriccontract.RelationBasedOn
+	relationExecutedBy       = fabriccontract.RelationExecutedBy
+	relationEvaluates        = fabriccontract.RelationEvaluates
+	relationHasFinding       = fabriccontract.RelationHasFinding
+	relationHasContext       = fabriccontract.RelationHasContext
+	relationBelongsTo        = fabriccontract.RelationBelongsTo
+	relationSupports         = fabriccontract.RelationSupports
+	relationHasEvidence      = fabriccontract.RelationHasEvidence
+	relationAnnotatedWith    = fabriccontract.RelationAnnotatedWith
+	relationTrackedBy        = fabriccontract.RelationTrackedBy
+	graphEntityLabelLimit    = 160
+	findingRelationPageLimit = 500
 )
 
 var workflowMITREAttackTacticKeys = []string{
@@ -129,12 +130,26 @@ var workflowMITREDefendArtifactKeys = []string{
 
 // Service projects durable workflow events into graph entities and links.
 type Service struct {
-	graph ports.ProjectionGraphStore
+	graph   ports.ProjectionGraphStore
+	catalog ports.EntityCatalogStore
 }
 
 // New constructs one workflow graph projector.
 func New(graph ports.ProjectionGraphStore) *Service {
-	return &Service{graph: graph}
+	service := &Service{graph: graph}
+	if catalog, ok := graph.(ports.EntityCatalogStore); ok {
+		service.catalog = catalog
+	}
+	return service
+}
+
+// WithEntityCatalogStore wires the typed Rust relation reader used to prune stale links.
+func (s *Service) WithEntityCatalogStore(catalog ports.EntityCatalogStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.catalog = catalog
+	return s
 }
 
 func (s *Service) projectDecision(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
@@ -1028,13 +1043,8 @@ func (s *Service) ensureFindingMITREAttackTechniqueKnowledge(ctx context.Context
 	return currentContextURNs, nil
 }
 
-type findingActiveLinkReader interface {
-	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
-}
-
 func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentResourceURNs []string, result *ports.ProjectionResult) error {
-	reader, ok := s.graph.(findingActiveLinkReader)
-	if !ok {
+	if s.catalog == nil {
 		return nil
 	}
 	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
@@ -1047,34 +1057,44 @@ func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, 
 			current[resourceURN] = struct{}{}
 		}
 	}
-	lastSeen := ""
+	afterAgentKey := ""
+	afterRelation := ""
+	afterDirection := ports.EntityRelationDirection("")
+	expectedRevision := uint64(0)
+	revisionSet := false
 	for {
-		rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-			Query: `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(:Entity {tenant_id: $tenant_id, urn: $finding_urn})
-WHERE resource.urn > $last_seen
-RETURN resource.urn AS resource_urn
-ORDER BY resource.urn
-LIMIT $row_limit`,
-			Params: map[string]any{
-				"tenant_id":   tenantID,
-				"finding_urn": anchorURN,
-				"last_seen":   lastSeen,
-				"row_limit":   int64(ports.MaxCypherQueryRows),
-			},
-			RowLimit: ports.MaxCypherQueryRows,
+		page, err := s.catalog.ListEntityRelations(ctx, ports.EntityRelationPageRequest{
+			TenantID:         tenantID,
+			AgentKey:         anchorURN,
+			Directions:       []ports.EntityRelationDirection{ports.EntityRelationIncoming},
+			Relations:        []string{relationHasFinding},
+			Limit:            findingRelationPageLimit,
+			AfterAgentKey:    afterAgentKey,
+			AfterRelation:    afterRelation,
+			AfterDirection:   afterDirection,
+			ExpectedRevision: expectedRevision,
 		})
 		if err != nil {
 			return err
 		}
-		if len(rows) == 0 {
-			return nil
+		if page == nil || page.TenantID != tenantID {
+			return fmt.Errorf("typed finding relation page returned an invalid tenant")
 		}
-		for _, row := range rows {
-			resourceURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["resource_urn"]))
-			if resourceURN == "" || resourceURN == "<nil>" {
-				continue
+		if revisionSet && page.GraphRevision != expectedRevision {
+			return fmt.Errorf("typed finding relation page changed graph revision")
+		}
+		if !revisionSet {
+			expectedRevision = page.GraphRevision
+			revisionSet = true
+		}
+		for _, relation := range page.Relations {
+			if relation.Direction != ports.EntityRelationIncoming || relation.Relation != relationHasFinding {
+				return fmt.Errorf("typed finding relation page returned an unexpected relation")
 			}
-			lastSeen = resourceURN
+			resourceURN := strings.TrimSpace(relation.Entity.URN)
+			if resourceURN == "" {
+				return fmt.Errorf("typed finding relation page returned an empty resource URN")
+			}
 			if _, keep := current[resourceURN]; keep {
 				continue
 			}
@@ -1089,15 +1109,21 @@ LIMIT $row_limit`,
 			}
 			result.LinksDeleted++
 		}
-		if len(rows) < ports.MaxCypherQueryRows {
+		if !page.Truncated {
 			return nil
 		}
+		if page.NextAfterAgentKey == "" || page.NextAfterRelation == "" || page.NextAfterDirection == "" ||
+			(page.NextAfterAgentKey == afterAgentKey && page.NextAfterRelation == afterRelation && page.NextAfterDirection == afterDirection) {
+			return fmt.Errorf("typed finding relation page returned an invalid continuation")
+		}
+		afterAgentKey = page.NextAfterAgentKey
+		afterRelation = page.NextAfterRelation
+		afterDirection = page.NextAfterDirection
 	}
 }
 
 func (s *Service) pruneFindingMITREContextLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentContextURNs []string, result *ports.ProjectionResult) error {
-	reader, ok := s.graph.(findingActiveLinkReader)
-	if !ok {
+	if s.catalog == nil {
 		return nil
 	}
 	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
@@ -1110,43 +1136,60 @@ func (s *Service) pruneFindingMITREContextLinks(ctx context.Context, tenantID st
 			current[contextURN] = struct{}{}
 		}
 	}
-	lastSeen := ""
+	contextEntityTypes := []string{
+		mitre.AttackTacticEntityType,
+		mitre.AttackTechniqueEntityType,
+		mitre.AttackCoverageEntityType,
+		mitre.DefendTacticEntityType,
+		mitre.DefendTechniqueEntityType,
+		mitre.DefendArtifactEntityType,
+	}
+	allowedEntityTypes := make(map[string]struct{}, len(contextEntityTypes))
+	for _, entityType := range contextEntityTypes {
+		allowedEntityTypes[entityType] = struct{}{}
+	}
+	afterAgentKey := ""
+	afterRelation := ""
+	afterDirection := ports.EntityRelationDirection("")
+	expectedRevision := uint64(0)
+	revisionSet := false
 	for {
-		rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-			Query: `MATCH (:Entity {tenant_id: $tenant_id, urn: $finding_urn})-[r:RELATION {relation: 'has_context'}]->(context:Entity {tenant_id: $tenant_id})
-WHERE context.entity_type IN $entity_types
-  AND context.urn > $last_seen
-RETURN context.urn AS context_urn
-ORDER BY context.urn
-LIMIT $row_limit`,
-			Params: map[string]any{
-				"tenant_id":   tenantID,
-				"finding_urn": anchorURN,
-				"entity_types": []string{
-					mitre.AttackTacticEntityType,
-					mitre.AttackTechniqueEntityType,
-					mitre.AttackCoverageEntityType,
-					mitre.DefendTacticEntityType,
-					mitre.DefendTechniqueEntityType,
-					mitre.DefendArtifactEntityType,
-				},
-				"last_seen": lastSeen,
-				"row_limit": int64(ports.MaxCypherQueryRows),
-			},
-			RowLimit: ports.MaxCypherQueryRows,
+		page, err := s.catalog.ListEntityRelations(ctx, ports.EntityRelationPageRequest{
+			TenantID:         tenantID,
+			AgentKey:         anchorURN,
+			Directions:       []ports.EntityRelationDirection{ports.EntityRelationOutgoing},
+			Relations:        []string{relationHasContext},
+			NeighborKinds:    contextEntityTypes,
+			Limit:            findingRelationPageLimit,
+			AfterAgentKey:    afterAgentKey,
+			AfterRelation:    afterRelation,
+			AfterDirection:   afterDirection,
+			ExpectedRevision: expectedRevision,
 		})
 		if err != nil {
 			return err
 		}
-		if len(rows) == 0 {
-			return nil
+		if page == nil || page.TenantID != tenantID {
+			return fmt.Errorf("typed finding context page returned an invalid tenant")
 		}
-		for _, row := range rows {
-			contextURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["context_urn"]))
-			if contextURN == "" || contextURN == "<nil>" {
-				continue
+		if revisionSet && page.GraphRevision != expectedRevision {
+			return fmt.Errorf("typed finding context page changed graph revision")
+		}
+		if !revisionSet {
+			expectedRevision = page.GraphRevision
+			revisionSet = true
+		}
+		for _, relation := range page.Relations {
+			if relation.Direction != ports.EntityRelationOutgoing || relation.Relation != relationHasContext {
+				return fmt.Errorf("typed finding context page returned an unexpected relation")
 			}
-			lastSeen = contextURN
+			if _, ok := allowedEntityTypes[relation.Entity.EntityType]; !ok {
+				return fmt.Errorf("typed finding context page returned an unexpected entity kind")
+			}
+			contextURN := strings.TrimSpace(relation.Entity.URN)
+			if contextURN == "" {
+				return fmt.Errorf("typed finding context page returned an empty context URN")
+			}
 			if _, keep := current[contextURN]; keep {
 				continue
 			}
@@ -1161,9 +1204,16 @@ LIMIT $row_limit`,
 			}
 			result.LinksDeleted++
 		}
-		if len(rows) < ports.MaxCypherQueryRows {
+		if !page.Truncated {
 			return nil
 		}
+		if page.NextAfterAgentKey == "" || page.NextAfterRelation == "" || page.NextAfterDirection == "" ||
+			(page.NextAfterAgentKey == afterAgentKey && page.NextAfterRelation == afterRelation && page.NextAfterDirection == afterDirection) {
+			return fmt.Errorf("typed finding context page returned an invalid continuation")
+		}
+		afterAgentKey = page.NextAfterAgentKey
+		afterRelation = page.NextAfterRelation
+		afterDirection = page.NextAfterDirection
 	}
 }
 

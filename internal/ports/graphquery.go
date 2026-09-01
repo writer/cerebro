@@ -87,6 +87,7 @@ type GraphReadCapabilities struct {
 	Exposure          ExposureCoverageStore
 	EntityKindCounts  EntityKindCountStore
 	RelationCounts    RelationCountStore
+	CloudAttackPaths  CloudAttackPathStore
 	VendorRegister    VendorRegisterStore
 	VendorDiscoveries VendorDiscoveryRegisterStore
 	ComplianceImpact  ComplianceImpactGraph
@@ -114,6 +115,9 @@ func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
 	}
 	if relationCounts, ok := store.(RelationCountStore); ok && !isNilGraphReadCapability(relationCounts) {
 		capabilities.RelationCounts = relationCounts
+	}
+	if cloudAttackPaths, ok := store.(CloudAttackPathStore); ok && !isNilGraphReadCapability(cloudAttackPaths) {
+		capabilities.CloudAttackPaths = cloudAttackPaths
 	}
 	if vendorRegister, ok := store.(VendorRegisterStore); ok && !isNilGraphReadCapability(vendorRegister) {
 		capabilities.VendorRegister = vendorRegister
