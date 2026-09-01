@@ -29,8 +29,7 @@ const (
 var templateKeys = []string{"oauth_client_reference"}
 
 type Source struct {
-	inner         *jsonapi.Source
-	allowLoopback bool
+	inner *jsonapi.Source
 }
 
 func New() (*Source, error) {
@@ -153,11 +152,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func (s *Source) allowLoopbackForTest() {
-	if s != nil && s.inner != nil {
-		s.inner.AllowLoopbackBaseURL = true
-		s.allowLoopback = true
-	}
 }
