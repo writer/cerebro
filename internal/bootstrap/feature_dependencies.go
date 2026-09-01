@@ -113,6 +113,7 @@ type findingFeatureDeps struct {
 	Claims          ports.ClaimStore
 	Candidates      ports.FindingCandidateStore
 	ProjectionGraph ports.ProjectionGraphStore
+	GraphCatalog    ports.EntityCatalogStore
 	GraphRawCypher  ports.RawCypherQueryStore
 	AppendLog       ports.AppendLog
 	Rules           *findings.Registry
@@ -128,6 +129,7 @@ func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
 		Claims:          claimStore(deps.StateStore),
 		Candidates:      findingCandidateStore(deps.StateStore),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
+		GraphCatalog:    deps.GraphReads.Catalog,
 		GraphRawCypher:  deps.GraphReads.RawCypher,
 		AppendLog:       deps.AppendLog,
 		Rules:           deps.FindingRules,
@@ -145,24 +147,28 @@ func newFindingCandidateFeatureService(deps findingFeatureDeps) *findings.Servic
 func newFindingWorkflowFeatureService(deps findingFeatureDeps) *findings.Service {
 	return newFindingCandidateFeatureService(deps).
 		WithGraphStore(deps.ProjectionGraph).
+		WithEntityCatalogStore(deps.GraphCatalog).
 		WithRawCypherQueryStore(deps.GraphRawCypher).WithTrustedSourceResolution().
 		WithAppendLog(deps.AppendLog)
 }
 
 type knowledgeFeatureDeps struct {
 	ProjectionGraph ports.ProjectionGraphStore
+	GraphCatalog    ports.EntityCatalogStore
 	AppendLog       ports.AppendLog
 }
 
 func newKnowledgeFeatureDeps(deps Dependencies) knowledgeFeatureDeps {
 	return knowledgeFeatureDeps{
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
+		GraphCatalog:    deps.GraphReads.Catalog,
 		AppendLog:       deps.AppendLog,
 	}
 }
 
 func newKnowledgeFeatureService(deps knowledgeFeatureDeps) *knowledge.Service {
 	return knowledge.New(deps.ProjectionGraph).
+		WithEntityCatalogStore(deps.GraphCatalog).
 		WithAppendLog(deps.AppendLog).
 		WithDurabilityMode(knowledge.DurabilityRequired)
 }
@@ -228,17 +234,20 @@ func newGraphIngestFeatureService(cfg config.Config, deps graphIngestFeatureDeps
 type workflowReplayFeatureDeps struct {
 	EventReplayer   ports.EventReplayer
 	ProjectionGraph ports.ProjectionGraphStore
+	GraphCatalog    ports.EntityCatalogStore
 }
 
 func newWorkflowReplayFeatureDeps(deps Dependencies) workflowReplayFeatureDeps {
 	return workflowReplayFeatureDeps{
 		EventReplayer:   eventReplayer(deps.AppendLog),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
+		GraphCatalog:    deps.GraphReads.Catalog,
 	}
 }
 
 func newWorkflowReplayFeatureService(deps workflowReplayFeatureDeps) *workflowprojection.Replayer {
-	return workflowprojection.NewReplayer(deps.EventReplayer, deps.ProjectionGraph)
+	return workflowprojection.NewReplayer(deps.EventReplayer, deps.ProjectionGraph).
+		WithEntityCatalogStore(deps.GraphCatalog)
 }
 
 type jobFeatureDeps struct {

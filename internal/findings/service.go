@@ -79,6 +79,7 @@ type Service struct {
 	graphRunStore             GraphIngestRunStore
 	requireTrustedResolution  bool
 	graph                     ports.ProjectionGraphStore
+	graphCatalog              ports.EntityCatalogStore
 	appendLog                 ports.AppendLog
 	closeoutStore             ports.CloseoutRunStore
 	tombstoneEventStore       ports.FindingTombstoneEventStore
@@ -248,10 +249,22 @@ func (s *Service) WithGraphStore(graph ports.ProjectionGraphStore) *Service {
 		return nil
 	}
 	s.graph = graph
+	if catalog, ok := graph.(ports.EntityCatalogStore); ok {
+		s.graphCatalog = catalog
+	}
 	return s
 }
 
-// WithRawCypherQueryStore wires one optional raw-Cypher compatibility boundary used by workflow bridges.
+// WithEntityCatalogStore wires typed Rust relation reads used by workflow projection.
+func (s *Service) WithEntityCatalogStore(catalog ports.EntityCatalogStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graphCatalog = catalog
+	return s
+}
+
+// WithRawCypherQueryStore wires the retained compatibility boundary for graph rule evaluation.
 func (s *Service) WithRawCypherQueryStore(rawCypher ports.RawCypherQueryStore) *Service {
 	if s == nil {
 		return nil

@@ -282,6 +282,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 		workflowMetadata["rationale"] = rationale
 	}
 	service := knowledge.New(s.graph).
+		WithEntityCatalogStore(s.graphCatalog).
 		WithAppendLog(s.appendLog).
 		WithDurabilityMode(knowledge.DurabilityRequired)
 	decision, err := service.WriteDecision(ctx, knowledge.DecisionWriteRequest{
@@ -328,7 +329,7 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 		}
 	}
 	if s.graph != nil {
-		if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		if _, err := workflowprojection.New(s.graph).WithEntityCatalogStore(s.graphCatalog).Project(ctx, event); err != nil {
 			return err
 		}
 	}

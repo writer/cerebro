@@ -27,6 +27,6 @@
     { "package": "internal/policycandidate", "status": "compat", "note": "shadow/experiment evaluation is a permanent resident (rule.Spec.Graph.Query); grounding still migrates, then flip this entry to permanent" },
     { "package": "internal/reports", "status": "migrated" },
     { "package": "internal/runtimeorchestration", "status": "migrated" },
-    { "package": "internal/workflowprojection", "status": "compat", "blocked_on": "keyset cursors, organizational mapping for finding kinds" }
+    { "package": "internal/workflowprojection", "status": "migrated" }
   ]
 }

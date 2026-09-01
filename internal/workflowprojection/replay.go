@@ -45,11 +45,25 @@ type ReplayError struct {
 type Replayer struct {
 	replayer ports.EventReplayer
 	graph    ports.ProjectionGraphStore
+	catalog  ports.EntityCatalogStore
 }
 
 // NewReplayer constructs one workflow event replayer.
 func NewReplayer(replayer ports.EventReplayer, graph ports.ProjectionGraphStore) *Replayer {
-	return &Replayer{replayer: replayer, graph: graph}
+	result := &Replayer{replayer: replayer, graph: graph}
+	if catalog, ok := graph.(ports.EntityCatalogStore); ok {
+		result.catalog = catalog
+	}
+	return result
+}
+
+// WithEntityCatalogStore wires the typed Rust relation reader used during replay pruning.
+func (r *Replayer) WithEntityCatalogStore(catalog ports.EntityCatalogStore) *Replayer {
+	if r == nil {
+		return nil
+	}
+	r.catalog = catalog
+	return r
 }
 
 // Replay replays durable workflow events and projects them into the graph.
@@ -57,7 +71,7 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 	if r == nil || r.replayer == nil || r.graph == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	projector := New(r.graph)
+	projector := New(r.graph).WithEntityCatalogStore(r.catalog)
 	result := &ReplayResult{}
 	replayRequest := ports.ReplayRequest{
 		TenantID:        strings.TrimSpace(request.TenantID),

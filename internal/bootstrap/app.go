@@ -1270,7 +1270,7 @@ func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connec
 	result, err := workflowprojection.NewReplayer(
 		eventReplayer(s.deps.AppendLog),
 		sourceProjectionGraphStore(s.deps.GraphStore),
-	).Replay(ctx, workflowprojection.ReplayRequest{
+	).WithEntityCatalogStore(s.deps.GraphReads.Catalog).Replay(ctx, workflowprojection.ReplayRequest{
 		KindPrefix:      req.Msg.GetKindPrefix(),
 		TenantID:        req.Msg.GetTenantId(),
 		AttributeEquals: req.Msg.GetAttributeEquals(),

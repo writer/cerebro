@@ -19,10 +19,10 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newClaimFeatureDeps(deps); got.Runtimes != nil || got.Claims != nil || got.ProjectionState != nil || got.ProjectionGraph != nil {
 		t.Fatalf("newClaimFeatureDeps() = %#v, want nil stores", got)
 	}
-	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphRawCypher != nil || got.AppendLog != nil {
+	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil || got.GraphRawCypher != nil || got.AppendLog != nil {
 		t.Fatalf("newFindingFeatureDeps() = %#v, want nil dependencies", got)
 	}
-	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.AppendLog != nil {
+	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.GraphCatalog != nil || got.AppendLog != nil {
 		t.Fatalf("newKnowledgeFeatureDeps() = %#v, want nil dependencies", got)
 	}
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil {
@@ -31,7 +31,7 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newGraphIngestFeatureDeps(deps, nil); got.Sources != nil || got.Runtimes != nil || got.Projector != nil || got.GraphStore != nil || got.RuntimeConfigStore != nil {
 		t.Fatalf("newGraphIngestFeatureDeps() = %#v, want nil dependencies", got)
 	}
-	if got := newWorkflowReplayFeatureDeps(deps); got.EventReplayer != nil || got.ProjectionGraph != nil {
+	if got := newWorkflowReplayFeatureDeps(deps); got.EventReplayer != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil {
 		t.Fatalf("newWorkflowReplayFeatureDeps() = %#v, want nil dependencies", got)
 	}
 	if got := newJobFeatureDeps(deps); got.Jobs != nil {
@@ -60,6 +60,15 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != authority {
 		t.Fatalf("finding raw Cypher graph = %#v, want configured authority", got)
 	}
+	if got := newFindingFeatureDeps(deps).GraphCatalog; got != authority {
+		t.Fatalf("finding relation catalog = %#v, want configured authority", got)
+	}
+	if got := newKnowledgeFeatureDeps(deps).GraphCatalog; got != authority {
+		t.Fatalf("knowledge relation catalog = %#v, want configured authority", got)
+	}
+	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != authority {
+		t.Fatalf("workflow replay relation catalog = %#v, want configured authority", got)
+	}
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority {
 		t.Fatalf("graph query service = %#v, want configured authority for all capabilities", got)
 	}
@@ -79,6 +88,15 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	}
 	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != nil {
 		t.Fatalf("finding graph queries = %#v, want nil without configured authority", got)
+	}
+	if got := newFindingFeatureDeps(deps).GraphCatalog; got != nil {
+		t.Fatalf("finding relation catalog = %#v, want nil without configured authority", got)
+	}
+	if got := newKnowledgeFeatureDeps(deps).GraphCatalog; got != nil {
+		t.Fatalf("knowledge relation catalog = %#v, want nil without configured authority", got)
+	}
+	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != nil {
+		t.Fatalf("workflow replay relation catalog = %#v, want nil without configured authority", got)
 	}
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil {
 		t.Fatalf("graph query service = %#v, want nil without configured authority", got)

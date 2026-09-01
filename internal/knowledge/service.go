@@ -56,6 +56,7 @@ var (
 // Service records workflow primitives onto the graph-backed platform layer.
 type Service struct {
 	graph          ports.ProjectionGraphStore
+	graphCatalog   ports.EntityCatalogStore
 	appendLog      ports.AppendLog
 	durabilityMode DurabilityMode
 }
@@ -149,7 +150,20 @@ type OutcomeWriteResult struct {
 
 // New constructs one platform knowledge write service.
 func New(graph ports.ProjectionGraphStore) *Service {
-	return &Service{graph: graph, durabilityMode: DurabilityRequired}
+	service := &Service{graph: graph, durabilityMode: DurabilityRequired}
+	if catalog, ok := graph.(ports.EntityCatalogStore); ok {
+		service.graphCatalog = catalog
+	}
+	return service
+}
+
+// WithEntityCatalogStore wires typed Rust relation reads for workflow link pruning.
+func (s *Service) WithEntityCatalogStore(catalog ports.EntityCatalogStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graphCatalog = catalog
+	return s
 }
 
 func (s *Service) WithDurabilityMode(mode DurabilityMode) *Service {
@@ -424,7 +438,7 @@ func (s *Service) recordAndProject(ctx context.Context, event *cerebrov1.EventEn
 		recordKnowledgeWriteTelemetry(ctx, event, statuses, "")
 		return statuses, nil
 	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+	if _, err := workflowprojection.New(s.graph).WithEntityCatalogStore(s.graphCatalog).Project(ctx, event); err != nil {
 		statuses.ProjectionStatus = ProjectionFailed
 		statuses.ProjectionErrorCategory = ProjectionErrorGraph
 		recordKnowledgeWriteTelemetry(ctx, event, statuses, ProjectionErrorGraph)
