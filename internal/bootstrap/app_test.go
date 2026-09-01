@@ -1804,6 +1804,7 @@ func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov
 }
 
 type stubGraphStore struct {
+	stubGraphCatalogState
 	mu                      sync.Mutex
 	err                     error
 	entities                map[string]*ports.ProjectedEntity
@@ -1817,8 +1818,6 @@ type stubGraphStore struct {
 	cypherPlan              *ports.CypherPlan
 	cypherRows              [][]ports.CypherRow
 	cypherRequests          []ports.CypherQueryRequest
-	catalogRows             []ports.CypherRow
-	catalogRelationRows     []ports.CypherRow
 	exposureResult          *ports.ExposureCoverageResult
 	exposureRequests        []ports.ExposureCoverageRequest
 	personAccessResult      *ports.PersonAccessPathResult
@@ -1826,9 +1825,14 @@ type stubGraphStore struct {
 	effectiveAccessResult   *ports.EffectiveAccessPathResult
 	effectiveAccessRequests []ports.EffectiveAccessPathRequest
 	entityRequests          []ports.EntityCatalogPageRequest
-	entityRelationRequests  []ports.EntityRelationPageRequest
 	entityKindRequests      []ports.EntityKindCountRequest
 	relationRequests        []ports.RelationCountRequest
+}
+
+type stubGraphCatalogState struct {
+	catalogRows            []ports.CypherRow
+	catalogRelationRows    []ports.CypherRow
+	entityRelationRequests []ports.EntityRelationPageRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
