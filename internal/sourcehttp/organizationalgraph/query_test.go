@@ -2,6 +2,7 @@ package organizationalgraph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -50,6 +51,7 @@ type graphServiceStub struct {
 	personAccess        func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
 	cloudAttackPaths    func(context.Context, *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error)
 	crownJewelPaths     func(context.Context, *connect.Request[cerebrographv1.ListCrownJewelPathsRequest]) (*connect.Response[cerebrographv1.ListCrownJewelPathsResponse], error)
+	runFindingGraphRule func(context.Context, *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error)
 	vendorRegister      func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
 	vendorDiscoveries   func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
@@ -92,6 +94,10 @@ func (s graphServiceStub) ListCloudAttackPaths(ctx context.Context, request *con
 
 func (s graphServiceStub) ListCrownJewelPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListCrownJewelPathsRequest]) (*connect.Response[cerebrographv1.ListCrownJewelPathsResponse], error) {
 	return s.crownJewelPaths(ctx, request)
+}
+
+func (s graphServiceStub) RunFindingGraphRule(ctx context.Context, request *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error) {
+	return s.runFindingGraphRule(ctx, request)
 }
 
 func (s graphServiceStub) ListVendorDiscoveries(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
@@ -878,6 +884,44 @@ func TestQueryStoreCrownJewelPathsUsesTypedRustRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.GraphRevision != 41 || len(result.Seeds) != 1 || len(result.Paths) != 1 || result.Paths[0].Nodes[1].URN != account.AgentKey {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestQueryStoreFindingGraphRuleUsesClosedRustRPC(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		runFindingGraphRule: func(_ context.Context, request *connect.Request[cerebrographv1.RunFindingGraphRuleRequest]) (*connect.Response[cerebrographv1.RunFindingGraphRuleResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetRuntimeId() != "runtime-a" || request.Msg.GetRuleId() != "rule-a" || request.Msg.GetRowLimit() != 2 {
+				t.Fatalf("finding graph rule authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			params := map[string]any{}
+			if err := json.Unmarshal(request.Msg.GetParametersJson(), &params); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := params["tenant_id"]; ok {
+				t.Fatal("tenant_id crossed the closed rule parameter boundary")
+			}
+			if params["threshold"] != float64(7) {
+				t.Fatalf("parameters = %#v", params)
+			}
+			return connect.NewResponse(&cerebrographv1.RunFindingGraphRuleResponse{
+				TenantId: "tenant-a", RuleId: "rule-a", RowsJson: [][]byte{[]byte(`{"primary_urn":"urn:one","count":7}`)},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.RunFindingGraphRule(context.Background(), ports.FindingGraphRuleRequest{
+		TenantID: " tenant-a ", RuntimeID: " runtime-a ", RuleID: " rule-a ", RowLimit: 2,
+		Params: map[string]any{"tenant_id": "spoofed", "row_limit": 999, "threshold": 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0].Values["primary_urn"] != "urn:one" || result.Truncated {
 		t.Fatalf("result = %#v", result)
 	}
 }

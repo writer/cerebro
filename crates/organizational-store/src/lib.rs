@@ -26,6 +26,7 @@
 
 mod credential_vault;
 mod cutover;
+mod finding_graph_rules;
 mod neo4j;
 mod page_publication;
 mod parity;
@@ -45,8 +46,8 @@ pub use neo4j::{
     ExposureCoverageAccount, ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly,
     ExposureCoverageCounts, ExposureCoverageEntity, ExposureCoverageKindCount,
     ExposureCoverageOverlap, ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery,
-    ExposureCoverageResult, LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector,
-    PersonAccessPath, PersonAccessPathPage, ResolvedLifecycleFinding,
+    ExposureCoverageResult, FindingGraphRulePage, LegacyRootCoverage, LegacyRootCoverageKind,
+    Neo4jProjector, PersonAccessPath, PersonAccessPathPage, ResolvedLifecycleFinding,
     SourceRuntimeGraphObservation,
 };
 pub use page_publication::PagePublicationOutbox;

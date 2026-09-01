@@ -305,7 +305,7 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 			continue
 		}
 		// The cypher emits one row per github user; rows for the same
-		// user across multiple ExecuteReadCypher calls are an unusual
+		// user across multiple bounded rule reads are an unusual
 		// case (it can happen if the Go-side caller composes more than
 		// one read), but we still merge defensively into the same
 		// group so the recency contract holds regardless of arrival

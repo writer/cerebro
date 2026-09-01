@@ -125,10 +125,9 @@ Ranked by unblock power (caller count in parentheses):
 - **Wave 3:** migrate compliance impact and workflow projection pruning.
   Policy candidate grounding now uses revision-bound typed entity and relation
   reads, including bounded neighbor keys and relation properties.
-- **Wave 4:** migrate findings rules. These are generated; the generator
-  (`internal/findings` catalog generation) should emit structured requests
-  instead of Cypher strings, which retires the largest single body of
-  caller Cypher in one mechanical pass.
+- **Wave 4:** migrated. Findings send a closed rule ID and validated parameters
+  to `RunFindingGraphRule`; Rust owns the embedded bounded query catalog and
+  execution while Go interprets the returned rows into finding records.
 - **Wave 5 (Path A, elective):** port access-edge derivation into the Rust
   mapper, add the security `RelationKind` variants, replay affected
   families, re-migrate the security-core consumers to org-graph operations.

@@ -168,14 +168,17 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	}
 
 	for _, productionPath := range []string{
-		"internal/bootstrap/policy_candidates.go",
 		"cmd/cerebro/orchestrator.go",
 		"cmd/cerebro/finding_rule_graph_evaluate.go",
 	} {
 		source := readText(t, filepath.Join(root, filepath.FromSlash(productionPath)))
-		if !strings.Contains(source, ".GraphReads.RawCypher") {
+		if !strings.Contains(source, ".GraphReads.FindingGraphRules") {
 			t.Errorf("%s bypasses configured Rust graph authority", productionPath)
 		}
+	}
+	policyCandidateBootstrap := readText(t, filepath.Join(root, "internal/bootstrap/policy_candidates.go"))
+	if !strings.Contains(policyCandidateBootstrap, ".GraphReads.RawCypher") {
+		t.Error("policy candidate shadow evaluation bypasses configured compatibility authority")
 	}
 	for _, bootstrapPath := range []string{
 		"internal/bootstrap/compliance_impact_runtime.go",

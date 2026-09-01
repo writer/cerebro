@@ -24,11 +24,15 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     StoreError,
+    finding_graph_rules::rule_query,
     postgres::{
         ProjectionAssertion, ProjectionCommit, ProjectionEntity, ProjectionRetraction,
         lifecycle_finding_projection, lifecycle_projection, projection_commit,
     },
 };
+
+const MAX_FINDING_GRAPH_RULE_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_FINDING_GRAPH_RULE_ROW_BYTES: usize = 64 * 1024;
 
 const ENTITY_QUERY: &str = r#"
 UNWIND $rows AS row
@@ -965,6 +969,19 @@ pub struct CrownJewelPathPage {
     /// Bounded paths rooted at those seeds.
     pub paths: Vec<CrownJewelPath>,
     /// True when more paths matched than the requested path bound.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Bounded JSON rows produced by one closed finding graph rule.
+pub struct FindingGraphRulePage {
+    /// Authorized tenant.
+    pub tenant_id: String,
+    /// Closed server-owned rule identifier.
+    pub rule_id: String,
+    /// Deterministic JSON objects, one per returned Neo4j row.
+    pub rows_json: Vec<Vec<u8>>,
+    /// True when the rule filled its requested row bound.
     pub truncated: bool,
 }
 
@@ -1944,6 +1961,53 @@ ORDER BY runtime_id
             graph_revision: revision,
             seeds,
             paths,
+            truncated,
+        })
+    }
+
+    /// Executes one closed finding graph rule from the embedded Rust catalog.
+    pub async fn run_finding_graph_rule(
+        &self,
+        tenant_id: &TenantId,
+        rule_id: &str,
+        row_limit: usize,
+        parameters_json: &[u8],
+    ) -> Result<FindingGraphRulePage, StoreError> {
+        let statement = rule_query(tenant_id.as_str(), rule_id, row_limit, parameters_json)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let mut rows = transaction.execute(statement).await?;
+        let mut rows_json = Vec::with_capacity(row_limit);
+        let mut response_bytes = 0_usize;
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            if rows_json.len() >= row_limit {
+                return Err(StoreError::Conflict(format!(
+                    "finding graph rule {rule_id:?} exceeded its row bound"
+                )));
+            }
+            let value: serde_json::Value = row.to_strict().map_err(|error| {
+                StoreError::Conflict(format!("decode finding graph rule row: {error}"))
+            })?;
+            let encoded = serde_json::to_vec(&value).map_err(StoreError::Serialization)?;
+            if encoded.len() > MAX_FINDING_GRAPH_RULE_ROW_BYTES {
+                return Err(StoreError::Conflict(format!(
+                    "finding graph rule {rule_id:?} returned an oversized row"
+                )));
+            }
+            response_bytes = response_bytes.saturating_add(encoded.len());
+            if response_bytes > MAX_FINDING_GRAPH_RULE_RESPONSE_BYTES {
+                return Err(StoreError::Conflict(format!(
+                    "finding graph rule {rule_id:?} exceeded its response byte bound"
+                )));
+            }
+            rows_json.push(encoded);
+        }
+        drop(rows);
+        transaction.commit().await?;
+        let truncated = rows_json.len() == row_limit;
+        Ok(FindingGraphRulePage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            rule_id: rule_id.to_owned(),
+            rows_json,
             truncated,
         })
     }

@@ -299,7 +299,7 @@ func TestIdentityPrivilegedNoMfaPlusSensitiveAccessGraphRuleRemediationMatrix(t 
 			if err != nil {
 				t.Fatalf("NewRegistry() error = %v", err)
 			}
-			service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
+			service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithFindingGraphRuleStore(graphStore)
 			result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 			if err != nil {
 				t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
