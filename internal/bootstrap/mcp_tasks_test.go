@@ -82,6 +82,7 @@ func TestMCPDefaultTaskAndFullProfilesExposeExpectedTools(t *testing.T) {
 		"cerebro.investigation.context": true,
 		"cerebro.risk.explain":          true,
 		"cerebro.evidence.packet":       true,
+		"cerebro.decision.packet":       true,
 		"cerebro.sources.health":        true,
 		"cerebro.action.plan":           true,
 	}

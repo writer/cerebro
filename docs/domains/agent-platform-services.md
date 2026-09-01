@@ -1,6 +1,6 @@
 # Agent Platform Services
 
-This document covers the agent platform service packages in Cerebro that support Agent-to-Agent (A2A) task gatewaying, AI-assisted artifact authoring, and source coverage context for agent evidence packets.
+This document covers the agent platform service packages in Cerebro that support Agent-to-Agent (A2A) task gatewaying, canonical DecisionPacket delivery, AI-assisted artifact authoring, and source coverage context for agent readiness metadata.
 
 It complements [Agent Platform Contract](agent-platform-contract.md), [Architecture](../reference/architecture.md), and [Findings Platform Architecture](findings-platform-architecture.md).
 
@@ -12,11 +12,12 @@ It complements [Agent Platform Contract](agent-platform-contract.md), [Architect
 
 ## a2agateway — A2A JSON-RPC Gateway
 
-`internal/a2agateway` implements an Agent-to-Agent (A2A) JSON-RPC gateway handler. It accepts `SendMessage`, `GetTask`, and `ListTasks` requests, resolves tenant and scope context, authorizes evidence packets, and manages A2A tasks as jobs in the job store.
+`internal/a2agateway` implements an Agent-to-Agent (A2A) JSON-RPC gateway handler. It accepts `SendMessage`, `GetTask`, and `ListTasks` requests, resolves authenticated tenant and scope context, authorizes readiness metadata, calls the canonical DecisionPacket service, and manages A2A tasks as jobs in the job store.
 
 ### Key Types
 
-- `Handler` — the A2A JSON-RPC handler with Store, Card, Resolver, CoverageContext, Authorizer, and idempotency config
+- `Handler` — the A2A JSON-RPC handler with Store, Card, DecisionPacket builder, Resolver, CoverageContext, Authorizer, and idempotency config
+- `DecisionPacketBuilder` — narrow adapter port implemented by the persistent DecisionPacket service
 - `ResolvedContext` — resolved tenant, actor, and scope context
 - `Resolver`, `CoverageContextFunc`, `EvidenceAuthorizer`, `RequestedTenantRecorder` — function type ports
 - `requestError` — internal error type with JSON-RPC error codes
@@ -24,10 +25,11 @@ It complements [Agent Platform Contract](agent-platform-contract.md), [Architect
 ### Key Exports
 
 - `Handler.Respond()` — dispatches A2A JSON-RPC methods
-- `Handler.sendMessage()` — processes an inbound agent message, creating evidence packet tasks
+- `Handler.sendMessage()` — processes an inbound agent message, creating readiness-metadata or DecisionPacket tasks
 - `Handler.getTask()` — retrieves a single A2A task
 - `Handler.listTasks()` — lists A2A tasks with filtering
 - `Handler.createEvidencePacketTask()` — creates and processes agent-evidence-packet jobs
+- `Handler.createDecisionPacketTask()` — resolves authoritative IDs through the canonical service and creates a task containing the persisted DecisionPacket
 
 ### Boundaries
 
@@ -35,10 +37,12 @@ It complements [Agent Platform Contract](agent-platform-contract.md), [Architect
 - Bootstrap only wires the HTTP boundary into the gateway handler
 - Tenant context is forced from authenticated principal; cross-tenant access is rejected before task creation
 - Evidence packet authorization is delegated to the `EvidenceAuthorizer` port
+- DecisionPacket requests cannot supply tenant or actor identity; authenticated gateway context forces both values
+- DecisionPacket persistence and canonicalization remain owned by `internal/decisionpacket`
 
 ### Dependencies
 
-`agentplatform`, `ports`, `telemetry`
+`agentplatform`, `decisionpacket`, `ports`, `telemetry`
 
 ### RBAC Ownership
 
@@ -104,5 +108,6 @@ It complements [Agent Platform Contract](agent-platform-contract.md), [Architect
 ## Code Map
 
 - `internal/a2agateway/gateway.go` — A2A JSON-RPC handler and task management
+- `internal/a2agateway/decision_packets.go` — DecisionPacket request mapping and durable A2A task adapter
 - `internal/agentauthoring/authoring.go` — AI-assisted drafting service for policy rules and connector definitions
 - `internal/agentplatformcoverage/context.go` — source coverage to agent context bridge

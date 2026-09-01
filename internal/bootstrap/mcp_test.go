@@ -581,6 +581,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.version":                         {Markers: []string{"GetVersion"}},
 	"cerebro.risk.explain":                    {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence"}},
 	"cerebro.evidence.packet":                 {Markers: []string{"POST /api/v1/agent-platform/evidence-packets"}},
+	"cerebro.decision.packet":                 {Markers: []string{"POST /api/v1/platform/decision-packets"}},
 	"cerebro.sources.health":                  {Markers: []string{"GET /source-runtimes"}},
 	"cerebro.action.plan":                     {Markers: []string{"risk-action-plan", "internal/riskplan"}},
 	"cerebro.sources.list":                    {Markers: []string{"GET /sources"}},

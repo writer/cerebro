@@ -128,6 +128,41 @@ func TestDecisionPacketHTTPRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestMCPDecisionPacketUsesAuthenticatedIdentityAndPersistsReceipt(t *testing.T) {
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	resolver := &decisionPacketTestResolver{facts: decisionpacket.ResolvedFacts{
+		Evidence:    []decisionpacket.EvidenceReference{{ID: "evidence-1", Kind: "finding", ObservedAt: now.Add(-time.Minute)}},
+		ResolverIDs: []string{"test-resolver"}, SourceIDs: []string{"source-1"}, Rationale: "Resolved by the server.",
+	}}
+	receipts := &decisionPacketTestReceipts{}
+	app := &App{services: appServices{decisionPackets: decisionpacket.NewPersistentService(resolver, decisionPacketTestClock{now: now}, receipts, time.Hour)}}
+	request := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, authContext{principal: authPrincipal{
+		Name: "agent-1", TenantID: "tenant-1", Scopes: []string{scopeCosmoSecurityRead},
+	}}))
+
+	value, err := app.mcpDecisionPacket(request, map[string]any{
+		"workflow": "triage", "question": "Is this finding current?", "finding_ids": []any{"finding-1"},
+	})
+	if err != nil {
+		t.Fatalf("mcpDecisionPacket() error = %v", err)
+	}
+	packet, ok := value.(*decisionpacket.Packet)
+	if !ok {
+		t.Fatalf("mcpDecisionPacket() = %T, want *decisionpacket.Packet", value)
+	}
+	if packet.Scope.TenantID != "tenant-1" || packet.Scope.ActorID != "agent-1" || resolver.seen.ID != "tenant-1" {
+		t.Fatalf("forced identity = %+v resolver tenant = %+v", packet.Scope, resolver.seen)
+	}
+	if receipts.receipt == nil || receipts.receipt.PacketID != packet.ID {
+		t.Fatalf("persisted receipt = %+v, packet = %+v", receipts.receipt, packet)
+	}
+
+	if _, err := app.mcpDecisionPacket(request, map[string]any{"workflow": "triage", "question": "Current?", "tenant_id": "other"}); !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("caller-supplied tenant error = %v, want invalid request", err)
+	}
+}
+
 func TestDecisionPacketConnectInternalErrorsHideDetails(t *testing.T) {
 	err := decisionPacketConnectError(errors.New("postgres password leaked"))
 	var connectErr *connect.Error

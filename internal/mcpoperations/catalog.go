@@ -91,6 +91,7 @@ func buildOperationRegistry() map[string]Operation {
 		expertPropose("cerebro.source_runtimes.refresh.propose", "source-runtime", "runtime refresh proposal"),
 		taskRead("cerebro.risk.explain", "findings", "task result with finding, evidence, assets, and optional graph context"),
 		taskRead("cerebro.evidence.packet", "agent-platform", "task result with an agent evidence packet and coverage state"),
+		taskRead("cerebro.decision.packet", "decision-packet", "canonical persisted DecisionPacket resolved from authoritative server records"),
 		taskRead("cerebro.sources.health", "source-runtime", "task result with source coverage and blind spots"),
 		taskPropose("cerebro.action.plan", "risk", "task result with ranked non-mutating action candidates"),
 	}

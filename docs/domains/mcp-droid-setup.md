@@ -22,7 +22,7 @@ Do not advertise or emulate a stateful SSE session on this route. Native Droid u
 
 ## Default tool surface
 
-Requests start with eight task-level tools. Clients can also request the same
+Requests start with nine task-level tools. Clients can also request the same
 surface explicitly with `X-Cerebro-MCP-Toolsets: task`:
 
 | Tool | Result |
@@ -32,20 +32,27 @@ surface explicitly with `X-Cerebro-MCP-Toolsets: task`:
 | `cerebro.graph.reason` | Answer grounded in tenant-scoped graph evidence |
 | `cerebro.investigation.context` | Finding, evidence, graph, and runtime context for triage |
 | `cerebro.risk.explain` | Finding, evidence, asset, and optional graph context |
-| `cerebro.evidence.packet` | Evidence packet for the requested question and authorized scope |
+| `cerebro.evidence.packet` | Agent-run readiness and guardrail metadata; not resolved authoritative evidence |
+| `cerebro.decision.packet` | Canonical persisted DecisionPacket resolved from authoritative tenant records |
 | `cerebro.sources.health` | Configured source coverage and current blind spots |
 | `cerebro.action.plan` | Ranked remediation candidates without execution |
 
-Each task result returns `state` as `complete`, `partial`, or `blocked`, plus a
+The eight orchestration task results return `state` as `complete`, `partial`, or `blocked`, plus a
 dependency list. `partial_reasons` identifies missing graph data, stale or
 failed source coverage, and other optional inputs that changed the result.
 Clients should show these reasons with the result instead of treating a partial
-result as complete.
+result as complete. `cerebro.decision.packet` returns the canonical DecisionPacket
+directly, including its immutable packet ID, decision, confidence, freshness,
+evidence, coverage gaps, provenance digests, and result limits.
 
 Task tools do not mutate resources. `cerebro.action.plan` stops at
 `next_state: proposal`; approval and execution remain separate operations.
-The evidence-packet task accepts only `observe`, `explain`, `recommend`, and
-`dry_run` action stages.
+The readiness-metadata tool retains the `cerebro.evidence.packet` identifier for
+client compatibility and accepts only `observe`, `explain`, `recommend`, and
+`dry_run` action stages. Use `cerebro.decision.packet` when an agent needs
+server-resolved evidence and a persisted DecisionPacket receipt. DecisionPacket
+inputs never include tenant or actor identity; the MCP authentication context
+forces both values before resolution.
 
 Low-level domain tools remain available through explicit profiles. Use
 `X-Cerebro-MCP-Toolsets: expert` for expert tools, a domain toolset such as
