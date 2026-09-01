@@ -11,6 +11,7 @@ The SDK owns:
 
 - validated platform capability identifiers and content digests;
 - graph revision selectors and bounded temporal diff contracts;
+- immutable context bindings and verified invalidation outcomes;
 - evidence quality and provenance explanation contracts;
 - continuous assertion definitions and evaluations;
 - counterfactual simulation requests and results;
@@ -54,6 +55,11 @@ semantics.
   Neo4j remains a rebuildable projection. The SDK introduces no store.
 - Temporal queries reconstruct bounded history from the ledger and log. They
   do not make Neo4j authoritative.
+- Context bindings content-address an exact graph revision, rendered context,
+  and bounded dependency set. Later authoritative temporal diffs produce
+  explicit unchanged, changed, or invalidated outcomes; missing, incomplete,
+  or digest-mismatched evidence produces unknown. Bindings and evaluations are
+  self-validating records and introduce no additional snapshot or store.
 - Simulations are read-only. Mutations use governed Action contracts.
 - An Action proposal binds the validated finding revision, action-definition
   revision, target, simulation, rollback, and verification plan. A worker can
