@@ -377,6 +377,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"deepseek",
 		"digitalocean",
 		"discord",
+		"doppler",
 		"duo",
 		"fivetran",
 		"increase",

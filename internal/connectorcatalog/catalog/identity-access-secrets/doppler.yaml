@@ -77,9 +77,6 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/secrets
-          config:
-            config_attributes:
-              tenant_id: tenant_id
           projection:
             entity:
               entity_type: secret
@@ -145,9 +142,6 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/projects
-          config:
-            config_attributes:
-              tenant_id: tenant_id
           projection:
             entity:
               entity_type: doppler.project
@@ -206,9 +200,6 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/logs
-          config:
-            config_attributes:
-              tenant_id: tenant_id
           projection:
             fields:
               actor_email: actor_email|actor.email|email|user.email

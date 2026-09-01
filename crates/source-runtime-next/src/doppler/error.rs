@@ -1,0 +1,21 @@
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum DopplerError {
+    InvalidBaseUrl,
+    InvalidTenantId,
+    InvalidCursor,
+    RequestScopeMismatch,
+    AuthenticationRejected,
+    RequiredScopeMissing,
+    ProviderTimeout,
+    RateLimited,
+    ProviderUnavailable,
+    UnexpectedStatus,
+    ResponseTooLarge,
+    TooManyRecords,
+    MalformedResponse,
+    InvalidProviderRecord,
+    MissingStableIdentity,
+    ConflictingDuplicate,
+    TenantMismatch,
+    EventContractRejection,
+}

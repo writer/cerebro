@@ -5,6 +5,7 @@ use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::deepseek::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
+use crate::doppler::DOPPLER_SOURCE_EXECUTION_ADAPTERS;
 use crate::google_workspace::{
     GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER, GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER,
 };
@@ -196,6 +197,11 @@ impl SourceExecutionDispatcher {
         }) {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = DOPPLER_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
+        }
         if request.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -325,6 +331,13 @@ impl SourceExecutionDispatcher {
             return Ok(adapter);
         }
         if let Some(adapter) = DISCORD_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = DOPPLER_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()
