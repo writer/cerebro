@@ -1106,6 +1106,7 @@ impl OrganizationalGraphService for GraphRpc {
                 &relations,
                 &neighbor_kinds,
                 &neighbor_agent_keys,
+                request.neighbor_application_workspace_id,
                 limit,
                 request.after_agent_key,
                 request.after_relation,
@@ -1641,6 +1642,11 @@ fn catalog_filter(filter: &__buffa::view::EntityCatalogFilterView<'_>) -> StoreC
             .collect(),
         search: filter.query.to_owned(),
         search_attributes: filter.query_attributes,
+        attribute_substrings_any: filter
+            .attribute_substrings_any
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
         relation_counts,
         expected_graph_revision: filter.expected_graph_revision,
     }
@@ -1659,6 +1665,7 @@ fn validate_in_memory_catalog_request(
         || !catalog_values_are_closed(&filter.include_kind_prefixes)
         || !catalog_values_are_closed(&filter.exclude_kinds)
         || !catalog_values_are_closed(&filter.exclude_kind_prefixes)
+        || !catalog_attribute_substrings_are_closed(&filter.attribute_substrings_any)
         || filter.application_workspace_id.trim() != filter.application_workspace_id
         || filter.application_workspace_id.len() > 128
         || filter
@@ -1692,6 +1699,14 @@ fn catalog_values_are_closed(values: &[String]) -> bool {
             .iter()
             .all(|value| !value.is_empty() && value.trim() == value)
         && values.iter().collect::<BTreeSet<_>>().len() == values.len()
+}
+
+fn catalog_attribute_substrings_are_closed(values: &[String]) -> bool {
+    values.len() <= 64
+        && catalog_values_are_closed(values)
+        && values
+            .iter()
+            .all(|value| value.len() <= 256 && !value.chars().any(char::is_control))
 }
 
 fn in_memory_catalog_workspace_matches(
@@ -1770,6 +1785,18 @@ fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalo
             .any(|prefix| entity.entity_kind.starts_with(prefix))
     {
         return false;
+    }
+    if !filter.attribute_substrings_any.is_empty() {
+        let properties = serde_json::to_string(&entity.properties)
+            .unwrap_or_default()
+            .to_lowercase();
+        if !filter
+            .attribute_substrings_any
+            .iter()
+            .any(|fragment| properties.contains(&fragment.to_lowercase()))
+        {
+            return false;
+        }
     }
     if filter.search.is_empty() {
         return true;
@@ -2786,6 +2813,26 @@ mod tests {
     }
 
     #[test]
+    fn in_memory_catalog_attribute_substrings_are_bounded_and_case_insensitive() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let mut entity = context_entity("entity-a", "policy");
+        entity
+            .properties
+            .insert("policy_id".to_owned(), "ACCESS".to_owned());
+        let mut filter = StoreCatalogFilter {
+            attribute_substrings_any: vec!["\"policy_id\":\"access\"".to_owned()],
+            ..Default::default()
+        };
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_ok());
+        assert!(in_memory_catalog_entity_matches(&entity, &filter));
+
+        filter.attribute_substrings_any = vec!["x".repeat(257)];
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
+        filter.attribute_substrings_any = vec!["x".to_owned(); 65];
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
+    }
+
+    #[test]
     fn in_memory_catalog_relation_counts_reject_mismatched_edge_workspace() {
         let mut neighbor = context_entity("entity-b", "contract");
         neighbor.properties.insert(
@@ -2857,6 +2904,7 @@ mod tests {
             exclude_kinds: vec!["service.retired".to_owned()],
             exclude_kind_prefixes: vec!["internal.".to_owned()],
             query: "checkout".to_owned(),
+            attribute_substrings_any: vec!["\"policy_id\":\"".to_owned()],
             expected_graph_revision: 41,
             query_attributes: true,
             relation_counts: EntityRelationCountFilter {
@@ -2879,6 +2927,7 @@ mod tests {
         assert_eq!(mapped.runtime_ids, ["runtime-a"]);
         assert_eq!(mapped.include_kind_prefixes, ["service."]);
         assert_eq!(mapped.exclude_kinds, ["service.retired"]);
+        assert_eq!(mapped.attribute_substrings_any, ["\"policy_id\":\""]);
         assert!(mapped.search_attributes);
         assert_eq!(mapped.expected_graph_revision, 41);
         assert_eq!(

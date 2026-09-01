@@ -683,6 +683,9 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 			if request.Msg.GetFilter().GetQueryAttributes() {
 				t.Fatal("attribute search widened without caller opt-in")
 			}
+			if fragments := request.Msg.GetFilter().GetAttributeSubstringsAny(); len(fragments) != 1 || fragments[0] != `"policy_id":"` {
+				t.Fatalf("attribute substrings = %#v", fragments)
+			}
 			counts := request.Msg.GetFilter().GetRelationCounts()
 			if counts == nil || len(counts.GetDirections()) != 1 || counts.GetRelations()[0] != "associated_with" || counts.GetNeighborKinds()[0] != "contract" {
 				t.Fatalf("relation count filter = %#v", counts)
@@ -720,7 +723,7 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
-	page, err := store.ListEntities(context.Background(), ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", IncludeKinds: []string{"vendor"}, Query: "one", RelationCounts: &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract"}}}, Limit: 10})
+	page, err := store.ListEntities(context.Background(), ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", IncludeKinds: []string{"vendor"}, Query: "one", AttributeSubstringsAny: []string{`"policy_id":"`}, RelationCounts: &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract"}}}, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v", err)
 	}
@@ -753,6 +756,9 @@ func TestQueryStoreEntityRelationsPreservesBoundedEdgeEvidence(t *testing.T) {
 			if keys := request.Msg.GetNeighborAgentKeys(); len(keys) != 1 || keys[0] != neighborURN {
 				t.Fatalf("neighbor agent keys = %#v", keys)
 			}
+			if request.Msg.GetNeighborApplicationWorkspaceId() != "workspace-a" {
+				t.Fatalf("neighbor workspace = %q", request.Msg.GetNeighborApplicationWorkspaceId())
+			}
 			return connect.NewResponse(&cerebrographv1.ListEntityRelationsResponse{
 				TenantId: "tenant-a", GraphRevision: 19,
 				Relations: []*cerebrographv1.EntityRelation{{
@@ -770,7 +776,7 @@ func TestQueryStoreEntityRelationsPreservesBoundedEdgeEvidence(t *testing.T) {
 	}
 	page, err := store.ListEntityRelations(context.Background(), ports.EntityRelationPageRequest{
 		TenantID: "tenant-a", AgentKey: "urn:cerebro:tenant-a:aws:session:one", Directions: []ports.EntityRelationDirection{ports.EntityRelationOutgoing},
-		NeighborAgentKeys: []string{neighborURN}, Limit: 10, ExpectedRevision: 19,
+		NeighborAgentKeys: []string{neighborURN}, NeighborApplicationWorkspaceID: " workspace-a ", Limit: 10, ExpectedRevision: 19,
 	})
 	if err != nil {
 		t.Fatal(err)

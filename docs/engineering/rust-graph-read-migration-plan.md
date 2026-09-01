@@ -105,7 +105,7 @@ Ranked by unblock power (caller count in parentheses):
 
 | Capability | Callers unblocked |
 | --- | --- |
-| Attribute substring predicates on node patterns (6) | attackpath, person access, effective access, crown jewel, GRC lifecycle, findings rules |
+| Attribute substring predicates on node patterns (5) | attackpath, person access, effective access, crown jewel, findings rules |
 | Variable-length legs with relation whitelist (4) | attackpath, person access, crown jewel, findings rules |
 | Aggregations: count/collect, plus a `CountRelations` RPC (4) | attackpath counts, compliance impact, graphagent probe counts, findings rules |
 | URN/agent-key-keyed path endpoints (3) | attackpath, person access, crown jewel |

@@ -1817,6 +1817,8 @@ type stubGraphStore struct {
 	cypherPlan              *ports.CypherPlan
 	cypherRows              [][]ports.CypherRow
 	cypherRequests          []ports.CypherQueryRequest
+	catalogRows             []ports.CypherRow
+	catalogRelationRows     []ports.CypherRow
 	exposureResult          *ports.ExposureCoverageResult
 	exposureRequests        []ports.ExposureCoverageRequest
 	personAccessResult      *ports.PersonAccessPathResult
@@ -1824,6 +1826,7 @@ type stubGraphStore struct {
 	effectiveAccessResult   *ports.EffectiveAccessPathResult
 	effectiveAccessRequests []ports.EffectiveAccessPathRequest
 	entityRequests          []ports.EntityCatalogPageRequest
+	entityRelationRequests  []ports.EntityRelationPageRequest
 	entityKindRequests      []ports.EntityKindCountRequest
 	relationRequests        []ports.RelationCountRequest
 }
@@ -1949,11 +1952,14 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	}
 	s.entityRequests = append(s.entityRequests, request)
 	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: 1}
-	if len(s.cypherRows) == 0 {
+	rows := s.catalogRows
+	if rows == nil && len(s.cypherRows) == 0 {
 		return page, nil
 	}
-	rows := s.cypherRows[0]
-	s.cypherRows = s.cypherRows[1:]
+	if rows == nil {
+		rows = s.cypherRows[0]
+		s.cypherRows = s.cypherRows[1:]
+	}
 	for _, row := range rows {
 		attrs := map[string]string{}
 		_ = json.Unmarshal([]byte(fmt.Sprint(row.Values["attributes_json"])), &attrs)
@@ -1971,9 +1977,40 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 		if tenant != request.Filter.TenantID {
 			continue
 		}
-		page.Entities = append(page.Entities, ports.CatalogEntity{URN: fmt.Sprint(row.Values["urn"]), TenantID: tenant, RuntimeID: fmt.Sprint(row.Values["runtime_id"]), SourceID: fmt.Sprint(row.Values["source_id"]), EntityType: fmt.Sprint(row.Values["entity_type"]), Label: fmt.Sprint(row.Values["label"]), Attributes: attrs})
+		entity := ports.CatalogEntity{URN: fmt.Sprint(row.Values["urn"]), TenantID: tenant, RuntimeID: fmt.Sprint(row.Values["runtime_id"]), SourceID: fmt.Sprint(row.Values["source_id"]), EntityType: fmt.Sprint(row.Values["entity_type"]), Label: fmt.Sprint(row.Values["label"]), Attributes: attrs}
+		if request.Filter.SourceID != "" && entity.SourceID != request.Filter.SourceID ||
+			len(request.Filter.RuntimeIDs) > 0 && !catalogStringSliceContains(request.Filter.RuntimeIDs, entity.RuntimeID) ||
+			len(request.Filter.IncludeKinds) > 0 && !catalogStringSliceContains(request.Filter.IncludeKinds, entity.EntityType) {
+			continue
+		}
+		if len(request.Filter.AttributeSubstringsAny) > 0 {
+			matched := false
+			encoded := strings.ToLower(fmt.Sprint(row.Values["attributes_json"]))
+			for _, fragment := range request.Filter.AttributeSubstringsAny {
+				if strings.Contains(encoded, strings.ToLower(fragment)) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		page.Entities = append(page.Entities, entity)
+		if len(page.Entities) == request.Limit {
+			break
+		}
 	}
 	return page, nil
+}
+
+func catalogStringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.VendorRegisterFilter) (*ports.VendorRegisterPage, error) {
@@ -2043,8 +2080,47 @@ func (s *stubGraphStore) CountRelations(_ context.Context, request ports.Relatio
 		},
 	}, nil
 }
-func (s *stubGraphStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
-	return &ports.EntityRelationPage{TenantID: "writer"}, nil
+func (s *stubGraphStore) ListEntityRelations(_ context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	s.entityRelationRequests = append(s.entityRelationRequests, request)
+	page := &ports.EntityRelationPage{TenantID: request.TenantID, GraphRevision: 1}
+	for _, row := range s.catalogRelationRows {
+		leftURN, rightURN := fmt.Sprint(row.Values["left_urn"]), fmt.Sprint(row.Values["right_urn"])
+		var prefix string
+		var direction ports.EntityRelationDirection
+		switch request.AgentKey {
+		case leftURN:
+			prefix, direction = "right_", ports.EntityRelationOutgoing
+		case rightURN:
+			prefix, direction = "left_", ports.EntityRelationIncoming
+		default:
+			continue
+		}
+		if len(request.Directions) > 0 && !entityRelationDirectionContains(request.Directions, direction) {
+			continue
+		}
+		attrs := map[string]string{}
+		_ = json.Unmarshal([]byte(fmt.Sprint(row.Values[prefix+"attributes_json"])), &attrs)
+		page.Relations = append(page.Relations, ports.EntityCatalogRelation{
+			Direction: direction,
+			Relation:  fmt.Sprint(row.Values["relation"]),
+			Entity: ports.CatalogEntity{
+				URN: fmt.Sprint(row.Values[prefix+"urn"]), TenantID: fmt.Sprint(row.Values[prefix+"tenant_id"]),
+				SourceID: fmt.Sprint(row.Values[prefix+"source_id"]), RuntimeID: fmt.Sprint(row.Values[prefix+"runtime_id"]),
+				EntityType: fmt.Sprint(row.Values[prefix+"entity_type"]), Label: fmt.Sprint(row.Values[prefix+"label"]), Attributes: attrs,
+			},
+			AttributesJSON: fmt.Sprint(row.Values["relation_attributes_json"]),
+		})
+	}
+	return page, nil
+}
+
+func entityRelationDirectionContains(items []ports.EntityRelationDirection, want ports.EntityRelationDirection) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stubGraphStore) ExplainReadCypher(_ context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {

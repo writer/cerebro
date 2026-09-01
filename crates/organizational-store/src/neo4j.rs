@@ -617,6 +617,8 @@ pub struct EntityCatalogFilter {
     pub search: String,
     /// Whether catalog search may inspect stored attributes.
     pub search_attributes: bool,
+    /// Case-insensitive OR predicates applied only to stored attribute JSON.
+    pub attribute_substrings_any: Vec<String>,
     /// Optional closed relation-count projection for each returned entity.
     pub relation_counts: Option<EntityCatalogRelationCountFilter>,
     /// Required revision for continuation pages, or zero for the first page.
@@ -1840,6 +1842,7 @@ ORDER BY runtime_id
         relations: &[String],
         neighbor_kinds: &[String],
         neighbor_agent_keys: &[String],
+        neighbor_application_workspace_id: &str,
         limit: usize,
         after_agent_key: &str,
         after_relation: &str,
@@ -1853,6 +1856,7 @@ ORDER BY runtime_id
             relations,
             neighbor_kinds,
             neighbor_agent_keys,
+            neighbor_application_workspace_id,
             limit,
             CatalogRelationCursor {
                 agent_key: after_agent_key,
@@ -1910,7 +1914,7 @@ ORDER BY runtime_id
                 EntityCatalogDirection::Outgoing => "outgoing",
             })
             .unwrap_or("");
-        let statement = "MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) MATCH (root)-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE (size($directions) = 0 OR direction IN $directions) AND (size($relations) = 0 OR edge.relation IN $relations) AND (size($neighbor_kinds) = 0 OR neighbor.entity_type IN $neighbor_kinds) AND (size($neighbor_agent_keys) = 0 OR neighbor.urn IN $neighbor_agent_keys) AND ($after_key = '' OR neighbor.urn > $after_key OR (neighbor.urn = $after_key AND edge.relation > $after_relation) OR (neighbor.urn = $after_key AND edge.relation = $after_relation AND direction > $after_direction)) RETURN direction, edge.relation AS relation, coalesce(edge.source_id, '') AS edge_source_id, coalesce(edge.attributes_json, '{}') AS edge_attributes_json, neighbor.urn AS entity_key, coalesce(neighbor.entity_type, 'unknown') AS entity_kind, coalesce(neighbor.label, neighbor.urn) AS entity_label, coalesce(neighbor.attributes_json, '{}') AS entity_properties, coalesce(neighbor.source_id, '') AS entity_source_id, coalesce(neighbor.runtime_id, '') AS entity_runtime_id ORDER BY neighbor.urn, edge.relation, direction LIMIT $row_limit";
+        let statement = "MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) MATCH (root)-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE (size($directions) = 0 OR direction IN $directions) AND (size($relations) = 0 OR edge.relation IN $relations) AND (size($neighbor_kinds) = 0 OR neighbor.entity_type IN $neighbor_kinds) AND (size($neighbor_agent_keys) = 0 OR neighbor.urn IN $neighbor_agent_keys) AND ($neighbor_application_workspace_id = '' OR coalesce(neighbor.application_workspace_id, '') = $neighbor_application_workspace_id) AND ($after_key = '' OR neighbor.urn > $after_key OR (neighbor.urn = $after_key AND edge.relation > $after_relation) OR (neighbor.urn = $after_key AND edge.relation = $after_relation AND direction > $after_direction)) RETURN direction, edge.relation AS relation, coalesce(edge.source_id, '') AS edge_source_id, coalesce(edge.attributes_json, '{}') AS edge_attributes_json, neighbor.urn AS entity_key, coalesce(neighbor.entity_type, 'unknown') AS entity_kind, coalesce(neighbor.label, neighbor.urn) AS entity_label, coalesce(neighbor.attributes_json, '{}') AS entity_properties, coalesce(neighbor.source_id, '') AS entity_source_id, coalesce(neighbor.runtime_id, '') AS entity_runtime_id ORDER BY neighbor.urn, edge.relation, direction LIMIT $row_limit";
         let mut rows = transaction
             .execute(
                 query(statement)
@@ -1920,6 +1924,10 @@ ORDER BY runtime_id
                     .param("relations", string_list(relations))
                     .param("neighbor_kinds", string_list(neighbor_kinds))
                     .param("neighbor_agent_keys", string_list(neighbor_agent_keys))
+                    .param(
+                        "neighbor_application_workspace_id",
+                        neighbor_application_workspace_id,
+                    )
                     .param("after_key", after_agent_key)
                     .param("after_relation", after_relation)
                     .param("after_direction", after_direction_name)
@@ -3864,6 +3872,9 @@ fn catalog_entity_match(filter: &EntityCatalogFilter, cursor: CatalogCursor<'_>)
     if !filter.search.is_empty() {
         predicates.push("(toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search))");
     }
+    if !filter.attribute_substrings_any.is_empty() {
+        predicates.push("any(fragment IN $attribute_substrings_any WHERE toLower(coalesce(entity.attributes_json, '')) CONTAINS fragment)");
+    }
     match cursor {
         CatalogCursor::AgentKey(after_agent_key) if !after_agent_key.is_empty() => {
             predicates.push("entity.urn > $after_key");
@@ -3906,6 +3917,16 @@ fn catalog_query(statement: &str, tenant_id: &TenantId, filter: &EntityCatalogFi
         )
         .param("search", filter.search.to_lowercase())
         .param("search_attributes", filter.search_attributes)
+        .param(
+            "attribute_substrings_any",
+            string_list(
+                &filter
+                    .attribute_substrings_any
+                    .iter()
+                    .map(|value| value.to_lowercase())
+                    .collect::<Vec<_>>(),
+            ),
+        )
 }
 
 async fn catalog_relation_counts(
@@ -4032,6 +4053,11 @@ fn validate_catalog_request(
     validate_catalog_list("include_kind_prefixes", &filter.include_kind_prefixes, 500)?;
     validate_catalog_list("exclude_kinds", &filter.exclude_kinds, 500)?;
     validate_catalog_list("exclude_kind_prefixes", &filter.exclude_kind_prefixes, 500)?;
+    validate_catalog_list(
+        "attribute_substrings_any",
+        &filter.attribute_substrings_any,
+        64,
+    )?;
     if let Some(counts) = &filter.relation_counts {
         validate_catalog_list("relation_count_relations", &counts.relations, 16)?;
         validate_catalog_list("relation_count_neighbor_kinds", &counts.neighbor_kinds, 32)?;
@@ -4075,6 +4101,7 @@ fn validate_catalog_relation_request(
     relations: &[String],
     neighbor_kinds: &[String],
     neighbor_agent_keys: &[String],
+    neighbor_application_workspace_id: &str,
     limit: usize,
     cursor: CatalogRelationCursor<'_>,
 ) -> Result<(), StoreError> {
@@ -4093,6 +4120,12 @@ fn validate_catalog_relation_request(
     validate_catalog_list("relations", relations, 64)?;
     validate_catalog_list("neighbor_kinds", neighbor_kinds, 500)?;
     validate_catalog_list("neighbor_agent_keys", neighbor_agent_keys, 500)?;
+    validate_catalog_text(
+        "neighbor_application_workspace_id",
+        neighbor_application_workspace_id,
+        128,
+        false,
+    )?;
     let tenant_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
     if neighbor_agent_keys
         .iter()
@@ -6379,6 +6412,13 @@ mod tests {
         filter.application_workspace_id = "w".repeat(129);
         assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
         filter.application_workspace_id.clear();
+        filter.attribute_substrings_any = vec!["\"policy_id\":\"".to_owned()];
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
+        filter
+            .attribute_substrings_any
+            .push("\"policy_id\":\"".to_owned());
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+        filter.attribute_substrings_any.pop();
         assert!(validate_catalog_request(&tenant, &filter, 0, "").is_err());
         assert!(
             validate_catalog_request(&tenant, &filter, 100, "urn:cerebro:other:vendor:example")
@@ -6404,6 +6444,7 @@ mod tests {
                 &["associated_with".to_owned()],
                 &["contract".to_owned()],
                 &[],
+                "",
                 100,
                 CatalogRelationCursor {
                     agent_key: "urn:cerebro:writer:contract:one",
@@ -6422,6 +6463,7 @@ mod tests {
                 &[],
                 &[],
                 &["urn:cerebro:other:contract:one".to_owned()],
+                "",
                 100,
                 CatalogRelationCursor {
                     agent_key: "",
@@ -6472,6 +6514,7 @@ mod tests {
             exclude_kind_prefixes: vec!["vendor.internal.".to_owned()],
             search: "acme".to_owned(),
             search_attributes: true,
+            attribute_substrings_any: vec!["\"policy_id\":\"".to_owned()],
             ..Default::default()
         };
         let mixed_statement =
@@ -6483,6 +6526,7 @@ mod tests {
         assert!(mixed_statement.contains("NOT entity.entity_type IN $exclude_kinds"));
         assert!(mixed_statement.contains("none(prefix IN $exclude_prefixes"));
         assert!(mixed_statement.contains("CONTAINS $search"));
+        assert!(mixed_statement.contains("$attribute_substrings_any"));
         assert!(mixed_statement.ends_with("entity.urn > $after_key"));
     }
 

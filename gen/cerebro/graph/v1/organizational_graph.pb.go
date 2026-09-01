@@ -1612,6 +1612,9 @@ type EntityCatalogFilter struct {
 	// application_workspace_id scopes the read to a Cerebro application
 	// workspace. It is distinct from provider-owned workspace identifiers.
 	ApplicationWorkspaceId string `protobuf:"bytes,13,opt,name=application_workspace_id,json=applicationWorkspaceId,proto3" json:"application_workspace_id,omitempty"`
+	// attribute_substrings_any applies a case-insensitive OR across stored
+	// attribute JSON without widening the stable key and label search.
+	AttributeSubstringsAny []string `protobuf:"bytes,14,rep,name=attribute_substrings_any,json=attributeSubstringsAny,proto3" json:"attribute_substrings_any,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1735,6 +1738,13 @@ func (x *EntityCatalogFilter) GetApplicationWorkspaceId() string {
 		return x.ApplicationWorkspaceId
 	}
 	return ""
+}
+
+func (x *EntityCatalogFilter) GetAttributeSubstringsAny() []string {
+	if x != nil {
+		return x.AttributeSubstringsAny
+	}
+	return nil
 }
 
 // EntityRelationCountFilter requests complete grouped counts for the bounded
@@ -3604,20 +3614,21 @@ func (x *ListCloudAttackPathsResponse) GetTruncated() bool {
 }
 
 type ListEntityRelationsRequest struct {
-	state                 protoimpl.MessageState    `protogen:"open.v1"`
-	TenantId              string                    `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	AgentKey              string                    `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
-	Directions            []EntityRelationDirection `protobuf:"varint,3,rep,packed,name=directions,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"directions,omitempty"`
-	Relations             []string                  `protobuf:"bytes,4,rep,name=relations,proto3" json:"relations,omitempty"`
-	NeighborKinds         []string                  `protobuf:"bytes,5,rep,name=neighbor_kinds,json=neighborKinds,proto3" json:"neighbor_kinds,omitempty"`
-	Limit                 uint32                    `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
-	AfterAgentKey         string                    `protobuf:"bytes,7,opt,name=after_agent_key,json=afterAgentKey,proto3" json:"after_agent_key,omitempty"`
-	ExpectedGraphRevision uint64                    `protobuf:"varint,8,opt,name=expected_graph_revision,json=expectedGraphRevision,proto3" json:"expected_graph_revision,omitempty"`
-	AfterRelation         string                    `protobuf:"bytes,9,opt,name=after_relation,json=afterRelation,proto3" json:"after_relation,omitempty"`
-	AfterDirection        EntityRelationDirection   `protobuf:"varint,10,opt,name=after_direction,json=afterDirection,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"after_direction,omitempty"`
-	NeighborAgentKeys     []string                  `protobuf:"bytes,11,rep,name=neighbor_agent_keys,json=neighborAgentKeys,proto3" json:"neighbor_agent_keys,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                          protoimpl.MessageState    `protogen:"open.v1"`
+	TenantId                       string                    `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	AgentKey                       string                    `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	Directions                     []EntityRelationDirection `protobuf:"varint,3,rep,packed,name=directions,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"directions,omitempty"`
+	Relations                      []string                  `protobuf:"bytes,4,rep,name=relations,proto3" json:"relations,omitempty"`
+	NeighborKinds                  []string                  `protobuf:"bytes,5,rep,name=neighbor_kinds,json=neighborKinds,proto3" json:"neighbor_kinds,omitempty"`
+	Limit                          uint32                    `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	AfterAgentKey                  string                    `protobuf:"bytes,7,opt,name=after_agent_key,json=afterAgentKey,proto3" json:"after_agent_key,omitempty"`
+	ExpectedGraphRevision          uint64                    `protobuf:"varint,8,opt,name=expected_graph_revision,json=expectedGraphRevision,proto3" json:"expected_graph_revision,omitempty"`
+	AfterRelation                  string                    `protobuf:"bytes,9,opt,name=after_relation,json=afterRelation,proto3" json:"after_relation,omitempty"`
+	AfterDirection                 EntityRelationDirection   `protobuf:"varint,10,opt,name=after_direction,json=afterDirection,proto3,enum=cerebro.graph.v1.EntityRelationDirection" json:"after_direction,omitempty"`
+	NeighborAgentKeys              []string                  `protobuf:"bytes,11,rep,name=neighbor_agent_keys,json=neighborAgentKeys,proto3" json:"neighbor_agent_keys,omitempty"`
+	NeighborApplicationWorkspaceId string                    `protobuf:"bytes,12,opt,name=neighbor_application_workspace_id,json=neighborApplicationWorkspaceId,proto3" json:"neighbor_application_workspace_id,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *ListEntityRelationsRequest) Reset() {
@@ -3725,6 +3736,13 @@ func (x *ListEntityRelationsRequest) GetNeighborAgentKeys() []string {
 		return x.NeighborAgentKeys
 	}
 	return nil
+}
+
+func (x *ListEntityRelationsRequest) GetNeighborApplicationWorkspaceId() string {
+	if x != nil {
+		return x.NeighborApplicationWorkspaceId
+	}
+	return ""
 }
 
 type EntityRelation struct {
@@ -6729,7 +6747,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12:\n" +
 	"\amatches\x18\x03 \x03(\v2 .cerebro.graph.v1.QueryFactMatchR\amatches\x12\x1c\n" +
-	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\xd3\x04\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\x8d\x05\n" +
 	"\x13EntityCatalogFilter\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1f\n" +
@@ -6745,7 +6763,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	" \x01(\x04R\x15expectedGraphRevision\x12)\n" +
 	"\x10query_attributes\x18\v \x01(\bR\x0fqueryAttributes\x12T\n" +
 	"\x0frelation_counts\x18\f \x01(\v2+.cerebro.graph.v1.EntityRelationCountFilterR\x0erelationCounts\x128\n" +
-	"\x18application_workspace_id\x18\r \x01(\tR\x16applicationWorkspaceId\"\xab\x01\n" +
+	"\x18application_workspace_id\x18\r \x01(\tR\x16applicationWorkspaceId\x128\n" +
+	"\x18attribute_substrings_any\x18\x0e \x03(\tR\x16attributeSubstringsAny\"\xab\x01\n" +
 	"\x19EntityRelationCountFilter\x12I\n" +
 	"\n" +
 	"directions\x18\x01 \x03(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\n" +
@@ -6910,7 +6929,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12?\n" +
 	"\x06counts\x18\x03 \x01(\v2'.cerebro.graph.v1.CloudAttackPathCountsR\x06counts\x127\n" +
 	"\x05paths\x18\x04 \x03(\v2!.cerebro.graph.v1.CloudAttackPathR\x05paths\x12\x1c\n" +
-	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"\x87\x04\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"\xd2\x04\n" +
 	"\x1aListEntityRelationsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12I\n" +
@@ -6925,7 +6944,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x0eafter_relation\x18\t \x01(\tR\rafterRelation\x12R\n" +
 	"\x0fafter_direction\x18\n" +
 	" \x01(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\x0eafterDirection\x12.\n" +
-	"\x13neighbor_agent_keys\x18\v \x03(\tR\x11neighborAgentKeys\"\xf2\x01\n" +
+	"\x13neighbor_agent_keys\x18\v \x03(\tR\x11neighborAgentKeys\x12I\n" +
+	"!neighbor_application_workspace_id\x18\f \x01(\tR\x1eneighborApplicationWorkspaceId\"\xf2\x01\n" +
 	"\x0eEntityRelation\x12G\n" +
 	"\tdirection\x18\x01 \x01(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\tdirection\x12\x1a\n" +
 	"\brelation\x18\x02 \x01(\tR\brelation\x125\n" +

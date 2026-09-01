@@ -1024,7 +1024,7 @@ func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.Enti
 	default:
 		return nil, errors.New("entity relation continuation direction is invalid")
 	}
-	message := connect.NewRequest(&cerebrographv1.ListEntityRelationsRequest{TenantId: tenantID, AgentKey: strings.TrimSpace(request.AgentKey), Directions: directions, Relations: append([]string(nil), request.Relations...), NeighborKinds: append([]string(nil), request.NeighborKinds...), NeighborAgentKeys: append([]string(nil), request.NeighborAgentKeys...), Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey), ExpectedGraphRevision: request.ExpectedRevision, AfterRelation: strings.TrimSpace(request.AfterRelation), AfterDirection: afterDirection}) // #nosec G115 -- bounded above.
+	message := connect.NewRequest(&cerebrographv1.ListEntityRelationsRequest{TenantId: tenantID, AgentKey: strings.TrimSpace(request.AgentKey), Directions: directions, Relations: append([]string(nil), request.Relations...), NeighborKinds: append([]string(nil), request.NeighborKinds...), NeighborAgentKeys: append([]string(nil), request.NeighborAgentKeys...), NeighborApplicationWorkspaceId: strings.TrimSpace(request.NeighborApplicationWorkspaceID), Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey), ExpectedGraphRevision: request.ExpectedRevision, AfterRelation: strings.TrimSpace(request.AfterRelation), AfterDirection: afterDirection}) // #nosec G115 -- bounded above.
 	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
 		return nil, err
 	}
@@ -1300,7 +1300,7 @@ func entityCatalogFilter(filter ports.EntityCatalogFilter) (*cerebrographv1.Enti
 	if tenantID == "" {
 		return nil, "", errors.New("entity catalog tenant_id is required")
 	}
-	message := &cerebrographv1.EntityCatalogFilter{TenantId: tenantID, ApplicationWorkspaceId: strings.TrimSpace(filter.ApplicationWorkspaceID), SourceId: strings.TrimSpace(filter.SourceID), RuntimeIds: append([]string(nil), filter.RuntimeIDs...), ExactAgentKey: strings.TrimSpace(filter.ExactAgentKey), IncludeKinds: append([]string(nil), filter.IncludeKinds...), IncludeKindPrefixes: append([]string(nil), filter.IncludeKindPrefixes...), ExcludeKinds: append([]string(nil), filter.ExcludeKinds...), ExcludeKindPrefixes: append([]string(nil), filter.ExcludeKindPrefixes...), Query: strings.TrimSpace(filter.Query), ExpectedGraphRevision: filter.ExpectedRevision, QueryAttributes: filter.QueryAttributes}
+	message := &cerebrographv1.EntityCatalogFilter{TenantId: tenantID, ApplicationWorkspaceId: strings.TrimSpace(filter.ApplicationWorkspaceID), SourceId: strings.TrimSpace(filter.SourceID), RuntimeIds: append([]string(nil), filter.RuntimeIDs...), ExactAgentKey: strings.TrimSpace(filter.ExactAgentKey), IncludeKinds: append([]string(nil), filter.IncludeKinds...), IncludeKindPrefixes: append([]string(nil), filter.IncludeKindPrefixes...), ExcludeKinds: append([]string(nil), filter.ExcludeKinds...), ExcludeKindPrefixes: append([]string(nil), filter.ExcludeKindPrefixes...), Query: strings.TrimSpace(filter.Query), ExpectedGraphRevision: filter.ExpectedRevision, QueryAttributes: filter.QueryAttributes, AttributeSubstringsAny: append([]string(nil), filter.AttributeSubstringsAny...)}
 	if filter.RelationCounts != nil {
 		directions := make([]cerebrographv1.EntityRelationDirection, 0, len(filter.RelationCounts.Directions))
 		for _, direction := range filter.RelationCounts.Directions {
