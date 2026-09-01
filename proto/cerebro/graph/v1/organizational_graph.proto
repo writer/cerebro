@@ -242,6 +242,9 @@ message EntityCatalogFilter {
   // application_workspace_id scopes the read to a Cerebro application
   // workspace. It is distinct from provider-owned workspace identifiers.
   string application_workspace_id = 13;
+  // attribute_substrings_any applies a case-insensitive OR across stored
+  // attribute JSON without widening the stable key and label search.
+  repeated string attribute_substrings_any = 14;
 }
 
 // EntityRelationCountFilter requests complete grouped counts for the bounded
@@ -461,6 +464,7 @@ message ListEntityRelationsRequest {
   string after_relation = 9;
   EntityRelationDirection after_direction = 10;
   repeated string neighbor_agent_keys = 11;
+  string neighbor_application_workspace_id = 12;
 }
 
 message EntityRelation {

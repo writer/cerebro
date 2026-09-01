@@ -96,92 +96,6 @@ var grcPolicyLifecycleDocumentAttrFragments = []string{
 	`"risk_scenario_id":"`,
 }
 
-const grcPolicyLifecycleEntitiesQuery = `UNWIND $entity_types AS entity_type
-CALL {
-  WITH entity_type
-  MATCH (e:Entity)
-  WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
-    AND ($application_workspace_id = '' OR coalesce(e.application_workspace_id, '') = $application_workspace_id)
-    AND ($source_id = '' OR e.source_id = $source_id)
-    AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
-    AND e.entity_type = entity_type
-  WITH entity_type, e, toLower(coalesce(e.attributes_json, '')) AS attrs
-  WHERE (entity_type <> 'claim' OR attrs CONTAINS $risk_scenario_attr_fragment)
-    AND (entity_type <> 'document' OR ANY(fragment IN $document_attr_fragments WHERE attrs CONTAINS fragment))
-  RETURN e
-  ORDER BY coalesce(e.label, e.urn), e.urn
-  LIMIT $type_limit
-}
-RETURN e.urn AS urn,
-       e.tenant_id AS tenant_id,
-       e.source_id AS source_id,
-       coalesce(e.runtime_id, '') AS runtime_id,
-       e.entity_type AS entity_type,
-       coalesce(e.label, e.urn) AS label,
-       coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY e.entity_type, e.label, e.urn`
-
-const grcPolicyLifecycleRelationsQuery = `UNWIND $entity_urns AS entity_urn
-MATCH (anchor:Entity {urn: entity_urn})
-CALL {
-  WITH anchor
-  MATCH (anchor)-[r:RELATION]->(right:Entity)
-  RETURN anchor AS left, r, right
-  UNION
-  WITH anchor
-  MATCH (left:Entity)-[r:RELATION]->(anchor)
-  RETURN left, r, anchor AS right
-}
-WITH DISTINCT left, r, right
-WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
-  AND ($tenant_id = '' OR right.tenant_id = $tenant_id)
-  AND ($application_workspace_id = '' OR coalesce(left.application_workspace_id, '') = $application_workspace_id)
-  AND ($application_workspace_id = '' OR coalesce(right.application_workspace_id, '') = $application_workspace_id)
-  AND (
-    $source_id = '' OR
-    (left.entity_type IN $entity_types AND left.source_id = $source_id) OR
-    (right.entity_type IN $entity_types AND right.source_id = $source_id)
-  )
-  AND (
-    $runtime_id = '' OR
-    (left.entity_type IN $entity_types AND coalesce(left.runtime_id, '') = $runtime_id) OR
-    (right.entity_type IN $entity_types AND coalesce(right.runtime_id, '') = $runtime_id)
-  )
-  AND (left.entity_type IN $entity_types OR right.entity_type IN $entity_types)
-WITH left, r, right,
-     toLower(coalesce(left.attributes_json, '')) AS left_attrs,
-     toLower(coalesce(right.attributes_json, '')) AS right_attrs
-WHERE (left.entity_type <> 'claim' OR left_attrs CONTAINS $risk_scenario_attr_fragment)
-  AND (right.entity_type <> 'claim' OR right_attrs CONTAINS $risk_scenario_attr_fragment)
-  AND (
-    left.entity_type <> 'document' OR
-    ANY(fragment IN $document_attr_fragments WHERE left_attrs CONTAINS fragment) OR
-    right.entity_type IN $policy_anchor_entity_types
-  )
-  AND (
-    right.entity_type <> 'document' OR
-    ANY(fragment IN $document_attr_fragments WHERE right_attrs CONTAINS fragment) OR
-    left.entity_type IN $policy_anchor_entity_types
-  )
-RETURN left.urn AS left_urn,
-       left.tenant_id AS left_tenant_id,
-       left.source_id AS left_source_id,
-       coalesce(left.runtime_id, '') AS left_runtime_id,
-       left.entity_type AS left_entity_type,
-       coalesce(left.label, left.urn) AS left_label,
-       coalesce(left.attributes_json, '{}') AS left_attributes_json,
-       r.relation AS relation,
-       coalesce(r.attributes_json, '{}') AS relation_attributes_json,
-       right.urn AS right_urn,
-       right.tenant_id AS right_tenant_id,
-       right.source_id AS right_source_id,
-       coalesce(right.runtime_id, '') AS right_runtime_id,
-       right.entity_type AS right_entity_type,
-       coalesce(right.label, right.urn) AS right_label,
-       coalesce(right.attributes_json, '{}') AS right_attributes_json
-ORDER BY left.urn, r.relation, right.urn
-LIMIT $limit`
-
 type Response struct {
 	Summary           grcPolicyLifecycleSummary      `json:"summary"`
 	Templates         []grcPolicyTemplateItem        `json:"templates"`
@@ -708,27 +622,20 @@ type grcPolicyGraphRelation struct {
 	Attrs    map[string]string
 }
 
-func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (Response, error) {
+func Build(ctx context.Context, store ports.EntityCatalogStore, scope Scope) (Response, error) {
+	if store == nil {
+		return Response{}, ErrRuntimeUnavailable
+	}
+	scope.TenantID = strings.TrimSpace(scope.TenantID)
+	if scope.TenantID == "" {
+		return Response{}, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
+	}
 	limit := int(scope.Limit)
 	if limit <= 0 {
 		limit = grcPolicyLifecycleDefaultLimit
 	}
 	entityTypeLimit := grcPolicyLifecycleEntityTypeLimit(limit)
-	entityRowLimit := grcPolicyLifecycleEntityRowLimit(entityTypeLimit)
-	entityRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: grcPolicyLifecycleEntitiesQuery,
-		Params: map[string]any{
-			"tenant_id":                   scope.TenantID,
-			"application_workspace_id":    scope.ApplicationWorkspaceID,
-			"source_id":                   scope.SourceID,
-			"runtime_id":                  scope.RuntimeID,
-			"entity_types":                grcPolicyLifecycleEntityTypes,
-			"type_limit":                  entityTypeLimit,
-			"risk_scenario_attr_fragment": grcPolicyLifecycleRiskScenarioAttrFragment,
-			"document_attr_fragments":     grcPolicyLifecycleDocumentAttrFragments,
-		},
-		RowLimit: entityRowLimit,
-	})
+	entityRows, entities, graphRevision, err := grcPolicyLifecycleEntities(ctx, store, scope, entityTypeLimit)
 	if err != nil {
 		return Response{}, err
 	}
@@ -740,26 +647,216 @@ func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (R
 	if relationLimit > ports.MaxCypherQueryRows {
 		relationLimit = ports.MaxCypherQueryRows
 	}
-	relationRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: grcPolicyLifecycleRelationsQuery,
-		Params: map[string]any{
-			"entity_urns":                 entityURNs,
-			"tenant_id":                   scope.TenantID,
-			"application_workspace_id":    scope.ApplicationWorkspaceID,
-			"source_id":                   scope.SourceID,
-			"runtime_id":                  scope.RuntimeID,
-			"entity_types":                grcPolicyLifecycleEntityTypes,
-			"limit":                       relationLimit,
-			"risk_scenario_attr_fragment": grcPolicyLifecycleRiskScenarioAttrFragment,
-			"document_attr_fragments":     grcPolicyLifecycleDocumentAttrFragments,
-			"policy_anchor_entity_types":  grcPolicyLifecycleAnchorEntityTypes,
-		},
-		RowLimit: relationLimit,
-	})
+	relationRows, err := grcPolicyLifecycleRelations(ctx, store, scope, entities, entityURNs, graphRevision, relationLimit)
 	if err != nil {
 		return Response{}, err
 	}
 	return grcPolicyLifecycleFromGraphWithScope(entityRows, relationRows, time.Now().UTC(), scope), nil
+}
+
+func grcPolicyLifecycleEntities(ctx context.Context, store ports.EntityCatalogStore, scope Scope, typeLimit int) ([]ports.CypherRow, map[string]ports.CatalogEntity, uint64, error) {
+	rows := make([]ports.CypherRow, 0, grcPolicyLifecycleEntityRowLimit(typeLimit))
+	entities := make(map[string]ports.CatalogEntity)
+	var graphRevision uint64
+	revisionSet := false
+	for _, entityType := range grcPolicyLifecycleEntityTypes {
+		filter := ports.EntityCatalogFilter{
+			TenantID: scope.TenantID, ApplicationWorkspaceID: strings.TrimSpace(scope.ApplicationWorkspaceID), SourceID: strings.TrimSpace(scope.SourceID),
+			IncludeKinds: []string{entityType}, ExpectedRevision: graphRevision,
+		}
+		if runtimeID := strings.TrimSpace(scope.RuntimeID); runtimeID != "" {
+			filter.RuntimeIDs = []string{runtimeID}
+		}
+		switch entityType {
+		case "claim":
+			filter.AttributeSubstringsAny = []string{grcPolicyLifecycleRiskScenarioAttrFragment}
+		case "document":
+			filter.AttributeSubstringsAny = append([]string(nil), grcPolicyLifecycleDocumentAttrFragments...)
+		}
+		page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: typeLimit})
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("list policy lifecycle %s entities: %w", entityType, err)
+		}
+		if page == nil || page.TenantID != scope.TenantID || len(page.Entities) > typeLimit {
+			return nil, nil, 0, fmt.Errorf("%w: typed policy lifecycle entity page is invalid", ErrRuntimeUnavailable)
+		}
+		if !revisionSet {
+			graphRevision = page.GraphRevision
+			revisionSet = true
+		} else if page.GraphRevision != graphRevision {
+			return nil, nil, 0, fmt.Errorf("%w: policy lifecycle graph revision changed", ErrRuntimeUnavailable)
+		}
+		for _, entity := range page.Entities {
+			if entity.TenantID != scope.TenantID || entity.EntityType != entityType || strings.TrimSpace(entity.URN) == "" {
+				return nil, nil, 0, fmt.Errorf("%w: typed policy lifecycle entity escaped its scope", ErrRuntimeUnavailable)
+			}
+			if _, exists := entities[entity.URN]; exists {
+				return nil, nil, 0, fmt.Errorf("%w: typed policy lifecycle entity identity is duplicated", ErrRuntimeUnavailable)
+			}
+			entities[entity.URN] = entity
+			rows = append(rows, grcPolicyCatalogEntityRow(entity, ""))
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		leftType, rightType := grcPolicyRowString(rows[i], "entity_type"), grcPolicyRowString(rows[j], "entity_type")
+		if leftType != rightType {
+			return leftType < rightType
+		}
+		leftLabel, rightLabel := grcPolicyRowString(rows[i], "label"), grcPolicyRowString(rows[j], "label")
+		if leftLabel != rightLabel {
+			return leftLabel < rightLabel
+		}
+		return grcPolicyRowString(rows[i], "urn") < grcPolicyRowString(rows[j], "urn")
+	})
+	return rows, entities, graphRevision, nil
+}
+
+func grcPolicyLifecycleRelations(ctx context.Context, store ports.EntityCatalogStore, scope Scope, entities map[string]ports.CatalogEntity, entityURNs []string, graphRevision uint64, relationLimit int) ([]ports.CypherRow, error) {
+	rowsByKey := make(map[string]ports.CypherRow)
+	evidenceByKey := make(map[string]string)
+	scanned := 0
+	for _, anchorURN := range entityURNs {
+		anchor := entities[anchorURN]
+		request := ports.EntityRelationPageRequest{
+			TenantID: scope.TenantID, AgentKey: anchorURN,
+			Directions:                     []ports.EntityRelationDirection{ports.EntityRelationIncoming, ports.EntityRelationOutgoing},
+			NeighborApplicationWorkspaceID: strings.TrimSpace(scope.ApplicationWorkspaceID), ExpectedRevision: graphRevision,
+		}
+		for {
+			remaining := ports.MaxCypherQueryRows - scanned
+			if remaining <= 0 {
+				return nil, fmt.Errorf("%w: typed policy lifecycle relation scan reached its bound", ErrRuntimeUnavailable)
+			}
+			request.Limit = min(500, remaining)
+			page, err := store.ListEntityRelations(ctx, request)
+			if err != nil {
+				return nil, fmt.Errorf("list policy lifecycle relations for %s: %w", anchorURN, err)
+			}
+			if page == nil || page.TenantID != scope.TenantID || page.GraphRevision != graphRevision || len(page.Relations) > request.Limit {
+				return nil, fmt.Errorf("%w: typed policy lifecycle relation page is invalid", ErrRuntimeUnavailable)
+			}
+			scanned += len(page.Relations)
+			for _, relation := range page.Relations {
+				row, key, evidence, ok := grcPolicyCatalogRelationRow(anchor, relation, scope.TenantID)
+				if ok {
+					if existing, exists := evidenceByKey[key]; exists && existing != evidence {
+						return nil, fmt.Errorf("%w: typed policy lifecycle relation identity has conflicting evidence", ErrRuntimeUnavailable)
+					}
+					rowsByKey[key] = row
+					evidenceByKey[key] = evidence
+				}
+			}
+			if !page.Truncated {
+				break
+			}
+			if scanned >= ports.MaxCypherQueryRows || page.NextAfterAgentKey == "" || page.NextAfterRelation == "" || page.NextAfterDirection == "" {
+				return nil, fmt.Errorf("%w: typed policy lifecycle relation continuation is invalid", ErrRuntimeUnavailable)
+			}
+			request.AfterAgentKey = page.NextAfterAgentKey
+			request.AfterRelation = page.NextAfterRelation
+			request.AfterDirection = page.NextAfterDirection
+		}
+	}
+	rows := make([]ports.CypherRow, 0, len(rowsByKey))
+	for _, row := range rowsByKey {
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		left := []string{grcPolicyRowString(rows[i], "left_urn"), grcPolicyRowString(rows[i], "relation"), grcPolicyRowString(rows[i], "right_urn")}
+		right := []string{grcPolicyRowString(rows[j], "left_urn"), grcPolicyRowString(rows[j], "relation"), grcPolicyRowString(rows[j], "right_urn")}
+		return strings.Join(left, "\x00") < strings.Join(right, "\x00")
+	})
+	if len(rows) > relationLimit {
+		rows = rows[:relationLimit]
+	}
+	return rows, nil
+}
+
+func grcPolicyCatalogRelationRow(anchor ports.CatalogEntity, relation ports.EntityCatalogRelation, tenantID string) (ports.CypherRow, string, string, bool) {
+	neighbor := relation.Entity
+	if anchor.TenantID != tenantID || neighbor.TenantID != tenantID || strings.TrimSpace(relation.Relation) == "" {
+		return ports.CypherRow{}, "", "", false
+	}
+	left, right := anchor, neighbor
+	switch relation.Direction {
+	case ports.EntityRelationIncoming:
+		left, right = neighbor, anchor
+	case ports.EntityRelationOutgoing:
+	default:
+		return ports.CypherRow{}, "", "", false
+	}
+	if !grcPolicyCatalogRelationEndpointInScope(left, right.EntityType) || !grcPolicyCatalogRelationEndpointInScope(right, left.EntityType) {
+		return ports.CypherRow{}, "", "", false
+	}
+	values := grcPolicyCatalogEntityRow(left, "left_").Values
+	for key, value := range grcPolicyCatalogEntityRow(right, "right_").Values {
+		values[key] = value
+	}
+	attributesJSON := strings.TrimSpace(relation.AttributesJSON)
+	if attributesJSON == "" {
+		attributesJSON = "{}"
+	}
+	values["relation"] = strings.TrimSpace(relation.Relation)
+	values["relation_attributes_json"] = attributesJSON
+	key := left.URN + "\x00" + strings.TrimSpace(relation.Relation) + "\x00" + right.URN
+	evidence := strings.TrimSpace(relation.SourceID) + "\x00" + attributesJSON
+	return ports.CypherRow{Values: values}, key, evidence, true
+}
+
+func grcPolicyCatalogRelationEndpointInScope(entity ports.CatalogEntity, otherType string) bool {
+	switch entity.EntityType {
+	case "claim":
+		return strings.EqualFold(strings.TrimSpace(entity.Attributes["claim_type"]), "risk_scenario")
+	case "document":
+		if grcPolicyStringSliceContains(grcPolicyLifecycleAnchorEntityTypes, otherType) {
+			return true
+		}
+		encoded, _ := json.Marshal(grcPolicyCatalogAttributes(entity.Attributes))
+		lower := strings.ToLower(string(encoded))
+		for _, fragment := range grcPolicyLifecycleDocumentAttrFragments {
+			if strings.Contains(lower, strings.ToLower(fragment)) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+func grcPolicyStringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func grcPolicyCatalogEntityRow(entity ports.CatalogEntity, prefix string) ports.CypherRow {
+	attributesJSON, _ := json.Marshal(grcPolicyCatalogAttributes(entity.Attributes))
+	label := strings.TrimSpace(entity.Label)
+	if label == "" {
+		label = entity.URN
+	}
+	return ports.CypherRow{Values: map[string]any{
+		prefix + "urn": entity.URN, prefix + "tenant_id": entity.TenantID, prefix + "source_id": entity.SourceID,
+		prefix + "runtime_id": entity.RuntimeID, prefix + "entity_type": entity.EntityType, prefix + "label": label,
+		prefix + "attributes_json": string(attributesJSON),
+	}}
+}
+
+func grcPolicyCatalogAttributes(attributes map[string]string) map[string]string {
+	result := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		switch key {
+		case "entity_urn", "entity_type", "source_id", "source_runtime_id":
+			continue
+		default:
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func grcPolicyLifecycleEntityURNs(rows []ports.CypherRow) []string {

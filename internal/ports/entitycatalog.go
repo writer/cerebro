@@ -14,6 +14,7 @@ type EntityCatalogFilter struct {
 	ExcludeKindPrefixes    []string
 	Query                  string
 	QueryAttributes        bool
+	AttributeSubstringsAny []string
 	ExpectedRevision       uint64
 	RelationCounts         *EntityRelationCountFilter
 }
@@ -261,17 +262,18 @@ type EntityCatalogRelation struct {
 }
 
 type EntityRelationPageRequest struct {
-	TenantID          string
-	AgentKey          string
-	Directions        []EntityRelationDirection
-	Relations         []string
-	NeighborKinds     []string
-	NeighborAgentKeys []string
-	Limit             int
-	AfterAgentKey     string
-	AfterRelation     string
-	AfterDirection    EntityRelationDirection
-	ExpectedRevision  uint64
+	TenantID                       string
+	AgentKey                       string
+	Directions                     []EntityRelationDirection
+	Relations                      []string
+	NeighborKinds                  []string
+	NeighborAgentKeys              []string
+	NeighborApplicationWorkspaceID string
+	Limit                          int
+	AfterAgentKey                  string
+	AfterRelation                  string
+	AfterDirection                 EntityRelationDirection
+	ExpectedRevision               uint64
 }
 
 type EntityRelationPage struct {

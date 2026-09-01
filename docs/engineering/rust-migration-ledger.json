@@ -21,7 +21,7 @@
     { "package": "internal/findings", "status": "compat", "blocked_on": "aggregations, optional match, variable-length traversal (per graph rule)" },
     { "package": "internal/graphagent", "status": "permanent", "note": "LLM-drafted Ask Cypher remains isolated behind the validated read-only compatibility boundary; deterministic probe counts use typed Rust capabilities" },
     { "package": "internal/graphquery", "status": "compat", "blocked_on": "attribute substring predicates and batched variable-length traversal for crown-jewel ranking" },
-    { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
+    { "package": "internal/grcpolicylifecycle", "status": "migrated" },
     { "package": "internal/grcvendor", "status": "migrated" },
     { "package": "internal/knowledge", "status": "migrated" },
     { "package": "internal/policycandidate", "status": "permanent", "note": "grounding uses revision-bound typed Rust entity and relation reads; only shadow/experiment evaluation remains on the validated compatibility boundary because rule.Spec.Graph.Query is stored runtime-authored query text" },

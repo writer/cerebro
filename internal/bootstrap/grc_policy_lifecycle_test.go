@@ -93,9 +93,9 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	person := grcPolicyLifecycleTestNode("urn:cerebro:writer:person:policyops:person-1", "person", "employee@example.com", map[string]string{"person_id": "person-1"})
 	asset := grcPolicyLifecycleTestNode("urn:cerebro:writer:device:device-1", "device", "laptop-1", map[string]string{"device_id": "device-1"})
 
-	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
-		{policy, template, version, approval, acceptance, review, exception, reminder, document, risk},
-		{
+	graph := &stubGraphStore{
+		catalogRows: []ports.CypherRow{policy, template, version, approval, acceptance, review, exception, reminder, document, risk},
+		catalogRelationRows: []ports.CypherRow{
 			grcPolicyLifecycleTestRelation(policy, fabriccontract.RelationOwnedBy, nil, owner),
 			grcPolicyLifecycleTestRelation(policy, fabriccontract.RelationSupports, nil, control),
 			grcPolicyLifecycleTestRelation(policy, fabriccontract.RelationHasEvidence, nil, document),
@@ -123,7 +123,7 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			grcPolicyLifecycleTestRelation(reminder, fabriccontract.RelationAssociatedWith, nil, policy),
 			grcPolicyLifecycleTestRelation(reminder, fabriccontract.RelationAssignedTo, nil, group),
 		},
-	}}
+	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -271,17 +271,24 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 	if len(payload.Reminders) != 1 || payload.Reminders[0].Recipients[0] != "All employees" {
 		t.Fatalf("reminders = %+v, want employee recipient", payload.Reminders)
 	}
-	if len(graph.cypherRequests) != 2 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
-		t.Fatalf("cypher requests = %#v, want scoped entity and relation reads", graph.cypherRequests)
+	if len(graph.cypherRequests) != 0 || len(graph.entityRequests) != len(grcPolicyLifecycleBootstrapEntityTypes) || len(graph.entityRelationRequests) == 0 {
+		t.Fatalf("graph reads = %d raw/%d entity/%d relation, want typed entity and relation reads", len(graph.cypherRequests), len(graph.entityRequests), len(graph.entityRelationRequests))
 	}
-	for _, request := range graph.cypherRequests {
-		if request.Params["source_id"] != "grc" || request.Params["runtime_id"] != "writer-grc" {
-			t.Fatalf("cypher request params = %#v, want source and runtime filters", request.Params)
-		}
-		if !strings.Contains(request.Query, "$source_id") || !strings.Contains(request.Query, "$runtime_id") {
-			t.Fatalf("cypher query %q does not reference source and runtime filters", request.Query)
+	for _, request := range graph.entityRequests {
+		if request.Filter.TenantID != "writer" || request.Filter.SourceID != "grc" || len(request.Filter.RuntimeIDs) != 1 || request.Filter.RuntimeIDs[0] != "writer-grc" {
+			t.Fatalf("entity request = %#v, want tenant, source, and runtime filters", request)
 		}
 	}
+	for _, request := range graph.entityRelationRequests {
+		if request.TenantID != "writer" || request.ExpectedRevision != 1 {
+			t.Fatalf("relation request = %#v, want tenant and exact graph revision", request)
+		}
+	}
+}
+
+var grcPolicyLifecycleBootstrapEntityTypes = []string{
+	"claim", "document", "policy", "policy.template", "policy.version", "policy.approval", "policy.acceptance", "policy.review",
+	"policy.exception", "policy.reminder", "policy.lifecycle.event", "policy.evidence_snippet",
 }
 
 type grcPolicyLifecycleBootstrapGap struct {

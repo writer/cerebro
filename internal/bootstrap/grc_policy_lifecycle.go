@@ -17,7 +17,7 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	store := a.deps.GraphReads.RawCypher
+	store := a.deps.GraphReads.Catalog
 	if store == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
@@ -88,7 +88,7 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, err)
 		return
 	}
-	store := a.deps.GraphReads.RawCypher
+	store := a.deps.GraphReads.Catalog
 	if store == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return

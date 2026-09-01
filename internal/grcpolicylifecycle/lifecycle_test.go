@@ -22,9 +22,12 @@ func TestMissingLifecycleStatusDoesNotCreateWork(t *testing.T) {
 }
 
 func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
-	store := &recordingPolicyLifecycleStore{responses: [][]ports.CypherRow{{
-		policyLifecycleTestRow("urn:cerebro:writer:policy:access", "policy", "Access policy", nil),
-	}}}
+	store := &recordingPolicyLifecycleStore{entitiesByType: map[string][]ports.CatalogEntity{
+		"policy": {{
+			URN: "urn:cerebro:writer:policy:access", TenantID: "writer", EntityType: "policy", Label: "Access policy",
+			SourceID: "grc", RuntimeID: "rt-1",
+		}},
+	}}
 	_, err := Build(context.Background(), store, Scope{
 		TenantID:               "writer",
 		ApplicationWorkspaceID: "workspace-a",
@@ -35,39 +38,44 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build error = %v", err)
 	}
-	if len(store.requests) != 2 {
-		t.Fatalf("requests len = %d, want entity and relation reads", len(store.requests))
+	if len(store.entityRequests) != len(grcPolicyLifecycleEntityTypes) {
+		t.Fatalf("entity requests len = %d, want %d", len(store.entityRequests), len(grcPolicyLifecycleEntityTypes))
 	}
-	entityRequest := store.requests[0]
-	if entityRequest.Params["type_limit"] != 25 {
-		t.Fatalf("entity params = %#v, want per-type limit", entityRequest.Params)
-	}
-	if entityRequest.Params["application_workspace_id"] != "workspace-a" || !strings.Contains(entityRequest.Query, "e.application_workspace_id") {
-		t.Fatalf("entity request = %#v, want workspace-a closed filter", entityRequest)
-	}
-	wantRowLimit := 25 * len(grcPolicyLifecycleEntityTypes)
-	if entityRequest.RowLimit != wantRowLimit {
-		t.Fatalf("entity row limit = %d, want %d", entityRequest.RowLimit, wantRowLimit)
-	}
-	if !strings.Contains(entityRequest.Query, "UNWIND $entity_types AS entity_type") || !strings.Contains(entityRequest.Query, "LIMIT $type_limit") {
-		t.Fatalf("entity query %q does not apply a per-type limit", entityRequest.Query)
+	foundTypes := make(map[string]bool, len(store.entityRequests))
+	var claimRequest, documentRequest *ports.EntityCatalogPageRequest
+	for i := range store.entityRequests {
+		request := &store.entityRequests[i]
+		if request.Limit != 25 || request.Filter.ApplicationWorkspaceID != "workspace-a" || request.Filter.SourceID != "grc" ||
+			len(request.Filter.RuntimeIDs) != 1 || request.Filter.RuntimeIDs[0] != "rt-1" || len(request.Filter.IncludeKinds) != 1 {
+			t.Fatalf("entity request = %#v, want closed typed scope and per-type limit", request)
+		}
+		foundTypes[request.Filter.IncludeKinds[0]] = true
+		switch request.Filter.IncludeKinds[0] {
+		case "claim":
+			claimRequest = request
+		case "document":
+			documentRequest = request
+		}
 	}
 	foundLifecycleEvent := false
-	for _, entityType := range entityRequest.Params["entity_types"].([]string) {
+	for entityType := range foundTypes {
 		if entityType == "policy.lifecycle.event" {
 			foundLifecycleEvent = true
 			break
 		}
 	}
 	if !foundLifecycleEvent {
-		t.Fatalf("entity types = %#v, want policy.lifecycle.event", entityRequest.Params["entity_types"])
+		t.Fatalf("entity types = %#v, want policy.lifecycle.event", foundTypes)
 	}
-	if entityRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
-		t.Fatalf("entity params = %#v, want risk scenario filter", entityRequest.Params)
+	if claimRequest == nil || len(claimRequest.Filter.AttributeSubstringsAny) != 1 || claimRequest.Filter.AttributeSubstringsAny[0] != grcPolicyLifecycleRiskScenarioAttrFragment {
+		t.Fatalf("claim request = %#v, want risk scenario filter", claimRequest)
 	}
-	documentFragments, ok := entityRequest.Params["document_attr_fragments"].([]string)
-	if !ok || !stringSliceContains(documentFragments, `"policy_id":"`) || !stringSliceContains(documentFragments, `"risk_scenario_id":"`) {
-		t.Fatalf("entity params = %#v, want document attr filters", entityRequest.Params)
+	if documentRequest == nil {
+		t.Fatal("document request is missing")
+	}
+	documentFragments := documentRequest.Filter.AttributeSubstringsAny
+	if !stringSliceContains(documentFragments, `"policy_id":"`) || !stringSliceContains(documentFragments, `"risk_scenario_id":"`) {
+		t.Fatalf("document fragments = %#v, want document attr filters", documentFragments)
 	}
 	for _, fragment := range []string{
 		`"document_class":"control_narrative"`,
@@ -79,36 +87,14 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 			t.Fatalf("document fragments = %#v, want %s", documentFragments, fragment)
 		}
 	}
-	if !strings.Contains(entityRequest.Query, "entity_type <> 'claim'") || !strings.Contains(entityRequest.Query, "entity_type <> 'document'") {
-		t.Fatalf("entity query %q does not filter broad claim/document types", entityRequest.Query)
+	if len(store.relationRequests) != 1 {
+		t.Fatalf("relation requests len = %d, want one selected lifecycle entity", len(store.relationRequests))
 	}
-	relationRequest := store.requests[1]
-	entityURNs, ok := relationRequest.Params["entity_urns"].([]string)
-	if !ok || len(entityURNs) != 1 || entityURNs[0] != "urn:cerebro:writer:policy:access" {
-		t.Fatalf("relation entity urns = %#v, want selected lifecycle entity", relationRequest.Params["entity_urns"])
-	}
-	if relationRequest.RowLimit != 20 {
-		t.Fatalf("relation row limit = %d, want 20 for one selected entity", relationRequest.RowLimit)
-	}
-	if !strings.Contains(relationRequest.Query, "UNWIND $entity_urns AS entity_urn") ||
-		!strings.Contains(relationRequest.Query, "MATCH (anchor:Entity {urn: entity_urn})") ||
-		strings.HasPrefix(strings.TrimSpace(relationRequest.Query), "MATCH (left:Entity)-[r:RELATION]") {
-		t.Fatalf("relation query %q is not anchored to selected lifecycle entities", relationRequest.Query)
-	}
-	if relationRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
-		t.Fatalf("relation params = %#v, want risk scenario filter", relationRequest.Params)
-	}
-	if relationRequest.Params["application_workspace_id"] != "workspace-a" ||
-		!strings.Contains(relationRequest.Query, "left.application_workspace_id") ||
-		!strings.Contains(relationRequest.Query, "right.application_workspace_id") {
-		t.Fatalf("relation request = %#v, want both endpoints closed to workspace-a", relationRequest)
-	}
-	anchorTypes, ok := relationRequest.Params["policy_anchor_entity_types"].([]string)
-	if !ok || !stringSliceContains(anchorTypes, "policy.version") {
-		t.Fatalf("relation params = %#v, want policy anchor types", relationRequest.Params)
-	}
-	if !strings.Contains(relationRequest.Query, "left.entity_type <> 'claim'") || !strings.Contains(relationRequest.Query, "right.entity_type <> 'document'") {
-		t.Fatalf("relation query %q does not filter broad claim/document types", relationRequest.Query)
+	relationRequest := store.relationRequests[0]
+	if relationRequest.AgentKey != "urn:cerebro:writer:policy:access" || relationRequest.Limit != 500 ||
+		relationRequest.NeighborApplicationWorkspaceID != "workspace-a" || relationRequest.ExpectedRevision != store.graphRevision ||
+		len(relationRequest.Directions) != 2 || relationRequest.Directions[0] != ports.EntityRelationIncoming || relationRequest.Directions[1] != ports.EntityRelationOutgoing {
+		t.Fatalf("relation request = %#v, want revision-bound typed direct relation read", relationRequest)
 	}
 }
 
@@ -119,11 +105,37 @@ func TestBuildSkipsRelationReadWhenNoLifecycleEntitiesMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build error = %v", err)
 	}
-	if len(store.requests) != 1 {
-		t.Fatalf("requests len = %d, want only the entity read", len(store.requests))
+	if len(store.entityRequests) != len(grcPolicyLifecycleEntityTypes) || len(store.relationRequests) != 0 {
+		t.Fatalf("requests = %d entity/%d relation, want typed entity reads only", len(store.entityRequests), len(store.relationRequests))
 	}
 	if response.Summary.Policies != 0 || len(response.Policies) != 0 {
 		t.Fatalf("response = %#v, want empty policy lifecycle", response)
+	}
+}
+
+func TestBuildRejectsGraphRevisionDrift(t *testing.T) {
+	store := &recordingPolicyLifecycleStore{entityRevisions: []uint64{7, 8}}
+
+	_, err := Build(context.Background(), store, Scope{TenantID: "writer", Limit: 1})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("Build error = %v, want runtime unavailable for revision drift", err)
+	}
+}
+
+func TestBuildRejectsConflictingDuplicateRelationIdentity(t *testing.T) {
+	policy := ports.CatalogEntity{URN: "urn:cerebro:writer:policy:access", TenantID: "writer", EntityType: "policy", SourceID: "grc"}
+	owner := ports.CatalogEntity{URN: "urn:cerebro:writer:user:owner", TenantID: "writer", EntityType: "user", SourceID: "grc"}
+	store := &recordingPolicyLifecycleStore{
+		entitiesByType: map[string][]ports.CatalogEntity{"policy": {policy}},
+		relationsByURN: map[string][]ports.EntityCatalogRelation{policy.URN: {
+			{Direction: ports.EntityRelationOutgoing, Relation: fabriccontract.RelationOwnedBy, Entity: owner, SourceID: "grc", AttributesJSON: `{"confidence":0.8}`},
+			{Direction: ports.EntityRelationOutgoing, Relation: fabriccontract.RelationOwnedBy, Entity: owner, SourceID: "grc", AttributesJSON: `{"confidence":0.9}`},
+		}},
+	}
+
+	_, err := Build(context.Background(), store, Scope{TenantID: "writer", Limit: 1})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("Build error = %v, want runtime unavailable for conflicting relation identity", err)
 	}
 }
 
@@ -1366,25 +1378,40 @@ func TestPolicyDocumentEvidenceFieldsFlowToLifecycleAndExport(t *testing.T) {
 }
 
 type recordingPolicyLifecycleStore struct {
-	requests  []ports.CypherQueryRequest
-	responses [][]ports.CypherRow
+	entityRequests   []ports.EntityCatalogPageRequest
+	relationRequests []ports.EntityRelationPageRequest
+	entitiesByType   map[string][]ports.CatalogEntity
+	relationsByURN   map[string][]ports.EntityCatalogRelation
+	entityRevisions  []uint64
+	graphRevision    uint64
 }
 
-func (s *recordingPolicyLifecycleStore) Ping(context.Context) error {
-	return nil
-}
-
-func (s *recordingPolicyLifecycleStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
-	return nil, ports.ErrGraphEntityNotFound
-}
-
-func (s *recordingPolicyLifecycleStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	call := len(s.requests)
-	s.requests = append(s.requests, request)
-	if call < len(s.responses) {
-		return s.responses[call], nil
+func (s *recordingPolicyLifecycleStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	call := len(s.entityRequests)
+	s.entityRequests = append(s.entityRequests, request)
+	if s.graphRevision == 0 {
+		s.graphRevision = 7
 	}
-	return nil, nil
+	revision := s.graphRevision
+	if call < len(s.entityRevisions) {
+		revision = s.entityRevisions[call]
+	}
+	var entities []ports.CatalogEntity
+	if len(request.Filter.IncludeKinds) == 1 {
+		entities = append(entities, s.entitiesByType[request.Filter.IncludeKinds[0]]...)
+	}
+	return &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: revision, Entities: entities}, nil
+}
+
+func (s *recordingPolicyLifecycleStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return &ports.EntityKindCountPage{TenantID: request.Filter.TenantID, GraphRevision: s.graphRevision}, nil
+}
+
+func (s *recordingPolicyLifecycleStore) ListEntityRelations(_ context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	s.relationRequests = append(s.relationRequests, request)
+	return &ports.EntityRelationPage{
+		TenantID: request.TenantID, GraphRevision: s.graphRevision, Relations: append([]ports.EntityCatalogRelation(nil), s.relationsByURN[request.AgentKey]...),
+	}, nil
 }
 
 func policyLifecycleTestRow(urn string, entityType string, label string, attrs map[string]string) ports.CypherRow {

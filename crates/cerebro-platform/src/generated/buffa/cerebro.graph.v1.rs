@@ -4911,6 +4911,19 @@ pub struct EntityCatalogFilter {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
     )]
     pub application_workspace_id: ::buffa::alloc::string::String,
+    /// attribute_substrings_any applies a case-insensitive OR across stored
+    /// attribute JSON without widening the stable key and label search.
+    ///
+    /// Field 14: `attribute_substrings_any`
+    #[serde(
+        rename = "attributeSubstringsAny",
+        alias = "attribute_substrings_any",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub attribute_substrings_any: ::buffa::alloc::vec::Vec<
+        ::buffa::alloc::string::String,
+    >,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -4931,6 +4944,7 @@ impl ::core::fmt::Debug for EntityCatalogFilter {
             .field("query_attributes", &self.query_attributes)
             .field("relation_counts", &self.relation_counts)
             .field("application_workspace_id", &self.application_workspace_id)
+            .field("attribute_substrings_any", &self.attribute_substrings_any)
             .finish()
     }
 }
@@ -5013,6 +5027,9 @@ impl ::buffa::Message for EntityCatalogFilter {
                     + ::buffa::types::string_encoded_len(&self.application_workspace_id)
                         as u64;
         }
+        for v in &self.attribute_substrings_any {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -5066,6 +5083,9 @@ impl ::buffa::Message for EntityCatalogFilter {
         }
         if !self.application_workspace_id.is_empty() {
             ::buffa::types::put_string_field(13u32, &self.application_workspace_id, buf);
+        }
+        for v in &self.attribute_substrings_any {
+            ::buffa::types::put_string_field(14u32, v, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -5195,6 +5215,17 @@ impl ::buffa::Message for EntityCatalogFilter {
                 )?;
                 ::buffa::types::merge_string(&mut self.application_workspace_id, buf)?;
             }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.attribute_substrings_any.push(__elem);
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -5216,6 +5247,7 @@ impl ::buffa::Message for EntityCatalogFilter {
         self.query_attributes = false;
         self.relation_counts = ::buffa::MessageField::none();
         self.application_workspace_id.clear();
+        self.attribute_substrings_any.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -11379,6 +11411,14 @@ pub struct ListEntityRelationsRequest {
         deserialize_with = "::buffa::json_helpers::null_as_default"
     )]
     pub neighbor_agent_keys: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 12: `neighbor_application_workspace_id`
+    #[serde(
+        rename = "neighborApplicationWorkspaceId",
+        alias = "neighbor_application_workspace_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub neighbor_application_workspace_id: ::buffa::alloc::string::String,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -11397,6 +11437,10 @@ impl ::core::fmt::Debug for ListEntityRelationsRequest {
             .field("after_relation", &self.after_relation)
             .field("after_direction", &self.after_direction)
             .field("neighbor_agent_keys", &self.neighbor_agent_keys)
+            .field(
+                "neighbor_application_workspace_id",
+                &self.neighbor_application_workspace_id,
+            )
             .finish()
     }
 }
@@ -11475,6 +11519,13 @@ impl ::buffa::Message for ListEntityRelationsRequest {
         for v in &self.neighbor_agent_keys {
             size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
         }
+        if !self.neighbor_application_workspace_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(
+                        &self.neighbor_application_workspace_id,
+                    ) as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -11528,6 +11579,13 @@ impl ::buffa::Message for ListEntityRelationsRequest {
         }
         for v in &self.neighbor_agent_keys {
             ::buffa::types::put_string_field(11u32, v, buf);
+        }
+        if !self.neighbor_application_workspace_id.is_empty() {
+            ::buffa::types::put_string_field(
+                12u32,
+                &self.neighbor_application_workspace_id,
+                buf,
+            );
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -11664,6 +11722,16 @@ impl ::buffa::Message for ListEntityRelationsRequest {
                 )?;
                 self.neighbor_agent_keys.push(__elem);
             }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(
+                    &mut self.neighbor_application_workspace_id,
+                    buf,
+                )?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -11683,6 +11751,7 @@ impl ::buffa::Message for ListEntityRelationsRequest {
         self.after_relation.clear();
         self.after_direction = ::buffa::EnumValue::from(0);
         self.neighbor_agent_keys.clear();
+        self.neighbor_application_workspace_id.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -29073,6 +29142,11 @@ pub mod __buffa {
             ///
             /// Field 13: `application_workspace_id`
             pub application_workspace_id: &'a str,
+            /// attribute_substrings_any applies a case-insensitive OR across stored
+            /// attribute JSON without widening the stable key and label search.
+            ///
+            /// Field 14: `attribute_substrings_any`
+            pub attribute_substrings_any: ::buffa::RepeatedView<'a, &'a str>,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for EntityCatalogFilterView<'a> {
@@ -29240,6 +29314,17 @@ pub mod __buffa {
                         )?;
                         view.exclude_kind_prefixes.push(__elem);
                     }
+                    14u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.attribute_substrings_any.push(__elem);
+                    }
                     _ => {
                         ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                         let span_len = before_tag.len() - cur.len();
@@ -29310,6 +29395,11 @@ pub mod __buffa {
                         None => ::buffa::MessageField::none(),
                     },
                     application_workspace_id: self.application_workspace_id.to_string(),
+                    attribute_substrings_any: self
+                        .attribute_substrings_any
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -29384,6 +29474,9 @@ pub mod __buffa {
                                 &self.application_workspace_id,
                             ) as u64;
                 }
+                for v in &self.attribute_substrings_any {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -29446,6 +29539,9 @@ pub mod __buffa {
                         &self.application_workspace_id,
                         buf,
                     );
+                }
+                for v in &self.attribute_substrings_any {
+                    ::buffa::types::put_string_field(14u32, v, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -29532,6 +29628,13 @@ pub mod __buffa {
                         .serialize_entry(
                             "applicationWorkspaceId",
                             self.application_workspace_id,
+                        )?;
+                }
+                if !self.attribute_substrings_any.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "attributeSubstringsAny",
+                            &*self.attribute_substrings_any,
                         )?;
                 }
                 __map.end()
@@ -29703,6 +29806,16 @@ pub mod __buffa {
             #[must_use]
             pub fn application_workspace_id(&self) -> &'_ str {
                 self.0.reborrow().application_workspace_id
+            }
+            /// attribute_substrings_any applies a case-insensitive OR across stored
+            /// attribute JSON without widening the stable key and label search.
+            ///
+            /// Field 14: `attribute_substrings_any`
+            #[must_use]
+            pub fn attribute_substrings_any(
+                &self,
+            ) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().attribute_substrings_any
             }
         }
         impl ::core::convert::From<::buffa::OwnedView<EntityCatalogFilterView<'static>>>
@@ -40746,6 +40859,8 @@ pub mod __buffa {
             >,
             /// Field 11: `neighbor_agent_keys`
             pub neighbor_agent_keys: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 12: `neighbor_application_workspace_id`
+            pub neighbor_application_workspace_id: &'a str,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for ListEntityRelationsRequestView<'a> {
@@ -40832,6 +40947,15 @@ pub mod __buffa {
                         view.after_direction = ::buffa::EnumValue::from(
                             ::buffa::types::decode_int32(&mut cur)?,
                         );
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.neighbor_application_workspace_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
                     }
                     3u32 => {
                         if tag.wire_type()
@@ -40947,6 +41071,9 @@ pub mod __buffa {
                         .iter()
                         .map(|s| s.to_string())
                         .collect(),
+                    neighbor_application_workspace_id: self
+                        .neighbor_application_workspace_id
+                        .to_string(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -41018,6 +41145,13 @@ pub mod __buffa {
                 for v in &self.neighbor_agent_keys {
                     size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
                 }
+                if !self.neighbor_application_workspace_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.neighbor_application_workspace_id,
+                            ) as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -41076,6 +41210,13 @@ pub mod __buffa {
                 }
                 for v in &self.neighbor_agent_keys {
                     ::buffa::types::put_string_field(11u32, v, buf);
+                }
+                if !self.neighbor_application_workspace_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        12u32,
+                        &self.neighbor_application_workspace_id,
+                        buf,
+                    );
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -41151,6 +41292,15 @@ pub mod __buffa {
                         .serialize_entry(
                             "neighborAgentKeys",
                             &*self.neighbor_agent_keys,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.neighbor_application_workspace_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "neighborApplicationWorkspaceId",
+                            self.neighbor_application_workspace_id,
                         )?;
                 }
                 __map.end()
@@ -41313,6 +41463,11 @@ pub mod __buffa {
             #[must_use]
             pub fn neighbor_agent_keys(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
                 &self.0.reborrow().neighbor_agent_keys
+            }
+            /// Field 12: `neighbor_application_workspace_id`
+            #[must_use]
+            pub fn neighbor_application_workspace_id(&self) -> &'_ str {
+                self.0.reborrow().neighbor_application_workspace_id
             }
         }
         impl ::core::convert::From<
