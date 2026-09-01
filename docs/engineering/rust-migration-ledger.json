@@ -19,7 +19,7 @@
     { "package": "internal/attackpath", "status": "migrated" },
     { "package": "internal/findingdsl", "status": "migrated" },
     { "package": "internal/findings", "status": "compat", "blocked_on": "aggregations, optional match, variable-length traversal (per graph rule)" },
-    { "package": "internal/graphagent", "status": "compat", "note": "ask flow is a permanent resident (LLM-drafted Cypher); probe counts still migrate, then flip this entry to permanent" },
+    { "package": "internal/graphagent", "status": "permanent", "note": "LLM-drafted Ask Cypher remains isolated behind the validated read-only compatibility boundary; deterministic probe counts use typed Rust capabilities" },
     { "package": "internal/graphquery", "status": "compat", "blocked_on": "attribute substring predicates and batched variable-length traversal for crown-jewel ranking" },
     { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
     { "package": "internal/grcvendor", "status": "migrated" },
