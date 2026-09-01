@@ -20,6 +20,11 @@ concurrency:
   group: generated-docs-refresh-${{ inputs.branch }}
   cancel-in-progress: false
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   refresh:
     runs-on: ubuntu-latest

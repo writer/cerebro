@@ -439,7 +439,15 @@ lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
 	$(GOLANGCI_LINT) run -j "$(GOLANGCI_LINT_CONCURRENCY)" --timeout $(GOLANGCI_LINT_TIMEOUT) $(APP_SOURCE_PACKAGES)
 
 lint-bootstrap: ## Install golangci-lint if missing.
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		$(PINNED_GO) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then \
+		attempt=1; \
+		until GOFLAGS= GOTOOLCHAIN=go1.26.6 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); do \
+			if [ "$$attempt" -ge 3 ]; then exit 1; fi; \
+			echo "golangci-lint install attempt $$attempt failed; retrying" >&2; \
+			attempt=$$((attempt + 1)); \
+			sleep 5; \
+		done; \
+	fi
 
 proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
