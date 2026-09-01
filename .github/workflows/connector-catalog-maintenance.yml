@@ -40,6 +40,11 @@ concurrency:
   group: connector-catalog-maintenance-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   maintenance:
     runs-on: ubuntu-latest

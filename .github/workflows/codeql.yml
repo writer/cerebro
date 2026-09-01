@@ -17,6 +17,11 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})

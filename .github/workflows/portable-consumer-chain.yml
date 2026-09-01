@@ -46,6 +46,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   portable-consumer-chain:
     runs-on: ubuntu-latest

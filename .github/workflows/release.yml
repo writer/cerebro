@@ -36,6 +36,11 @@ concurrency:
   group: stable-release-publication
   cancel-in-progress: false
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   verify-candidate:
     runs-on: ubuntu-latest
