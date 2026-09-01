@@ -94,6 +94,7 @@ export async function smokeBaseUrl(baseUrl, options = {}) {
   if (scripts.length === 0) {
     throw new Error(`No Next.js script chunks were referenced by ${appUrl}`);
   }
+  const csp = assertNonceContentSecurityPolicy(app);
 
   const chunkUrls = scripts.slice(0, options.chunkLimit ?? 5).map((src) => scriptUrlFor(normalizedBase, src));
   const chunkResponses = [];
@@ -110,7 +111,40 @@ export async function smokeBaseUrl(baseUrl, options = {}) {
   return {
     appUrl,
     chunkResponses,
+    cspNonce: csp.nonce,
+    cspScriptTagCount: csp.scriptTagCount,
     healthUrl,
     scriptCount: scripts.length,
   };
+}
+
+const SCRIPT_TAG_PATTERN = /<script\b[^>]*>/gi;
+
+/**
+ * The document must arrive with a nonce-based script-src (no 'unsafe-inline'),
+ * and every script tag in the HTML must carry that nonce so the page actually
+ * runs under the policy.
+ */
+export function assertNonceContentSecurityPolicy(response) {
+  const policy = response.headers.get("content-security-policy") ?? "";
+  const scriptSrc = policy
+    .split(";")
+    .map((directive) => directive.trim())
+    .find((directive) => directive.startsWith("script-src "));
+  if (!scriptSrc) {
+    throw new Error(`Expected ${response.url} to send a Content-Security-Policy with script-src, got ${policy || "no header"}`);
+  }
+  if (scriptSrc.includes("'unsafe-inline'")) {
+    throw new Error(`Expected script-src for ${response.url} to not allow 'unsafe-inline', got ${scriptSrc}`);
+  }
+  const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(scriptSrc)?.[1];
+  if (!nonce) {
+    throw new Error(`Expected script-src for ${response.url} to carry a nonce, got ${scriptSrc}`);
+  }
+  const scriptTags = response.body.match(SCRIPT_TAG_PATTERN) ?? [];
+  const unnonced = scriptTags.filter((tag) => !tag.includes(`nonce="${nonce}"`));
+  if (unnonced.length > 0) {
+    throw new Error(`${unnonced.length} script tag(s) in ${response.url} lack the CSP nonce: ${unnonced.slice(0, 3).join(" ")}`);
+  }
+  return { nonce, scriptTagCount: scriptTags.length };
 }

@@ -227,6 +227,18 @@ Use tenant-scoped credentials where possible. Rotate credentials through your se
 
 Cerebro uses these values for proxy-aware URL reconstruction and DPoP `htu` validation. Do not trust forwarded headers from arbitrary clients.
 
+### Web console
+
+The web image (`ghcr.io/writer/cerebro-web:<tag>`) proxies browser requests to the Cerebro API and authenticates them server-side.
+
+| Variable | Guidance |
+| --- | --- |
+| `CEREBRO_API_BASE` | Internal URL of the Cerebro API the web server proxies to. |
+| `CEREBRO_API_KEY` | The credential the web server presents to Cerebro. Store as a secret. This is the deployment default: the key stays on the server and the browser's API key field is disabled. |
+| `CEREBRO_FORWARD_AUTH_HEADERS` | Leave unset. Setting it to `true` lets a key pasted in the browser (kept in `localStorage`) be forwarded instead; that mode exists for local development against a local Cerebro only. |
+
+The web server sends a nonce-based `Content-Security-Policy` on every page. Do not add `'unsafe-inline'` to `script-src` at a reverse proxy or CDN in front of it.
+
 ### Append log
 
 | Variable | Guidance |
@@ -474,6 +486,7 @@ Use this baseline for any shared deployment:
 10. Monitor auth failures, denied tenant access, dependency errors, and unusual sync volume.
 11. Keep `/metrics`, if exposed, behind the same auth and network controls as other operational surfaces.
 12. Run public-facing docs, config, and example changes through the repository OSS audit before publishing.
+13. Give the web console a server-held credential (`CEREBRO_API_KEY`) and leave `CEREBRO_FORWARD_AUTH_HEADERS` unset; never rely on a key pasted into the browser outside local development.
 
 ## Rollout checklist
 

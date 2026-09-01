@@ -60,10 +60,6 @@ const resolveAppVersion = () => {
   return packageJson.version;
 };
 
-const scriptSrc = process.env.NODE_ENV === "development"
-  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-  : "script-src 'self' 'unsafe-inline'";
-
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: workspaceRoot,
@@ -77,20 +73,9 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
+        // Content-Security-Policy is set per request by src/proxy.ts so that
+        // script-src can carry a nonce instead of 'unsafe-inline'.
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "frame-ancestors 'none'",
-              "img-src 'self' data:",
-              scriptSrc,
-              "style-src 'self' 'unsafe-inline'",
-              "connect-src 'self'",
-            ].join("; "),
-          },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Referrer-Policy", value: "no-referrer" },

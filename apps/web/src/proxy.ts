@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { GRC_UPLOAD_MAX_BYTES, GRC_UPLOAD_MAX_LABEL } from "./lib/grc-upload-limits";
 import { ASK_AGENT_REQUEST_MAX_BYTES } from "./lib/ask-images";
+import {
+  buildContentSecurityPolicy,
+  CSP_HEADER,
+  generateCspNonce,
+  NONCE_HEADER,
+} from "./lib/content-security-policy";
 
 const MAX_API_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
 
@@ -42,7 +48,25 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return withContentSecurityPolicy(request);
+}
+
+// A fresh nonce per request. Next.js reads it from the Content-Security-Policy
+// *request* header and stamps it on every script tag it renders, so the page
+// keeps working with no 'unsafe-inline' in script-src. Client-supplied values
+// for these headers are overwritten, never trusted.
+function withContentSecurityPolicy(request: NextRequest) {
+  const nonce = generateCspNonce();
+  const policy = buildContentSecurityPolicy({
+    nonce,
+    development: process.env.NODE_ENV === "development",
+  });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(NONCE_HEADER, nonce);
+  requestHeaders.set(CSP_HEADER, policy);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set(CSP_HEADER, policy);
+  return response;
 }
 
 function maxBodyBytesForRequest(request: NextRequest) {
@@ -74,5 +98,17 @@ function bodyTooLargeMessage(maxBytes: number) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: [
+    "/api/:path*",
+    // Every document route needs the CSP nonce. Static assets are not
+    // documents, and router prefetches reuse the page's nonce, so both skip
+    // the proxy.
+    {
+      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
+  ],
 };
