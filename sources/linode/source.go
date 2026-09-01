@@ -29,8 +29,7 @@ const (
 var templateKeys = []string{"oauth_client_reference"}
 
 type Source struct {
-	inner         *jsonapi.Source
-	allowLoopback bool
+	inner *jsonapi.Source
 }
 
 func New() (*Source, error) {
@@ -47,18 +46,9 @@ func New() (*Source, error) {
 		OAuthTokenURL:               "https://login.linode.com/oauth/token",
 		OAuthScopes:                 []string{"account:read_only", "account:read_write", "domains:read_only", "domains:read_write", "events:read_only", "events:read_write", "firewall:read_only", "firewall:read_write", "images:read_only", "images:read_write", "ips:read_only", "ips:read_write", "linodes:read_only", "linodes:read_write", "lke:read_only", "lke:read_write", "longview:read_only", "longview:read_write", "maintenance:read_only", "nodebalancers:read_only", "nodebalancers:read_write", "object_storage:read_only", "object_storage:read_write", "stackscripts:read_only", "stackscripts:read_write", "volumes:read_only", "volumes:read_write"},
 		OAuthTokenRequestAuthMethod: "client_secret_basic",
+		// issue is intentionally absent: the closed Rust dispatcher owns that
+		// family, and a direct Go call must fail before provider I/O.
 		Families: []jsonapi.Family{
-			{
-				Name:             familyIssue,
-				Path:             "/managed/issues",
-				URNKind:          "linode_issue",
-				IDKeys:           []string{"id", "created", "finding_id", "resource_urn"},
-				PageSizeParams:   []string{"page_size"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "id": "id", "name": "entity|summary|description", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "entity|summary|description"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "issue", "source_system": "linode"},
-			},
 			{
 				Name:             familyEvent,
 				Path:             "/account/events",
@@ -162,11 +152,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func (s *Source) allowLoopbackForTest() {
-	if s != nil && s.inner != nil {
-		s.inner.AllowLoopbackBaseURL = true
-		s.allowLoopback = true
-	}
 }
