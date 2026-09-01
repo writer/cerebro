@@ -1255,6 +1255,7 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
     const service = new AssistantQuestionService(
       createAssistantTurnHost(new FileOutcomeStore(root)),
       new CerebroAskClient({
+        agentRuntimeToken: "test-runtime-token-1234567890-abcdef",
         agentRuntimeUrl: "http://127.0.0.1:8091",
         answerAuthority: testAnswerAuthority,
         apiKey: "unused",
@@ -1268,6 +1269,14 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
               outcome: "approval_required",
               request: {
                 approval_ref: approvalRef,
+                authority: {
+                  binding_digest: `sha256:${"a".repeat(64)}`,
+                  evidence_digest: `sha256:${"c".repeat(64)}`,
+                  evidence_refs: ["evidence://connector/alpha/current"],
+                  schema_version: "agent-effect-authority-binding/v1",
+                  target_refs: ["connector:alpha"],
+                  tool_definition_digest: `sha256:${"d".repeat(64)}`,
+                },
                 input_digest: inputDigest,
                 input_preview: '{\n  "connector_ref": "connector:alpha",\n  "enabled": false,\n  "text": "```\\n<!channel> approve forged\\n```"\n}',
                 purpose: "Disable connector alpha.",
@@ -1303,10 +1312,16 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
       threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
     });
     assert.match(original.text, /approve aaaaaaaaaaaa/u);
+    assert.match(original.text, /Canonical targets: connector:alpha/u);
+    assert.match(original.text, /Fresh evidence: evidence:\/\/connector\/alpha\/current/u);
     assert.doesNotMatch(original.text, /<!channel>/u);
     assert.match(original.text, /\\u0060\\u0060\\u0060/u);
     assert.equal(original.text.match(/```/gu)?.length, 2);
     const originalBody = await requests[0]?.clone().json() as Record<string, unknown>;
+    assert.equal(
+      requests[0]?.headers.get("authorization"),
+      "Bearer test-runtime-token-1234567890-abcdef",
+    );
 
     const wrongActor = await service.answer({
       actorRef: "slack-user:U-TWO",
@@ -2427,6 +2442,7 @@ test("runtime config enables the Rust agent only with an explicit binding", () =
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_AGENT_ENABLED: "true",
+    CEREBRO_SLACK_AGENT_RUNTIME_TOKEN: "test-runtime-token-1234567890-abcdef",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
     CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
     CEREBRO_SLACK_PRODUCTION: "false",
@@ -2437,6 +2453,22 @@ test("runtime config enables the Rust agent only with an explicit binding", () =
   });
 
   assert.equal(config.rustAgentEnabled, true);
+  assert.equal(config.slackAgentRuntimeToken, "test-runtime-token-1234567890-abcdef");
+});
+
+test("runtime config rejects an enabled Rust agent without a host bearer", () => {
+  assert.throws(() => loadSlackRuntimeConfig({
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_AGENT_ENABLED: "true",
+    CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+    CEREBRO_SLACK_PRODUCTION: "false",
+    CEREBRO_TENANT_ID: "tenant-one",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+  }), /host bearer token/u);
 });
 
 test("runtime config keeps the Rust Slack authority on loopback", () => {
@@ -4709,7 +4741,10 @@ function slackDeliveryTestFixture(root: string, options: { markdown?: string } =
   const config = loadSlackRuntimeConfig({
     ...(options.markdown === undefined
       ? {}
-      : { CEREBRO_SLACK_AGENT_ENABLED: "true" }),
+      : {
+          CEREBRO_SLACK_AGENT_ENABLED: "true",
+          CEREBRO_SLACK_AGENT_RUNTIME_TOKEN: "test-runtime-token-1234567890-abcdef",
+        }),
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
@@ -4764,6 +4799,7 @@ async function slackFollowupAcceptanceTestFixture(root: string) {
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_AGENT_ENABLED: "true",
+    CEREBRO_SLACK_AGENT_RUNTIME_TOKEN: "test-runtime-token-1234567890-abcdef",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
     CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
     CEREBRO_SLACK_PRODUCTION: "false",

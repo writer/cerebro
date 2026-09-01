@@ -73,10 +73,20 @@ export interface RustPendingWakeDelivery {
 
 export interface AgentApprovalRequest {
   approvalRef: string;
+  authority: AgentEffectAuthorityBinding;
   inputDigest: string;
   inputPreview?: string;
   purpose: string;
   toolId: string;
+}
+
+export interface AgentEffectAuthorityBinding {
+  bindingDigest: string;
+  evidenceDigest: string;
+  evidenceRefs: string[];
+  schemaVersion: "agent-effect-authority-binding/v1";
+  targetRefs: string[];
+  toolDefinitionDigest: string;
 }
 
 export interface CerebroAskHistoryMessage {
@@ -88,6 +98,7 @@ export interface CerebroAskHistoryMessage {
 }
 
 export interface CerebroAskClientOptions {
+  agentRuntimeToken?: string;
   agentRuntimeUrl?: string;
   answerAuthority: SlackAnswerAuthorityPort;
   apiKey: string;
@@ -188,8 +199,7 @@ export class CerebroAskClient {
       response = await this.fetchImpl(`${this.options.agentRuntimeUrl}/v1/turns/run`, {
       method: "POST",
       headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
+        ...this.agentRuntimeHeaders(true),
       },
       body: JSON.stringify({
         actor_ref: input.actorRef,
@@ -318,6 +328,10 @@ export class CerebroAskClient {
           "",
           outcome.request.purpose,
           "",
+          `Canonical targets: ${outcome.request.authority.target_refs.join(", ")}`,
+          `Fresh evidence: ${outcome.request.authority.evidence_refs.join(", ")}`,
+          `Authority binding: ${outcome.request.authority.binding_digest}`,
+          "",
           `Exact input (${outcome.request.input_digest}):`,
           "```",
           safeApprovalPreview(outcome.request.input_preview),
@@ -328,6 +342,14 @@ export class CerebroAskClient {
         ].join("\n"),
         pendingApproval: {
           approvalRef: outcome.request.approval_ref,
+          authority: {
+            bindingDigest: outcome.request.authority.binding_digest,
+            evidenceDigest: outcome.request.authority.evidence_digest,
+            evidenceRefs: outcome.request.authority.evidence_refs,
+            schemaVersion: outcome.request.authority.schema_version,
+            targetRefs: outcome.request.authority.target_refs,
+            toolDefinitionDigest: outcome.request.authority.tool_definition_digest,
+          },
           inputDigest: outcome.request.input_digest,
           inputPreview: outcome.request.input_preview,
           purpose: outcome.request.purpose,
@@ -370,7 +392,7 @@ export class CerebroAskClient {
       });
       const response = await this.fetchImpl(
         `${this.options.agentRuntimeUrl}/v1/turns/progress?${query}`,
-        { headers: { Accept: "application/json" }, signal: input.signal },
+        { headers: this.agentRuntimeHeaders(false), signal: input.signal },
       );
       if (!response.ok) return;
       const progress = parseAgentTurnProgress(await response.json());
@@ -442,8 +464,7 @@ export class CerebroAskClient {
       {
         method: "POST",
         headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+          ...this.agentRuntimeHeaders(true),
         },
         body: JSON.stringify({
           delivered_at: input.deliveredAt,
@@ -476,8 +497,7 @@ export class CerebroAskClient {
     const response = await this.fetchImpl(`${runtimeUrl}/v1/wakes/run`, {
       method: "POST",
       headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
+        ...this.agentRuntimeHeaders(true),
       },
       body: JSON.stringify({ worker_ref: input.workerRef }),
       signal: input.signal,
@@ -503,8 +523,7 @@ export class CerebroAskClient {
       {
         method: "POST",
         headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+          ...this.agentRuntimeHeaders(true),
         },
         body: JSON.stringify({ worker_ref: input.workerRef }),
         signal: input.signal,
@@ -531,8 +550,7 @@ export class CerebroAskClient {
     const response = await this.fetchImpl(`${runtimeUrl}/v1/wakes/deliveries`, {
       method: "POST",
       headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
+        ...this.agentRuntimeHeaders(true),
       },
       body: JSON.stringify({
         lease: input.delivery.lease,
@@ -564,6 +582,16 @@ export class CerebroAskClient {
       throw new CerebroAskError("not_configured", "The Rust agent runtime is not configured.");
     }
     return this.options.agentRuntimeUrl;
+  }
+
+  private agentRuntimeHeaders(jsonBody: boolean): Record<string, string> {
+    return {
+      Accept: "application/json",
+      ...(jsonBody ? { "Content-Type": "application/json" } : {}),
+      ...(this.options.agentRuntimeToken === undefined
+        ? {}
+        : { Authorization: `Bearer ${this.options.agentRuntimeToken}` }),
+    };
   }
 
   async ask(
@@ -717,6 +745,14 @@ type RustAgentTurnOutcome =
       outcome: "approval_required";
       request: {
         approval_ref: string;
+        authority: {
+          binding_digest: string;
+          evidence_digest: string;
+          evidence_refs: string[];
+          schema_version: "agent-effect-authority-binding/v1";
+          target_refs: string[];
+          tool_definition_digest: string;
+        };
         input_digest: string;
         input_preview: string;
         purpose: string;

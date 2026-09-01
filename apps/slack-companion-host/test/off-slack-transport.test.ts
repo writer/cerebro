@@ -226,6 +226,7 @@ function transportConfig(root: string) {
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_AGENT_ENABLED: "true",
+    CEREBRO_SLACK_AGENT_RUNTIME_TOKEN: "test-runtime-token-1234567890-abcdef",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
     CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
     CEREBRO_SLACK_PRODUCTION: "false",

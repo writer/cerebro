@@ -18,9 +18,10 @@ use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-    AgentRuntimeError, ApprovalRequest, EffectAuthorization, EvidenceRecord, ExecutionLane,
-    FinalState, FutureObservationDisposition, ToolAuthorityClass, ToolCall, ToolDescriptor,
-    ToolEffectClass, ToolObservation, ToolResult, ToolResultState,
+    AgentRuntimeError, ApprovalRequest, EffectAuthorityBinding, EffectAuthorization,
+    EvidenceRecord, ExecutionLane, FinalState, FutureObservationDisposition, ToolAuthorityClass,
+    ToolCall, ToolDescriptor, ToolEffectClass, ToolObservation, ToolResult, ToolResultState,
+    effect_authority_binding, effect_target_refs,
 };
 
 /// Schema discriminator for a persisted [`AgentSession`].
@@ -1311,6 +1312,9 @@ pub enum SessionEvent {
         call: ToolCall,
         /// Descriptor whose authority and effect policy governed the call.
         descriptor: ToolDescriptor,
+        /// Exact tool, target, and evidence authority consumed before dispatch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        authority: Option<EffectAuthorityBinding>,
     },
     /// Stores a validated candidate awaiting transport delivery confirmation.
     DraftProduced {
@@ -3536,6 +3540,24 @@ async fn run_session_turn_recorded_at(
                 }
                 call_ids = proposed_call_ids;
                 call_fingerprints = proposed_call_fingerprints;
+                let actuation_authorities = calls
+                    .iter()
+                    .filter_map(|call| {
+                        descriptors.get(&call.tool_id).and_then(|descriptor| {
+                            (descriptor.authority_class == ToolAuthorityClass::Actuate)
+                                .then_some((call, descriptor))
+                        })
+                    })
+                    .map(|(call, descriptor)| {
+                        effect_authority_binding(
+                            descriptor,
+                            call,
+                            &observations,
+                            &input.assessment_at,
+                        )
+                        .map(|binding| (call.call_id.clone(), binding))
+                    })
+                    .collect::<Result<BTreeMap<_, _>, AgentRuntimeError>>()?;
                 if let Some(call) = calls.iter().find(|call| {
                     descriptors.get(&call.tool_id).is_some_and(|descriptor| {
                         descriptor.authority_class == ToolAuthorityClass::Actuate
@@ -3543,11 +3565,18 @@ async fn run_session_turn_recorded_at(
                                 &session,
                                 &input,
                                 call,
+                                actuation_authorities
+                                    .get(&call.call_id)
+                                    .expect("actuating calls have authority bindings"),
                                 &consumed_approvals,
                             )
                     })
                 }) {
                     let input_digest = call.input_digest();
+                    let authority = actuation_authorities
+                        .get(&call.call_id)
+                        .expect("actuating calls have authority bindings")
+                        .clone();
                     emit_final_events(
                         &session,
                         &input.assessment_at,
@@ -3563,12 +3592,13 @@ async fn run_session_turn_recorded_at(
                         request: ApprovalRequest {
                             approval_ref: format!(
                                 "approval://agent-effect/{}",
-                                input_digest.trim_start_matches("sha256:")
+                                authority.binding_digest.trim_start_matches("sha256:")
                             ),
                             tool_id: call.tool_id.clone(),
                             input_digest,
                             input_preview: crate::approval_input_preview(&call.input),
                             purpose: call.purpose.clone(),
+                            authority,
                         },
                         events,
                     });
@@ -3577,8 +3607,15 @@ async fn run_session_turn_recorded_at(
                     if descriptors.get(&call.tool_id).is_some_and(|descriptor| {
                         descriptor.authority_class == ToolAuthorityClass::Actuate
                     }) {
-                        let approval = matching_effect_authorization(&session, &input, call)
-                            .expect("authorization presence was checked before invocation");
+                        let approval = matching_effect_authorization(
+                            &session,
+                            &input,
+                            call,
+                            actuation_authorities
+                                .get(&call.call_id)
+                                .expect("actuating calls have authority bindings"),
+                        )
+                        .expect("authorization presence was checked before invocation");
                         if !consumed_approvals.insert(approval.approval_ref.clone()) {
                             return Err(AgentRuntimeError::InvalidToolCall(
                                 "effect authorization was already consumed".into(),
@@ -3597,6 +3634,7 @@ async fn run_session_turn_recorded_at(
                             SessionEvent::EffectStarted {
                                 call: call.clone(),
                                 descriptor: descriptor.clone(),
+                                authority: actuation_authorities.get(&call.call_id).cloned(),
                             },
                             journal,
                         )
@@ -5725,7 +5763,9 @@ fn resume_turn_state(
                 pending_effects.remove(&observation.call.call_id);
                 observations.push(observation.clone());
             }
-            SessionEvent::EffectStarted { call, descriptor } => {
+            SessionEvent::EffectStarted {
+                call, descriptor, ..
+            } => {
                 pending_effects.insert(
                     call.call_id.clone(),
                     (call.clone(), descriptor.clone(), event.occurred_at.clone()),
@@ -6350,11 +6390,12 @@ fn matching_effect_authorization<'a>(
     session: &'a AgentSession,
     input: &SessionTurnInput,
     call: &ToolCall,
+    authority: &EffectAuthorityBinding,
 ) -> Option<&'a EffectAuthorization> {
     let digest = call.input_digest();
     let expected_approval_ref = format!(
         "approval://agent-effect/{}",
-        digest.trim_start_matches("sha256:")
+        authority.binding_digest.trim_start_matches("sha256:")
     );
     session.effect_authorizations.iter().find(|authorization| {
         authorization.approval_ref == expected_approval_ref
@@ -6371,10 +6412,24 @@ fn has_effect_authorization(
     session: &AgentSession,
     input: &SessionTurnInput,
     call: &ToolCall,
+    authority: &EffectAuthorityBinding,
     consumed: &BTreeSet<String>,
 ) -> bool {
-    matching_effect_authorization(session, input, call)
-        .is_some_and(|authorization| !consumed.contains(&authorization.approval_ref))
+    matching_effect_authorization(session, input, call, authority).is_some_and(|authorization| {
+        !consumed.contains(&authorization.approval_ref)
+            && !session.events.iter().any(|event| {
+                matches!(
+                    &event.event,
+                    SessionEvent::EffectStarted {
+                        authority: Some(binding),
+                        ..
+                    } if format!(
+                        "approval://agent-effect/{}",
+                        binding.binding_digest.trim_start_matches("sha256:")
+                    ) == authorization.approval_ref
+                )
+            })
+    })
 }
 
 #[cfg(test)]
@@ -6411,7 +6466,7 @@ fn validate_effect_closure_at(
             }
             return Err(AgentRuntimeError::UnverifiedEffect);
         }
-        let targets = target_refs_from_input(&effect.call.input);
+        let targets = effect_target_refs(&effect.call.input);
         if targets.is_empty() {
             return Err(AgentRuntimeError::UnverifiedEffect);
         }
@@ -6451,7 +6506,7 @@ fn validate_effect_closure_at(
                     .any(|observation| {
                         if observation.descriptor.authority_class != ToolAuthorityClass::Observe
                             || observation.result.state != ToolResultState::Succeeded
-                            || target_refs_from_input(&observation.call.input).is_disjoint(&targets)
+                            || effect_target_refs(&observation.call.input).is_disjoint(&targets)
                         {
                             return false;
                         }
@@ -6486,38 +6541,6 @@ fn validate_effect_closure_at(
         }
     }
     Ok(())
-}
-
-fn target_refs_from_input(input: &Value) -> BTreeSet<String> {
-    fn collect(value: &Value, key: Option<&str>, refs: &mut BTreeSet<String>) {
-        match value {
-            Value::Object(map) => {
-                for (key, value) in map {
-                    collect(value, Some(key), refs);
-                }
-            }
-            Value::Array(items) => {
-                for item in items {
-                    collect(item, key, refs);
-                }
-            }
-            Value::String(value)
-                if key.is_some_and(|key| {
-                    let key = key.to_ascii_lowercase();
-                    key.ends_with("_ref")
-                        || key.ends_with("_id")
-                        || key == "target"
-                        || key == "subject"
-                }) && !value.trim().is_empty() =>
-            {
-                refs.insert(value.clone());
-            }
-            _ => {}
-        }
-    }
-    let mut refs = BTreeSet::new();
-    collect(input, None, &mut refs);
-    refs
 }
 
 fn failed_tool_result(
@@ -11096,18 +11119,27 @@ mod tests {
                     blocker: None,
                 });
             }
+            let is_pre_effect_read = call.input.get("phase").is_some();
             Ok(ToolResult {
                 state: ToolResultState::Succeeded,
                 summary: "The exact message was observed in the channel.".into(),
                 data: json!({"channel_id": "channel-one", "text": "hello"}),
                 evidence: vec![crate::EvidenceRecord {
-                    evidence_ref: "evidence:mcp-message-read".into(),
+                    evidence_ref: if is_pre_effect_read {
+                        "evidence:mcp-message-read-before-effect".into()
+                    } else {
+                        "evidence:mcp-message-read".into()
+                    },
                     statement: "The exact message was observed in the channel.".into(),
                     observed_at: "2026-07-31T00:02:00Z".into(),
                     fresh_until: Some("2026-08-01T00:00:00Z".into()),
                     complete: true,
                     atoms: vec![EvidenceAtom {
-                        atom_ref: "atom:mcp-message-text".into(),
+                        atom_ref: if is_pre_effect_read {
+                            "atom:mcp-message-text-before-effect".into()
+                        } else {
+                            "atom:mcp-message-text".into()
+                        },
                         subject_ref: Some("channel-one".into()),
                         assertion: EvidenceAssertion::Value {
                             predicate: "/text".into(),
@@ -11644,6 +11676,14 @@ mod tests {
             trigger: SessionTurnTrigger::Operator,
         };
         let mut authorized = session();
+        let authority = EffectAuthorityBinding {
+            schema_version: crate::EFFECT_AUTHORITY_BINDING_V1.into(),
+            tool_definition_digest: format!("sha256:{}", "1".repeat(64)),
+            target_refs: vec!["connector:alpha".into()],
+            evidence_refs: vec!["evidence:connector-alpha".into()],
+            evidence_digest: format!("sha256:{}", "2".repeat(64)),
+            binding_digest: format!("sha256:{}", "3".repeat(64)),
+        };
         authorized.effect_authorizations.push(EffectAuthorization {
             approval_ref: "approval://agent-effect/not-the-issued-identity".into(),
             tenant_id: authorized.tenant_id.clone(),
@@ -11653,13 +11693,13 @@ mod tests {
             tool_id: call.tool_id.clone(),
             input_digest: call.input_digest(),
         });
-        assert!(matching_effect_authorization(&authorized, &input, &call).is_none());
+        assert!(matching_effect_authorization(&authorized, &input, &call, &authority).is_none());
 
         authorized.effect_authorizations[0].approval_ref = format!(
             "approval://agent-effect/{}",
-            call.input_digest().trim_start_matches("sha256:")
+            authority.binding_digest.trim_start_matches("sha256:")
         );
-        assert!(matching_effect_authorization(&authorized, &input, &call).is_some());
+        assert!(matching_effect_authorization(&authorized, &input, &call, &authority).is_some());
     }
 
     #[test]
@@ -12445,6 +12485,14 @@ mod tests {
                     plan: DirectMcpEffectTools::plan(),
                 },
                 SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:mcp-read-before-approval".into(),
+                        tool_id: "mcp.slack.message.read".into(),
+                        purpose: "Resolve channel one before requesting an effect.".into(),
+                        input: json!({"channel_id": "channel-one", "phase": "approval"}),
+                    }],
+                },
+                SessionModelDecision::InvokeTools {
                     calls: vec![call.clone()],
                 },
             ])),
@@ -12468,20 +12516,18 @@ mod tests {
         assert_eq!(request.input_digest, input_digest);
         assert!(request.input_preview.contains("channel-one"));
         assert!(request.input_preview.contains("hello"));
-        assert!(
-            unapproved_tools
+        {
+            let unapproved_calls = unapproved_tools
                 .calls
                 .lock()
-                .expect("MCP call log poisoned")
-                .is_empty()
-        );
+                .expect("MCP call log poisoned");
+            assert_eq!(unapproved_calls.len(), 1);
+            assert_eq!(unapproved_calls[0].tool_id, "mcp.slack.message.read");
+        }
 
         let mut authorized = session_for_request(&input.request_id, ExecutionLane::Act);
         authorized.effect_authorizations.push(EffectAuthorization {
-            approval_ref: format!(
-                "approval://agent-effect/{}",
-                input_digest.trim_start_matches("sha256:")
-            ),
+            approval_ref: request.approval_ref.clone(),
             tenant_id: authorized.tenant_id.clone(),
             request_id: input.request_id.clone(),
             thread_ref: authorized.thread_ref.clone(),
@@ -12493,6 +12539,14 @@ mod tests {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan {
                     plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:mcp-read-before-effect".into(),
+                        tool_id: "mcp.slack.message.read".into(),
+                        purpose: "Resolve channel one before using the approval.".into(),
+                        input: json!({"channel_id": "channel-one", "phase": "dispatch"}),
+                    }],
                 },
                 SessionModelDecision::InvokeTools {
                     calls: vec![call.clone()],
@@ -12531,14 +12585,23 @@ mod tests {
                 .calls
                 .lock()
                 .expect("MCP call log poisoned");
-            assert_eq!(calls.as_slice()[0], call);
-            assert_eq!(calls.as_slice()[1].tool_id, "mcp.slack.message.read");
+            assert_eq!(calls.as_slice()[0].tool_id, "mcp.slack.message.read");
+            assert_eq!(calls.as_slice()[1], call);
+            assert_eq!(calls.as_slice()[2].tool_id, "mcp.slack.message.read");
         }
 
         let ambiguous_model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan {
                     plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:mcp-read-before-ambiguous-effect".into(),
+                        tool_id: "mcp.slack.message.read".into(),
+                        purpose: "Resolve channel one before retrying the approved effect.".into(),
+                        input: json!({"channel_id": "channel-one", "phase": "reconciliation"}),
+                    }],
                 },
                 SessionModelDecision::InvokeTools { calls: vec![call] },
             ])),
@@ -16599,6 +16662,7 @@ mod tests {
                 event: SessionEvent::EffectStarted {
                     call: call.clone(),
                     descriptor: descriptor.clone(),
+                    authority: None,
                 },
             },
         ];

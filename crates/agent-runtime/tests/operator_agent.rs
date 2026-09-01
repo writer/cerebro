@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use cerebro_agent_runtime::session::{EvidenceAssertion, EvidenceAtom};
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
     AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueChecks, CritiqueDecision,
@@ -11,7 +12,8 @@ use cerebro_agent_runtime::{
     EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft, FinalState,
     ModelDecision, ModelTurn, PresentationDecision, PresentationTurn, RouteConfidence,
     RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass,
-    ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
+    ToolObservation, ToolResult, ToolResultState, WorkingOutcome, WorkingState,
+    effect_authority_binding, run_turn,
 };
 use serde_json::json;
 
@@ -644,6 +646,69 @@ fn success(summary: &str, evidence: EvidenceRecord) -> ToolResult {
     }
 }
 
+fn runtime_read(call_id: &str, evidence_ref: &str) -> (ToolCall, ToolDescriptor, ToolResult) {
+    let call = ToolCall {
+        call_id: call_id.into(),
+        tool_id: "runtime_status".into(),
+        purpose: "Resolve the exact runtime target before an effect.".into(),
+        input: json!({"runtime_ref": "runtime://one"}),
+    };
+    let descriptor = tool(
+        "runtime_status",
+        ToolAuthorityClass::Observe,
+        ToolEffectClass::Read,
+    );
+    let mut record = evidence(evidence_ref, "The exact runtime target was observed.");
+    record.atoms.push(EvidenceAtom {
+        atom_ref: format!("{evidence_ref}#model"),
+        subject_ref: Some("runtime://one".into()),
+        assertion: EvidenceAssertion::Value {
+            predicate: "/model".into(),
+            value: json!("model://current"),
+        },
+        observed_at: record.observed_at.clone(),
+        fresh_until: record.fresh_until.clone(),
+        complete: true,
+    });
+    let result = success("Read the current runtime.", record);
+    (call, descriptor, result)
+}
+
+fn effect_authorization_for(
+    turn: &AgentTurnRequest,
+    descriptor: &ToolDescriptor,
+    effect: &ToolCall,
+    observed_call: &ToolCall,
+    observed_descriptor: &ToolDescriptor,
+    observed_result: &ToolResult,
+) -> EffectAuthorization {
+    let binding = effect_authority_binding(
+        descriptor,
+        effect,
+        &[ToolObservation {
+            sequence: 1,
+            recorded_at: None,
+            call: observed_call.clone(),
+            descriptor: observed_descriptor.clone(),
+            result: observed_result.clone(),
+        }],
+        &turn.assessment_at,
+    )
+    .unwrap();
+    EffectAuthorization {
+        approval_ref: format!(
+            "approval://agent-effect/{}",
+            binding.binding_digest.trim_start_matches("sha256:")
+        ),
+        tenant_id: turn.tenant_id.clone(),
+        request_id: turn.request_id.clone(),
+        thread_ref: turn.thread_ref.clone(),
+        actor_ref: turn.actor_ref.clone(),
+        tool_id: effect.tool_id.clone(),
+        input_digest: effect.input_digest(),
+    }
+}
+
 fn claim(text: &str, reference: &str) -> EvidenceClaim {
     EvidenceClaim {
         text: text.into(),
@@ -825,18 +890,19 @@ fn final_draft() -> FinalDraft {
 
 #[tokio::test]
 async fn executes_inspect_change_verify_report_loop() {
-    let inspect = ToolCall {
-        call_id: "inspect".into(),
-        tool_id: "runtime_status".into(),
-        purpose: "Read the current configuration and process state.".into(),
-        input: json!({"runtime_ref": "runtime://one"}),
-    };
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before");
     let change = ToolCall {
         call_id: "change".into(),
         tool_id: "runtime_config_update".into(),
         purpose: "Update the configured default model.".into(),
         input: json!({"runtime_ref": "runtime://one", "model": "model://next"}),
     };
+    let change_descriptor = tool(
+        "runtime_config_update",
+        ToolAuthorityClass::Actuate,
+        ToolEffectClass::ExternalEffect,
+    );
     let verify = ToolCall {
         call_id: "verify".into(),
         tool_id: "runtime_status".into(),
@@ -844,15 +910,14 @@ async fn executes_inspect_change_verify_report_loop() {
         input: json!({"runtime_ref": "runtime://one"}),
     };
     let mut turn = request("Change the runtime model and verify it end to end.");
-    turn.effect_authorizations.push(EffectAuthorization {
-        approval_ref: "approval://runtime-change".into(),
-        tenant_id: turn.tenant_id.clone(),
-        request_id: turn.request_id.clone(),
-        thread_ref: turn.thread_ref.clone(),
-        actor_ref: turn.actor_ref.clone(),
-        tool_id: change.tool_id.clone(),
-        input_digest: change.input_digest(),
-    });
+    turn.effect_authorizations.push(effect_authorization_for(
+        &turn,
+        &change_descriptor,
+        &change,
+        &inspect,
+        &inspect_descriptor,
+        &inspect_result,
+    ));
     let model = scripted(
         ExecutionLane::Act,
         VecDeque::from([
@@ -871,26 +936,9 @@ async fn executes_inspect_change_verify_report_loop() {
         ]),
     );
     let tools = ScriptedTools {
-        descriptors: vec![
-            tool(
-                "runtime_status",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            tool(
-                "runtime_config_update",
-                ToolAuthorityClass::Actuate,
-                ToolEffectClass::ExternalEffect,
-            ),
-        ],
+        descriptors: vec![inspect_descriptor, change_descriptor],
         results: Mutex::new(BTreeMap::from([
-            (
-                inspect.call_id,
-                success(
-                    "Read the current runtime.",
-                    evidence("evidence://before", "The prior model was configured."),
-                ),
-            ),
+            (inspect.call_id, inspect_result),
             (
                 change.call_id,
                 success(
@@ -1179,6 +1227,8 @@ async fn repairs_internal_query_refusals_into_an_operator_facing_boundary() {
 
 #[tokio::test]
 async fn requests_exact_approval_before_an_effect() {
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before-approval");
     let change = ToolCall {
         call_id: "change".into(),
         tool_id: "runtime_config_update".into(),
@@ -1187,17 +1237,23 @@ async fn requests_exact_approval_before_an_effect() {
     };
     let model = scripted(
         ExecutionLane::Act,
-        VecDeque::from([ModelDecision::InvokeTool {
-            call: change.clone(),
-        }]),
+        VecDeque::from([
+            ModelDecision::InvokeTool { call: inspect },
+            ModelDecision::InvokeTool {
+                call: change.clone(),
+            },
+        ]),
     );
     let tools = ScriptedTools {
-        descriptors: vec![tool(
-            "runtime_config_update",
-            ToolAuthorityClass::Actuate,
-            ToolEffectClass::ExternalEffect,
-        )],
-        results: Mutex::new(BTreeMap::new()),
+        descriptors: vec![
+            inspect_descriptor,
+            tool(
+                "runtime_config_update",
+                ToolAuthorityClass::Actuate,
+                ToolEffectClass::ExternalEffect,
+            ),
+        ],
+        results: Mutex::new(BTreeMap::from([("inspect".into(), inspect_result)])),
     };
 
     let outcome = run_turn(
@@ -1212,10 +1268,13 @@ async fn requests_exact_approval_before_an_effect() {
     };
     assert_eq!(request.tool_id, change.tool_id);
     assert_eq!(request.input_digest, change.input_digest());
+    assert_eq!(request.authority.target_refs, vec!["runtime://one"]);
 }
 
 #[tokio::test]
 async fn rejects_an_approval_bound_to_another_actor_and_thread() {
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before-wrong-approval");
     let change = ToolCall {
         call_id: "change".into(),
         tool_id: "runtime_config_update".into(),
@@ -1223,28 +1282,34 @@ async fn rejects_an_approval_bound_to_another_actor_and_thread() {
         input: json!({"runtime_ref": "runtime://one", "model": "model://next"}),
     };
     let mut turn = request("Change the runtime model and verify it.");
-    turn.effect_authorizations.push(EffectAuthorization {
-        approval_ref: "approval://wrong-principal".into(),
-        tenant_id: turn.tenant_id.clone(),
-        request_id: turn.request_id.clone(),
-        thread_ref: "thread-other".into(),
-        actor_ref: "actor-other".into(),
-        tool_id: change.tool_id.clone(),
-        input_digest: change.input_digest(),
-    });
+    let effect_descriptor = tool(
+        "runtime_config_update",
+        ToolAuthorityClass::Actuate,
+        ToolEffectClass::ExternalEffect,
+    );
+    let mut wrong = effect_authorization_for(
+        &turn,
+        &effect_descriptor,
+        &change,
+        &inspect,
+        &inspect_descriptor,
+        &inspect_result,
+    );
+    wrong.thread_ref = "thread-other".into();
+    wrong.actor_ref = "actor-other".into();
+    turn.effect_authorizations.push(wrong);
     let model = scripted(
         ExecutionLane::Act,
-        VecDeque::from([ModelDecision::InvokeTool {
-            call: change.clone(),
-        }]),
+        VecDeque::from([
+            ModelDecision::InvokeTool { call: inspect },
+            ModelDecision::InvokeTool {
+                call: change.clone(),
+            },
+        ]),
     );
     let tools = ScriptedTools {
-        descriptors: vec![tool(
-            "runtime_config_update",
-            ToolAuthorityClass::Actuate,
-            ToolEffectClass::ExternalEffect,
-        )],
-        results: Mutex::new(BTreeMap::new()),
+        descriptors: vec![inspect_descriptor, effect_descriptor],
+        results: Mutex::new(BTreeMap::from([("inspect".into(), inspect_result)])),
     };
 
     let outcome = run_turn(&model, &tools, turn).await.unwrap();
@@ -1253,6 +1318,8 @@ async fn rejects_an_approval_bound_to_another_actor_and_thread() {
 
 #[tokio::test]
 async fn consumes_each_effect_authorization_once() {
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before-consumption");
     let first = ToolCall {
         call_id: "change-1".into(),
         tool_id: "runtime_config_update".into(),
@@ -1264,18 +1331,23 @@ async fn consumes_each_effect_authorization_once() {
         ..first.clone()
     };
     let mut turn = request("Change the runtime model and verify it.");
-    turn.effect_authorizations.push(EffectAuthorization {
-        approval_ref: "approval://runtime-change".into(),
-        tenant_id: turn.tenant_id.clone(),
-        request_id: turn.request_id.clone(),
-        thread_ref: turn.thread_ref.clone(),
-        actor_ref: turn.actor_ref.clone(),
-        tool_id: first.tool_id.clone(),
-        input_digest: first.input_digest(),
-    });
+    let effect_descriptor = tool(
+        "runtime_config_update",
+        ToolAuthorityClass::Actuate,
+        ToolEffectClass::ExternalEffect,
+    );
+    turn.effect_authorizations.push(effect_authorization_for(
+        &turn,
+        &effect_descriptor,
+        &first,
+        &inspect,
+        &inspect_descriptor,
+        &inspect_result,
+    ));
     let model = scripted(
         ExecutionLane::Act,
         VecDeque::from([
+            ModelDecision::InvokeTool { call: inspect },
             ModelDecision::InvokeTool {
                 call: first.clone(),
             },
@@ -1285,12 +1357,9 @@ async fn consumes_each_effect_authorization_once() {
         ]),
     );
     let tools = ScriptedTools {
-        descriptors: vec![tool(
-            "runtime_config_update",
-            ToolAuthorityClass::Actuate,
-            ToolEffectClass::ExternalEffect,
-        )],
+        descriptors: vec![inspect_descriptor, effect_descriptor],
         results: Mutex::new(BTreeMap::from([
+            ("inspect".into(), inspect_result),
             (
                 first.call_id,
                 success(
@@ -1318,6 +1387,8 @@ async fn consumes_each_effect_authorization_once() {
 
 #[tokio::test]
 async fn rejects_effect_claims_without_later_independent_verification() {
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before-unverified-effect");
     let change = ToolCall {
         call_id: "change".into(),
         tool_id: "runtime_config_update".into(),
@@ -1325,15 +1396,19 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         input: json!({"runtime_ref": "runtime://one", "model": "model://next"}),
     };
     let mut turn = request("Change the runtime model.");
-    turn.effect_authorizations.push(EffectAuthorization {
-        approval_ref: "approval://runtime-change".into(),
-        tenant_id: turn.tenant_id.clone(),
-        request_id: turn.request_id.clone(),
-        thread_ref: turn.thread_ref.clone(),
-        actor_ref: turn.actor_ref.clone(),
-        tool_id: change.tool_id.clone(),
-        input_digest: change.input_digest(),
-    });
+    let effect_descriptor = tool(
+        "runtime_config_update",
+        ToolAuthorityClass::Actuate,
+        ToolEffectClass::ExternalEffect,
+    );
+    turn.effect_authorizations.push(effect_authorization_for(
+        &turn,
+        &effect_descriptor,
+        &change,
+        &inspect,
+        &inspect_descriptor,
+        &inspect_result,
+    ));
     let mut draft = final_draft();
     draft.summary_evidence_refs = vec!["evidence://effect".into()];
     draft.checked.clear();
@@ -1342,23 +1417,21 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         "evidence://effect",
     )];
     draft.current_state.clear();
-    let model = scripted(
-        ExecutionLane::Act,
-        tool_then_repeat_draft(change.clone(), draft),
-    );
+    let mut decisions = VecDeque::from([ModelDecision::InvokeTool { call: inspect }]);
+    decisions.extend(tool_then_repeat_draft(change.clone(), draft));
+    let model = scripted(ExecutionLane::Act, decisions);
     let tools = ScriptedTools {
-        descriptors: vec![tool(
-            "runtime_config_update",
-            ToolAuthorityClass::Actuate,
-            ToolEffectClass::ExternalEffect,
-        )],
-        results: Mutex::new(BTreeMap::from([(
-            change.call_id,
-            success(
-                "Updated the runtime configuration.",
-                evidence("evidence://effect", "The write was accepted."),
+        descriptors: vec![inspect_descriptor, effect_descriptor],
+        results: Mutex::new(BTreeMap::from([
+            ("inspect".into(), inspect_result),
+            (
+                change.call_id,
+                success(
+                    "Updated the runtime configuration.",
+                    evidence("evidence://effect", "The write was accepted."),
+                ),
             ),
-        )])),
+        ])),
     };
 
     let AgentTurnOutcome::Delivered {
@@ -1377,6 +1450,8 @@ async fn rejects_effect_claims_without_later_independent_verification() {
 
 #[tokio::test]
 async fn stops_and_reconciles_outcome_unknown_without_retrying() {
+    let (inspect, inspect_descriptor, inspect_result) =
+        runtime_read("inspect", "evidence://before-unknown-effect");
     let effect = ToolCall {
         call_id: "effect".into(),
         tool_id: "runtime_config_update".into(),
@@ -1384,18 +1459,23 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
         input: json!({"runtime_ref": "runtime://one", "model": "model://next"}),
     };
     let mut turn = request("Change the runtime model.");
-    turn.effect_authorizations.push(EffectAuthorization {
-        approval_ref: "approval://runtime-change".into(),
-        tenant_id: turn.tenant_id.clone(),
-        request_id: turn.request_id.clone(),
-        thread_ref: turn.thread_ref.clone(),
-        actor_ref: turn.actor_ref.clone(),
-        tool_id: effect.tool_id.clone(),
-        input_digest: effect.input_digest(),
-    });
+    let effect_descriptor = tool(
+        "runtime_config_update",
+        ToolAuthorityClass::Actuate,
+        ToolEffectClass::ExternalEffect,
+    );
+    turn.effect_authorizations.push(effect_authorization_for(
+        &turn,
+        &effect_descriptor,
+        &effect,
+        &inspect,
+        &inspect_descriptor,
+        &inspect_result,
+    ));
     let model = scripted(
         ExecutionLane::Act,
         VecDeque::from([
+            ModelDecision::InvokeTool { call: inspect },
             ModelDecision::InvokeTool {
                 call: effect.clone(),
             },
@@ -1410,25 +1490,24 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
     );
     uncertain_effect_evidence.complete = false;
     let tools = ScriptedTools {
-        descriptors: vec![tool(
-            "runtime_config_update",
-            ToolAuthorityClass::Actuate,
-            ToolEffectClass::ExternalEffect,
-        )],
-        results: Mutex::new(BTreeMap::from([(
-            effect.call_id,
-            ToolResult {
-                state: ToolResultState::OutcomeUnknown,
-                summary: "The provider connection ended before a receipt was returned.".into(),
-                data: json!({
-                    "error_kind": "provider_outcome_unknown",
-                    "retryable": false,
-                    "operator_action": "Reconcile the provider state before any further effect."
-                }),
-                evidence: vec![uncertain_effect_evidence],
-                blocker: Some("The effect may have happened, so retry is unsafe.".into()),
-            },
-        )])),
+        descriptors: vec![inspect_descriptor, effect_descriptor],
+        results: Mutex::new(BTreeMap::from([
+            ("inspect".into(), inspect_result),
+            (
+                effect.call_id,
+                ToolResult {
+                    state: ToolResultState::OutcomeUnknown,
+                    summary: "The provider connection ended before a receipt was returned.".into(),
+                    data: json!({
+                        "error_kind": "provider_outcome_unknown",
+                        "retryable": false,
+                        "operator_action": "Reconcile the provider state before any further effect."
+                    }),
+                    evidence: vec![uncertain_effect_evidence],
+                    blocker: Some("The effect may have happened, so retry is unsafe.".into()),
+                },
+            ),
+        ])),
     };
 
     let outcome = run_turn(&model, &tools, turn).await.unwrap();
@@ -1442,7 +1521,7 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
         panic!("expected blocked delivered result");
     };
     assert_eq!(final_state, FinalState::Blocked);
-    assert_eq!(tool_call_count, 1);
+    assert_eq!(tool_call_count, 2);
     assert!(markdown.contains("Outcome not confirmed"));
     assert!(markdown.contains("Reconcile"));
 }

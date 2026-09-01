@@ -8133,10 +8133,11 @@ mod tests {
                 .iter()
                 .any(|tool| tool.tool_id == CAPABILITY_EXECUTE_READ)
         );
-        assert!(visible.iter().any(|tool| {
-            tool.tool_id == "runtime_config_update"
-                && tool.authority_class == ToolAuthorityClass::Actuate
-        }));
+        assert!(
+            !visible
+                .iter()
+                .any(|tool| tool.authority_class == ToolAuthorityClass::Actuate)
+        );
         assert!(!visible.iter().any(|tool| {
             tool.tool_id.starts_with("mcp.")
                 && matches!(

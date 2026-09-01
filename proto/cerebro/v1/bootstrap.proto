@@ -482,8 +482,9 @@ message ExecuteGraphActionRequest {
   map<string, string> parameters = 7;
   // When true, validate and return the provider plan without mutating provider or finding state.
   bool dry_run = 8;
-  // Required for mutating execution. Dry runs do not require approval.
-  bool approved = 9;
+  // Deprecated. Caller assertions do not authorize mutation; use the durable
+  // Action proposal, approval, claim, and execution API.
+  bool approved = 9 [deprecated = true];
 }
 
 // ReconcileGraphActionRequest asks Cerebro to refresh one linked provider action.

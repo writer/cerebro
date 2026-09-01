@@ -39,6 +39,7 @@ export function createProductionOffSlackRuntime(
   const outcomes = new FileOutcomeStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const agentClient = new CerebroAskClient({
+    agentRuntimeToken: config.slackAgentRuntimeToken,
     agentRuntimeUrl: config.slackAnswerAuthorityUrl,
     answerAuthority: new SlackAnswerAuthorityClient({
       baseUrl: config.slackAnswerAuthorityUrl,
