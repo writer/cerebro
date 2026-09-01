@@ -381,6 +381,11 @@ var rustAuthoritativeKinds = map[string][]string{
 		"digitalocean.firewalls",
 		"digitalocean.vpcs",
 	},
+	"doppler": {
+		"doppler.audit_events",
+		"doppler.projects",
+		"doppler.secrets",
+	},
 	"duo": {
 		"duo.administrator",
 		"duo.application",

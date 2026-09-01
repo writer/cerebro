@@ -168,11 +168,75 @@ pub enum Pagination {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectionEntity {
+    entity_type: String,
+    urn_kind: String,
+    id_attributes: Vec<String>,
+    label_attribute: String,
+}
+
+impl ProjectionEntity {
+    pub fn entity_type(&self) -> &str {
+        &self.entity_type
+    }
+
+    pub fn urn_kind(&self) -> &str {
+        &self.urn_kind
+    }
+
+    pub fn id_attributes(&self) -> &[String] {
+        &self.id_attributes
+    }
+
+    pub fn label_attribute(&self) -> &str {
+        &self.label_attribute
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectionRelationship {
+    relation: String,
+    from: Option<ProjectionEntity>,
+    to: ProjectionEntity,
+    required_attributes: Vec<String>,
+    link_attributes: Vec<String>,
+    match_type: String,
+}
+
+impl ProjectionRelationship {
+    pub fn relation(&self) -> &str {
+        &self.relation
+    }
+
+    pub fn from(&self) -> Option<&ProjectionEntity> {
+        self.from.as_ref()
+    }
+
+    pub fn to(&self) -> &ProjectionEntity {
+        &self.to
+    }
+
+    pub fn required_attributes(&self) -> &[String] {
+        &self.required_attributes
+    }
+
+    pub fn link_attributes(&self) -> &[String] {
+        &self.link_attributes
+    }
+
+    pub fn match_type(&self) -> &str {
+        &self.match_type
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Projection {
     class: ProjectionClass,
     template: String,
     fields: BTreeMap<String, String>,
     static_fields: BTreeMap<String, String>,
+    entity: Option<ProjectionEntity>,
+    relationships: Vec<ProjectionRelationship>,
 }
 
 impl Projection {
@@ -190,6 +254,14 @@ impl Projection {
 
     pub fn static_fields(&self) -> &BTreeMap<String, String> {
         &self.static_fields
+    }
+
+    pub fn entity(&self) -> Option<&ProjectionEntity> {
+        self.entity.as_ref()
+    }
+
+    pub fn relationships(&self) -> &[ProjectionRelationship] {
+        &self.relationships
     }
 }
 
@@ -1034,6 +1106,36 @@ struct ProjectionWire {
     fields: BTreeMap<String, String>,
     #[serde(default)]
     static_fields: BTreeMap<String, String>,
+    #[serde(default)]
+    entity: Option<ProjectionEntityWire>,
+    #[serde(default)]
+    relationships: Vec<ProjectionRelationshipWire>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct ProjectionEntityWire {
+    #[serde(default)]
+    entity_type: String,
+    #[serde(default)]
+    urn_kind: String,
+    #[serde(default)]
+    id_attributes: Vec<String>,
+    #[serde(default)]
+    label_attribute: String,
+}
+
+#[derive(Deserialize)]
+struct ProjectionRelationshipWire {
+    relation: String,
+    #[serde(default)]
+    from: Option<ProjectionEntityWire>,
+    to: ProjectionEntityWire,
+    #[serde(default)]
+    required_attributes: Vec<String>,
+    #[serde(default)]
+    link_attributes: Vec<String>,
+    #[serde(default)]
+    match_type: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1695,13 +1797,20 @@ fn compile_family(
         path: path.to_path_buf(),
         message: format!("family {} requires a projection", family.id),
     })?;
-    if generic_runtime_supported && projection.template.trim().is_empty() {
+    let ProjectionWire {
+        template,
+        fields: projection_fields,
+        static_fields: projection_static_fields,
+        entity: projection_entity,
+        relationships: projection_relationships,
+    } = projection;
+    if generic_runtime_supported && template.trim().is_empty() {
         return invalid(
             path,
             &format!("family {} projection template is required", family.id),
         );
     }
-    let template = projection.template.trim().to_owned();
+    let template = template.trim().to_owned();
     let projection_class =
         ProjectionClass::for_template(&template).ok_or_else(|| CatalogError::Invalid {
             path: path.to_path_buf(),
@@ -1710,6 +1819,11 @@ fn compile_family(
                 family.id, template
             ),
         })?;
+    let projection_entity = projection_entity
+        .map(|entity| compile_projection_entity(path, &family.id, "entity", entity))
+        .transpose()?;
+    let projection_relationships =
+        compile_projection_relationships(path, &family.id, projection_relationships)?;
     let record_selector = if !family.record_selector.trim().is_empty() {
         family.record_selector
     } else if !family.list_key.trim().is_empty() {
@@ -1900,11 +2014,134 @@ fn compile_family(
         projection: Projection {
             class: projection_class,
             template,
-            fields: projection.fields,
-            static_fields: projection.static_fields,
+            fields: projection_fields,
+            static_fields: projection_static_fields,
+            entity: projection_entity,
+            relationships: projection_relationships,
         },
         unsupported_reasons,
     })
+}
+
+fn compile_projection_entity(
+    path: &Path,
+    family_id: &str,
+    role: &str,
+    entity: ProjectionEntityWire,
+) -> Result<ProjectionEntity, CatalogError> {
+    let entity_type = entity.entity_type.trim().to_owned();
+    let urn_kind = entity.urn_kind.trim().to_owned();
+    let label_attribute = entity.label_attribute.trim().to_owned();
+    let id_attributes = entity
+        .id_attributes
+        .into_iter()
+        .map(|attribute| attribute.trim().to_owned())
+        .collect::<Vec<_>>();
+    if entity_type.is_empty()
+        || entity_type.len() > 128
+        || entity_type.chars().any(char::is_control)
+        || urn_kind.is_empty()
+        || urn_kind.len() > 128
+        || urn_kind.chars().any(char::is_control)
+        || id_attributes.is_empty()
+        || id_attributes.len() > 8
+        || id_attributes.iter().any(|attribute| {
+            attribute.is_empty() || attribute.len() > 128 || attribute.chars().any(char::is_control)
+        })
+        || id_attributes.iter().collect::<BTreeSet<_>>().len() != id_attributes.len()
+        || label_attribute.len() > 128
+        || label_attribute.chars().any(char::is_control)
+    {
+        return invalid(
+            path,
+            &format!("family {family_id} projection {role} is invalid"),
+        );
+    }
+    Ok(ProjectionEntity {
+        entity_type,
+        urn_kind,
+        id_attributes,
+        label_attribute,
+    })
+}
+
+fn compile_projection_relationships(
+    path: &Path,
+    family_id: &str,
+    relationships: Vec<ProjectionRelationshipWire>,
+) -> Result<Vec<ProjectionRelationship>, CatalogError> {
+    if relationships.len() > 32 {
+        return invalid(
+            path,
+            &format!("family {family_id} projection relationships exceed 32"),
+        );
+    }
+    relationships
+        .into_iter()
+        .enumerate()
+        .map(|(index, relationship)| {
+            let relation = relationship.relation.trim().to_owned();
+            if relation != "belongs_to"
+                || relationship.required_attributes.len() > 16
+                || relationship.link_attributes.len() > 16
+            {
+                return invalid(
+                    path,
+                    &format!("family {family_id} projection relationship {index} is unsupported"),
+                );
+            }
+            let required_attributes = relationship
+                .required_attributes
+                .into_iter()
+                .map(|attribute| attribute.trim().to_owned())
+                .collect::<Vec<_>>();
+            let link_attributes = relationship
+                .link_attributes
+                .into_iter()
+                .map(|attribute| attribute.trim().to_owned())
+                .collect::<Vec<_>>();
+            let match_type = relationship.match_type.trim().to_owned();
+            if required_attributes
+                .iter()
+                .chain(&link_attributes)
+                .any(|attribute| {
+                    attribute.is_empty()
+                        || attribute.len() > 128
+                        || attribute.chars().any(char::is_control)
+                })
+                || match_type.len() > 128
+                || match_type.chars().any(char::is_control)
+            {
+                return invalid(
+                    path,
+                    &format!("family {family_id} projection relationship {index} is invalid"),
+                );
+            }
+            Ok(ProjectionRelationship {
+                relation,
+                from: relationship
+                    .from
+                    .map(|entity| {
+                        compile_projection_entity(
+                            path,
+                            family_id,
+                            &format!("relationship {index} from"),
+                            entity,
+                        )
+                    })
+                    .transpose()?,
+                to: compile_projection_entity(
+                    path,
+                    family_id,
+                    &format!("relationship {index} to"),
+                    relationship.to,
+                )?,
+                required_attributes,
+                link_attributes,
+                match_type,
+            })
+        })
+        .collect()
 }
 
 fn config_binding(

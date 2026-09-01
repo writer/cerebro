@@ -954,6 +954,8 @@ pub enum RelationKind {
     RunsIn,
     /// An organization, account, environment, or group contains another object.
     Contains,
+    /// A provider object belongs to another provider-scoped object.
+    BelongsTo,
     /// An identity or role can assume a role.
     CanAssume,
     /// An identity, principal, application, or service can access an asset.
@@ -970,6 +972,10 @@ pub enum RelationKind {
     Supports,
     /// An object supplies evidence for a finding or control.
     EvidenceFor,
+    /// A provider object carries an evidence record collected with it.
+    HasEvidence,
+    /// A provider identity performed an observed action on an object.
+    ActedOn,
     /// A finding or policy maps to a control.
     MappedToControl,
     /// An object is tracked by a provider-specific record.
@@ -1015,6 +1021,7 @@ impl RelationKind {
             Self::Deploys => "deploys",
             Self::RunsIn => "runs_in",
             Self::Contains => "contains",
+            Self::BelongsTo => "belongs_to",
             Self::CanAssume => "can_assume",
             Self::CanAccess => "can_access",
             Self::Grants => "grants",
@@ -1023,6 +1030,8 @@ impl RelationKind {
             Self::Affects => "affects",
             Self::Supports => "supports",
             Self::EvidenceFor => "evidence_for",
+            Self::HasEvidence => "has_evidence",
+            Self::ActedOn => "acted_on",
             Self::MappedToControl => "mapped_to_control",
             Self::TrackedBy => "tracked_by",
             Self::Implements => "implements",
@@ -1056,6 +1065,7 @@ impl RelationKind {
             "deploys" => Self::Deploys,
             "runs_in" => Self::RunsIn,
             "contains" => Self::Contains,
+            "belongs_to" => Self::BelongsTo,
             "can_assume" => Self::CanAssume,
             "can_access" => Self::CanAccess,
             "grants" => Self::Grants,
@@ -1064,6 +1074,8 @@ impl RelationKind {
             "affects" => Self::Affects,
             "supports" => Self::Supports,
             "evidence_for" => Self::EvidenceFor,
+            "has_evidence" => Self::HasEvidence,
+            "acted_on" => Self::ActedOn,
             "mapped_to_control" => Self::MappedToControl,
             "tracked_by" => Self::TrackedBy,
             "implements" => Self::Implements,
@@ -1112,6 +1124,9 @@ impl RelationKind {
                 matches!(from, Organization | Account | Environment | Group)
                     && !matches!(to, Person)
             }
+            Self::BelongsTo => {
+                !matches!(from, Person | Identity) && !matches!(to, Person | Identity)
+            }
             Self::CanAssume => matches!(from, Identity | Role) && matches!(to, Role),
             Self::CanAccess => {
                 matches!(from, Identity | Group | Role | Application | Service)
@@ -1140,6 +1155,11 @@ impl RelationKind {
             }
             Self::EvidenceFor => {
                 !matches!(from, Person | Identity) && matches!(to, Finding | Control)
+            }
+            Self::HasEvidence => !matches!(from, Person | Identity) && matches!(to, Evidence),
+            Self::ActedOn => {
+                matches!(from, Person | Identity | Provider(_))
+                    && !matches!(to, Person | Identity | Evidence)
             }
             Self::MappedToControl => matches!(from, Finding | Policy) && matches!(to, Control),
             Self::TrackedBy => !matches!(from, Person | Identity) && matches!(to, Provider(_)),

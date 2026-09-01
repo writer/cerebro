@@ -973,37 +973,6 @@ func catalogRuntimeSyntheticEmail(token string) string {
 func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 	registry := BuiltinRegistry()
 
-	t.Run("doppler secrets belongs_to project", func(t *testing.T) {
-		projector := registry.projectors["doppler.secrets"]
-		if projector == nil {
-			t.Fatal("missing registered projector for doppler.secrets")
-		}
-		entities, links, err := projector(&cerebrov1.EventEnvelope{
-			Id:       "event-1",
-			TenantId: "tenant",
-			SourceId: "doppler",
-			Kind:     "doppler.secrets",
-			Attributes: map[string]string{
-				"secret_id":   "secret-1",
-				"secret_name": "DATABASE_URL",
-				"project_id":  "proj-1",
-				"evidence_id": "evidence-1",
-			},
-		})
-		if err != nil {
-			t.Fatalf("doppler.secrets projector error = %v", err)
-		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:doppler_project:proj-1") {
-			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
-		}
-		if !hasProjectedEntityType(entities, "runtime_evidence") {
-			t.Fatalf("evidence node dropped by relationship augmentation: %#v", entities)
-		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationHasEvidence, "urn:cerebro:tenant:runtime_evidence:evidence-1") {
-			t.Fatalf("has_evidence edge corrupted or dropped by relationship augmentation: %#v", links)
-		}
-	})
-
 	// hashicorp_vault secrets belongs_to vault was covered here before
 	// hashicorp_vault.secrets became fully Rust-authoritative and its Go
 	// projection writer was retired (writer/cerebro#2822), at which point

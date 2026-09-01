@@ -537,10 +537,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"vulnview.site":                                 vulnViewSiteProjections,
 	"vulnview.vulnerability":                        vulnViewVulnerabilityProjections,
 	// hashicorp_vault generated projectors (sourcegen promotion)
-	// doppler generated projectors (sourcegen promotion)
-	"doppler.secrets":      dopplerSecretsProjections,
-	"doppler.projects":     dopplerProjectsProjections,
-	"doppler.audit_events": dopplerAuditEventsProjections,
 	// akeyless generated projectors (sourcegen promotion)
 	// conjur generated projectors (sourcegen promotion)
 
