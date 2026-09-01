@@ -1,10 +1,10 @@
 package graphquery
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
-	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -24,18 +24,25 @@ func TestAttackPathsSyntheticTraversalProofEvals(t *testing.T) {
 		t.Fatalf("synthetic eval count = %d, want at least 600", len(cases))
 	}
 	for _, tc := range cases {
-		paths := attackpath.PathsFromRows([]ports.CypherRow{syntheticAttackPathRow(tc)})
-		gotPath := len(paths) == 1
+		store := &graphAttackPathStore{result: &ports.CloudAttackPathResult{
+			TenantID: "synthetic",
+			Paths:    []ports.CloudAttackPath{syntheticAttackPath(tc)},
+		}}
+		result, err := NewWithCapabilities(nil, nil, nil, nil, store).GetAttackPaths(context.Background(), AttackPathRequest{TenantID: "synthetic"})
+		if err != nil {
+			t.Fatalf("%s: GetAttackPaths() error = %v", tc.id, err)
+		}
+		gotPath := len(result.Paths) == 1
 		if gotPath != tc.wantPath {
-			t.Fatalf("%s: got path=%v, want %v; paths=%#v", tc.id, gotPath, tc.wantPath, paths)
+			t.Fatalf("%s: got path=%v, want %v; paths=%#v", tc.id, gotPath, tc.wantPath, result.Paths)
 		}
 		if !tc.wantPath {
 			continue
 		}
-		if got := len(paths[0].TraversalEdges); got != len(tc.relationChain) {
+		if got := len(result.Paths[0].TraversalEdges); got != len(tc.relationChain) {
 			t.Fatalf("%s: traversal edge count = %d, want %d", tc.id, got, len(tc.relationChain))
 		}
-		if got := paths[0].TraversalEdges[len(paths[0].TraversalEdges)-1].To.URN; got != fmt.Sprintf("urn:cerebro:synthetic:principal:%s", tc.id) {
+		if got := result.Paths[0].TraversalEdges[len(result.Paths[0].TraversalEdges)-1].To.URN; got != fmt.Sprintf("urn:cerebro:synthetic:principal:%s", tc.id) {
 			t.Fatalf("%s: final traversal target = %q", tc.id, got)
 		}
 	}
@@ -109,12 +116,10 @@ func syntheticAttackPathEvalCases() []syntheticAttackPathEvalCase {
 	return cases
 }
 
-func syntheticAttackPathRow(tc syntheticAttackPathEvalCase) ports.CypherRow {
-	relationChain := make([]any, 0, len(tc.relationChain))
-	for _, relation := range tc.relationChain {
-		relationChain = append(relationChain, relation)
-	}
-	traversalEdges := make([]any, 0, len(tc.edgeRelations))
+func syntheticAttackPath(tc syntheticAttackPathEvalCase) ports.CloudAttackPath {
+	path := graphTypedAttackPath("synthetic", tc.id)
+	path.RelationChain = append([]string(nil), tc.relationChain...)
+	traversalEdges := make([]ports.CloudAttackPathEdge, 0, len(tc.edgeRelations))
 	for idx, relation := range tc.edgeRelations {
 		fromURN := fmt.Sprintf("urn:cerebro:synthetic:node:%s:%d", tc.id, idx)
 		toURN := fmt.Sprintf("urn:cerebro:synthetic:node:%s:%d", tc.id, idx+1)
@@ -124,62 +129,15 @@ func syntheticAttackPathRow(tc syntheticAttackPathEvalCase) ports.CypherRow {
 		if idx == tc.blankToIndex {
 			toURN = ""
 		}
-		traversalEdges = append(traversalEdges, map[string]any{
-			"from_urn":         fromURN,
-			"from_entity_type": "synthetic.resource",
-			"from_label":       fmt.Sprintf("node-%d", idx),
-			"relation":         relation,
-			"to_urn":           toURN,
-			"to_entity_type":   "synthetic.principal",
-			"to_label":         fmt.Sprintf("node-%d", idx+1),
-			"direction":        tc.edgeDirections[idx],
+		traversalEdges = append(traversalEdges, ports.CloudAttackPathEdge{
+			From:      ports.CloudAttackPathNode{URN: fromURN, EntityType: "synthetic.resource", Label: fmt.Sprintf("node-%d", idx)},
+			Relation:  relation,
+			To:        ports.CloudAttackPathNode{URN: toURN, EntityType: "synthetic.principal", Label: fmt.Sprintf("node-%d", idx+1)},
+			Direction: tc.edgeDirections[idx],
 		})
 	}
-	return ports.CypherRow{Values: map[string]any{
-		"public_urn":             "urn:cerebro:synthetic:public:internet",
-		"public_entity_type":     "synthetic.public_principal",
-		"public_label":           "public internet",
-		"exposed_urn":            fmt.Sprintf("urn:cerebro:synthetic:resource:%s", tc.id),
-		"exposed_entity_type":    "synthetic.resource",
-		"exposed_label":          "exposed resource",
-		"account_urn":            "urn:cerebro:synthetic:cloud_account:account-1",
-		"account_entity_type":    "cloud.account",
-		"account_label":          "account-1",
-		"principal_urn":          fmt.Sprintf("urn:cerebro:synthetic:principal:%s", tc.id),
-		"principal_entity_type":  "synthetic.principal",
-		"principal_label":        "privileged principal",
-		"permission_urn":         "urn:cerebro:synthetic:permission:admin",
-		"permission_entity_type": "synthetic.permission",
-		"permission_label":       "admin",
-		"reach_relation":         "can_reach",
-		"access_relation":        "can_admin",
-		"relation_chain":         relationChain,
-		"exposure_edge": map[string]any{
-			"from_urn": "urn:cerebro:synthetic:public:internet", "from_entity_type": "synthetic.public_principal", "from_label": "public internet",
-			"relation": "can_reach",
-			"to_urn":   fmt.Sprintf("urn:cerebro:synthetic:resource:%s", tc.id), "to_entity_type": "synthetic.resource", "to_label": "exposed resource",
-			"direction": "forward",
-		},
-		"resource_account_edge": map[string]any{
-			"from_urn": fmt.Sprintf("urn:cerebro:synthetic:resource:%s", tc.id), "from_entity_type": "synthetic.resource", "from_label": "exposed resource",
-			"relation": "belongs_to",
-			"to_urn":   "urn:cerebro:synthetic:cloud_account:account-1", "to_entity_type": "cloud.account", "to_label": "account-1",
-			"direction": "forward",
-		},
-		"traversal_edges": traversalEdges,
-		"privilege_edge": map[string]any{
-			"from_urn": fmt.Sprintf("urn:cerebro:synthetic:principal:%s", tc.id), "from_entity_type": "synthetic.principal", "from_label": "privileged principal",
-			"relation": "can_admin",
-			"to_urn":   "urn:cerebro:synthetic:permission:admin", "to_entity_type": "synthetic.permission", "to_label": "admin",
-			"direction": "forward",
-		},
-		"permission_account_edge": map[string]any{
-			"from_urn": "urn:cerebro:synthetic:permission:admin", "from_entity_type": "synthetic.permission", "from_label": "admin",
-			"relation": "belongs_to",
-			"to_urn":   "urn:cerebro:synthetic:cloud_account:account-1", "to_entity_type": "cloud.account", "to_label": "account-1",
-			"direction": "forward",
-		},
-	}}
+	path.TraversalEdges = traversalEdges
+	return path
 }
 
 func syntheticTraversalDirection(relation string) string {

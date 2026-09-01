@@ -187,6 +187,7 @@ type graphQueryFeatureDeps struct {
 	GraphRawCypher     ports.RawCypherQueryStore
 	GraphCatalog       ports.EntityCatalogStore
 	GraphExposure      ports.ExposureCoverageStore
+	GraphAttackPaths   ports.CloudAttackPathStore
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
@@ -195,11 +196,12 @@ func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
 		GraphRawCypher:     deps.GraphReads.RawCypher,
 		GraphCatalog:       deps.GraphReads.Catalog,
 		GraphExposure:      deps.GraphReads.Exposure,
+		GraphAttackPaths:   deps.GraphReads.CloudAttackPaths,
 	}
 }
 
 func newGraphQueryFeatureService(deps graphQueryFeatureDeps) *graphquery.Service {
-	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphRawCypher, deps.GraphCatalog, deps.GraphExposure)
+	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphRawCypher, deps.GraphCatalog, deps.GraphExposure, deps.GraphAttackPaths)
 }
 
 type graphIngestFeatureDeps struct {

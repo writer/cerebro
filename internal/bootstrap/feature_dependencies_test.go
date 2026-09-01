@@ -1,11 +1,18 @@
 package bootstrap
 
 import (
+	"context"
 	"testing"
 
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+type featureAttackPathReader struct{}
+
+func (*featureAttackPathReader) ListCloudAttackPaths(context.Context, ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	return &ports.CloudAttackPathResult{}, nil
+}
 
 func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	deps := Dependencies{}
@@ -25,7 +32,7 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.GraphCatalog != nil || got.AppendLog != nil {
 		t.Fatalf("newKnowledgeFeatureDeps() = %#v, want nil dependencies", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphAttackPaths != nil {
 		t.Fatalf("newGraphQueryFeatureDeps() = %#v, want nil graph query store", got)
 	}
 	if got := newGraphIngestFeatureDeps(deps, nil); got.Sources != nil || got.Runtimes != nil || got.Projector != nil || got.GraphStore != nil || got.RuntimeConfigStore != nil {
@@ -48,9 +55,12 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	legacy := &stubGraphStore{}
 	authority := &stubGraphStore{}
+	attackPaths := &featureAttackPathReader{}
+	graphReads := NewGraphReadCapabilities(authority)
+	graphReads.CloudAttackPaths = attackPaths
 	deps := Dependencies{
 		GraphStore:    legacy,
-		GraphReads:    NewGraphReadCapabilities(authority),
+		GraphReads:    graphReads,
 		GraphAgentLLM: graphagent.NewStubLLMClient(),
 	}
 
@@ -69,7 +79,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != authority {
 		t.Fatalf("workflow replay relation catalog = %#v, want configured authority", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority || got.GraphAttackPaths != attackPaths {
 		t.Fatalf("graph query service = %#v, want configured authority for all capabilities", got)
 	}
 	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads.Neighborhoods != authority || got.GraphReads.RawCypher != authority || got.GraphReads.EntityKindCounts != authority || got.GraphReads.RelationCounts != authority {
@@ -98,7 +108,7 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	if got := newWorkflowReplayFeatureDeps(deps).GraphCatalog; got != nil {
 		t.Fatalf("workflow replay relation catalog = %#v, want nil without configured authority", got)
 	}
-	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil {
+	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil || got.GraphAttackPaths != nil {
 		t.Fatalf("graph query service = %#v, want nil without configured authority", got)
 	}
 	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads != (ports.GraphReadCapabilities{}) {

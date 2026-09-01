@@ -101,6 +101,16 @@ func (s *mcpSingleOnlyGraphStore) GetEntityNeighborhood(context.Context, string,
 	return nil, ports.ErrGraphEntityNotFound
 }
 
+type mcpAttackPathStore struct {
+	result   *ports.CloudAttackPathResult
+	requests []ports.CloudAttackPathRequest
+}
+
+func (s *mcpAttackPathStore) ListCloudAttackPaths(_ context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	s.requests = append(s.requests, request)
+	return s.result, nil
+}
+
 type mcpStubSource struct {
 	spec            *cerebrov1.SourceSpec
 	checkConfigs    []map[string]string
@@ -1832,7 +1842,40 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 			}},
 		},
 	}
-	server := newMCPTestServerWithGraph(t, store, graph)
+	public := ports.CloudAttackPathNode{URN: "urn:cerebro:writer:aws_public_principal:internet", EntityType: "aws.public_principal", Label: "internet"}
+	exposed := ports.CloudAttackPathNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "aws.rds.instance", Label: "prod-db"}
+	account := ports.CloudAttackPathNode{URN: "urn:cerebro:writer:cloud_account:123", EntityType: "cloud.account", Label: "123"}
+	principal := ports.CloudAttackPathNode{URN: "urn:cerebro:writer:aws_role:admin", EntityType: "aws.role", Label: "admin"}
+	permission := ports.CloudAttackPathNode{URN: "urn:cerebro:writer:aws_policy:admin", EntityType: "aws.policy", Label: "admin"}
+	server := newMCPTestServerWithGraph(t, store, graph, &mcpAttackPathStore{result: &ports.CloudAttackPathResult{
+		TenantID: "writer",
+		Counts:   ports.CloudAttackPathCounts{Paths: 1, ExposedResources: 1, PrivilegedPrincipals: 1, CloudAccounts: 1},
+		Paths: []ports.CloudAttackPath{{
+			PublicPrincipal: public,
+			ExposedResource: exposed,
+			CloudAccount:    account,
+			Principal:       principal,
+			Permission:      permission,
+			ReachRelation:   "can_reach",
+			AccessRelation:  "can_admin",
+			RelationChain:   []string{"runs_as"},
+			ExposureEdge: ports.CloudAttackPathEdge{
+				From: public, Relation: "can_reach", To: exposed, Direction: "forward",
+			},
+			ResourceAccountEdge: ports.CloudAttackPathEdge{
+				From: exposed, Relation: "belongs_to", To: account, Direction: "forward",
+			},
+			TraversalEdges: []ports.CloudAttackPathEdge{{
+				From: exposed, Relation: "runs_as", To: principal, Direction: "forward",
+			}},
+			PrivilegeEdge: ports.CloudAttackPathEdge{
+				From: principal, Relation: "can_admin", To: permission, Direction: "forward",
+			},
+			PermissionAccountEdge: ports.CloudAttackPathEdge{
+				From: permission, Relation: "belongs_to", To: account, Direction: "forward",
+			},
+		}},
+	}})
 	defer server.Close()
 
 	assetResp, _ := postMCP(t, server, "", map[string]any{
@@ -2982,6 +3025,7 @@ func TestMCPAgentClaimVerifyDowngradesStalePartialClaim(t *testing.T) {
 }
 
 func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
+	attackPaths := &mcpAttackPathStore{result: &ports.CloudAttackPathResult{TenantID: "writer"}}
 	graph := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
 			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "asset", Label: "prod-db"},
@@ -3041,7 +3085,7 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 			}},
 		},
 	}
-	server := newMCPTestServerWithGraph(t, &stubRuntimeStore{}, graph)
+	server := newMCPTestServerWithGraph(t, &stubRuntimeStore{}, graph, attackPaths)
 	defer server.Close()
 
 	neighborhoodResp, _ := postMCP(t, server, "", map[string]any{
@@ -3122,8 +3166,8 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 	if pathsResp["error"] != nil {
 		t.Fatalf("graph.paths error = %#v", pathsResp["error"])
 	}
-	if len(graph.cypherRequests) != 2 || graph.cypherRequests[1].RowLimit != 100 {
-		t.Fatalf("graph.paths cypher requests = %#v, want sample limit 100", graph.cypherRequests)
+	if len(attackPaths.requests) != 1 || attackPaths.requests[0].Limit != 100 {
+		t.Fatalf("graph.paths requests = %#v, want limit 100", attackPaths.requests)
 	}
 	pathsMetadata := pathsResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
 	if pathsMetadata["limit_applied"] != float64(100) {
@@ -3241,8 +3285,20 @@ func newMCPTestServer(t *testing.T, store *stubRuntimeStore) *httptest.Server {
 	return newMCPTestServerWithGraph(t, store, nil)
 }
 
-func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore) *httptest.Server {
+func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stubGraphStore, attackPaths ...ports.CloudAttackPathStore) *httptest.Server {
 	t.Helper()
+	if len(attackPaths) > 0 {
+		graphReads := NewGraphReadCapabilities(graph)
+		graphReads.CloudAttackPaths = attackPaths[0]
+		app := New(config.Config{
+			HTTPAddr:        "127.0.0.1:0",
+			ShutdownTimeout: time.Second,
+			Auth: config.AuthConfig{Enabled: true, APIKeys: []config.APIKey{{
+				Key: "test-key", Principal: "tester", TenantID: "writer",
+			}}},
+		}, Dependencies{StateStore: store, GraphStore: graph, GraphReads: graphReads}, nil)
+		return httptest.NewServer(app.Handler())
+	}
 	return newMCPTestServerWithGraphReasoning(t, store, graph, nil)
 }
 

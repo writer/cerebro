@@ -16,11 +16,11 @@
   ],
   "callers": [
     { "package": "internal/agentauthoring", "status": "migrated" },
-    { "package": "internal/attackpath", "status": "compat", "blocked_on": "relation-filtered variable-length traversal, aggregations, attribute substring predicates" },
+    { "package": "internal/attackpath", "status": "migrated" },
     { "package": "internal/findingdsl", "status": "migrated" },
     { "package": "internal/findings", "status": "compat", "blocked_on": "aggregations, optional match, variable-length traversal (per graph rule)" },
     { "package": "internal/graphagent", "status": "compat", "note": "ask flow is a permanent resident (LLM-drafted Cypher); probe counts still migrate, then flip this entry to permanent" },
-    { "package": "internal/graphquery", "status": "compat", "blocked_on": "variable-length traversal with relation whitelist, union variants, substring predicates, batched traversal" },
+    { "package": "internal/graphquery", "status": "compat", "blocked_on": "attribute substring predicates and batched variable-length traversal for crown-jewel ranking" },
     { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
     { "package": "internal/grcvendor", "status": "migrated" },
     { "package": "internal/knowledge", "status": "migrated" },

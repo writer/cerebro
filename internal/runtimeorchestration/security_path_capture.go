@@ -114,7 +114,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 		return securitypathdelta.Snapshot{}, err
 	}
 	observedAt := time.Now().UTC()
-	result, err := attackpath.NewWithCapabilities(nil, s.deps.AttackPaths).Traverse(ctx, attackpath.Request{
+	result, err := attackpath.New(s.deps.AttackPaths).Traverse(ctx, attackpath.Request{
 		TenantID:              tenantID,
 		AccountID:             strings.TrimSpace(request.AccountID),
 		RequireAssertionProof: true,
