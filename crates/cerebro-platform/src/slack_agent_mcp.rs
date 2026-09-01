@@ -173,6 +173,7 @@ impl McpAgentTools {
         let observe_tools = configured_tool_names(MCP_OBSERVE_TOOLS_ENV)?;
         let propose_tools = configured_tool_names(MCP_PROPOSE_TOOLS_ENV)?;
         let actuate_tools = configured_tool_names(MCP_ACTUATE_TOOLS_ENV)?;
+        reject_direct_actuation_policy(&actuate_tools)?;
         let authority_policy_configured =
             !observe_tools.is_empty() || !propose_tools.is_empty() || !actuate_tools.is_empty();
         let selection_signing_key = selection_signing_key(
@@ -222,10 +223,6 @@ impl McpAgentTools {
 
     pub fn descriptors(&self) -> &[ToolDescriptor] {
         &self.descriptors
-    }
-
-    pub fn descriptor(&self, tool_id: &str) -> Option<&ToolDescriptor> {
-        self.tools.get(tool_id).map(|tool| &tool.descriptor)
     }
 
     pub fn actuation_metrics(&self) -> (u64, u64) {
@@ -873,6 +870,16 @@ fn bind_tools(
         }
     }
     Ok(tools)
+}
+
+fn reject_direct_actuation_policy(actuate_tools: &BTreeSet<String>) -> Result<(), String> {
+    if actuate_tools.is_empty() {
+        return Ok(());
+    }
+    Err(
+        "direct MCP actuation is disabled; register a closed Action definition and trusted broker adapter"
+            .into(),
+    )
 }
 
 fn validate_provider_input(schema: &Value, input: &Value) -> Result<(), String> {
@@ -1931,6 +1938,14 @@ mod tests {
             tools["mcp.cerebro.apply"].descriptor.effect_class,
             ToolEffectClass::ExternalEffect
         );
+    }
+
+    #[test]
+    fn production_policy_rejects_every_direct_mcp_actuator() {
+        assert!(reject_direct_actuation_policy(&BTreeSet::new()).is_ok());
+        let error =
+            reject_direct_actuation_policy(&BTreeSet::from(["cerebro.apply".into()])).unwrap_err();
+        assert!(error.contains("closed Action definition"));
     }
 
     #[test]

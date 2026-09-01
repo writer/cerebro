@@ -310,6 +310,7 @@ export class AssistantQuestionService {
             : {
                 effectAuthorizations: [{
                   approvalRef: resumingApproval.approvalRef,
+                  authority: resumingApproval.authority,
                   inputDigest: resumingApproval.inputDigest,
                   purpose: resumingApproval.purpose,
                   toolId: resumingApproval.toolId,

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import type { AgentApprovalRequest } from "./cerebro-ask-client.js";
 
 const APPROVAL_LIFETIME_MS = 30 * 60 * 1_000;
-const APPROVAL_SCHEMA_VERSION = "slack-agent-approval/v1";
+const APPROVAL_SCHEMA_VERSION = "slack-agent-approval/v2";
 
 export interface PendingAgentApproval extends AgentApprovalRequest {
   actorRef: string;
@@ -35,6 +35,7 @@ export class FileAgentApprovalStore {
       const now = this.clock();
       const approval: PendingAgentApproval = {
         approvalRef: input.approval.approvalRef,
+        authority: input.approval.authority,
         inputDigest: input.approval.inputDigest,
         purpose: input.approval.purpose,
         toolId: input.approval.toolId,
@@ -110,6 +111,7 @@ function validateApproval(value: unknown): PendingAgentApproval {
   const exactKeys = [
     "actorRef",
     "approvalRef",
+    "authority",
     "createdAt",
     "expiresAt",
     "inputDigest",
@@ -126,6 +128,7 @@ function validateApproval(value: unknown): PendingAgentApproval {
     || !text(approval.actorRef)
     || !/^approval:\/\/agent-effect\/[a-f0-9]{64}$/u.test(text(approval.approvalRef))
     || !/^sha256:[a-f0-9]{64}$/u.test(text(approval.inputDigest))
+    || !validAuthorityBinding(approval.authority)
     || !text(approval.purpose)
     || !text(approval.question)
     || !text(approval.requestId)
@@ -138,6 +141,37 @@ function validateApproval(value: unknown): PendingAgentApproval {
     throw new Error("The saved Slack approval is invalid.");
   }
   return approval as unknown as PendingAgentApproval;
+}
+
+function validAuthorityBinding(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const authority = value as Record<string, unknown>;
+  const exactKeys = [
+    "bindingDigest",
+    "evidenceDigest",
+    "evidenceRefs",
+    "schemaVersion",
+    "targetRefs",
+    "toolDefinitionDigest",
+  ];
+  return Object.keys(authority).sort().join("\n") === exactKeys.sort().join("\n")
+    && authority.schemaVersion === "agent-effect-authority-binding/v1"
+    && digestText(authority.bindingDigest)
+    && digestText(authority.evidenceDigest)
+    && digestText(authority.toolDefinitionDigest)
+    && boundedRefs(authority.evidenceRefs)
+    && boundedRefs(authority.targetRefs);
+}
+
+function digestText(value: unknown): boolean {
+  return /^sha256:[a-f0-9]{64}$/u.test(text(value));
+}
+
+function boundedRefs(value: unknown): boolean {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.length <= 32
+    && value.every((item) => text(item).length > 0 && text(item).length <= 512);
 }
 
 async function atomicWrite(path: string, value: unknown): Promise<void> {

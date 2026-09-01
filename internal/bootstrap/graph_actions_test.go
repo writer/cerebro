@@ -12,16 +12,14 @@ import (
 	"testing"
 	"time"
 
-	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/workflowevents"
 )
 
-func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
+func TestHandleExecuteGraphActionRejectsCallerAssertedApprovalBeforeProvider(t *testing.T) {
 	var gotPath string
 	var gotAuth string
 	var gotRequest graphactions.AccessApprovalsUserActionRequest
@@ -95,53 +93,23 @@ func TestHandleExecuteGraphActionQueuesAccessApprovalsAction(t *testing.T) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
 	}
-	var payload map[string]any
+	var payload struct {
+		Error string `json:"error"`
+	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if gotPath != "/admin/okta-jail/suspend" {
-		t.Fatalf("access-approvals path = %q, want suspend path", gotPath)
+	if !strings.Contains(payload.Error, "durable Action") {
+		t.Fatalf("error = %q, want durable Action direction", payload.Error)
 	}
-	if gotAuth != "Bearer graph-action-token" {
-		t.Fatalf("Authorization = %q, want bearer token", gotAuth)
+	if gotPath != "" || gotAuth != "" || gotRequest != (graphactions.AccessApprovalsUserActionRequest{}) {
+		t.Fatalf("provider was called: path=%q auth=%q request=%#v", gotPath, gotAuth, gotRequest)
 	}
-	if gotRequest.EmailOrUserID != "alice@writer.com" {
-		t.Fatalf("email_or_user_id = %q, want derived Okta email", gotRequest.EmailOrUserID)
-	}
-	if gotRequest.Source != graphactions.Source {
-		t.Fatalf("source = %q, want %q", gotRequest.Source, graphactions.Source)
-	}
-	if !strings.HasPrefix(gotRequest.IdempotencyKey, "cerebro:graph-action:identity.okta.suspend_user:") {
-		t.Fatalf("idempotency_key = %q, want stable graph action key", gotRequest.IdempotencyKey)
-	}
-	if gotRequest.TenantID != "writer" || gotRequest.FindingID != "finding-1" || gotRequest.FindingRuleID != "identity-deprovisioned-okta-active-github" || gotRequest.SubjectURN != "urn:cerebro:writer:okta.user:alice@writer.com" {
-		t.Fatalf("access-approvals metadata = %#v", gotRequest)
-	}
-	actionEvent := firstGraphActionWorkflowEvent(appendLog.events)
-	if actionEvent == nil {
-		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
-	}
-	actionPayload, err := workflowevents.DecodeActionRecorded(actionEvent)
-	if err != nil {
-		t.Fatalf("DecodeActionRecorded() error = %v", err)
-	}
-	if actionPayload.ActionType != graphactions.ActionIdentityOktaSuspendUser || actionPayload.SourceEventID != "oja-1" || actionPayload.Status != "pending" {
-		t.Fatalf("workflow action payload = %#v", actionPayload)
-	}
-	updated := store.findings["finding-1"]
-	if len(updated.ExternalRefs) != 1 {
-		t.Fatalf("external refs = %#v, want one access-approvals ref", updated.ExternalRefs)
-	}
-	ref := updated.ExternalRefs[0]
-	if ref.System != graphactions.ProviderAccessApprovals || ref.Kind != graphactions.RefKind || ref.ExternalID != "oja-1" || ref.ExternalStatus != "pending" {
-		t.Fatalf("external ref = %#v", ref)
-	}
-	action, ok := payload["action"].(map[string]any)
-	if !ok || action["id"] != "oja-1" || action["action"] != graphactions.ActionIdentityOktaSuspendUser || action["provider"] != graphactions.ProviderAccessApprovals {
-		t.Fatalf("response action = %#v", payload["action"])
+	if len(appendLog.events) != 0 {
+		t.Fatalf("workflow events = %d, want none", len(appendLog.events))
 	}
 }
 
@@ -304,7 +272,7 @@ func TestHandleExecuteGraphActionRejectsTargetOnlyUnsuspend(t *testing.T) {
 	}
 }
 
-func TestHandleReconcileGraphActionRefreshesLinkedAction(t *testing.T) {
+func TestHandleReconcileGraphActionRejectsCompatibilityMutation(t *testing.T) {
 	var gotPath string
 	accessApprovals := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -365,18 +333,18 @@ func TestHandleReconcileGraphActionRefreshesLinkedAction(t *testing.T) {
 		t.Fatalf("POST reconcile graph action: %v", err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
 	}
-	if gotPath != "/admin/okta-jail/actions/oja-1" {
-		t.Fatalf("access-approvals path = %q, want action lookup", gotPath)
+	if gotPath != "" {
+		t.Fatalf("access-approvals path = %q, want no provider call", gotPath)
 	}
-	if firstGraphActionWorkflowEvent(appendLog.events) == nil {
-		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
+	if len(appendLog.events) != 0 {
+		t.Fatalf("workflow events = %d, want none", len(appendLog.events))
 	}
 	updated := store.findings["finding-1"]
-	if len(updated.ExternalRefs) != 1 || updated.ExternalRefs[0].ExternalStatus != "succeeded" {
-		t.Fatalf("external refs = %#v, want refreshed succeeded ref", updated.ExternalRefs)
+	if len(updated.ExternalRefs) != 1 || updated.ExternalRefs[0].ExternalStatus != "pending" {
+		t.Fatalf("external refs = %#v, want original pending ref", updated.ExternalRefs)
 	}
 }
 
@@ -396,7 +364,7 @@ func TestGraphActionTargetForFindingAllowsMatchingExplicitTarget(t *testing.T) {
 	}
 }
 
-func TestHandleExecuteGraphActionRevokesCerebroDevice(t *testing.T) {
+func TestHandleExecuteGraphActionCannotBypassDeviceActionAuthority(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
@@ -472,34 +440,22 @@ func TestHandleExecuteGraphActionRevokesCerebroDevice(t *testing.T) {
 		t.Fatalf("POST graph action: %v", err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("status = %d, want 202", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
 	}
 	device, err := store.LookupDevice(context.Background(), "dev-1")
 	if err != nil {
 		t.Fatalf("LookupDevice() error = %v", err)
 	}
-	if device.Status != "revoked" || device.RevokedAt.IsZero() {
-		t.Fatalf("device = %#v, want revoked", device)
+	if device.Status != "active" || !device.RevokedAt.IsZero() {
+		t.Fatalf("device = %#v, want unchanged active device", device)
 	}
 	updated := store.findings["finding-1"]
-	if len(updated.ExternalRefs) != 1 {
-		t.Fatalf("external refs = %#v, want one device action ref", updated.ExternalRefs)
+	if len(updated.ExternalRefs) != 0 {
+		t.Fatalf("external refs = %#v, want none", updated.ExternalRefs)
 	}
-	ref := updated.ExternalRefs[0]
-	if ref.System != graphactions.ProviderCerebroDeviceAuth || ref.Kind != graphactions.RefKind || ref.ExternalID != graphactions.CerebroDeviceExternalID("dev-1") || ref.ExternalStatus != "revoked" {
-		t.Fatalf("external ref = %#v", ref)
-	}
-	actionEvent := firstGraphActionWorkflowEvent(appendLog.events)
-	if actionEvent == nil {
-		t.Fatalf("workflow events = %d, want an action-recorded event", len(appendLog.events))
-	}
-	actionPayload, err := workflowevents.DecodeActionRecorded(actionEvent)
-	if err != nil {
-		t.Fatalf("DecodeActionRecorded() error = %v", err)
-	}
-	if actionPayload.ActionType != graphactions.ActionEndpointCerebroRevokeDevice || actionPayload.SourceEventID != graphactions.CerebroDeviceExternalID("dev-1") || actionPayload.Status != "revoked" {
-		t.Fatalf("workflow action payload = %#v", actionPayload)
+	if len(appendLog.events) != 0 {
+		t.Fatalf("workflow events = %d, want none", len(appendLog.events))
 	}
 }
 
@@ -513,16 +469,7 @@ var (
 	_ deviceauth.Store = (*graphActionDeviceStore)(nil)
 )
 
-func firstGraphActionWorkflowEvent(events []*cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
-	for _, event := range events {
-		if event.GetKind() == workflowevents.EventKindKnowledgeActionRecorded {
-			return event
-		}
-	}
-	return nil
-}
-
-func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
+func TestGraphActionMutationRejectsBeforeConfigurationLookup(t *testing.T) {
 	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
 		"finding-1": {
 			ID: "finding-1",
@@ -540,8 +487,8 @@ func TestGraphActionNotConfiguredReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("POST graph action: %v", err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
 	}
 }
 
