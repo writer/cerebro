@@ -12,13 +12,11 @@ import (
 	"testing"
 	"time"
 
-	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/graphactionapi"
 	"github.com/writer/cerebro/internal/graphactions"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 func TestHandleExecuteGraphActionRejectsCallerAssertedApprovalBeforeProvider(t *testing.T) {
@@ -470,15 +468,6 @@ var (
 	_ ports.StateStore = (*graphActionDeviceStore)(nil)
 	_ deviceauth.Store = (*graphActionDeviceStore)(nil)
 )
-
-func firstGraphActionWorkflowEvent(events []*cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
-	for _, event := range events {
-		if event.GetKind() == workflowevents.EventKindKnowledgeActionRecorded {
-			return event
-		}
-	}
-	return nil
-}
 
 func TestGraphActionMutationRejectsBeforeConfigurationLookup(t *testing.T) {
 	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{

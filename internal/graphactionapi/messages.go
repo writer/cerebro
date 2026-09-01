@@ -24,7 +24,6 @@ func InputFromRequest(request *cerebrov1.ExecuteGraphActionRequest) graphactions
 		IdempotencyKey: request.GetIdempotencyKey(),
 		Parameters:     request.GetParameters(),
 		DryRun:         request.GetDryRun(),
-		Approved:       request.GetApproved(),
 	}
 }
 

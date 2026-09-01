@@ -53,8 +53,8 @@ func TestInputFromRequestPopulatesFields(t *testing.T) {
 	if !input.DryRun {
 		t.Fatal("DryRun should be true")
 	}
-	if !input.Approved {
-		t.Fatal("Approved should be true")
+	if input.Approved {
+		t.Fatal("caller-supplied Approved must not enter graph action authority")
 	}
 }
 
