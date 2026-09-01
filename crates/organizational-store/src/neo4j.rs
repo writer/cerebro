@@ -942,6 +942,32 @@ pub struct CloudAttackPathPage {
     pub truncated: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded legacy-graph path rooted at a classified crown jewel.
+pub struct CrownJewelPath {
+    /// Crown-jewel seed that roots the path.
+    pub seed: ContextEntity,
+    /// Ordered path nodes, beginning with the seed.
+    pub nodes: Vec<ContextEntity>,
+    /// Ordered relation kinds between adjacent nodes.
+    pub relations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One revision-bound crown-jewel seed and path result.
+pub struct CrownJewelPathPage {
+    /// Authorized tenant.
+    pub tenant_id: String,
+    /// Durable graph revision read by both queries.
+    pub graph_revision: u64,
+    /// Bounded classified seeds.
+    pub seeds: Vec<ContextEntity>,
+    /// Bounded paths rooted at those seeds.
+    pub paths: Vec<CrownJewelPath>,
+    /// True when more paths matched than the requested path bound.
+    pub truncated: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 /// Direction of a direct entity-catalog relation.
 pub enum EntityCatalogDirection {
@@ -1827,6 +1853,96 @@ ORDER BY runtime_id
             tenant_id: tenant_id.as_str().to_owned(),
             graph_revision: revision,
             counts,
+            paths,
+            truncated,
+        })
+    }
+
+    /// Lists bounded paths rooted at explicitly classified crown jewels.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_crown_jewel_paths(
+        &self,
+        tenant_id: &TenantId,
+        account_id: &str,
+        entity_kind: &str,
+        path_limit: usize,
+        seed_limit: usize,
+        depth: usize,
+        expected_graph_revision: u64,
+    ) -> Result<CrownJewelPathPage, StoreError> {
+        validate_crown_jewel_path_request(account_id, entity_kind, path_limit, seed_limit, depth)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let mut seed_rows = transaction
+            .execute(
+                query(crown_jewel_seed_statement())
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("account_id", account_id)
+                    .param("entity_kind", entity_kind)
+                    .param("seed_limit", i64::try_from(seed_limit).unwrap_or(i64::MAX)),
+            )
+            .await?;
+        let mut seeds = Vec::new();
+        while let Some(row) = seed_rows.next(transaction.handle()).await? {
+            seeds.push(
+                legacy_context_entity(
+                    tenant_id,
+                    &catalog_row_string(&row, "seed_urn")?,
+                    catalog_row_string(&row, "seed_entity_kind")?,
+                    catalog_row_string(&row, "seed_label")?,
+                    catalog_row_string(&row, "seed_properties")?,
+                    catalog_row_string(&row, "seed_source_id")?,
+                    catalog_row_string(&row, "seed_runtime_id")?,
+                )
+                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+            );
+        }
+        drop(seed_rows);
+        let mut paths = Vec::new();
+        if !seeds.is_empty() {
+            let seed_urns = seeds
+                .iter()
+                .map(|seed| seed.agent_key.clone())
+                .collect::<Vec<_>>();
+            let path_limit_per_seed = (path_limit / seeds.len()).max(1);
+            let statement = crown_jewel_path_statement(depth);
+            let mut rows = transaction
+                .execute(
+                    query(&statement)
+                        .param("tenant_id", tenant_id.as_str())
+                        .param("seed_urns", string_list(&seed_urns))
+                        .param("relations", string_list(&crown_jewel_path_relations()))
+                        .param(
+                            "path_limit_per_seed",
+                            i64::try_from(path_limit_per_seed).unwrap_or(i64::MAX),
+                        )
+                        .param("row_limit", row_limit(path_limit)),
+                )
+                .await?;
+            let seeds_by_urn = seeds
+                .iter()
+                .cloned()
+                .map(|seed| (seed.agent_key.clone(), seed))
+                .collect::<BTreeMap<_, _>>();
+            while let Some(row) = rows.next(transaction.handle()).await? {
+                paths.push(crown_jewel_path_from_row(
+                    tenant_id,
+                    &seeds_by_urn,
+                    &row,
+                    depth,
+                )?);
+            }
+            drop(rows);
+        }
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut paths, path_limit);
+        Ok(CrownJewelPathPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            seeds,
             paths,
             truncated,
         })
@@ -4570,6 +4686,116 @@ fn validate_cloud_attack_path_request(
     Ok(())
 }
 
+fn validate_crown_jewel_path_request(
+    account_id: &str,
+    entity_kind: &str,
+    path_limit: usize,
+    seed_limit: usize,
+    depth: usize,
+) -> Result<(), StoreError> {
+    if !(1..=3000).contains(&path_limit) {
+        return Err(StoreError::Conflict(
+            "crown jewel path limit must be between 1 and 3000".to_owned(),
+        ));
+    }
+    if !(1..=100).contains(&seed_limit) {
+        return Err(StoreError::Conflict(
+            "crown jewel seed limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if !(1..=3).contains(&depth) {
+        return Err(StoreError::Conflict(
+            "crown jewel path depth must be between 1 and 3".to_owned(),
+        ));
+    }
+    validate_catalog_text("account_id", account_id, 256, false)?;
+    validate_catalog_text("entity_kind", entity_kind, 256, false)?;
+    Ok(())
+}
+
+fn crown_jewel_path_relations() -> Vec<String> {
+    [
+        "affected_by",
+        "belongs_to",
+        "can_admin",
+        "can_assume",
+        "can_impersonate",
+        "can_perform",
+        "can_reach",
+        "contains",
+        "has_classification",
+        "has_evidence",
+        "has_finding",
+        "has_identifier",
+        "observed_on",
+        "owned_by",
+        "represents",
+        "represents_identity",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
+fn crown_jewel_seed_statement() -> &'static str {
+    r#"MATCH (seed:Entity {tenant_id: $tenant_id})
+WHERE (
+    coalesce(seed.attributes_json, '') CONTAINS '"crown_jewel":"true"'
+    OR coalesce(seed.attributes_json, '') CONTAINS '"crown_jewel":true'
+    OR EXISTS {
+      MATCH (seed)-[:RELATION {tenant_id: $tenant_id, relation: 'tagged_as'}]->(:Entity {tenant_id: $tenant_id, entity_type: 'asset.tag', label: 'crown_jewel'})
+    }
+  )
+  AND ($entity_kind = '' OR seed.entity_type = $entity_kind)
+  AND (
+    $account_id = ''
+    OR seed.urn CONTAINS $account_id
+    OR EXISTS {
+      MATCH (seed)-[:RELATION {tenant_id: $tenant_id, relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+      WHERE account.label = $account_id OR account.urn CONTAINS $account_id
+    }
+  )
+RETURN seed.urn AS seed_urn,
+       coalesce(seed.entity_type, 'unknown') AS seed_entity_kind,
+       coalesce(seed.label, seed.urn) AS seed_label,
+       coalesce(seed.attributes_json, '{}') AS seed_properties,
+       coalesce(seed.source_id, '') AS seed_source_id,
+       coalesce(seed.runtime_id, '') AS seed_runtime_id
+ORDER BY seed.label, seed.urn
+LIMIT $seed_limit"#
+}
+
+fn crown_jewel_path_statement(depth: usize) -> String {
+    format!(
+        r#"UNWIND $seed_urns AS seed_urn
+MATCH (seed:Entity {{tenant_id: $tenant_id, urn: seed_urn}})
+CALL {{
+  WITH seed
+  MATCH path=(seed)-[:RELATION*1..{depth}]-(candidate:Entity {{tenant_id: $tenant_id}})
+  WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id)
+    AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $relations)
+  WITH DISTINCT seed, path, length(path) AS path_len,
+       reduce(path_key = '', node IN nodes(path) | path_key + node.urn + '|') AS path_key
+  ORDER BY path_len, path_key
+  LIMIT $path_limit_per_seed
+  RETURN seed.urn AS seed_urn,
+         path_len,
+         path_key,
+         [node IN nodes(path) | node.urn] AS path_urns,
+         [node IN nodes(path) | coalesce(node.entity_type, 'unknown')] AS path_entity_kinds,
+         [node IN nodes(path) | coalesce(node.label, node.urn)] AS path_labels,
+         [node IN nodes(path) | coalesce(node.attributes_json, '{{}}')] AS path_properties,
+         [node IN nodes(path) | coalesce(node.source_id, '')] AS path_source_ids,
+         [node IN nodes(path) | coalesce(node.runtime_id, '')] AS path_runtime_ids,
+         [rel IN relationships(path) | rel.relation] AS path_relations
+}}
+RETURN seed_urn, path_urns, path_entity_kinds, path_labels, path_properties,
+       path_source_ids, path_runtime_ids, path_relations
+ORDER BY seed_urn, path_len, path_key
+LIMIT $row_limit"#
+    )
+}
+
 fn cloud_attack_path_traversal_relations() -> Vec<String> {
     vec![
         "assigned_to".to_owned(),
@@ -5159,6 +5385,63 @@ fn catalog_row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
 fn catalog_row_string_list(row: &Row, field: &str) -> Result<Vec<String>, StoreError> {
     row.get(field)
         .map_err(|error| StoreError::Conflict(error.to_string()))
+}
+
+fn crown_jewel_path_from_row(
+    tenant_id: &TenantId,
+    seeds: &BTreeMap<String, ContextEntity>,
+    row: &Row,
+    depth: usize,
+) -> Result<CrownJewelPath, StoreError> {
+    let seed_urn = catalog_row_string(row, "seed_urn")?;
+    let seed = seeds.get(&seed_urn).cloned().ok_or_else(|| {
+        StoreError::Conflict("crown jewel path returned an unknown seed".to_owned())
+    })?;
+    let urns = catalog_row_string_list(row, "path_urns")?;
+    let kinds = catalog_row_string_list(row, "path_entity_kinds")?;
+    let labels = catalog_row_string_list(row, "path_labels")?;
+    let properties = catalog_row_string_list(row, "path_properties")?;
+    let source_ids = catalog_row_string_list(row, "path_source_ids")?;
+    let runtime_ids = catalog_row_string_list(row, "path_runtime_ids")?;
+    let relations = catalog_row_string_list(row, "path_relations")?;
+    if urns.len() < 2
+        || urns[0] != seed_urn
+        || urns.len() > depth + 1
+        || relations.len() + 1 != urns.len()
+        || relations.iter().any(|relation| relation.is_empty())
+        || !same_len(&[
+            urns.len(),
+            kinds.len(),
+            labels.len(),
+            properties.len(),
+            source_ids.len(),
+            runtime_ids.len(),
+        ])
+    {
+        return Err(StoreError::Conflict(
+            "crown jewel path returned an invalid bounded shape".to_owned(),
+        ));
+    }
+    let mut nodes = Vec::with_capacity(urns.len());
+    for index in 0..urns.len() {
+        nodes.push(
+            legacy_context_entity(
+                tenant_id,
+                &urns[index],
+                kinds[index].clone(),
+                labels[index].clone(),
+                properties[index].clone(),
+                source_ids[index].clone(),
+                runtime_ids[index].clone(),
+            )
+            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+        );
+    }
+    Ok(CrownJewelPath {
+        seed,
+        nodes,
+        relations,
+    })
 }
 
 fn cloud_attack_path_from_row(row: &Row) -> Result<CloudAttackPath, StoreError> {
@@ -6894,6 +7177,43 @@ mod tests {
         }
         assert_eq!(cloud_attack_path_traversal_relations().len(), 7);
         assert_eq!(cloud_attack_path_access_relations().len(), 4);
+    }
+
+    #[test]
+    fn crown_jewel_path_query_is_closed_tenant_scoped_and_bounded() {
+        assert!(validate_crown_jewel_path_request("", "", 1, 1, 1).is_ok());
+        assert!(
+            validate_crown_jewel_path_request("prod", "aws.secret_store", 3000, 100, 3).is_ok()
+        );
+        assert!(validate_crown_jewel_path_request("", "", 0, 1, 1).is_err());
+        assert!(validate_crown_jewel_path_request("", "", 3001, 1, 1).is_err());
+        assert!(validate_crown_jewel_path_request("", "", 1, 0, 1).is_err());
+        assert!(validate_crown_jewel_path_request("", "", 1, 101, 1).is_err());
+        assert!(validate_crown_jewel_path_request("", "", 1, 1, 0).is_err());
+        assert!(validate_crown_jewel_path_request("", "", 1, 1, 4).is_err());
+        assert!(validate_crown_jewel_path_request(" prod", "", 1, 1, 1).is_err());
+        assert!(validate_crown_jewel_path_request("", "aws.secret_store ", 1, 1, 1).is_err());
+
+        let seed_statement = crown_jewel_seed_statement();
+        assert!(seed_statement.contains("tenant_id: $tenant_id"));
+        assert!(seed_statement.contains("'\"crown_jewel\":\"true\"'"));
+        assert!(seed_statement.contains("'\"crown_jewel\":true'"));
+        assert!(seed_statement.contains("relation: 'tagged_as'"));
+        assert!(seed_statement.contains("relation: 'belongs_to'"));
+        assert!(seed_statement.ends_with("LIMIT $seed_limit"));
+
+        let path_statement = crown_jewel_path_statement(3);
+        assert!(path_statement.contains("[:RELATION*1..3]"));
+        assert!(
+            path_statement.contains("all(node IN nodes(path) WHERE node.tenant_id = $tenant_id)")
+        );
+        assert!(
+            path_statement.contains("rel.tenant_id = $tenant_id AND rel.relation IN $relations")
+        );
+        assert!(path_statement.contains("LIMIT $path_limit_per_seed"));
+        assert!(path_statement.contains("ORDER BY seed_urn, path_len, path_key"));
+        assert!(path_statement.ends_with("LIMIT $row_limit"));
+        assert!(!crown_jewel_path_relations().contains(&"tagged_as".to_owned()));
     }
 
     #[tokio::test]

@@ -57,8 +57,8 @@ func TestGetEffectiveAccessPathsUsesTypedFixtureAndPreservesLegacyShape(t *testi
 	if err != nil {
 		t.Fatalf("GetEffectiveAccessPaths() error = %v", err)
 	}
-	if len(store.effectiveRequests) != 1 || store.rawReads != 0 || len(store.requests) != 0 {
-		t.Fatalf("typed requests = %d, raw reads = %d, raw requests = %d; want 1, 0, 0", len(store.effectiveRequests), store.rawReads, len(store.requests))
+	if len(store.effectiveRequests) != 1 {
+		t.Fatalf("typed requests = %d, want 1", len(store.effectiveRequests))
 	}
 	request := store.effectiveRequests[0]
 	if request.TenantID != "writer" || request.IdentityURN != "" || request.IdentityQuery != "alice" || request.ApplicationURN != "urn:cerebro:writer:okta_application:app-aws-admin" || request.CapabilityURN != "" || request.CapabilityID != "cloud_admin" || request.Limit != maxEffectiveAccessPathLimit {
@@ -116,7 +116,7 @@ func (s *typedOnlyEffectiveAccessStore) ListEffectiveAccessPaths(_ context.Conte
 	return s.result, nil
 }
 
-func TestGetEffectiveAccessPathsDoesNotRequireRawCypherCapability(t *testing.T) {
+func TestGetEffectiveAccessPathsUsesTypedCapabilityAlone(t *testing.T) {
 	store := &typedOnlyEffectiveAccessStore{result: effectiveAccessTypedFixtureResult()}
 	result, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
 		TenantID:      "writer",
@@ -141,37 +141,24 @@ func TestGetEffectiveAccessPathsRejectsInvalidTypedPath(t *testing.T) {
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetEffectiveAccessPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
-	if store.rawReads != 0 {
-		t.Fatalf("raw reads = %d, want 0", store.rawReads)
-	}
 }
 
-type rawOnlyEffectiveAccessStore struct {
-	rawReads int
-}
+type neighborhoodOnlyEffectiveAccessStore struct{}
 
-func (s *rawOnlyEffectiveAccessStore) Ping(context.Context) error { return nil }
+func (s *neighborhoodOnlyEffectiveAccessStore) Ping(context.Context) error { return nil }
 
-func (s *rawOnlyEffectiveAccessStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
-	return nil, nil
-}
-
-func (s *rawOnlyEffectiveAccessStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	s.rawReads++
+func (s *neighborhoodOnlyEffectiveAccessStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, nil
 }
 
 func TestGetEffectiveAccessPathsFailsClosedWithoutTypedStore(t *testing.T) {
-	store := &rawOnlyEffectiveAccessStore{}
+	store := &neighborhoodOnlyEffectiveAccessStore{}
 	_, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
 		TenantID:      "writer",
 		IdentityQuery: "alice",
 	})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetEffectiveAccessPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
-	}
-	if store.rawReads != 0 {
-		t.Fatalf("raw reads = %d, want 0", store.rawReads)
 	}
 }
 

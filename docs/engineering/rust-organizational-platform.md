@@ -345,13 +345,7 @@ Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
 
 | Caller | Query shape | Required Rust capability |
 | --- | --- | --- |
-| `internal/attackpath` | variable-length paths with counts and samples | relation-filtered variable-length traversal, aggregations, attribute substring predicates, optional ownership match |
-| `internal/graphquery` person access | person anchor to reachable targets | variable-length traversal with relation whitelist, label/attribute substring anchor lookup |
-| `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
-| `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
-| `internal/complianceimpact` | single-key fact lookup, dependency list/count, paged dependents | organizational kinds/relations for compliance facts, edge properties in results, keyset cursors, count aggregate |
 | `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
-| `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |
 
 Two callers are permanent residents of the compatibility port because their
 query text is authored at runtime rather than in code: the `graphagent` ask

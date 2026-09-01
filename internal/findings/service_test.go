@@ -292,9 +292,48 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 		}
 		findings = append(findings, cloneFinding(finding))
 	}
-	sort.Slice(findings, func(i, j int) bool {
+	sortFindingsForList(request, findings)
+	if limit := stubFindingListLimit(request.Limit); limit > 0 && len(findings) > int(limit) {
+		findings = findings[:int(limit)]
+	}
+	return findings, nil
+}
+
+// maxStubFindingListLimit mirrors maxFindingListLimit in
+// internal/statestore/postgres: a caller asking for more rows than that still
+// gets at most that many.
+const maxStubFindingListLimit = uint32(501)
+
+func stubFindingListLimit(limit uint32) uint32 {
+	if limit > maxStubFindingListLimit {
+		return maxStubFindingListLimit
+	}
+	return limit
+}
+
+// sortFindingsForList mirrors findingOrderClause in internal/statestore/postgres:
+//
+//	risk_score -> risk_score DESC, severity rank, last_observed_at DESC, id
+//	priority   -> severity rank, last_observed_at DESC, id
+//	default    -> last_observed_at DESC, id
+//
+// PriorityOrder is the legacy spelling of Order == FindingOrderPriority.
+func sortFindingsForList(request ports.ListFindingsRequest, findings []*ports.FindingRecord) {
+	byRiskScore := request.Order == ports.FindingOrderRiskScore
+	bySeverityRank := byRiskScore || request.Order == ports.FindingOrderPriority || request.PriorityOrder
+	sort.SliceStable(findings, func(i, j int) bool {
 		left := findings[i]
 		right := findings[j]
+		if byRiskScore && left.RiskScore != right.RiskScore {
+			return left.RiskScore > right.RiskScore
+		}
+		if bySeverityRank {
+			leftRank := findingSeverityRank(findingEffectiveSeverity(left))
+			rightRank := findingSeverityRank(findingEffectiveSeverity(right))
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
+		}
 		switch {
 		case left.LastObservedAt.Equal(right.LastObservedAt):
 			return left.ID < right.ID
@@ -306,10 +345,24 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 			return left.LastObservedAt.After(right.LastObservedAt)
 		}
 	})
-	if request.Limit != 0 && len(findings) > int(request.Limit) {
-		findings = findings[:int(request.Limit)]
+}
+
+// findingSeverityRank mirrors findingSeverityRankSQL in internal/statestore/postgres.
+func findingSeverityRank(severity string) int {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		return 0
+	case "HIGH":
+		return 1
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 3
+	case "INFO":
+		return 4
+	default:
+		return 5
 	}
-	return findings, nil
 }
 
 func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
@@ -6403,15 +6456,21 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			RiskFactors:      append([]ports.FindingRiskFactor(nil), finding.RiskFactors...),
 			RiskModelVersion: finding.RiskModelVersion,
 		},
-		ResourceURNs:               resourceURNs,
-		EventIDs:                   eventIDs,
-		ObservedPolicyIDs:          observedPolicyIDs,
-		PolicyID:                   finding.PolicyID,
-		PolicyName:                 finding.PolicyName,
-		CheckID:                    finding.CheckID,
-		CheckName:                  finding.CheckName,
-		ControlRefs:                controlRefs,
-		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{GraphEvidenceRows: graphEvidenceRows},
+		ResourceURNs:      resourceURNs,
+		EventIDs:          eventIDs,
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		CheckID:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       controlRefs,
+		// ApplicationWorkspaceID must survive the clone: the stub stores clones,
+		// so dropping it here would make the workspace filter vacuous for every
+		// finding written through the stub.
+		FindingPersistenceEnvelope: ports.FindingPersistenceEnvelope{
+			ApplicationWorkspaceID: finding.ApplicationWorkspaceID,
+			GraphEvidenceRows:      graphEvidenceRows,
+		},
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,
@@ -6550,9 +6609,11 @@ func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.Findi
 // matched none of the durable findings written by Go event rules.
 //
 // Fields are either applied by findingMatches, applied elsewhere in
-// ListFindings, or deliberately unsupported. Anything unsupported is rejected at
-// call time rather than silently dropped. TestFindingFilterSupportCoversRequest
-// fails if a new field is added without being classified here.
+// ListFindings, or deliberately unsupported (classified as ""). Anything
+// unsupported is rejected at call time rather than silently dropped.
+// TestFindingFilterSupportCoversRequest fails if a new field is added without
+// being classified here, and TestStubFindingStoreFilterParityCoversRequest
+// fails if a field has no case in the Postgres parity test.
 var findingFilterSupport = map[string]string{
 	"TenantID":               "findingMatches",
 	"ApplicationWorkspaceID": "findingMatches",
@@ -6572,18 +6633,16 @@ var findingFilterSupport = map[string]string{
 	"StatusUpdatedFrom":      "findingMatches",
 	"StatusUpdatedBefore":    "findingMatches",
 	"LastObservedBefore":     "findingMatches",
-	"Limit":                  "ListFindings",
-	"Order":                  "ListFindings",
-	"PriorityOrder":          "ListFindings",
-
-	// Unsupported on purpose. These depend on SQL-side evaluation - a jsonb
-	// containment predicate, and NOW()/due_at arithmetic - and a hand-rolled
-	// approximation here would be a fresh divergence rather than a fix. Tests
-	// needing them belong against the real store.
-	"ProfilePredicate": "",
-	"SLAStatus":        "",
-	"MinAgeDays":       "",
-	"MaxAgeDays":       "",
+	// These mirror SQL-side evaluation: a jsonb containment predicate, NOW()
+	// arithmetic on first_observed_at, and NOW()/due_at arithmetic. The
+	// Postgres-backed TestStubFindingStoreFilterParity pins each of them.
+	"ProfilePredicate": "findingMatches",
+	"MinAgeDays":       "findingMatches",
+	"MaxAgeDays":       "findingMatches",
+	"SLAStatus":        "findingMatches",
+	"Limit":            "ListFindings",
+	"Order":            "ListFindings",
+	"PriorityOrder":    "ListFindings",
 }
 
 // unsupportedFindingFilter returns the name of a set request field that the stub
@@ -6646,14 +6705,25 @@ func trimmedNonEmpty(values []string) []string {
 	return result
 }
 
-// FindingMatchesForParity exposes the stub store's filter predicate to the
-// Postgres-backed parity test, which lives in package findings_test because
-// internal/statestore/postgres imports this package.
-func FindingMatchesForParity(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
-	return findingMatches(request, finding)
+// ListFindingsForParity runs the stub store's ListFindings (filter, order and
+// limit) over the given records for the Postgres-backed parity test, which
+// lives in package findings_test because internal/statestore/postgres imports
+// this package.
+func ListFindingsForParity(request ports.ListFindingsRequest, records []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{}}
+	for _, record := range records {
+		store.findings[record.ID] = cloneFinding(record)
+	}
+	return store.ListFindings(context.Background(), request)
 }
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
+	return findingMatchesAt(request, finding, time.Now().UTC())
+}
+
+// findingMatchesAt is findingMatches with an explicit clock, standing in for
+// the NOW() the Postgres store evaluates inside its age and SLA clauses.
+func findingMatchesAt(request ports.ListFindingsRequest, finding *ports.FindingRecord, now time.Time) bool {
 	if finding == nil {
 		return false
 	}
@@ -6678,6 +6748,9 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 		return false
 	}
 	if request.RuleID != "" && strings.TrimSpace(finding.RuleID) != strings.TrimSpace(request.RuleID) {
+		return false
+	}
+	if !findingMatchesProfilePredicate(request.ProfilePredicate, finding) {
 		return false
 	}
 	// Mirrors findingEffectiveSeveritySQL: the attribute override wins over the
@@ -6732,16 +6805,101 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if before := request.FirstObservedBefore.UTC(); !before.IsZero() && !finding.FirstObservedAt.UTC().Before(before) {
 		return false
 	}
-	if from := request.StatusUpdatedFrom.UTC(); !from.IsZero() && finding.StatusUpdatedAt.UTC().Before(from) {
+	// status_updated_at is nullable and a NULL column satisfies neither bound in
+	// SQL; a zero StatusUpdatedAt is what UpsertFinding writes as NULL.
+	if from := request.StatusUpdatedFrom.UTC(); !from.IsZero() && (finding.StatusUpdatedAt.IsZero() || finding.StatusUpdatedAt.UTC().Before(from)) {
 		return false
 	}
-	if before := request.StatusUpdatedBefore.UTC(); !before.IsZero() && !finding.StatusUpdatedAt.UTC().Before(before) {
+	if before := request.StatusUpdatedBefore.UTC(); !before.IsZero() && (finding.StatusUpdatedAt.IsZero() || !finding.StatusUpdatedAt.UTC().Before(before)) {
 		return false
 	}
 	if cutoff := request.LastObservedBefore.UTC(); !cutoff.IsZero() && !finding.LastObservedAt.Before(cutoff) {
 		return false
 	}
+	if !findingMatchesAgeRange(request.FindingAgeRange, finding, now) {
+		return false
+	}
+	if !findingMatchesSLAStatus(request.SLAStatus, finding, now) {
+		return false
+	}
 	return true
+}
+
+// findingMatchesProfilePredicate mirrors addFindingProfilePredicate: the finding
+// matches when its rule ID is one of the profile rule IDs OR any of its control
+// refs equals a profile control ref on (framework name, control ID), compared
+// trimmed and case-insensitively. Blank rule IDs and half-empty control refs are
+// dropped, and an empty predicate applies no filter.
+func findingMatchesProfilePredicate(predicate ports.FindingProfilePredicate, finding *ports.FindingRecord) bool {
+	ruleIDs := trimmedNonEmpty(predicate.RuleIDs)
+	controls := make([]ports.FindingControlRef, 0, len(predicate.ControlRefs))
+	for _, ref := range predicate.ControlRefs {
+		frameworkName := strings.TrimSpace(ref.FrameworkName)
+		controlID := strings.TrimSpace(ref.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		controls = append(controls, ports.FindingControlRef{FrameworkName: frameworkName, ControlID: controlID})
+	}
+	if len(ruleIDs) == 0 && len(controls) == 0 {
+		return true
+	}
+	if containsTrimmed(ruleIDs, finding.RuleID) {
+		return true
+	}
+	for _, actual := range finding.ControlRefs {
+		for _, wanted := range controls {
+			if strings.EqualFold(strings.TrimSpace(actual.FrameworkName), wanted.FrameworkName) &&
+				strings.EqualFold(strings.TrimSpace(actual.ControlID), wanted.ControlID) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// findingMatchesAgeRange mirrors addFindingAgeFilter, in whole days measured
+// from first_observed_at:
+//
+//	MinAgeDays > 0 -> first_observed_at <= NOW() - MinAgeDays days
+//	MaxAgeDays > 0 -> first_observed_at >  NOW() - (MaxAgeDays + 1) days
+func findingMatchesAgeRange(ageRange ports.FindingAgeRange, finding *ports.FindingRecord, now time.Time) bool {
+	const day = 24 * time.Hour
+	firstObserved := finding.FirstObservedAt.UTC()
+	if ageRange.MinAgeDays > 0 && firstObserved.After(now.Add(-time.Duration(ageRange.MinAgeDays)*day)) {
+		return false
+	}
+	if ageRange.MaxAgeDays > 0 && !firstObserved.After(now.Add(-time.Duration(ageRange.MaxAgeDays+1)*day)) {
+		return false
+	}
+	return true
+}
+
+// findingMatchesSLAStatus mirrors addFindingSLAStatusFilter. A zero DueAt is
+// what UpsertFinding writes as a NULL due_at; "open" is compared on the
+// lower-cased status, and an unrecognised value is a lower-cased status match.
+func findingMatchesSLAStatus(slaStatus string, finding *ports.FindingRecord, now time.Time) bool {
+	const dueSoonWindow = 72 * time.Hour
+	status := strings.ToLower(finding.Status)
+	open := status == "open"
+	hasDue := !finding.DueAt.IsZero()
+	dueAt := finding.DueAt.UTC()
+	switch value := strings.ToLower(strings.TrimSpace(slaStatus)); value {
+	case "":
+		return true
+	case "overdue":
+		return open && hasDue && dueAt.Before(now)
+	case "due_soon":
+		return open && hasDue && !dueAt.Before(now) && !dueAt.After(now.Add(dueSoonWindow))
+	case "no_due_date":
+		return open && !hasDue
+	case "on_track":
+		return open && hasDue && dueAt.After(now.Add(dueSoonWindow))
+	case "closed":
+		return !open
+	default:
+		return status == value
+	}
 }
 
 func containsTrimmed(values []string, expected string) bool {

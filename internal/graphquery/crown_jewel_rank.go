@@ -2,6 +2,7 @@ package graphquery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -20,25 +21,6 @@ const (
 	crownJewelRankDamping          = 0.85
 	crownJewelRankIterations       = 20
 )
-
-var crownJewelRankRelations = []string{
-	"affected_by",
-	"belongs_to",
-	"can_admin",
-	"can_assume",
-	"can_impersonate",
-	"can_perform",
-	"can_reach",
-	"contains",
-	"has_classification",
-	"has_evidence",
-	"has_finding",
-	"has_identifier",
-	"observed_on",
-	"owned_by",
-	"represents",
-	"represents_identity",
-}
 
 type CrownJewelRankRequest struct {
 	TenantID   string
@@ -81,7 +63,7 @@ type CrownJewelRank struct {
 }
 
 func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRankRequest) (*CrownJewelRankResult, error) {
-	if s == nil || s.rawCypher == nil {
+	if s == nil || s.crownJewels == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -91,7 +73,6 @@ func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRank
 	limit := normalizeCrownJewelRankLimit(request.Limit)
 	depth := normalizeCrownJewelRankDepth(request.Depth)
 	seedLimit := normalizeCrownJewelRankSeedLimit(request.SeedLimit)
-	params := crownJewelRankParams(tenantID, request, limit, seedLimit)
 	result := &CrownJewelRankResult{
 		TenantID: tenantID,
 		Filters: CrownJewelRankFilters{
@@ -103,24 +84,31 @@ func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRank
 		},
 	}
 
-	seedRows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelSeedQuery, Params: params, RowLimit: seedLimit})
+	paths, err := s.crownJewels.ListCrownJewelPaths(ctx, ports.CrownJewelPathRequest{
+		TenantID:   tenantID,
+		AccountID:  result.Filters.AccountID,
+		EntityType: result.Filters.EntityType,
+		Limit:      ports.MaxCypherQueryRows,
+		SeedLimit:  seedLimit,
+		Depth:      depth,
+	})
 	if err != nil {
 		return nil, err
 	}
-	seeds := crownJewelSeedsFromRows(seedRows)
+	if paths == nil || paths.TenantID != tenantID {
+		return nil, errors.New("crown jewel path runtime returned an invalid tenant")
+	}
+	seeds := make([]GraphEntityRef, 0, len(paths.Seeds))
+	for _, seed := range paths.Seeds {
+		seeds = append(seeds, catalogGraphRef(seed))
+	}
 	result.Seeds = seeds
 	result.Counts.Seeds = len(seeds)
 	if len(seeds) == 0 {
 		return result, nil
 	}
-	params["path_limit_per_seed"] = int64(crownJewelLimitPerSeed(len(seeds)))
-
-	edgeRows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelEdgeQuery(depth), Params: params, RowLimit: ports.MaxCypherQueryRows})
-	if err != nil {
-		return nil, err
-	}
 	graph := newCrownJewelRankGraph(seeds)
-	graph.addRows(edgeRows)
+	graph.addPaths(paths.Paths)
 	rankings := graph.rank(limit)
 	result.Rankings = rankings
 	result.Counts.Candidates = len(graph.nodes)
@@ -155,101 +143,6 @@ func normalizeCrownJewelBound(value uint32, fallback int, maxValue int) int {
 	}
 }
 
-func crownJewelRankParams(tenantID string, request CrownJewelRankRequest, limit int, seedLimit int) map[string]any {
-	return map[string]any{
-		"account_id":   strings.TrimSpace(request.AccountID),
-		"edge_limit":   int64(ports.MaxCypherQueryRows),
-		"entity_type":  strings.TrimSpace(request.EntityType),
-		"relations":    crownJewelRankRelations,
-		"sample_limit": int64(limit),
-		"seed_limit":   int64(seedLimit),
-		"tenant_id":    tenantID,
-	}
-}
-
-func crownJewelLimitPerSeed(seedCount int) int {
-	if seedCount <= 0 {
-		return ports.MaxCypherQueryRows
-	}
-	perSeed := ports.MaxCypherQueryRows / seedCount
-	if perSeed < 1 {
-		return 1
-	}
-	return perSeed
-}
-
-const crownJewelSeedMatch = `MATCH (seed:Entity {tenant_id: $tenant_id})
-WHERE (
-    coalesce(seed.attributes_json, '') CONTAINS '"crown_jewel":"true"'
-    OR coalesce(seed.attributes_json, '') CONTAINS '"crown_jewel":true'
-    OR EXISTS {
-      MATCH (seed)-[:RELATION {relation: 'tagged_as'}]->(:Entity {tenant_id: $tenant_id, entity_type: 'asset.tag', label: 'crown_jewel'})
-    }
-  )
-  AND ($entity_type = '' OR seed.entity_type = $entity_type)
-  AND (
-    $account_id = ''
-    OR seed.urn CONTAINS $account_id
-    OR EXISTS {
-      MATCH (seed)-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
-      WHERE account.label = $account_id OR account.urn CONTAINS $account_id
-    }
-  )`
-
-const crownJewelSeedQuery = crownJewelSeedMatch + `
-RETURN seed.urn AS seed_urn,
-       seed.entity_type AS seed_entity_type,
-       seed.label AS seed_label
-ORDER BY seed.label, seed.urn
-LIMIT $seed_limit`
-
-func crownJewelEdgeQuery(depth int) string {
-	return fmt.Sprintf(crownJewelSeedMatch+`
-WITH seed
-ORDER BY seed.label, seed.urn
-LIMIT $seed_limit
-WITH collect(seed) AS seeds
-UNWIND seeds AS seed
-CALL {
-  WITH seed
-  MATCH path=(seed)-[:RELATION*1..%d]-(candidate:Entity {tenant_id: $tenant_id})
-  WHERE all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $relations)
-  WITH DISTINCT seed,
-       path,
-       length(path) AS path_len,
-       reduce(path_key = '', node IN nodes(path) | path_key + node.urn + '|') AS path_key
-  ORDER BY path_len, path_key
-  LIMIT $path_limit_per_seed
-  RETURN seed.urn AS seed_urn,
-         path_len AS path_len,
-         path_key AS path_key,
-         [node IN nodes(path) | {urn: node.urn, entity_type: node.entity_type, label: node.label}] AS path_nodes,
-         [rel IN relationships(path) | rel.relation] AS path_relations
-}
-RETURN seed_urn,
-       path_nodes,
-       path_relations
-ORDER BY seed_urn, path_len, path_key
-LIMIT $edge_limit`, depth)
-}
-
-func crownJewelSeedsFromRows(rows []ports.CypherRow) []GraphEntityRef {
-	seeds := make([]GraphEntityRef, 0, len(rows))
-	seen := map[string]struct{}{}
-	for _, row := range rows {
-		seed := prefixedGraphRef(row, "seed")
-		if seed.URN == "" {
-			continue
-		}
-		if _, ok := seen[seed.URN]; ok {
-			continue
-		}
-		seen[seed.URN] = struct{}{}
-		seeds = append(seeds, seed)
-	}
-	return seeds
-}
-
 type crownJewelRankGraph struct {
 	nodes        map[string]GraphEntityRef
 	seeds        map[string]struct{}
@@ -279,37 +172,15 @@ func newCrownJewelRankGraph(seeds []GraphEntityRef) *crownJewelRankGraph {
 	return graph
 }
 
-func (g *crownJewelRankGraph) addRows(rows []ports.CypherRow) {
-	for _, row := range rows {
-		if g.addPathRow(row) {
+func (g *crownJewelRankGraph) addPaths(paths []ports.CrownJewelPath) {
+	for _, path := range paths {
+		if len(path.Nodes) < 2 || len(path.Relations) != len(path.Nodes)-1 {
 			continue
 		}
-		g.addEdgeRow(row)
+		for index, relation := range path.Relations {
+			g.addRankEdge(path.Seed.URN, catalogGraphRef(path.Nodes[index]), catalogGraphRef(path.Nodes[index+1]), relation)
+		}
 	}
-}
-
-func (g *crownJewelRankGraph) addPathRow(row ports.CypherRow) bool {
-	seedURN := cypherString(row, "seed_urn")
-	nodes := cypherGraphRefs(row.Values["path_nodes"])
-	relations := cypherStringList(row.Values["path_relations"])
-	if seedURN == "" || len(nodes) < 2 || len(relations) != len(nodes)-1 {
-		return false
-	}
-	for idx, relation := range relations {
-		g.addRankEdge(seedURN, nodes[idx], nodes[idx+1], relation)
-	}
-	return true
-}
-
-func (g *crownJewelRankGraph) addEdgeRow(row ports.CypherRow) {
-	seedURN := cypherString(row, "seed_urn")
-	from := prefixedGraphRef(row, "from")
-	to := prefixedGraphRef(row, "to")
-	relation := cypherString(row, "relation")
-	if seedURN == "" || from.URN == "" || to.URN == "" || relation == "" {
-		return
-	}
-	g.addRankEdge(seedURN, from, to, relation)
 }
 
 func (g *crownJewelRankGraph) addRankEdge(seedURN string, from GraphEntityRef, to GraphEntityRef, relation string) {
@@ -460,64 +331,6 @@ func (g *crownJewelRankGraph) distances() map[string]int {
 
 func excludedCrownJewelRankEntity(entity GraphEntityRef) bool {
 	return entity.EntityType == "asset.tag" || strings.HasSuffix(entity.URN, ":asset_tag:crown_jewel")
-}
-
-func prefixedGraphRef(row ports.CypherRow, prefix string) GraphEntityRef {
-	return GraphEntityRef{
-		URN:        cypherString(row, prefix+"_urn"),
-		EntityType: cypherString(row, prefix+"_entity_type"),
-		Label:      cypherString(row, prefix+"_label"),
-	}
-}
-
-func cypherGraphRefs(value any) []GraphEntityRef {
-	values, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	refs := make([]GraphEntityRef, 0, len(values))
-	for _, value := range values {
-		fields, ok := value.(map[string]any)
-		if !ok {
-			return nil
-		}
-		ref := GraphEntityRef{
-			URN:        cypherAnyString(fields["urn"]),
-			EntityType: cypherAnyString(fields["entity_type"]),
-			Label:      cypherAnyString(fields["label"]),
-		}
-		if ref.URN == "" {
-			return nil
-		}
-		refs = append(refs, ref)
-	}
-	return refs
-}
-
-func cypherStringList(value any) []string {
-	values, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		result = append(result, cypherAnyString(value))
-	}
-	return result
-}
-
-func cypherAnyString(value any) string {
-	if value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	default:
-		return fmt.Sprint(typed)
-	}
 }
 
 func sortedSet(values map[string]struct{}) []string {
