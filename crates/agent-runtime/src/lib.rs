@@ -1168,11 +1168,11 @@ impl Error for AgentRuntimeError {}
 
 /// Executes one validated request through routing, bounded tools, critique, and presentation.
 ///
-/// State-changing tools require an [`EffectAuthorization`] bound to the exact
-/// call input. A successful effect cannot support a completed claim until a
-/// later read observation verifies the resulting state. The returned content
-/// remains [`AgentTurnOutcome::PendingDelivery`] until the host separately
-/// supplies and validates an [`AgentDeliveryReceipt`].
+/// This stateless entry point can prepare an evidence-bound approval request but
+/// never dispatches a state-changing tool. Hosts that execute effects must use
+/// the recorded session API so approval consumption is durable before provider
+/// dispatch. Returned content remains [`AgentTurnOutcome::PendingDelivery`]
+/// until the host separately supplies and validates an [`AgentDeliveryReceipt`].
 ///
 /// # Errors
 ///
@@ -1231,7 +1231,6 @@ pub async fn run_turn(
     let mut observations = Vec::new();
     let mut call_ids = BTreeSet::new();
     let mut call_fingerprints = BTreeSet::new();
-    let mut consumed_effect_authorizations = BTreeSet::new();
     let mut selected_tools = BTreeSet::new();
     let mut revision_feedback = Vec::new();
     let mut operating_repairs = 0;
@@ -1348,9 +1347,7 @@ pub async fn run_turn(
                         &observations,
                         &request.assessment_at,
                     )?;
-                    let Some(approval_ref) = effect_authorization(&request, &call, &authority)
-                        .map(|authorization| authorization.approval_ref.clone())
-                    else {
+                    if effect_authorization(&request, &call, &authority).is_none() {
                         return Ok(AgentTurnOutcome::ApprovalRequired {
                             schema_version: AGENT_TURN_RESULT_V1,
                             lane,
@@ -1367,12 +1364,10 @@ pub async fn run_turn(
                             },
                             tool_call_count: observations.len(),
                         });
-                    };
-                    if !consumed_effect_authorizations.insert(approval_ref) {
-                        return Err(AgentRuntimeError::InvalidToolCall(
-                            "effect authorization was already consumed".into(),
-                        ));
                     }
+                    return Err(AgentRuntimeError::InvalidToolCall(
+                        "effect execution requires a durable recorded session".into(),
+                    ));
                 }
                 let result = tools.invoke(&request, &call).await?;
                 if descriptor.authority_class == ToolAuthorityClass::Actuate {
@@ -4948,7 +4943,7 @@ mod grounding_tests {
     }
 
     #[test]
-    fn effect_authority_requires_fresh_target_evidence_and_binds_exact_policy() {
+    fn effect_authority_uses_dispatch_time_for_fresh_target_evidence() {
         let effect_descriptor = ToolDescriptor {
             tool_id: "connector.update".into(),
             title: "Update connector".into(),
@@ -4971,7 +4966,7 @@ mod grounding_tests {
 
         let observation = ToolObservation {
             sequence: 1,
-            recorded_at: Some("2026-07-31T00:00:30Z".into()),
+            recorded_at: Some("2026-07-31T00:02:00Z".into()),
             call: ToolCall {
                 call_id: "call:read-alpha".into(),
                 tool_id: "connector.read".into(),
@@ -4994,7 +4989,7 @@ mod grounding_tests {
                 evidence: vec![EvidenceRecord {
                     evidence_ref: "evidence://connector/alpha/current".into(),
                     statement: "Connector alpha current state was read.".into(),
-                    observed_at: "2026-07-31T00:00:30Z".into(),
+                    observed_at: "2026-07-31T00:02:00Z".into(),
                     fresh_until: Some("2026-07-31T00:05:00Z".into()),
                     complete: true,
                     atoms: vec![session::EvidenceAtom {
@@ -5004,7 +4999,7 @@ mod grounding_tests {
                             predicate: "/enabled".into(),
                             value: json!(true),
                         },
-                        observed_at: "2026-07-31T00:00:30Z".into(),
+                        observed_at: "2026-07-31T00:02:00Z".into(),
                         fresh_until: Some("2026-07-31T00:05:00Z".into()),
                         complete: true,
                     }],
@@ -5012,11 +5007,21 @@ mod grounding_tests {
                 blocker: None,
             },
         };
+        assert!(
+            effect_authority_binding(
+                &effect_descriptor,
+                &call,
+                std::slice::from_ref(&observation),
+                "2026-07-31T00:01:00Z",
+            )
+            .is_err(),
+            "an observation after turn entry is not yet authoritative at turn-entry time"
+        );
         let binding = effect_authority_binding(
             &effect_descriptor,
             &call,
             std::slice::from_ref(&observation),
-            "2026-07-31T00:01:00Z",
+            "2026-07-31T00:03:00Z",
         )
         .unwrap();
         assert_eq!(binding.target_refs, vec!["connector:alpha"]);
@@ -5031,19 +5036,19 @@ mod grounding_tests {
             &changed_policy,
             &call,
             std::slice::from_ref(&observation),
-            "2026-07-31T00:01:00Z",
+            "2026-07-31T00:03:00Z",
         )
         .unwrap();
         assert_ne!(binding.binding_digest, changed.binding_digest);
 
         let mut stale = observation;
-        stale.result.evidence[0].atoms[0].fresh_until = Some("2026-07-31T00:00:59Z".into());
+        stale.result.evidence[0].atoms[0].fresh_until = Some("2026-07-31T00:02:59Z".into());
         assert!(
             effect_authority_binding(
                 &effect_descriptor,
                 &call,
                 std::slice::from_ref(&stale),
-                "2026-07-31T00:01:00Z"
+                "2026-07-31T00:03:00Z"
             )
             .is_err()
         );

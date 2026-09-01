@@ -1763,11 +1763,34 @@ pub trait SessionJournal: Send + Sync {
     async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError>;
 }
 
+#[cfg(test)]
 struct NoopSessionJournal;
 
+#[cfg(test)]
 #[async_trait]
 impl SessionJournal for NoopSessionJournal {
     async fn record(&self, _event: &SessionEventRecord) -> Result<(), AgentRuntimeError> {
+        Ok(())
+    }
+
+    async fn finalize(&self, _events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
+        Ok(())
+    }
+}
+
+/// Allows read-only turns through convenience entry points while failing closed
+/// before any external effect. Effect replay protection requires a journal that
+/// durably records `EffectStarted` before provider dispatch.
+struct ReadOnlySessionJournal;
+
+#[async_trait]
+impl SessionJournal for ReadOnlySessionJournal {
+    async fn record(&self, event: &SessionEventRecord) -> Result<(), AgentRuntimeError> {
+        if matches!(event.event, SessionEvent::EffectStarted { .. }) {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "effect execution requires a durable session journal".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -2768,18 +2791,19 @@ pub fn compact_session_messages(messages: &mut Vec<SessionMessage>) {
     }
 }
 
-/// Runs one session turn using the no-op external journal.
+/// Runs one read-only session turn without an external journal.
 ///
 /// Use [`run_session_turn_recorded`] when the caller requires an audit sink in
-/// addition to the returned event batch. External effects still pass through the
-/// same tool descriptors, authorization gates, and receipt validation.
+/// addition to the returned event batch. This convenience entry point rejects
+/// external effects before dispatch because replay-safe approval consumption
+/// requires durable `EffectStarted` persistence.
 pub async fn run_session_turn(
     model: &dyn SessionAgentModel,
     tools: &dyn SessionTools,
     session: AgentSession,
     input: SessionTurnInput,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
-    run_session_turn_recorded(model, tools, &NoopSessionJournal, session, input).await
+    run_session_turn_recorded(model, tools, &ReadOnlySessionJournal, session, input).await
 }
 
 /// Runs one deterministic session turn from an explicit host-entry time.
@@ -2797,7 +2821,7 @@ pub async fn run_session_turn_at(
     run_session_turn_recorded_at(
         model,
         tools,
-        &NoopSessionJournal,
+        &ReadOnlySessionJournal,
         session,
         input,
         SessionTurnHostContext {
@@ -2815,7 +2839,9 @@ pub async fn run_session_turn_at(
 /// bounds model repair attempts and tool steps, atomizes receipts, and validates
 /// every visible claim. It returns either an exact pending-delivery payload or an
 /// approval request; transport delivery and session-store append remain caller
-/// responsibilities.
+/// responsibilities. For an actuating catalog, `journal.record` must durably and
+/// idempotently persist `EffectStarted` before it returns; a memory-only or no-op
+/// implementation does not satisfy this API's effect-safety contract.
 pub async fn run_session_turn_recorded(
     model: &dyn SessionAgentModel,
     tools: &dyn SessionTools,
@@ -3540,6 +3566,14 @@ async fn run_session_turn_recorded_at(
                 }
                 call_ids = proposed_call_ids;
                 call_fingerprints = proposed_call_fingerprints;
+                let authority_at =
+                    elapsed_host_turn_time(host_turn_clock_base, host_turn_started_at)?;
+                authoritative_turn_clock_at(&observations, assessment_at, authority_at)?;
+                let authority_at = authority_at.format(&Rfc3339).map_err(|_| {
+                    AgentRuntimeError::InvalidToolCall(
+                        "effect authority time could not be formatted".into(),
+                    )
+                })?;
                 let actuation_authorities = calls
                     .iter()
                     .filter_map(|call| {
@@ -3549,13 +3583,8 @@ async fn run_session_turn_recorded_at(
                         })
                     })
                     .map(|(call, descriptor)| {
-                        effect_authority_binding(
-                            descriptor,
-                            call,
-                            &observations,
-                            &input.assessment_at,
-                        )
-                        .map(|binding| (call.call_id.clone(), binding))
+                        effect_authority_binding(descriptor, call, &observations, &authority_at)
+                            .map(|binding| (call.call_id.clone(), binding))
                     })
                     .collect::<Result<BTreeMap<_, _>, AgentRuntimeError>>()?;
                 if let Some(call) = calls.iter().find(|call| {
@@ -8329,10 +8358,10 @@ fn elapsed_host_turn_time(
     clock_base: OffsetDateTime,
     started_at: Instant,
 ) -> Result<OffsetDateTime, AgentRuntimeError> {
-    let elapsed_seconds = i64::try_from(started_at.elapsed().as_secs())
+    let elapsed_nanoseconds = i64::try_from(started_at.elapsed().as_nanos())
         .map_err(|_| AgentRuntimeError::InvalidFinal("host turn duration overflowed".into()))?;
     clock_base
-        .checked_add(Duration::seconds(elapsed_seconds))
+        .checked_add(Duration::nanoseconds(elapsed_nanoseconds))
         .ok_or_else(|| AgentRuntimeError::InvalidFinal("host turn clock overflowed".into()))
 }
 
@@ -12535,6 +12564,50 @@ mod tests {
             tool_id: call.tool_id.clone(),
             input_digest: input_digest.clone(),
         });
+        let nonrecorded_model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan {
+                    plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:mcp-read-before-nonrecorded-effect".into(),
+                        tool_id: "mcp.slack.message.read".into(),
+                        purpose: "Resolve channel one before using the approval.".into(),
+                        input: json!({"channel_id": "channel-one", "phase": "dispatch"}),
+                    }],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![call.clone()],
+                },
+            ])),
+        };
+        let nonrecorded_tools = DirectMcpEffectTools {
+            ambiguous: false,
+            calls: Mutex::new(Vec::new()),
+        };
+        assert_eq!(
+            super::run_session_turn_at(
+                &nonrecorded_model,
+                &nonrecorded_tools,
+                authorized.clone(),
+                input.clone(),
+                OffsetDateTime::parse(&input.assessment_at, &Rfc3339).unwrap(),
+            )
+            .await,
+            Err(AgentRuntimeError::InvalidToolCall(
+                "effect execution requires a durable session journal".into()
+            ))
+        );
+        assert_eq!(
+            nonrecorded_tools.calls.lock().unwrap().as_slice(),
+            &[ToolCall {
+                call_id: "call:mcp-read-before-nonrecorded-effect".into(),
+                tool_id: "mcp.slack.message.read".into(),
+                purpose: "Resolve channel one before using the approval.".into(),
+                input: json!({"channel_id": "channel-one", "phase": "dispatch"}),
+            }]
+        );
         let authorized_model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlan {

@@ -889,7 +889,7 @@ fn final_draft() -> FinalDraft {
 }
 
 #[tokio::test]
-async fn executes_inspect_change_verify_report_loop() {
+async fn stateless_entrypoint_rejects_an_authorized_effect_before_dispatch() {
     let (inspect, inspect_descriptor, inspect_result) =
         runtime_read("inspect", "evidence://before");
     let change = ToolCall {
@@ -959,25 +959,13 @@ async fn executes_inspect_change_verify_report_loop() {
         ])),
     };
 
-    let outcome = run_turn(&model, &tools, turn).await.unwrap();
-    let AgentTurnOutcome::Delivered {
-        lane,
-        markdown,
-        tool_call_count,
-        ..
-    } = outcome
-    else {
-        panic!("expected a delivered answer");
-    };
-    assert_eq!(lane, ExecutionLane::Act);
-    assert_eq!(tool_call_count, 3);
     assert_eq!(
-        markdown,
-        "The requested runtime change is active. One process restart remains pending."
+        run_turn(&model, &tools, turn).await,
+        Err(AgentRuntimeError::InvalidToolCall(
+            "effect execution requires a durable recorded session".into()
+        ))
     );
-    assert!(!markdown.contains("Checked"));
-    assert!(!markdown.contains("Current state"));
-    assert!(!markdown.contains("Cypher"));
+    assert!(tools.results.lock().unwrap().contains_key("change"));
 }
 
 #[tokio::test]
@@ -1317,7 +1305,7 @@ async fn rejects_an_approval_bound_to_another_actor_and_thread() {
 }
 
 #[tokio::test]
-async fn consumes_each_effect_authorization_once() {
+async fn stateless_entrypoint_cannot_consume_an_effect_authorization() {
     let (inspect, inspect_descriptor, inspect_result) =
         runtime_read("inspect", "evidence://before-consumption");
     let first = ToolCall {
@@ -1380,13 +1368,13 @@ async fn consumes_each_effect_authorization_once() {
     assert_eq!(
         run_turn(&model, &tools, turn).await,
         Err(AgentRuntimeError::InvalidToolCall(
-            "effect authorization was already consumed".into()
+            "effect execution requires a durable recorded session".into()
         ))
     );
 }
 
 #[tokio::test]
-async fn rejects_effect_claims_without_later_independent_verification() {
+async fn stateless_entrypoint_rejects_before_effect_claims_can_be_made() {
     let (inspect, inspect_descriptor, inspect_result) =
         runtime_read("inspect", "evidence://before-unverified-effect");
     let change = ToolCall {
@@ -1434,22 +1422,16 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         ])),
     };
 
-    let AgentTurnOutcome::Delivered {
-        final_state,
-        markdown,
-        evidence_refs,
-        ..
-    } = run_turn(&model, &tools, turn).await.unwrap()
-    else {
-        panic!("expected an evidence-safe blocked handoff")
-    };
-    assert_eq!(final_state, FinalState::Blocked);
-    assert!(markdown.contains("not claiming completion"));
-    assert!(evidence_refs.is_empty());
+    assert_eq!(
+        run_turn(&model, &tools, turn).await,
+        Err(AgentRuntimeError::InvalidToolCall(
+            "effect execution requires a durable recorded session".into()
+        ))
+    );
 }
 
 #[tokio::test]
-async fn stops_and_reconciles_outcome_unknown_without_retrying() {
+async fn stateless_entrypoint_rejects_before_an_uncertain_effect_can_run() {
     let (inspect, inspect_descriptor, inspect_result) =
         runtime_read("inspect", "evidence://before-unknown-effect");
     let effect = ToolCall {
@@ -1510,20 +1492,12 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
         ])),
     };
 
-    let outcome = run_turn(&model, &tools, turn).await.unwrap();
-    let AgentTurnOutcome::Delivered {
-        final_state,
-        markdown,
-        tool_call_count,
-        ..
-    } = outcome
-    else {
-        panic!("expected blocked delivered result");
-    };
-    assert_eq!(final_state, FinalState::Blocked);
-    assert_eq!(tool_call_count, 2);
-    assert!(markdown.contains("Outcome not confirmed"));
-    assert!(markdown.contains("Reconcile"));
+    assert_eq!(
+        run_turn(&model, &tools, turn).await,
+        Err(AgentRuntimeError::InvalidToolCall(
+            "effect execution requires a durable recorded session".into()
+        ))
+    );
 }
 
 #[tokio::test]

@@ -304,10 +304,17 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
     let tenant_id = env::var("CEREBRO_SLACK_AUTHORITY_TENANT_ID")
         .map_err(|_| "CEREBRO_SLACK_AUTHORITY_TENANT_ID is required")?;
     let question_policy = QuestionPolicy::new(tenant_id.clone())?;
-    let agent_runtime_token = env::var(AGENT_RUNTIME_TOKEN_ENV)
-        .map_err(|_| "CEREBRO_SLACK_AGENT_RUNTIME_TOKEN is required")?;
-    validate_agent_runtime_token(&agent_runtime_token)?;
     let agent = SlackAgentService::from_env(tenant_id).await?;
+    let agent_runtime_token = if agent.is_some() {
+        let token = env::var(AGENT_RUNTIME_TOKEN_ENV)
+            .map_err(|_| "CEREBRO_SLACK_AGENT_RUNTIME_TOKEN is required")?;
+        validate_agent_runtime_token(&token)?;
+        Some(AgentRuntimeTokenDigest(
+            Sha256::digest(token.as_bytes()).into(),
+        ))
+    } else {
+        None
+    };
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
@@ -323,13 +330,7 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
     );
     axum::serve(
         listener,
-        router(
-            question_policy,
-            agent,
-            Some(AgentRuntimeTokenDigest(
-                Sha256::digest(agent_runtime_token.as_bytes()).into(),
-            )),
-        ),
+        router(question_policy, agent, agent_runtime_token),
     )
     .await?;
     Ok(())
