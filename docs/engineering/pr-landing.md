@@ -26,3 +26,10 @@ The helper enforces this order:
 The post-merge health workflow audits the merged commit's main-branch
 workflows and release-tag position. Release tag lag is informational unless
 the release workflows themselves are failing.
+
+Main pushes key the CI, CodeQL, Semgrep, and Secret Scan concurrency groups by
+commit SHA, so every merged commit keeps its own terminal evidence instead of
+being cancelled behind the next merge. The two candidate workflows still
+serialize behind one active run; a candidate run cancelled behind a newer main
+commit is reported as superseded rather than failed, because the newer
+commit's candidate run carries the evidence.
