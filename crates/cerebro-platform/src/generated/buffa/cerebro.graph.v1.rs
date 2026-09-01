@@ -693,6 +693,33 @@ pub struct GraphEdge {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
     )]
     pub identity_binding: bool,
+    /// Field 7: `application_workspace_id`
+    #[serde(
+        rename = "applicationWorkspaceId",
+        alias = "application_workspace_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub application_workspace_id: ::buffa::alloc::string::String,
+    /// Field 8: `provenance`
+    #[serde(
+        rename = "provenance",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub provenance: ::buffa::MessageField<
+        GraphEdgeProvenance,
+        ::buffa::Inline<GraphEdgeProvenance>,
+    >,
+    /// Field 9: `identity_binding_detail`
+    #[serde(
+        rename = "identityBindingDetail",
+        alias = "identity_binding_detail",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub identity_binding_detail: ::buffa::MessageField<
+        GraphIdentityBinding,
+        ::buffa::Inline<GraphIdentityBinding>,
+    >,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -706,6 +733,9 @@ impl ::core::fmt::Debug for GraphEdge {
             .field("to_entity_id", &self.to_entity_id)
             .field("source_runtime_id", &self.source_runtime_id)
             .field("identity_binding", &self.identity_binding)
+            .field("application_workspace_id", &self.application_workspace_id)
+            .field("provenance", &self.provenance)
+            .field("identity_binding_detail", &self.identity_binding_detail)
             .finish()
     }
 }
@@ -732,7 +762,7 @@ impl ::buffa::Message for GraphEdge {
     /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
     /// points reject, never a silently wrapped size.
     #[allow(clippy::let_and_return)]
-    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
         #[allow(unused_imports)]
         use ::buffa::Enumeration as _;
         let mut size = 0u64;
@@ -758,12 +788,34 @@ impl ::buffa::Message for GraphEdge {
         if self.identity_binding {
             size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
         }
+        if !self.application_workspace_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.application_workspace_id)
+                        as u64;
+        }
+        if self.provenance.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.provenance.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.identity_binding_detail.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.identity_binding_detail.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
     fn write_to(
         &self,
-        _cache: &mut ::buffa::SizeCache,
+        __cache: &mut ::buffa::SizeCache,
         buf: &mut impl ::buffa::EncodeSink,
     ) {
         #[allow(unused_imports)]
@@ -785,6 +837,25 @@ impl ::buffa::Message for GraphEdge {
         }
         if self.identity_binding {
             ::buffa::types::put_bool_field(6u32, self.identity_binding, buf);
+        }
+        if !self.application_workspace_id.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.application_workspace_id, buf);
+        }
+        if self.provenance.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                8u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.provenance.write_to(__cache, buf);
+        }
+        if self.identity_binding_detail.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                9u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.identity_binding_detail.write_to(__cache, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -841,6 +912,35 @@ impl ::buffa::Message for GraphEdge {
                 )?;
                 self.identity_binding = ::buffa::types::decode_bool(buf)?;
             }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.application_workspace_id, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.provenance.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.identity_binding_detail.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -855,6 +955,9 @@ impl ::buffa::Message for GraphEdge {
         self.to_entity_id.clear();
         self.source_runtime_id.clear();
         self.identity_binding = false;
+        self.application_workspace_id.clear();
+        self.provenance = ::buffa::MessageField::none();
+        self.identity_binding_detail = ::buffa::MessageField::none();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -885,6 +988,704 @@ pub const __GRAPH_EDGE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa:
     type_url: "type.googleapis.com/cerebro.graph.v1.GraphEdge",
     to_json: ::buffa::type_registry::any_to_json::<GraphEdge>,
     from_json: ::buffa::type_registry::any_from_json::<GraphEdge>,
+    is_wkt: false,
+};
+/// GraphRecordProvenance identifies one direct source record supporting an assertion.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GraphRecordProvenance {
+    /// Field 1: `observation_id`
+    #[serde(
+        rename = "observationId",
+        alias = "observation_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub observation_id: ::buffa::alloc::string::String,
+    /// Field 2: `source_record`
+    #[serde(
+        rename = "sourceRecord",
+        alias = "source_record",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_record: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GraphRecordProvenance {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GraphRecordProvenance")
+            .field("observation_id", &self.observation_id)
+            .field("source_record", &self.source_record)
+            .finish()
+    }
+}
+impl GraphRecordProvenance {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphRecordProvenance";
+}
+::buffa::impl_default_instance!(GraphRecordProvenance);
+impl ::buffa::MessageName for GraphRecordProvenance {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "GraphRecordProvenance";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.GraphRecordProvenance";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphRecordProvenance";
+}
+impl ::buffa::Message for GraphRecordProvenance {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.observation_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.observation_id) as u64;
+        }
+        if !self.source_record.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.source_record) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.observation_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.observation_id, buf);
+        }
+        if !self.source_record.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.source_record, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.observation_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_record, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.observation_id.clear();
+        self.source_record.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GraphRecordProvenance {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.GraphRecordProvenance";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GraphRecordProvenance {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GRAPH_RECORD_PROVENANCE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.GraphRecordProvenance",
+    to_json: ::buffa::type_registry::any_to_json::<GraphRecordProvenance>,
+    from_json: ::buffa::type_registry::any_from_json::<GraphRecordProvenance>,
+    is_wkt: false,
+};
+/// GraphEdgeProvenance retains bounded collection and producer evidence for an assertion.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GraphEdgeProvenance {
+    /// Field 1: `source_collection_id`
+    #[serde(
+        rename = "sourceCollectionId",
+        alias = "source_collection_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_collection_id: ::buffa::alloc::string::String,
+    /// Field 2: `collection_scope`
+    #[serde(
+        rename = "collectionScope",
+        alias = "collection_scope",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub collection_scope: ::buffa::alloc::string::String,
+    /// Field 3: `records`
+    #[serde(
+        rename = "records",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub records: ::buffa::alloc::vec::Vec<GraphRecordProvenance>,
+    /// Field 4: `producer`
+    #[serde(
+        rename = "producer",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub producer: ::buffa::alloc::string::String,
+    /// Field 5: `producer_version`
+    #[serde(
+        rename = "producerVersion",
+        alias = "producer_version",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub producer_version: ::buffa::alloc::string::String,
+    /// Field 6: `observed_at_unix_ms`
+    #[serde(
+        rename = "observedAtUnixMs",
+        alias = "observed_at_unix_ms",
+        with = "::buffa::json_helpers::int64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_i64"
+    )]
+    pub observed_at_unix_ms: i64,
+    /// Field 7: `collection_completeness`
+    #[serde(
+        rename = "collectionCompleteness",
+        alias = "collection_completeness",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub collection_completeness: ::buffa::alloc::string::String,
+    /// Field 8: `collection_observed_at_unix_ms`
+    #[serde(
+        rename = "collectionObservedAtUnixMs",
+        alias = "collection_observed_at_unix_ms",
+        with = "::buffa::json_helpers::int64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_i64"
+    )]
+    pub collection_observed_at_unix_ms: i64,
+    /// Field 9: `assertion_graph_revision`
+    #[serde(
+        rename = "assertionGraphRevision",
+        alias = "assertion_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub assertion_graph_revision: u64,
+    /// Field 10: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GraphEdgeProvenance {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GraphEdgeProvenance")
+            .field("source_collection_id", &self.source_collection_id)
+            .field("collection_scope", &self.collection_scope)
+            .field("records", &self.records)
+            .field("producer", &self.producer)
+            .field("producer_version", &self.producer_version)
+            .field("observed_at_unix_ms", &self.observed_at_unix_ms)
+            .field("collection_completeness", &self.collection_completeness)
+            .field(
+                "collection_observed_at_unix_ms",
+                &self.collection_observed_at_unix_ms,
+            )
+            .field("assertion_graph_revision", &self.assertion_graph_revision)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+impl GraphEdgeProvenance {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphEdgeProvenance";
+}
+::buffa::impl_default_instance!(GraphEdgeProvenance);
+impl ::buffa::MessageName for GraphEdgeProvenance {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "GraphEdgeProvenance";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.GraphEdgeProvenance";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphEdgeProvenance";
+}
+impl ::buffa::Message for GraphEdgeProvenance {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.source_collection_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_collection_id)
+                        as u64;
+        }
+        if !self.collection_scope.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.collection_scope) as u64;
+        }
+        for v in &self.records {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.producer.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.producer) as u64;
+        }
+        if !self.producer_version.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.producer_version) as u64;
+        }
+        if self.observed_at_unix_ms != 0i64 {
+            size
+                += 1u64
+                    + ::buffa::types::int64_encoded_len(self.observed_at_unix_ms) as u64;
+        }
+        if !self.collection_completeness.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.collection_completeness)
+                        as u64;
+        }
+        if self.collection_observed_at_unix_ms != 0i64 {
+            size
+                += 1u64
+                    + ::buffa::types::int64_encoded_len(
+                        self.collection_observed_at_unix_ms,
+                    ) as u64;
+        }
+        if self.assertion_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.assertion_graph_revision)
+                        as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.source_collection_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.source_collection_id, buf);
+        }
+        if !self.collection_scope.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.collection_scope, buf);
+        }
+        for v in &self.records {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if !self.producer.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.producer, buf);
+        }
+        if !self.producer_version.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.producer_version, buf);
+        }
+        if self.observed_at_unix_ms != 0i64 {
+            ::buffa::types::put_int64_field(6u32, self.observed_at_unix_ms, buf);
+        }
+        if !self.collection_completeness.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.collection_completeness, buf);
+        }
+        if self.collection_observed_at_unix_ms != 0i64 {
+            ::buffa::types::put_int64_field(
+                8u32,
+                self.collection_observed_at_unix_ms,
+                buf,
+            );
+        }
+        if self.assertion_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(9u32, self.assertion_graph_revision, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(10u32, self.truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_collection_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.collection_scope, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.records.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.producer, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.producer_version, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.observed_at_unix_ms = ::buffa::types::decode_int64(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.collection_completeness, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.collection_observed_at_unix_ms = ::buffa::types::decode_int64(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.assertion_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.source_collection_id.clear();
+        self.collection_scope.clear();
+        self.records.clear();
+        self.producer.clear();
+        self.producer_version.clear();
+        self.observed_at_unix_ms = 0i64;
+        self.collection_completeness.clear();
+        self.collection_observed_at_unix_ms = 0i64;
+        self.assertion_graph_revision = 0u64;
+        self.truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GraphEdgeProvenance {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.GraphEdgeProvenance";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GraphEdgeProvenance {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GRAPH_EDGE_PROVENANCE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.GraphEdgeProvenance",
+    to_json: ::buffa::type_registry::any_to_json::<GraphEdgeProvenance>,
+    from_json: ::buffa::type_registry::any_from_json::<GraphEdgeProvenance>,
+    is_wkt: false,
+};
+/// GraphIdentityBinding preserves the decision state and method of an identity assertion.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GraphIdentityBinding {
+    /// Field 1: `state`
+    #[serde(
+        rename = "state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub state: ::buffa::alloc::string::String,
+    /// Field 2: `method`
+    #[serde(
+        rename = "method",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub method: ::buffa::alloc::string::String,
+    /// Field 3: `canonical`
+    #[serde(
+        rename = "canonical",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub canonical: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GraphIdentityBinding {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GraphIdentityBinding")
+            .field("state", &self.state)
+            .field("method", &self.method)
+            .field("canonical", &self.canonical)
+            .finish()
+    }
+}
+impl GraphIdentityBinding {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphIdentityBinding";
+}
+::buffa::impl_default_instance!(GraphIdentityBinding);
+impl ::buffa::MessageName for GraphIdentityBinding {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "GraphIdentityBinding";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.GraphIdentityBinding";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphIdentityBinding";
+}
+impl ::buffa::Message for GraphIdentityBinding {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.state.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.state) as u64;
+        }
+        if !self.method.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.method) as u64;
+        }
+        if self.canonical {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.state.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.state, buf);
+        }
+        if !self.method.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.method, buf);
+        }
+        if self.canonical {
+            ::buffa::types::put_bool_field(3u32, self.canonical, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.state, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.method, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.canonical = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.state.clear();
+        self.method.clear();
+        self.canonical = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GraphIdentityBinding {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.GraphIdentityBinding";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GraphIdentityBinding {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GRAPH_IDENTITY_BINDING_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.GraphIdentityBinding",
+    to_json: ::buffa::type_registry::any_to_json::<GraphIdentityBinding>,
+    from_json: ::buffa::type_registry::any_from_json::<GraphIdentityBinding>,
     is_wkt: false,
 };
 /// GraphPath is an ordered directed path.
@@ -22434,6 +23235,16 @@ pub mod __buffa {
             pub source_runtime_id: &'a str,
             /// Field 6: `identity_binding`
             pub identity_binding: bool,
+            /// Field 7: `application_workspace_id`
+            pub application_workspace_id: &'a str,
+            /// Field 8: `provenance`
+            pub provenance: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEdgeProvenanceView<'a>,
+            >,
+            /// Field 9: `identity_binding_detail`
+            pub identity_binding_detail: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphIdentityBindingView<'a>,
+            >,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for GraphEdgeView<'a> {
@@ -22510,6 +23321,65 @@ pub mod __buffa {
                         )?;
                         view.identity_binding = ::buffa::types::decode_bool(&mut cur)?;
                     }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.application_workspace_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.provenance.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.provenance = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEdgeProvenanceView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.identity_binding_detail.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.identity_binding_detail = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphIdentityBindingView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
                     _ => {
                         ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
                         let span_len = before_tag.len() - cur.len();
@@ -22539,6 +23409,28 @@ pub mod __buffa {
                     to_entity_id: self.to_entity_id.to_string(),
                     source_runtime_id: self.source_runtime_id.to_string(),
                     identity_binding: self.identity_binding,
+                    application_workspace_id: self.application_workspace_id.to_string(),
+                    provenance: match self.provenance.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEdgeProvenance,
+                                ::buffa::Inline<super::super::GraphEdgeProvenance>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    identity_binding_detail: match self
+                        .identity_binding_detail
+                        .as_option()
+                    {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphIdentityBinding,
+                                ::buffa::Inline<super::super::GraphIdentityBinding>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -22549,7 +23441,7 @@ pub mod __buffa {
         }
         impl<'a> ::buffa::ViewEncode<'a> for GraphEdgeView<'a> {
             #[allow(clippy::needless_borrow, clippy::let_and_return)]
-            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
                 #[allow(unused_imports)]
                 use ::buffa::Enumeration as _;
                 let mut size = 0u64;
@@ -22585,13 +23477,36 @@ pub mod __buffa {
                 if self.identity_binding {
                     size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
                 }
+                if !self.application_workspace_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.application_workspace_id,
+                            ) as u64;
+                }
+                if self.provenance.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.provenance.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.identity_binding_detail.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.identity_binding_detail.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
             #[allow(clippy::needless_borrow)]
             fn write_to(
                 &self,
-                _cache: &mut ::buffa::SizeCache,
+                __cache: &mut ::buffa::SizeCache,
                 buf: &mut impl ::buffa::EncodeSink,
             ) {
                 #[allow(unused_imports)]
@@ -22613,6 +23528,29 @@ pub mod __buffa {
                 }
                 if self.identity_binding {
                     ::buffa::types::put_bool_field(6u32, self.identity_binding, buf);
+                }
+                if !self.application_workspace_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        7u32,
+                        &self.application_workspace_id,
+                        buf,
+                    );
+                }
+                if self.provenance.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        8u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.provenance.write_to(__cache, buf);
+                }
+                if self.identity_binding_detail.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        9u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.identity_binding_detail.write_to(__cache, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -22654,6 +23592,31 @@ pub mod __buffa {
                 }
                 if self.identity_binding {
                     __map.serialize_entry("identityBinding", &self.identity_binding)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.application_workspace_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "applicationWorkspaceId",
+                            self.application_workspace_id,
+                        )?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .provenance
+                        .as_option()
+                    {
+                        __map.serialize_entry("provenance", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .identity_binding_detail
+                        .as_option()
+                    {
+                        __map.serialize_entry("identityBindingDetail", __v)?;
+                    }
                 }
                 __map.end()
             }
@@ -22778,6 +23741,29 @@ pub mod __buffa {
             pub fn identity_binding(&self) -> bool {
                 self.0.reborrow().identity_binding
             }
+            /// Field 7: `application_workspace_id`
+            #[must_use]
+            pub fn application_workspace_id(&self) -> &'_ str {
+                self.0.reborrow().application_workspace_id
+            }
+            /// Field 8: `provenance`
+            #[must_use]
+            pub fn provenance(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEdgeProvenanceView<'_>,
+            > {
+                &self.0.reborrow().provenance
+            }
+            /// Field 9: `identity_binding_detail`
+            #[must_use]
+            pub fn identity_binding_detail(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphIdentityBindingView<'_>,
+            > {
+                &self.0.reborrow().identity_binding_detail
+            }
         }
         impl ::core::convert::From<::buffa::OwnedView<GraphEdgeView<'static>>>
         for GraphEdgeOwnedView {
@@ -22802,6 +23788,1220 @@ pub mod __buffa {
             type ViewHandle = GraphEdgeOwnedView;
         }
         impl ::serde::Serialize for GraphEdgeOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// GraphRecordProvenance identifies one direct source record supporting an assertion.
+        #[derive(Clone, Debug, Default)]
+        pub struct GraphRecordProvenanceView<'a> {
+            /// Field 1: `observation_id`
+            pub observation_id: &'a str,
+            /// Field 2: `source_record`
+            pub source_record: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for GraphRecordProvenanceView<'a> {
+            type Owned = super::super::GraphRecordProvenance;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.observation_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_record = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::GraphRecordProvenance,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::GraphRecordProvenance,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::GraphRecordProvenance {
+                    observation_id: self.observation_id.to_string(),
+                    source_record: self.source_record.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for GraphRecordProvenanceView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.observation_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.observation_id)
+                                as u64;
+                }
+                if !self.source_record.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_record)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.observation_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.observation_id, buf);
+                }
+                if !self.source_record.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.source_record, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for GraphRecordProvenanceView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.observation_id) {
+                    __map.serialize_entry("observationId", self.observation_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_record) {
+                    __map.serialize_entry("sourceRecord", self.source_record)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for GraphRecordProvenanceView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "GraphRecordProvenance";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.GraphRecordProvenance";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphRecordProvenance";
+        }
+        ::buffa::impl_default_view_instance!(GraphRecordProvenanceView);
+        ::buffa::impl_view_reborrow!(GraphRecordProvenanceView);
+        /** Self-contained, `'static` owned view of a `GraphRecordProvenance` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GraphRecordProvenanceView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GraphRecordProvenanceView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct GraphRecordProvenanceOwnedView(
+            ::buffa::OwnedView<GraphRecordProvenanceView<'static>>,
+        );
+        impl GraphRecordProvenanceOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphRecordProvenanceOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphRecordProvenanceOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::GraphRecordProvenance,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphRecordProvenanceOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`GraphRecordProvenanceView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &GraphRecordProvenanceView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::GraphRecordProvenance {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `observation_id`
+            #[must_use]
+            pub fn observation_id(&self) -> &'_ str {
+                self.0.reborrow().observation_id
+            }
+            /// Field 2: `source_record`
+            #[must_use]
+            pub fn source_record(&self) -> &'_ str {
+                self.0.reborrow().source_record
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<GraphRecordProvenanceView<'static>>,
+        > for GraphRecordProvenanceOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<GraphRecordProvenanceView<'static>>,
+            ) -> Self {
+                GraphRecordProvenanceOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<GraphRecordProvenanceOwnedView>
+        for ::buffa::OwnedView<GraphRecordProvenanceView<'static>> {
+            fn from(wrapper: GraphRecordProvenanceOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<GraphRecordProvenanceView<'static>>,
+        > for GraphRecordProvenanceOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<GraphRecordProvenanceView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::GraphRecordProvenance {
+            type View<'a> = GraphRecordProvenanceView<'a>;
+            type ViewHandle = GraphRecordProvenanceOwnedView;
+        }
+        impl ::serde::Serialize for GraphRecordProvenanceOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// GraphEdgeProvenance retains bounded collection and producer evidence for an assertion.
+        #[derive(Clone, Debug, Default)]
+        pub struct GraphEdgeProvenanceView<'a> {
+            /// Field 1: `source_collection_id`
+            pub source_collection_id: &'a str,
+            /// Field 2: `collection_scope`
+            pub collection_scope: &'a str,
+            /// Field 3: `records`
+            pub records: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::GraphRecordProvenanceView<'a>,
+            >,
+            /// Field 4: `producer`
+            pub producer: &'a str,
+            /// Field 5: `producer_version`
+            pub producer_version: &'a str,
+            /// Field 6: `observed_at_unix_ms`
+            pub observed_at_unix_ms: i64,
+            /// Field 7: `collection_completeness`
+            pub collection_completeness: &'a str,
+            /// Field 8: `collection_observed_at_unix_ms`
+            pub collection_observed_at_unix_ms: i64,
+            /// Field 9: `assertion_graph_revision`
+            pub assertion_graph_revision: u64,
+            /// Field 10: `truncated`
+            pub truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for GraphEdgeProvenanceView<'a> {
+            type Owned = super::super::GraphEdgeProvenance;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_collection_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.collection_scope = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.producer = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.producer_version = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.observed_at_unix_ms = ::buffa::types::decode_int64(
+                            &mut cur,
+                        )?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.collection_completeness = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.collection_observed_at_unix_ms = ::buffa::types::decode_int64(
+                            &mut cur,
+                        )?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.assertion_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::GraphRecordProvenanceView,
+                            >(),
+                        )?;
+                        view.records
+                            .push(
+                                <super::super::__buffa::view::GraphRecordProvenanceView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::GraphEdgeProvenance,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::GraphEdgeProvenance,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::GraphEdgeProvenance {
+                    source_collection_id: self.source_collection_id.to_string(),
+                    collection_scope: self.collection_scope.to_string(),
+                    records: self
+                        .records
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    producer: self.producer.to_string(),
+                    producer_version: self.producer_version.to_string(),
+                    observed_at_unix_ms: self.observed_at_unix_ms,
+                    collection_completeness: self.collection_completeness.to_string(),
+                    collection_observed_at_unix_ms: self.collection_observed_at_unix_ms,
+                    assertion_graph_revision: self.assertion_graph_revision,
+                    truncated: self.truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for GraphEdgeProvenanceView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.source_collection_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.source_collection_id,
+                            ) as u64;
+                }
+                if !self.collection_scope.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.collection_scope)
+                                as u64;
+                }
+                for v in &self.records {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.producer.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.producer) as u64;
+                }
+                if !self.producer_version.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.producer_version)
+                                as u64;
+                }
+                if self.observed_at_unix_ms != 0i64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::int64_encoded_len(self.observed_at_unix_ms)
+                                as u64;
+                }
+                if !self.collection_completeness.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.collection_completeness,
+                            ) as u64;
+                }
+                if self.collection_observed_at_unix_ms != 0i64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::int64_encoded_len(
+                                self.collection_observed_at_unix_ms,
+                            ) as u64;
+                }
+                if self.assertion_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.assertion_graph_revision,
+                            ) as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.source_collection_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        1u32,
+                        &self.source_collection_id,
+                        buf,
+                    );
+                }
+                if !self.collection_scope.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.collection_scope, buf);
+                }
+                for v in &self.records {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if !self.producer.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.producer, buf);
+                }
+                if !self.producer_version.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.producer_version, buf);
+                }
+                if self.observed_at_unix_ms != 0i64 {
+                    ::buffa::types::put_int64_field(6u32, self.observed_at_unix_ms, buf);
+                }
+                if !self.collection_completeness.is_empty() {
+                    ::buffa::types::put_string_field(
+                        7u32,
+                        &self.collection_completeness,
+                        buf,
+                    );
+                }
+                if self.collection_observed_at_unix_ms != 0i64 {
+                    ::buffa::types::put_int64_field(
+                        8u32,
+                        self.collection_observed_at_unix_ms,
+                        buf,
+                    );
+                }
+                if self.assertion_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        9u32,
+                        self.assertion_graph_revision,
+                        buf,
+                    );
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(10u32, self.truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for GraphEdgeProvenanceView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_collection_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "sourceCollectionId",
+                            self.source_collection_id,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.collection_scope) {
+                    __map.serialize_entry("collectionScope", self.collection_scope)?;
+                }
+                if !self.records.is_empty() {
+                    __map.serialize_entry("records", &*self.records)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.producer) {
+                    __map.serialize_entry("producer", self.producer)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.producer_version) {
+                    __map.serialize_entry("producerVersion", self.producer_version)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_i64(
+                    &self.observed_at_unix_ms,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "observedAtUnixMs",
+                            &::buffa::json_helpers::ProtoJson(&self.observed_at_unix_ms),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.collection_completeness,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "collectionCompleteness",
+                            self.collection_completeness,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_i64(
+                    &self.collection_observed_at_unix_ms,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "collectionObservedAtUnixMs",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.collection_observed_at_unix_ms,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.assertion_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "assertionGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.assertion_graph_revision,
+                            ),
+                        )?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for GraphEdgeProvenanceView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "GraphEdgeProvenance";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.GraphEdgeProvenance";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphEdgeProvenance";
+        }
+        ::buffa::impl_default_view_instance!(GraphEdgeProvenanceView);
+        ::buffa::impl_view_reborrow!(GraphEdgeProvenanceView);
+        /** Self-contained, `'static` owned view of a `GraphEdgeProvenance` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GraphEdgeProvenanceView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GraphEdgeProvenanceView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct GraphEdgeProvenanceOwnedView(
+            ::buffa::OwnedView<GraphEdgeProvenanceView<'static>>,
+        );
+        impl GraphEdgeProvenanceOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphEdgeProvenanceOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphEdgeProvenanceOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::GraphEdgeProvenance,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphEdgeProvenanceOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`GraphEdgeProvenanceView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &GraphEdgeProvenanceView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::GraphEdgeProvenance {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `source_collection_id`
+            #[must_use]
+            pub fn source_collection_id(&self) -> &'_ str {
+                self.0.reborrow().source_collection_id
+            }
+            /// Field 2: `collection_scope`
+            #[must_use]
+            pub fn collection_scope(&self) -> &'_ str {
+                self.0.reborrow().collection_scope
+            }
+            /// Field 3: `records`
+            #[must_use]
+            pub fn records(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::GraphRecordProvenanceView<'_>,
+            > {
+                &self.0.reborrow().records
+            }
+            /// Field 4: `producer`
+            #[must_use]
+            pub fn producer(&self) -> &'_ str {
+                self.0.reborrow().producer
+            }
+            /// Field 5: `producer_version`
+            #[must_use]
+            pub fn producer_version(&self) -> &'_ str {
+                self.0.reborrow().producer_version
+            }
+            /// Field 6: `observed_at_unix_ms`
+            #[must_use]
+            pub fn observed_at_unix_ms(&self) -> i64 {
+                self.0.reborrow().observed_at_unix_ms
+            }
+            /// Field 7: `collection_completeness`
+            #[must_use]
+            pub fn collection_completeness(&self) -> &'_ str {
+                self.0.reborrow().collection_completeness
+            }
+            /// Field 8: `collection_observed_at_unix_ms`
+            #[must_use]
+            pub fn collection_observed_at_unix_ms(&self) -> i64 {
+                self.0.reborrow().collection_observed_at_unix_ms
+            }
+            /// Field 9: `assertion_graph_revision`
+            #[must_use]
+            pub fn assertion_graph_revision(&self) -> u64 {
+                self.0.reborrow().assertion_graph_revision
+            }
+            /// Field 10: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<GraphEdgeProvenanceView<'static>>>
+        for GraphEdgeProvenanceOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<GraphEdgeProvenanceView<'static>>,
+            ) -> Self {
+                GraphEdgeProvenanceOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<GraphEdgeProvenanceOwnedView>
+        for ::buffa::OwnedView<GraphEdgeProvenanceView<'static>> {
+            fn from(wrapper: GraphEdgeProvenanceOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<GraphEdgeProvenanceView<'static>>>
+        for GraphEdgeProvenanceOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<GraphEdgeProvenanceView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::GraphEdgeProvenance {
+            type View<'a> = GraphEdgeProvenanceView<'a>;
+            type ViewHandle = GraphEdgeProvenanceOwnedView;
+        }
+        impl ::serde::Serialize for GraphEdgeProvenanceOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// GraphIdentityBinding preserves the decision state and method of an identity assertion.
+        #[derive(Clone, Debug, Default)]
+        pub struct GraphIdentityBindingView<'a> {
+            /// Field 1: `state`
+            pub state: &'a str,
+            /// Field 2: `method`
+            pub method: &'a str,
+            /// Field 3: `canonical`
+            pub canonical: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for GraphIdentityBindingView<'a> {
+            type Owned = super::super::GraphIdentityBinding;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.method = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.canonical = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::GraphIdentityBinding,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::GraphIdentityBinding,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::GraphIdentityBinding {
+                    state: self.state.to_string(),
+                    method: self.method.to_string(),
+                    canonical: self.canonical,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for GraphIdentityBindingView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.state.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.state) as u64;
+                }
+                if !self.method.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.method) as u64;
+                }
+                if self.canonical {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.state.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.state, buf);
+                }
+                if !self.method.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.method, buf);
+                }
+                if self.canonical {
+                    ::buffa::types::put_bool_field(3u32, self.canonical, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for GraphIdentityBindingView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.state) {
+                    __map.serialize_entry("state", self.state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.method) {
+                    __map.serialize_entry("method", self.method)?;
+                }
+                if self.canonical {
+                    __map.serialize_entry("canonical", &self.canonical)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for GraphIdentityBindingView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "GraphIdentityBinding";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.GraphIdentityBinding";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GraphIdentityBinding";
+        }
+        ::buffa::impl_default_view_instance!(GraphIdentityBindingView);
+        ::buffa::impl_view_reborrow!(GraphIdentityBindingView);
+        /** Self-contained, `'static` owned view of a `GraphIdentityBinding` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GraphIdentityBindingView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GraphIdentityBindingView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct GraphIdentityBindingOwnedView(
+            ::buffa::OwnedView<GraphIdentityBindingView<'static>>,
+        );
+        impl GraphIdentityBindingOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphIdentityBindingOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphIdentityBindingOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::GraphIdentityBinding,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GraphIdentityBindingOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`GraphIdentityBindingView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &GraphIdentityBindingView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::GraphIdentityBinding {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `state`
+            #[must_use]
+            pub fn state(&self) -> &'_ str {
+                self.0.reborrow().state
+            }
+            /// Field 2: `method`
+            #[must_use]
+            pub fn method(&self) -> &'_ str {
+                self.0.reborrow().method
+            }
+            /// Field 3: `canonical`
+            #[must_use]
+            pub fn canonical(&self) -> bool {
+                self.0.reborrow().canonical
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<GraphIdentityBindingView<'static>>>
+        for GraphIdentityBindingOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<GraphIdentityBindingView<'static>>,
+            ) -> Self {
+                GraphIdentityBindingOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<GraphIdentityBindingOwnedView>
+        for ::buffa::OwnedView<GraphIdentityBindingView<'static>> {
+            fn from(wrapper: GraphIdentityBindingOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<GraphIdentityBindingView<'static>>,
+        > for GraphIdentityBindingOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<GraphIdentityBindingView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::GraphIdentityBinding {
+            type View<'a> = GraphIdentityBindingView<'a>;
+            type ViewHandle = GraphIdentityBindingOwnedView;
+        }
+        impl ::serde::Serialize for GraphIdentityBindingOwnedView {
             fn serialize<__S: ::serde::Serializer>(
                 &self,
                 __s: __S,
@@ -60310,6 +62510,9 @@ pub mod __buffa {
     pub fn register_types(reg: &mut ::buffa::type_registry::TypeRegistry) {
         reg.register_json_any(super::__GRAPH_ENTITY_JSON_ANY);
         reg.register_json_any(super::__GRAPH_EDGE_JSON_ANY);
+        reg.register_json_any(super::__GRAPH_RECORD_PROVENANCE_JSON_ANY);
+        reg.register_json_any(super::__GRAPH_EDGE_PROVENANCE_JSON_ANY);
+        reg.register_json_any(super::__GRAPH_IDENTITY_BINDING_JSON_ANY);
         reg.register_json_any(super::__GRAPH_PATH_JSON_ANY);
         reg.register_json_any(super::__SEARCH_REQUEST_JSON_ANY);
         reg.register_json_any(super::__SEARCH_RESPONSE_JSON_ANY);
@@ -60407,6 +62610,18 @@ pub use self::__buffa::view::GraphEntityOwnedView;
 pub use self::__buffa::view::GraphEdgeView;
 #[doc(inline)]
 pub use self::__buffa::view::GraphEdgeOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphRecordProvenanceView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphRecordProvenanceOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphEdgeProvenanceView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphEdgeProvenanceOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphIdentityBindingView;
+#[doc(inline)]
+pub use self::__buffa::view::GraphIdentityBindingOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::GraphPathView;
 #[doc(inline)]
