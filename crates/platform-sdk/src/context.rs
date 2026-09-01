@@ -11,7 +11,8 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 
 use crate::{
-    AssertionId, ContentDigest, EntityId, GraphChange, GraphDiff, GraphRevision, SdkError, TenantId,
+    AssertionId, ContentDigest, ContextCoverageCompletenessV1, ContextFactV1, ContextSnapshotV1,
+    EntityId, GraphChange, GraphDiff, GraphRevision, SdkError, TenantId,
 };
 
 const CONTEXT_BINDING_DIGEST_SCHEMA: &str = "cerebro.context-binding.v1";
@@ -59,6 +60,56 @@ pub struct ContextBinding {
 }
 
 impl ContextBinding {
+    /// Binds an already verified context snapshot to exact graph dependencies.
+    ///
+    /// The snapshot remains the sole context payload. This adapter converts its
+    /// canonical digest and revision into the generic binding contract, and
+    /// requires complete snapshot coverage and supplied dependencies for every
+    /// entity and assertion referenced by its resolutions and facts. Extra
+    /// dependencies are allowed when the snapshot assembler consumed additional
+    /// graph records while resolving the bounded request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::Invalid`] when the snapshot cannot verify, is partial,
+    /// has a non-canonical digest, or contains a referenced target that is not
+    /// covered. Partial snapshots cannot be safely target-bound because a later
+    /// record may resolve an earlier absence or ambiguity under a new identity.
+    /// The usual [`Self::bind`] validation applies afterward.
+    pub fn from_snapshot(
+        snapshot: &ContextSnapshotV1,
+        dependencies: Vec<ContextDependency>,
+    ) -> Result<Self, SdkError> {
+        snapshot
+            .verify()
+            .map_err(|_| SdkError::Invalid("context snapshot"))?;
+        if snapshot.coverage().completeness() != ContextCoverageCompletenessV1::Complete {
+            return Err(SdkError::Invalid("context snapshot completeness"));
+        }
+        let context_digest = snapshot
+            .snapshot_digest()
+            .strip_prefix("sha256:")
+            .ok_or(SdkError::Invalid("context snapshot digest"))
+            .and_then(ContentDigest::parse)?;
+        let graph_revision = GraphRevision::new(snapshot.graph_revision())?;
+
+        let supplied_targets = dependencies
+            .iter()
+            .map(|dependency| dependency.target.clone())
+            .collect::<BTreeSet<_>>();
+        let required_targets = snapshot_dependency_targets(snapshot);
+        if !required_targets.is_subset(&supplied_targets) {
+            return Err(SdkError::Invalid("context snapshot dependency coverage"));
+        }
+
+        Self::bind(
+            snapshot.tenant_id().clone(),
+            graph_revision,
+            context_digest,
+            dependencies,
+        )
+    }
+
     /// Constructs, canonicalizes, and content-addresses one context binding.
     ///
     /// # Errors
@@ -161,6 +212,58 @@ impl ContextBinding {
         }
         Ok(())
     }
+}
+
+fn snapshot_dependency_targets(snapshot: &ContextSnapshotV1) -> BTreeSet<ContextDependencyTarget> {
+    let mut targets = BTreeSet::new();
+    for resolution in snapshot.subject_resolutions() {
+        if let Some(person) = resolution.canonical_person() {
+            targets.insert(ContextDependencyTarget::Entity(person.entity_id.clone()));
+        }
+        for candidate in resolution.candidates() {
+            targets.insert(ContextDependencyTarget::Entity(candidate.entity_id.clone()));
+        }
+    }
+    for contradiction in snapshot.contradictions() {
+        for candidate in &contradiction.candidates {
+            targets.insert(ContextDependencyTarget::Entity(candidate.entity_id.clone()));
+        }
+    }
+    for fact in snapshot.facts() {
+        match fact {
+            ContextFactV1::CanonicalPerson { person } => {
+                targets.insert(ContextDependencyTarget::Entity(person.entity_id.clone()));
+            }
+            ContextFactV1::IdentityBinding {
+                person,
+                provider_identity,
+                assertion_id,
+                ..
+            } => {
+                targets.insert(ContextDependencyTarget::Entity(person.entity_id.clone()));
+                targets.insert(ContextDependencyTarget::Entity(
+                    provider_identity.entity_id.clone(),
+                ));
+                targets.insert(ContextDependencyTarget::Assertion(assertion_id.clone()));
+            }
+            ContextFactV1::Access {
+                person,
+                target,
+                path,
+            } => {
+                targets.insert(ContextDependencyTarget::Entity(person.entity_id.clone()));
+                targets.insert(ContextDependencyTarget::Entity(target.entity_id.clone()));
+                for edge in path {
+                    targets.insert(ContextDependencyTarget::Entity(edge.from.entity_id.clone()));
+                    targets.insert(ContextDependencyTarget::Entity(edge.to.entity_id.clone()));
+                    targets.insert(ContextDependencyTarget::Assertion(
+                        edge.assertion_id.clone(),
+                    ));
+                }
+            }
+        }
+    }
+    targets
 }
 
 /// Authority available for one later context observation.
@@ -420,6 +523,99 @@ fn validate_reason_codes(reason_codes: &[String]) -> Result<(), SdkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use cerebro_organizational_graph::OrganizationalGraph;
+    use cerebro_organizational_model::{
+        CollectionId, CompleteCollection, Entity, EntityKind, SourceRuntimeId,
+    };
+
+    fn context_snapshot() -> ContextSnapshotV1 {
+        let tenant = TenantId::parse("tenant-snapshot").unwrap();
+        let person = Entity::canonical(
+            tenant.clone(),
+            EntityId::parse("person-1").unwrap(),
+            EntityKind::Person,
+            "Person One",
+        )
+        .unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("runtime-1").unwrap(),
+            CollectionId::parse("collection-1").unwrap(),
+            "person",
+            1,
+        )
+        .unwrap();
+        let mut delta = collection.begin_delta();
+        delta.add_entity(person).unwrap();
+        let mut graph = OrganizationalGraph::new();
+        graph.apply(delta.build()).unwrap();
+        ContextSnapshotV1::capture(
+            &graph,
+            crate::ContextSnapshotRequestV1::new(
+                tenant,
+                vec![crate::ContextSelectorV1::canonical_person("person-1").unwrap()],
+                10,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn snapshot_binding_uses_exact_snapshot_digest_and_requires_fact_coverage() {
+        let snapshot = context_snapshot();
+        let dependency = ContextDependency {
+            target: ContextDependencyTarget::Entity(EntityId::parse("person-1").unwrap()),
+            content_digest: ContentDigest::of_bytes("person-record"),
+        };
+        let binding = ContextBinding::from_snapshot(&snapshot, vec![dependency]).unwrap();
+
+        assert_eq!(binding.tenant_id, snapshot.tenant_id().clone());
+        assert_eq!(binding.graph_revision.get(), snapshot.graph_revision());
+        assert_eq!(
+            binding.context_digest.as_str(),
+            snapshot.snapshot_digest().strip_prefix("sha256:").unwrap()
+        );
+        binding.validate().unwrap();
+
+        assert_eq!(
+            ContextBinding::from_snapshot(
+                &snapshot,
+                vec![ContextDependency {
+                    target: ContextDependencyTarget::Entity(EntityId::parse("unrelated").unwrap()),
+                    content_digest: ContentDigest::of_bytes("unrelated-record"),
+                }],
+            ),
+            Err(SdkError::Invalid("context snapshot dependency coverage"))
+        );
+    }
+
+    #[test]
+    fn partial_snapshot_cannot_masquerade_as_dependency_complete() {
+        let tenant = TenantId::parse("tenant-partial").unwrap();
+        let snapshot = ContextSnapshotV1::capture(
+            &OrganizationalGraph::new(),
+            crate::ContextSnapshotRequestV1::new(
+                tenant,
+                vec![crate::ContextSelectorV1::canonical_person("missing-person").unwrap()],
+                10,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ContextBinding::from_snapshot(
+                &snapshot,
+                vec![ContextDependency {
+                    target: ContextDependencyTarget::Entity(EntityId::parse("unrelated").unwrap()),
+                    content_digest: ContentDigest::of_bytes("unrelated-record"),
+                }],
+            ),
+            Err(SdkError::Invalid("context snapshot completeness"))
+        );
+    }
 
     #[test]
     fn binding_canonicalizes_dependencies_and_rejects_mutation() {

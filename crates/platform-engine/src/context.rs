@@ -8,13 +8,69 @@ use std::collections::{BTreeMap, BTreeSet};
 use cerebro_platform_sdk::{
     ContentDigest, ContextAuthorityState, ContextBinding, ContextBindingEvaluation,
     ContextBindingState, ContextDependencyTarget, ContextObservation, GraphChange, GraphDiff,
-    SdkError,
+    SdkError, WakeCondition, WakeConditionId, WakeConditionKind, WakeSignal,
 };
 
 use crate::canonical;
 
 const REASON_DIFF_TRUNCATED: &str = "context_diff_truncated";
 const REASON_DEPENDENCY_MISMATCH: &str = "context_dependency_digest_mismatch";
+const CONTEXT_INVALIDATED_EVENT_TYPE: &str = "cerebro.context-binding.invalidated";
+
+/// Arms the existing mission wake contract for one exact context binding.
+///
+/// The binding digest becomes the event subject, so another task's context
+/// invalidation cannot satisfy this condition. The control kernel remains the
+/// lifecycle authority; this function only adapts a validated binding into its
+/// closed event predicate.
+///
+/// # Errors
+///
+/// Returns a binding validation error or [`SdkError::Invalid`] when the wake
+/// identity, timestamp, or reason violates the control-kernel contract.
+pub fn arm_context_invalidation_wake(
+    binding: &ContextBinding,
+    wake_condition_id: WakeConditionId,
+    armed_at_unix_ms: u64,
+    reason: String,
+) -> Result<WakeCondition, SdkError> {
+    binding.validate()?;
+    WakeCondition::arm(
+        wake_condition_id,
+        WakeConditionKind::EventObserved {
+            event_type: CONTEXT_INVALIDATED_EVENT_TYPE.to_owned(),
+            subject_urn: context_binding_subject(&binding.binding_digest),
+        },
+        armed_at_unix_ms,
+        reason,
+    )
+    .map_err(|_| SdkError::Invalid("context invalidation wake condition"))
+}
+
+/// Converts a verified invalidation outcome into a mission wake signal.
+///
+/// Unchanged, unrelated changed, and unknown outcomes deliberately return
+/// `None`: none proves that the exact bound dependency set was invalidated.
+///
+/// # Errors
+///
+/// Returns the evaluation validation error when its digest or evidence shape
+/// is not self-consistent.
+pub fn context_invalidation_wake_signal(
+    evaluation: &ContextBindingEvaluation,
+) -> Result<Option<WakeSignal>, SdkError> {
+    evaluation.validate()?;
+    Ok(
+        (evaluation.state == ContextBindingState::Invalidated).then(|| WakeSignal::Event {
+            event_type: CONTEXT_INVALIDATED_EVENT_TYPE.to_owned(),
+            subject_urn: context_binding_subject(&evaluation.binding_digest),
+        }),
+    )
+}
+
+fn context_binding_subject(binding_digest: &ContentDigest) -> String {
+    format!("urn:cerebro:context-binding:{binding_digest}")
+}
 
 /// Evaluates one immutable context binding against a later graph observation.
 ///
@@ -174,6 +230,7 @@ mod tests {
 
     use cerebro_platform_sdk::{
         ContextDependency, GraphDiffRequest, GraphRevision, RevisionSelector, TenantId,
+        WakeConditionState,
     };
 
     use super::*;
@@ -355,5 +412,64 @@ mod tests {
             evaluate_context_binding(&binding, &tampered),
             Err(SdkError::Invalid("context diff digest"))
         );
+    }
+
+    #[test]
+    fn exact_dependency_invalidation_satisfies_the_bound_mission_wake() {
+        let binding = binding(digest("before"));
+        let condition = arm_context_invalidation_wake(
+            &binding,
+            WakeConditionId::parse("wake-context-1").unwrap(),
+            10,
+            "replan when the bound context becomes invalid".to_owned(),
+        )
+        .unwrap();
+        let evaluation = evaluate_context_binding(
+            &binding,
+            &observation(
+                &snapshot(1, &[("entity-1", "before")]),
+                &snapshot(2, &[("entity-1", "after")]),
+                500,
+            ),
+        )
+        .unwrap();
+        let signal = context_invalidation_wake_signal(&evaluation)
+            .unwrap()
+            .expect("invalidation emits a wake signal");
+
+        assert_eq!(
+            condition.satisfy(&signal, 11).unwrap().state,
+            WakeConditionState::Satisfied
+        );
+    }
+
+    #[test]
+    fn unrelated_changed_and_unknown_outcomes_do_not_wake_a_mission() {
+        let binding = binding(digest("bound"));
+        let changed = evaluate_context_binding(
+            &binding,
+            &observation(
+                &snapshot(1, &[("entity-1", "bound"), ("entity-2", "before")]),
+                &snapshot(2, &[("entity-1", "bound"), ("entity-2", "after")]),
+                500,
+            ),
+        )
+        .unwrap();
+        let unknown = evaluate_context_binding(
+            &binding,
+            &ContextObservation {
+                authority: ContextAuthorityState::Unavailable,
+                diff: None,
+                reason_codes: vec!["graph_authority_unavailable".to_owned()],
+            },
+        )
+        .unwrap();
+
+        assert_eq!(context_invalidation_wake_signal(&changed).unwrap(), None);
+        assert_eq!(context_invalidation_wake_signal(&unknown).unwrap(), None);
+
+        let mut tampered = changed;
+        tampered.state = ContextBindingState::Invalidated;
+        assert!(context_invalidation_wake_signal(&tampered).is_err());
     }
 }

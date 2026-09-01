@@ -16,5 +16,8 @@ serde_json.workspace = true
 serde_jcs.workspace = true
 sha2.workspace = true
 
+[dev-dependencies]
+cerebro-organizational-graph.workspace = true
+
 [lints]
 workspace = true
