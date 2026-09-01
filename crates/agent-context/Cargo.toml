@@ -12,6 +12,8 @@ cerebro-organizational-graph.workspace = true
 cerebro-organizational-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_jcs.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [lints]

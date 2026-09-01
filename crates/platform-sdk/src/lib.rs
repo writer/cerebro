@@ -11,6 +11,7 @@
 mod action;
 mod assertion;
 mod budget;
+mod context;
 mod diagnostics;
 mod error;
 mod finding;
@@ -35,7 +36,12 @@ pub use assertion::{
 };
 pub use budget::{BudgetError, ResourceBudget, ResourceUsage};
 pub use cerebro_agent_context::{
-    FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryMatch, QueryNode, QueryResult,
+    CONTEXT_SNAPSHOT_SCHEMA_V1, ContextAccessEdgeV1, ContextContradictionKindV1,
+    ContextContradictionV1, ContextCoverageCompletenessV1, ContextCoverageV1, ContextFactV1,
+    ContextSelectorV1, ContextSnapshotRequestV1, ContextSnapshotV1, ContextSubjectRefV1,
+    ContextSubjectResolutionStateV1, ContextSubjectResolutionV1, ContextUnknownReasonV1,
+    ContextUnknownV1, FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryMatch, QueryNode,
+    QueryResult, SnapshotError,
 };
 pub use cerebro_control_kernel::{
     ActorId, AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionId,
@@ -44,6 +50,10 @@ pub use cerebro_control_kernel::{
 };
 pub use cerebro_organizational_model::{
     AssertionId, EntityId, EntityKind, RelationKind, SourceRuntimeId, TenantId,
+};
+pub use context::{
+    ContextAuthorityState, ContextBinding, ContextBindingEvaluation, ContextBindingState,
+    ContextDependency, ContextDependencyTarget, ContextObservation,
 };
 pub use diagnostics::{CapabilityHealth, CapabilityState, OperationalDiagnostics, ProjectionLag};
 pub use error::SdkError;

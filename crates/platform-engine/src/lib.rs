@@ -9,6 +9,7 @@
 mod action;
 mod assertion;
 mod canonical;
+mod context;
 mod incident;
 mod plugin;
 mod provenance;
@@ -23,6 +24,7 @@ pub use action::{ActionCommand, transition_action};
 pub use assertion::{
     CompiledAssertion, assertion_definition_digest, compile_assertion, evaluate_assertion,
 };
+pub use context::evaluate_context_binding;
 pub use incident::{incident_manifest_digest, package_incident_snapshot};
 pub use plugin::validate_plugin_execution;
 pub use provenance::assemble_provenance;

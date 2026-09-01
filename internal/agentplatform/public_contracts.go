@@ -180,7 +180,7 @@ func A2AProtocol() A2AProtocolContract {
 		Controls: []string{
 			"public Agent Card contains no tenant, endpoint inventory, credential, or deployment labels",
 			"JSON-RPC methods force the authenticated platform tenant before returning contract or task data",
-			"SendMessage can create durable agent-evidence-packet tasks backed by the platform job store",
+			"SendMessage can create durable readiness-metadata and authoritative DecisionPacket tasks backed by the platform job store",
 			"streaming, cancellation, and push-notification methods stay disabled until backed by replayable runtime adapters",
 		},
 	}
@@ -193,7 +193,7 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 	}
 	return A2AAgentCard{
 		Name:        "Cerebro Agent Platform",
-		Description: "Governed security and compliance agent contracts for graph reasoning, evidence packets, event subscription discovery, and idempotent platform operations.",
+		Description: "Governed security and compliance agent contracts for graph reasoning, authoritative DecisionPackets, readiness metadata, event subscription discovery, and idempotent platform operations.",
 		SupportedInterfaces: []A2AAgentInterface{
 			{URL: origin + A2AJSONRPCPath, ProtocolBinding: "JSONRPC", ProtocolVersion: "1.0"},
 		},
@@ -232,8 +232,8 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 		Skills: []A2AAgentSkill{
 			{
 				ID:          "agent-platform-contract",
-				Name:        "Agent platform contract discovery",
-				Description: "Return the governed Cerebro agent-platform capability, provenance, graph reasoning, and eval contract surfaces.",
+				Name:        "Agent platform metadata discovery",
+				Description: "Return discovery metadata for Cerebro capability, provenance, graph reasoning, and eval contracts. This metadata is not resolved decision context.",
 				Tags:        []string{"contracts", "agent-platform", "governance"},
 				Examples:    []string{"List the public agent-platform contract endpoints."},
 				InputModes:  []string{"text/plain", "application/json"},
@@ -241,10 +241,19 @@ func BuildA2AAgentCard(origin string) A2AAgentCard {
 			},
 			{
 				ID:          A2AWorkSkillAgentEvidencePacket,
-				Name:        "Agent evidence packet task",
-				Description: "Create a durable, tenant-scoped A2A task whose artifact contains Cerebro preflight, verifier, connector-gate, eval, memory, simulation, confidence, and write-back guidance.",
+				Name:        "Agent run readiness task",
+				Description: "Create a durable, tenant-scoped readiness artifact with preflight, verifier, connector-gate, eval, memory, simulation, confidence, and write-back guidance. This artifact does not resolve or persist authoritative evidence.",
 				Tags:        []string{"security", "evidence-packet", "governed-work"},
-				Examples:    []string{"Create an evidence packet for this finding scope before an agent run."},
+				Examples:    []string{"Check readiness and guardrails for this finding scope before an agent run."},
+				InputModes:  []string{"text/plain", "application/json"},
+				OutputModes: []string{"application/json"},
+			},
+			{
+				ID:          A2AWorkSkillDecisionPacket,
+				Name:        "Authoritative DecisionPacket task",
+				Description: "Resolve authoritative server-side finding, claim, evidence, audit, coverage, and graph records into the canonical persisted DecisionPacket receipt.",
+				Tags:        []string{"security", "decision-packet", "resolved-context"},
+				Examples:    []string{"Resolve and persist a DecisionPacket for this triage question and finding ID."},
 				InputModes:  []string{"text/plain", "application/json"},
 				OutputModes: []string{"application/json"},
 			},
@@ -300,7 +309,7 @@ func A2AJSONRPCResponseFor(request A2AJSONRPCRequest, card A2AAgentCard) A2AJSON
 			Message: "UnsupportedOperationError",
 			Data: map[string]any{
 				"supportedMethods": A2AProtocol().SupportedMethods,
-				"reason":           "Cerebro only exposes contract discovery over A2A until task execution is backed by a replayable runtime adapter.",
+				"reason":           "The requested A2A method is not supported by this endpoint.",
 			},
 		}
 	}
@@ -312,7 +321,7 @@ func a2AContractMessage(card A2AAgentCard) map[string]any {
 		"role":      "ROLE_AGENT",
 		"messageId": "cerebro-contract-discovery",
 		"parts": []map[string]any{{
-			"text": "Cerebro exposes governed agent-platform, event subscription, and idempotency contracts. Use the links in metadata for the canonical JSON contracts.",
+			"text": "Cerebro exposes discovery metadata for agent-platform, event subscription, and idempotency contracts. Use the decision-packet skill when authoritative resolved context is required.",
 		}},
 		"metadata": map[string]any{
 			"contractVersion":              ContractVersion,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/agentplatform"
+	"github.com/writer/cerebro/internal/decisionpacket"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -39,6 +40,105 @@ func TestCreateEvidencePacketTaskFailsJobWhenCompletionUpdateFails(t *testing.T)
 	if task.Status.State != agentplatform.A2ATaskStateFailed {
 		t.Fatalf("replay task state = %q, want failed", task.Status.State)
 	}
+}
+
+func TestCreateDecisionPacketTaskReturnsCanonicalPersistedArtifact(t *testing.T) {
+	store := newGatewayTestJobStore()
+	builder := &gatewayTestDecisionPacketBuilder{}
+	handler := Handler{Store: store, Resolve: gatewayTestResolver, DecisionPackets: builder, IdempotencyKey: "decision-key"}
+	params := agentplatform.A2ASendMessageParams{
+		Tenant: "writer",
+		Message: agentplatform.A2AMessage{Role: "ROLE_USER", MessageID: "decision-message", ContextID: "decision-context", Parts: []agentplatform.A2APart{{
+			Data: map[string]any{"decision_packet": map[string]any{
+				"workflow": "triage", "question": "Is this finding current?", "finding_ids": []any{"finding-1"},
+			}},
+		}}},
+		Metadata: map[string]any{"skillId": agentplatform.A2AWorkSkillDecisionPacket},
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	response := handler.Respond(context.Background(), agentplatform.A2AJSONRPCRequest{JSONRPC: "2.0", ID: "decision-request", Method: "SendMessage", Params: raw})
+	if response.Error != nil {
+		t.Fatalf("Respond() error = %+v", response.Error)
+	}
+	task := gatewayTestTaskResult(t, response.Result)
+	if task.Status.State != agentplatform.A2ATaskStateCompleted || len(task.Artifacts) != 1 {
+		t.Fatalf("task = %+v, want completed DecisionPacket artifact", task)
+	}
+	artifact := task.Artifacts[0]
+	if artifact.ArtifactID != "decision-packet" || artifact.Metadata["packetId"] != "dpr_test" || artifact.Metadata["persisted"] != true {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+	if builder.tenant.ID != "writer" || builder.actor.ID != "tester" || builder.request.Workflow != "triage" || len(builder.request.FindingIDs) != 1 {
+		t.Fatalf("builder input tenant=%+v actor=%+v request=%+v", builder.tenant, builder.actor, builder.request)
+	}
+}
+
+func TestCreateDecisionPacketTaskFailsJobWhenCompletionUpdateFails(t *testing.T) {
+	store := newGatewayTestJobStore()
+	store.failCompleteUpdate = true
+	handler := Handler{Store: store, Resolve: gatewayTestResolver, DecisionPackets: &gatewayTestDecisionPacketBuilder{}}
+	params := agentplatform.A2ASendMessageParams{
+		Tenant: "writer",
+		Message: agentplatform.A2AMessage{Role: "ROLE_USER", MessageID: "decision-message", Parts: []agentplatform.A2APart{{
+			Data: map[string]any{"decision_packet": map[string]any{"workflow": "triage", "question": "Current?"}},
+		}}},
+		Metadata: map[string]any{"skillId": agentplatform.A2AWorkSkillDecisionPacket},
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	response := handler.Respond(context.Background(), agentplatform.A2AJSONRPCRequest{JSONRPC: "2.0", ID: "decision-request", Method: "SendMessage", Params: raw})
+	if response.Error == nil {
+		t.Fatal("Respond() error = nil, want completion failure")
+	}
+	job := store.mustJob(t, "job-test")
+	if job.Status != ports.JobStatusFailed {
+		t.Fatalf("job status = %q, want failed", job.Status)
+	}
+}
+
+func TestCreateDecisionPacketTaskRejectsCallerSuppliedIdentity(t *testing.T) {
+	store := newGatewayTestJobStore()
+	handler := Handler{Store: store, Resolve: gatewayTestResolver, DecisionPackets: &gatewayTestDecisionPacketBuilder{}}
+	params := agentplatform.A2ASendMessageParams{
+		Tenant: "writer",
+		Message: agentplatform.A2AMessage{Role: "ROLE_USER", MessageID: "decision-message", Parts: []agentplatform.A2APart{{
+			Data: map[string]any{"decision_packet": map[string]any{"workflow": "triage", "question": "Current?", "tenant_id": "other"}},
+		}}},
+		Metadata: map[string]any{"skillId": agentplatform.A2AWorkSkillDecisionPacket},
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	response := handler.Respond(context.Background(), agentplatform.A2AJSONRPCRequest{JSONRPC: "2.0", ID: "decision-request", Method: "SendMessage", Params: raw})
+	if response.Error == nil || response.Error.Code != -32602 {
+		t.Fatalf("response = %+v, want InvalidParams", response)
+	}
+	if len(store.jobs) != 0 {
+		t.Fatalf("jobs created = %d, want none", len(store.jobs))
+	}
+}
+
+type gatewayTestDecisionPacketBuilder struct {
+	tenant  decisionpacket.AuthorizedTenant
+	actor   decisionpacket.AuthorizedActor
+	request decisionpacket.Request
+}
+
+func (b *gatewayTestDecisionPacketBuilder) Build(_ context.Context, tenant decisionpacket.AuthorizedTenant, actor decisionpacket.AuthorizedActor, request decisionpacket.Request) (*decisionpacket.Packet, error) {
+	b.tenant, b.actor, b.request = tenant, actor, request
+	return &decisionpacket.Packet{
+		SchemaVersion: decisionpacket.SchemaVersion,
+		ID:            "dpr_test",
+		GeneratedAt:   time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC),
+		Workflow:      decisionpacket.Workflow{ID: request.Workflow, Question: request.Question},
+		Scope:         decisionpacket.Scope{TenantID: tenant.ID, ActorID: actor.ID},
+	}, nil
 }
 
 func TestCreateEvidencePacketTaskChecksVisibilityOnIdempotentReplay(t *testing.T) {

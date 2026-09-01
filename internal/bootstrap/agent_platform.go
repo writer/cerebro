@@ -43,6 +43,7 @@ func (a *App) handleA2AJSONRPC(w http.ResponseWriter, r *http.Request) {
 	response := a2agateway.Handler{
 		Store:                 jobStore(a.deps.StateStore),
 		Card:                  agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)),
+		DecisionPackets:       a.services.decisionPackets,
 		Resolve:               a.resolveA2AGatewayContext,
 		CoverageContext:       a.agentCoverageContext,
 		AuthorizeEvidence:     authorizeAgentPlatformPacketURNs,

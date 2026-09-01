@@ -18,6 +18,16 @@
 //! claim that a truncated result is complete. Backends own durable availability
 //! and revision truth, while callers own authorization to expose returned facts.
 
+mod snapshot;
+
+pub use snapshot::{
+    CONTEXT_SNAPSHOT_SCHEMA_V1, ContextAccessEdgeV1, ContextContradictionKindV1,
+    ContextContradictionV1, ContextCoverageCompletenessV1, ContextCoverageV1, ContextFactV1,
+    ContextSelectorV1, ContextSnapshotRequestV1, ContextSnapshotV1, ContextSubjectRefV1,
+    ContextSubjectResolutionStateV1, ContextSubjectResolutionV1, ContextUnknownReasonV1,
+    ContextUnknownV1, SnapshotError,
+};
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,

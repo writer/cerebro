@@ -12,6 +12,7 @@ import (
 const (
 	A2AWorkJobKind                  = "a2a_task"
 	A2AWorkSkillAgentEvidencePacket = "agent-evidence-packet"
+	A2AWorkSkillDecisionPacket      = "decision-packet"
 
 	A2ATaskStateSubmitted    = "TASK_STATE_SUBMITTED"
 	A2ATaskStateWorking      = "TASK_STATE_WORKING"
@@ -226,8 +227,8 @@ func BuildA2AEvidencePacketTask(taskID string, contextID string, input A2AMessag
 		},
 		Artifacts: []A2AArtifact{{
 			ArtifactID:  "evidence-packet",
-			Name:        "Agent evidence packet",
-			Description: "Preflight, verifier, connector-gate, eval, memory, simulation, confidence, and write-back guidance for a governed Cerebro agent run.",
+			Name:        "Agent run readiness metadata",
+			Description: "Preflight, verifier, connector-gate, eval, memory, simulation, confidence, and write-back guidance for a governed Cerebro agent run. This artifact is not resolved authoritative context.",
 			Parts: []A2APart{{
 				Data:      packet,
 				MediaType: "application/json",
@@ -243,6 +244,62 @@ func BuildA2AEvidencePacketTask(taskID string, contextID string, input A2AMessag
 			"contractVersion": ContractVersion,
 			"tenantForced":    packet.Preflight.Policy.TenantForced,
 			"writeBack":       packet.RequiredWriteBack,
+		},
+	}
+}
+
+func BuildA2ADecisionPacketTask(taskID string, contextID string, input A2AMessage, packet json.RawMessage, packetID string, schemaVersion string, generatedAt time.Time) A2ATask {
+	taskID = strings.TrimSpace(taskID)
+	contextID = strings.TrimSpace(contextID)
+	if contextID == "" {
+		contextID = taskID
+	}
+	timestamp := generatedAt.UTC().Format(time.RFC3339Nano)
+	statusMessage := A2AMessage{
+		Role:      "ROLE_AGENT",
+		MessageID: taskID + "-completed",
+		ContextID: contextID,
+		TaskID:    taskID,
+		Parts: []A2APart{{
+			Text:      "Cerebro resolved and persisted an authoritative DecisionPacket.",
+			MediaType: "text/plain",
+		}},
+	}
+	history := []A2AMessage{}
+	if strings.TrimSpace(input.MessageID) != "" || len(input.Parts) > 0 {
+		input.ContextID = contextID
+		input.TaskID = taskID
+		history = append(history, input)
+	}
+	return A2ATask{
+		ID:        taskID,
+		ContextID: contextID,
+		Status: A2ATaskStatus{
+			State:     A2ATaskStateCompleted,
+			Message:   &statusMessage,
+			Timestamp: timestamp,
+		},
+		Artifacts: []A2AArtifact{{
+			ArtifactID:  "decision-packet",
+			Name:        "DecisionPacket",
+			Description: "Canonical tenant-scoped DecisionPacket resolved from authoritative server-side records and stored as an immutable receipt.",
+			Parts: []A2APart{{
+				Data:      packet,
+				MediaType: "application/json",
+			}},
+			Metadata: map[string]any{
+				"skillId":       A2AWorkSkillDecisionPacket,
+				"packetId":      strings.TrimSpace(packetID),
+				"schemaVersion": strings.TrimSpace(schemaVersion),
+				"persisted":     true,
+			},
+		}},
+		History: history,
+		Metadata: map[string]any{
+			"skillId":         A2AWorkSkillDecisionPacket,
+			"contractVersion": ContractVersion,
+			"packetId":        strings.TrimSpace(packetID),
+			"persisted":       true,
 		},
 	}
 }

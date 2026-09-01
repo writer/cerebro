@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -94,6 +95,60 @@ func (a *App) handleBuildDecisionPacket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusCreated, packet)
+}
+
+func (a *App) mcpDecisionPacket(r *http.Request, args map[string]any) (any, error) {
+	if a.services.decisionPackets == nil {
+		return nil, decisionpacket.ErrResolverUnavailable
+	}
+	payload, err := json.Marshal(args)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode DecisionPacket request", errInvalidHTTPRequest)
+	}
+	request := &cerebrov1.BuildDecisionPacketRequest{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(payload, request); err != nil {
+		return nil, fmt.Errorf("%w: decode DecisionPacket request", errInvalidHTTPRequest)
+	}
+	tenant, actor, err := decisionPacketIdentity(r.Context(), "", "")
+	if err != nil {
+		return nil, err
+	}
+	return a.services.decisionPackets.Build(r.Context(), tenant, actor, decisionPacketDomainRequest(request))
+}
+
+func decisionPacketMCPTool() mcpTool {
+	stringList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+	budget := func(description string) map[string]any {
+		return map[string]any{"type": "integer", "minimum": 0, "description": description}
+	}
+	return mcpTool{
+		Name:        "cerebro.decision.packet",
+		Title:       "Resolve Authoritative Decision Evidence Packet",
+		Description: "Resolve authenticated tenant records by authoritative finding, claim, evidence, audit, coverage, and graph identifiers, then return the canonical persisted DecisionPacket receipt. Caller-supplied tenant or actor identity is rejected. Requires cerebro.cosmo.security.read.",
+		InputSchema: mcpObjectSchema(map[string]any{
+			"workflow":         map[string]any{"type": "string"},
+			"question":         map[string]any{"type": "string"},
+			"scope_urn":        map[string]any{"type": "string"},
+			"finding_ids":      stringList,
+			"claim_ids":        stringList,
+			"evidence_urns":    stringList,
+			"audit_packet_ids": stringList,
+			"required_sources": stringList,
+			"requested_action": map[string]any{"type": "string"},
+			"budgets": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"properties": map[string]any{
+					"evidence": budget("Maximum evidence records."), "contradictions": budget("Maximum contradictions."),
+					"coverage_gaps": budget("Maximum coverage gaps."), "affected": budget("Maximum affected subjects."),
+					"controls": budget("Maximum controls."), "audit_packets": budget("Maximum audit packets."),
+					"actions": budget("Maximum action proposals."), "graph_rows": budget("Maximum graph rows."),
+					"graph_depth": budget("Maximum graph traversal depth."),
+				},
+			},
+		}, []string{"workflow", "question"}),
+		OutputSchema: mcpOutputSchema(nil),
+		Annotations:  mcpReadOnlyAnnotations("Resolve Authoritative Decision Evidence Packet"),
+	}
 }
 
 func decodeDecisionPacketRequest(r *http.Request, request *cerebrov1.BuildDecisionPacketRequest) error {

@@ -50,8 +50,8 @@ func TestAssessmentExecutionToolsRequireReadAndWriteScopes(t *testing.T) {
 
 func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 	tasks := TaskTools()
-	if len(tasks) != 8 {
-		t.Fatalf("task tools = %d, want 8", len(tasks))
+	if len(tasks) != 9 {
+		t.Fatalf("task tools = %d, want 9", len(tasks))
 	}
 	for _, operation := range tasks {
 		if operation.Name == "cerebro.action.execute" || operation.Behavior == "execute" {
@@ -65,6 +65,7 @@ func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 		"cerebro.investigation.context",
 		"cerebro.risk.explain",
 		"cerebro.evidence.packet",
+		"cerebro.decision.packet",
 		"cerebro.sources.health",
 		"cerebro.action.plan",
 	} {
