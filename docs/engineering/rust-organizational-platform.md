@@ -329,9 +329,11 @@ live read mode in the current image.
 
 ## Remaining compatibility callers
 
-The raw-Cypher compatibility port serves the callers below. None are
-expressible through `QueryFacts` today, and each migrates only after the
-listed capability lands in the Rust read API.
+Fixed finding graph rules now execute through `RunFindingGraphRule`: the Go
+caller supplies a closed rule ID, tenant/runtime scope, bounded row limit, and
+schema-checked parameters; Rust owns the embedded query catalog and Neo4j
+execution. Returned JSON rows retain the existing Go finding interpretation
+contract without exposing a raw-Cypher capability to `internal/findings`.
 
 One structural prerequisite applies to every caller: `QueryFacts` and
 `FindPaths` run against the organizational graph (`OrganizationalEntity` /
@@ -342,10 +344,6 @@ One structural prerequisite applies to every caller: `QueryFacts` and
 kinds and relations into the organizational schema first, and path callers
 additionally need URN-keyed (or `agent_key`) `FindPaths` endpoints because
 Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
-
-| Caller | Query shape | Required Rust capability |
-| --- | --- | --- |
-| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
 
 Two callers are permanent residents of the compatibility port because their
 query text is authored at runtime rather than in code: the `graphagent` ask

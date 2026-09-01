@@ -26,7 +26,7 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newClaimFeatureDeps(deps); got.Runtimes != nil || got.Claims != nil || got.ProjectionState != nil || got.ProjectionGraph != nil {
 		t.Fatalf("newClaimFeatureDeps() = %#v, want nil stores", got)
 	}
-	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil || got.GraphRawCypher != nil || got.AppendLog != nil {
+	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphCatalog != nil || got.FindingGraphRules != nil || got.AppendLog != nil {
 		t.Fatalf("newFindingFeatureDeps() = %#v, want nil dependencies", got)
 	}
 	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.GraphCatalog != nil || got.AppendLog != nil {
@@ -67,7 +67,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newReportFeatureDeps(deps).GraphNeighborhoods; got != authority {
 		t.Fatalf("report graph neighborhoods = %#v, want configured authority", got)
 	}
-	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != authority {
+	if got := newFindingFeatureDeps(deps).FindingGraphRules; got != authority {
 		t.Fatalf("finding raw Cypher graph = %#v, want configured authority", got)
 	}
 	if got := newFindingFeatureDeps(deps).GraphCatalog; got != authority {
@@ -96,7 +96,7 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	if got := newReportFeatureDeps(deps).GraphNeighborhoods; got != nil {
 		t.Fatalf("report graph queries = %#v, want nil without configured authority", got)
 	}
-	if got := newFindingFeatureDeps(deps).GraphRawCypher; got != nil {
+	if got := newFindingFeatureDeps(deps).FindingGraphRules; got != nil {
 		t.Fatalf("finding graph queries = %#v, want nil without configured authority", got)
 	}
 	if got := newFindingFeatureDeps(deps).GraphCatalog; got != nil {

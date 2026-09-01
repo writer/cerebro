@@ -81,7 +81,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if s == nil || s.runtimeStore == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	if s.rawCypher == nil {
+	if s.findingGraphRules == nil {
 		return nil, ErrGraphRuntimeUnavailable
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -246,16 +246,27 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		queryCtx, cancelQuery = context.WithTimeout(ctx, budget)
 		defer cancelQuery()
 	}
-	rows, err := s.rawCypher.ExecuteReadCypher(queryCtx, queryRequest)
+	graphResult, err := s.findingGraphRules.RunFindingGraphRule(queryCtx, ports.FindingGraphRuleRequest{
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		RuleID:    strings.TrimSpace(spec.GetId()),
+		Params:    queryRequest.Params,
+		RowLimit:  effectiveGraphRowLimit(queryRequest),
+	})
 	if err != nil {
-		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
+		evaluationErr := fmt.Errorf("execute graph rule %q: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
+	if graphResult == nil {
+		evaluationErr := fmt.Errorf("execute graph rule %q: rust graph returned no result", spec.GetId())
+		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
+	}
+	rows := graphResult.Rows
 	persistenceTurn.wait()
 	s.verifyGraphEvaluationSourceSnapshots(ctx, run)
 	result.RowsRead = boundedUint32(len(rows))
 	rowLimitTruncated := cypherRowsTruncated(queryRequest, len(rows))
-	result.Truncated = rowLimitTruncated || cypherRowsSignalTruncated(rows)
+	result.Truncated = graphResult.Truncated || rowLimitTruncated || cypherRowsSignalTruncated(rows)
 	run.GraphTruncated = proto.Bool(result.Truncated)
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {

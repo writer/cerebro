@@ -75,7 +75,7 @@ type Service struct {
 	evidenceStore             ports.FindingEvidenceStore
 	candidateStore            ports.FindingCandidateStore
 	claimStore                ports.ClaimStore
-	rawCypher                 ports.RawCypherQueryStore
+	findingGraphRules         ports.FindingGraphRuleStore
 	graphRunStore             GraphIngestRunStore
 	requireTrustedResolution  bool
 	graph                     ports.ProjectionGraphStore
@@ -264,13 +264,13 @@ func (s *Service) WithEntityCatalogStore(catalog ports.EntityCatalogStore) *Serv
 	return s
 }
 
-// WithRawCypherQueryStore wires the retained compatibility boundary for graph rule evaluation.
-func (s *Service) WithRawCypherQueryStore(rawCypher ports.RawCypherQueryStore) *Service {
+// WithFindingGraphRuleStore wires the closed Rust graph-rule read boundary.
+func (s *Service) WithFindingGraphRuleStore(store ports.FindingGraphRuleStore) *Service {
 	if s == nil {
 		return nil
 	}
-	s.rawCypher = rawCypher
-	if graphRuns, ok := rawCypher.(GraphIngestRunStore); ok {
+	s.findingGraphRules = store
+	if graphRuns, ok := store.(GraphIngestRunStore); ok {
 		s.graphRunStore = graphRuns
 	}
 	return s
