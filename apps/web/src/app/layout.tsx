@@ -28,6 +28,11 @@ const agentMono = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
 });
 
+// Every document must render per request: the CSP script nonce is generated in
+// src/proxy.ts for each request, and a build-time prerender would ship script
+// tags without it.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Cerebro",
   description: "Findings, controls, evidence, and connector health.",

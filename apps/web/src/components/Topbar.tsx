@@ -664,6 +664,11 @@ export default function Topbar() {
                     </button>
                   </div>
                 </label>
+                {canUseClientKey && (
+                  <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">
+                    Local development only. This key is stored in this browser; deployments configure a server-held credential instead.
+                  </p>
+                )}
               </div>
             </div>
           </div>
