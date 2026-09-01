@@ -37,6 +37,8 @@ service OrganizationalGraphService {
   rpc ListCloudAttackPaths(ListCloudAttackPathsRequest) returns (ListCloudAttackPathsResponse);
   // ListCrownJewelPaths returns bounded paths rooted at explicitly classified crown jewels.
   rpc ListCrownJewelPaths(ListCrownJewelPathsRequest) returns (ListCrownJewelPathsResponse);
+  // RunFindingGraphRule executes one closed, Rust-owned finding rule query.
+  rpc RunFindingGraphRule(RunFindingGraphRuleRequest) returns (RunFindingGraphRuleResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
@@ -470,6 +472,24 @@ message ListCrownJewelPathsResponse {
   repeated GraphEntity seeds = 3;
   repeated CrownJewelPath paths = 4;
   bool truncated = 5;
+}
+
+message RunFindingGraphRuleRequest {
+  string tenant_id = 1;
+  string runtime_id = 2;
+  string rule_id = 3;
+  uint32 row_limit = 4;
+  // Parameters are encoded as a JSON object. The Rust catalog rejects unknown,
+  // missing, or incorrectly typed entries and always supplies tenant_id and
+  // row_limit from the authenticated request.
+  bytes parameters_json = 5;
+}
+
+message RunFindingGraphRuleResponse {
+  string tenant_id = 1;
+  string rule_id = 2;
+  repeated bytes rows_json = 3;
+  bool truncated = 4;
 }
 
 enum EntityRelationDirection {

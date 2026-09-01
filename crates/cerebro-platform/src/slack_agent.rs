@@ -4435,16 +4435,7 @@ impl AgentTools for PlatformAgentTools {
             "source_catalog.inspect" => self.inspect_source_catalog(request, call),
             "slack.thread.read" => self.read_slack_thread(request, call).await,
             "slack.history.search" => self.search_slack_history(request, call).await,
-            _ => match &self.mcp {
-                Some(mcp)
-                    if mcp.descriptor(&call.tool_id).is_some_and(|descriptor| {
-                        descriptor.authority_class == ToolAuthorityClass::Actuate
-                    }) =>
-                {
-                    mcp.invoke(request, call).await
-                }
-                _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
-            },
+            _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
         }?;
         atomize_tool_result(call, result)
     }
@@ -4563,15 +4554,8 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
     ]
 }
 
-pub(super) fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
-    let mut catalog = built_in_capability_catalog();
-    catalog.extend(
-        remote
-            .iter()
-            .filter(|descriptor| descriptor.authority_class == ToolAuthorityClass::Actuate)
-            .cloned(),
-    );
-    catalog
+pub(super) fn model_capability_catalog(_remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
+    built_in_capability_catalog()
 }
 
 fn capability_overview_descriptor_json(descriptor: &ToolDescriptor) -> Value {
@@ -6060,7 +6044,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_model_catalog_hides_remote_reads_but_keeps_exact_effect_identity() {
+    fn direct_model_catalog_hides_all_remote_tools() {
         let read = discovered_tool(
             "mcp.slack.thread.read",
             "Read a thread",
@@ -6083,10 +6067,11 @@ mod tests {
                 .iter()
                 .any(|tool| tool.tool_id == "mcp.slack.thread.read")
         );
-        assert!(catalog.iter().any(|tool| {
-            tool.tool_id == "mcp.slack.message.send"
-                && tool.authority_class == ToolAuthorityClass::Actuate
-        }));
+        assert!(
+            !catalog
+                .iter()
+                .any(|tool| tool.tool_id == "mcp.slack.message.send")
+        );
     }
 
     #[test]

@@ -503,11 +503,11 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	}, nil
 }
 
-func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *stubGraphStore) RunFindingGraphRule(_ context.Context, _ ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
 	if s.cypherErr != nil {
 		return nil, s.cypherErr
 	}
-	return s.cypherRows, nil
+	return &ports.FindingGraphRuleResult{Rows: s.cypherRows}, nil
 }
 
 func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
@@ -1680,7 +1680,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 		store,
 		store,
 		registry,
-	).WithGraphStore(graph).WithRawCypherQueryStore(graph)
+	).WithGraphStore(graph).WithFindingGraphRuleStore(graph)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID: "writer-okta-audit",
@@ -5146,7 +5146,7 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 		},
 	}
 	appendLog := &recordingAppendLog{}
-	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithRawCypherQueryStore(graphStore).WithAppendLog(appendLog)
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithFindingGraphRuleStore(graphStore).WithAppendLog(appendLog)
 	finding, err := service.ResolveFinding(context.Background(), "finding-1", workflowevents.FindingStatusReasonNoLongerEmitted)
 	if err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)
@@ -6709,12 +6709,12 @@ func trimmedNonEmpty(values []string) []string {
 // limit) over the given records for the Postgres-backed parity test, which
 // lives in package findings_test because internal/statestore/postgres imports
 // this package.
-func ListFindingsForParity(request ports.ListFindingsRequest, records []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
+func ListFindingsForParity(ctx context.Context, request ports.ListFindingsRequest, records []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{}}
 	for _, record := range records {
 		store.findings[record.ID] = cloneFinding(record)
 	}
-	return store.ListFindings(context.Background(), request)
+	return store.ListFindings(ctx, request)
 }
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {

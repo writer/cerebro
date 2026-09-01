@@ -1,6 +1,7 @@
 package findings
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -219,7 +220,7 @@ func TestStubFindingStoreSQLMirroredFilters(t *testing.T) {
 
 	list := func(request ports.ListFindingsRequest) []string {
 		t.Helper()
-		listed, err := ListFindingsForParity(request, records)
+		listed, err := ListFindingsForParity(context.Background(), request, records)
 		if err != nil {
 			t.Fatalf("ListFindings(): %v", err)
 		}

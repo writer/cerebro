@@ -31,7 +31,10 @@ async function main(): Promise<void> {
   const host = createAssistantTurnHost(outcomes);
   const agentClient = new CerebroAskClient({
     ...(config.rustAgentEnabled
-      ? { agentRuntimeUrl: config.slackAnswerAuthorityUrl }
+      ? {
+          agentRuntimeToken: config.slackAgentRuntimeToken,
+          agentRuntimeUrl: config.slackAnswerAuthorityUrl,
+        }
       : {}),
     answerAuthority: new SlackAnswerAuthorityClient({
       baseUrl: config.slackAnswerAuthorityUrl,

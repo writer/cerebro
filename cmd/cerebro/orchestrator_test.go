@@ -686,7 +686,7 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 	graphStore.cypherRows = []ports.CypherRow{
 		{Values: map[string]any{"label": "alice@writer.com"}},
 	}
-	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithRawCypherQueryStore(graphStore)
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithFindingGraphRuleStore(graphStore)
 	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
 	result, err := runOrchestratorIteration(
 		context.Background(),
@@ -862,7 +862,7 @@ func TestRunOrchestratorIterationSkipsGraphRulesUntilGraphIngestCatchesSyncCurso
 	eventLog := &orchestratorEventLog{}
 	findingStore := &orchestratorFindingStore{}
 	graphStore := newGraphTestStore()
-	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithRawCypherQueryStore(graphStore)
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithFindingGraphRuleStore(graphStore)
 	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
 
 	result, err := runOrchestratorIteration(
@@ -1036,7 +1036,7 @@ func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *te
 	eventLog := &orchestratorEventLog{}
 	findingStore := &orchestratorFindingStore{}
 	graphStore := &failingCompletedIngestGraphStore{graphTestStore: newGraphTestStore()}
-	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithRawCypherQueryStore(graphStore)
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithFindingGraphRuleStore(graphStore)
 	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
 	result, err := runOrchestratorIteration(
 		context.Background(),
@@ -1108,7 +1108,7 @@ func TestRunOrchestratorIterationRecordsGraphIngestWhenSourceAndGraphAreCurrent(
 	}); err != nil {
 		t.Fatalf("PutIngestCheckpoint() error = %v", err)
 	}
-	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithRawCypherQueryStore(graphStore)
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithFindingGraphRuleStore(graphStore)
 
 	result, err := runOrchestratorIteration(
 		context.Background(),

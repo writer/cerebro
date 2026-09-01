@@ -87,7 +87,7 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 		state,
 		state,
 		state,
-	).WithGraphStore(graphStore).WithRawCypherQueryStore(graphStore)
+	).WithGraphStore(graphStore)
 	result, err := findingService.EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID: runtimeID,
 		RuleID:    githubDependabotOpenAlertRuleID,
@@ -237,7 +237,7 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 		state,
 		state,
 		state,
-	).WithGraphStore(graphStore).WithRawCypherQueryStore(graphStore)
+	).WithGraphStore(graphStore)
 	result, err := findingService.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  runtimeID,
 		RuleIDs:    githubAuditSOTARuleIDs(),

@@ -51,7 +51,7 @@ type concurrentGraphQuery struct {
 	maximum atomic.Int32
 }
 
-func (s *concurrentGraphQuery) ExecuteReadCypher(ctx context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *concurrentGraphQuery) RunFindingGraphRule(ctx context.Context, _ ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
 	active := s.active.Add(1)
 	defer s.active.Add(-1)
 	for {
@@ -63,7 +63,7 @@ func (s *concurrentGraphQuery) ExecuteReadCypher(ctx context.Context, _ ports.Cy
 	s.started <- struct{}{}
 	select {
 	case <-s.release:
-		return nil, nil
+		return &ports.FindingGraphRuleResult{}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -83,7 +83,7 @@ func TestEvaluateSourceRuntimeGraphRulesReadsConcurrentlyAndReturnsInRuleOrder(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithFindingGraphRuleStore(graphStore)
 
 	type evaluationResult struct {
 		result *EvaluateGraphRulesResult
@@ -115,12 +115,12 @@ func TestEvaluateSourceRuntimeGraphRulesReadsConcurrentlyAndReturnsInRuleOrder(t
 }
 
 // ctxAwareGraphQuery blocks until the caller context is cancelled so a test can
-// assert the per-rule query budget actually bounds an in-flight Cypher read.
+// assert the per-rule query budget actually bounds an in-flight Rust read.
 type ctxAwareGraphQuery struct {
 	*stubGraphStore
 }
 
-func (s *ctxAwareGraphQuery) ExecuteReadCypher(ctx context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *ctxAwareGraphQuery) RunFindingGraphRule(ctx context.Context, _ ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
@@ -142,7 +142,7 @@ func TestEvaluateSourceRuntimeGraphRulesEnforcesPerRuleQueryTimeout(t *testing.T
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).
-		WithRawCypherQueryStore(graphStore).
+		WithFindingGraphRuleStore(graphStore).
 		WithGraphRuleQueryTimeout(25 * time.Millisecond)
 
 	started := time.Now()

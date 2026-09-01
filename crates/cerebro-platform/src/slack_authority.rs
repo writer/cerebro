@@ -11,8 +11,10 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Query, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Query, Request, State},
+    http::{StatusCode, header::AUTHORIZATION},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
 };
 use cerebro_agent_runtime::{
@@ -38,6 +40,10 @@ const DEFAULT_BIND: &str = "127.0.0.1:8091";
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
 const TURN_RUNTIME_BOUNDARY: &str = "rust_agent_runtime";
 const TURN_RUNTIME_PHASE: &str = "runtime_execution";
+const AGENT_RUNTIME_TOKEN_ENV: &str = "CEREBRO_SLACK_AGENT_RUNTIME_TOKEN";
+
+#[derive(Clone)]
+struct AgentRuntimeTokenDigest([u8; 32]);
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -299,6 +305,16 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
         .map_err(|_| "CEREBRO_SLACK_AUTHORITY_TENANT_ID is required")?;
     let question_policy = QuestionPolicy::new(tenant_id.clone())?;
     let agent = SlackAgentService::from_env(tenant_id).await?;
+    let agent_runtime_token = if agent.is_some() {
+        let token = env::var(AGENT_RUNTIME_TOKEN_ENV)
+            .map_err(|_| "CEREBRO_SLACK_AGENT_RUNTIME_TOKEN is required")?;
+        validate_agent_runtime_token(&token)?;
+        Some(AgentRuntimeTokenDigest(
+            Sha256::digest(token.as_bytes()).into(),
+        ))
+    } else {
+        None
+    };
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
@@ -312,16 +328,20 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
             "version": env!("CARGO_PKG_VERSION"),
         })
     );
-    axum::serve(listener, router(question_policy, agent)).await?;
+    axum::serve(
+        listener,
+        router(question_policy, agent, agent_runtime_token),
+    )
+    .await?;
     Ok(())
 }
 
-fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> Router {
-    Router::new()
-        .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
-        .route("/v1/status", get(authority_status_route))
-        .route("/v1/questions/authorize", post(authorize_question_route))
-        .route("/v1/answers/validate", post(validate_answer_route))
+fn router(
+    question_policy: QuestionPolicy,
+    agent: Option<SlackAgentService>,
+    agent_runtime_token: Option<AgentRuntimeTokenDigest>,
+) -> Router {
+    let protected = Router::new()
         .route("/v1/turns/run", post(run_turn_route))
         .route("/v1/turns/progress", get(turn_progress_route))
         .route("/v1/turns/deliveries", post(record_delivery_route))
@@ -330,9 +350,58 @@ fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> 
             "/v1/wakes/pending-deliveries/claim",
             post(claim_pending_wake_delivery_route),
         )
-        .route("/v1/wakes/deliveries", post(record_wake_delivery_route))
+        .route("/v1/wakes/deliveries", post(record_wake_delivery_route));
+    let protected = match agent_runtime_token {
+        Some(expected) => protected.route_layer(middleware::from_fn_with_state(
+            expected,
+            require_agent_runtime_bearer,
+        )),
+        None => protected,
+    };
+    Router::new()
+        .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
+        .route("/v1/status", get(authority_status_route))
+        .route("/v1/questions/authorize", post(authorize_question_route))
+        .route("/v1/answers/validate", post(validate_answer_route))
+        .merge(protected)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(Arc::new(AuthorityRuntime::new(question_policy, agent)))
+}
+
+async fn require_agent_runtime_bearer(
+    State(expected): State<AgentRuntimeTokenDigest>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let Some(token) = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+    else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+    let actual: [u8; 32] = Sha256::digest(token.as_bytes()).into();
+    if !constant_time_digest_eq(&actual, &expected.0) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(next.run(request).await)
+}
+
+fn constant_time_digest_eq(left: &[u8; 32], right: &[u8; 32]) -> bool {
+    left.iter()
+        .zip(right)
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0
+}
+
+fn validate_agent_runtime_token(token: &str) -> Result<(), &'static str> {
+    if token.len() < 32 || token.len() > 512 || token.chars().any(char::is_whitespace) {
+        return Err("CEREBRO_SLACK_AGENT_RUNTIME_TOKEN is invalid");
+    }
+    Ok(())
 }
 
 async fn turn_progress_route(
@@ -722,7 +791,65 @@ mod tests {
         router(
             QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap(),
             None,
+            None,
         )
+    }
+
+    #[tokio::test]
+    async fn agent_runtime_routes_require_the_exact_host_bearer() {
+        let token = "test-agent-runtime-token-1234567890";
+        let app = router(
+            QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap(),
+            None,
+            Some(AgentRuntimeTokenDigest(
+                Sha256::digest(token.as_bytes()).into(),
+            )),
+        );
+        let body = r#"{
+          "schema_version":"agent-turn-request/v1",
+          "tenant_id":"writer-sec-dev",
+          "request_id":"request-one",
+          "thread_ref":"slack-thread:T:C:one",
+          "actor_ref":"slack-user:U",
+          "assessment_at":"2026-07-29T20:00:00Z",
+          "message":"Investigate the source failure.",
+          "history":[],
+          "working_state":null,
+          "effect_authorizations":[]
+        }"#;
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/turns/run")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let authorized = app
+            .oneshot(
+                Request::post("/v1/turns/run")
+                    .header(CONTENT_TYPE, "application/json")
+                    .header(AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authorized.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn agent_runtime_token_is_long_bounded_and_header_safe() {
+        assert!(validate_agent_runtime_token(&"a".repeat(32)).is_ok());
+        assert!(validate_agent_runtime_token("short").is_err());
+        assert!(validate_agent_runtime_token(&format!("{} x", "a".repeat(32))).is_err());
+        assert!(validate_agent_runtime_token(&"a".repeat(513)).is_err());
+        assert!(constant_time_digest_eq(&[1; 32], &[1; 32]));
+        assert!(!constant_time_digest_eq(&[1; 32], &[2; 32]));
     }
 
     #[test]

@@ -1916,6 +1916,14 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	return nil, nil
 }
 
+func (s *stubGraphStore) RunFindingGraphRule(ctx context.Context, request ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
+	rows, err := s.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Params: request.Params, RowLimit: request.RowLimit})
+	if err != nil {
+		return nil, err
+	}
+	return &ports.FindingGraphRuleResult{Rows: rows}, nil
+}
+
 func (s *stubGraphStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
 	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(rootURNs))
 	for _, rootURN := range rootURNs {

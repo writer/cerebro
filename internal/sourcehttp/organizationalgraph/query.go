@@ -4,7 +4,9 @@
 package organizationalgraph
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1066,6 +1068,60 @@ func (s *QueryStore) ListCrownJewelPaths(ctx context.Context, request ports.Crow
 	}
 	if result.Truncated && len(result.Paths) != request.Limit {
 		return nil, errors.New("rust crown jewel paths returned an invalid truncation")
+	}
+	return result, nil
+}
+
+// RunFindingGraphRule executes one server-registered rule without accepting
+// Cypher from the Go caller.
+func (s *QueryStore) RunFindingGraphRule(ctx context.Context, request ports.FindingGraphRuleRequest) (*ports.FindingGraphRuleResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	ruleID := strings.TrimSpace(request.RuleID)
+	if tenantID == "" || ruleID == "" {
+		return nil, errors.New("finding graph rule tenant_id and rule_id are required")
+	}
+	if request.RowLimit < 1 || request.RowLimit > ports.MaxCypherQueryRows {
+		return nil, fmt.Errorf("finding graph rule row limit must be between 1 and %d", ports.MaxCypherQueryRows)
+	}
+	params := maps.Clone(request.Params)
+	if params == nil {
+		params = map[string]any{}
+	}
+	delete(params, "tenant_id")
+	delete(params, "row_limit")
+	parametersJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("encode finding graph rule parameters: %w", err)
+	}
+	message := connect.NewRequest(&cerebrographv1.RunFindingGraphRuleRequest{
+		TenantId:       tenantID,
+		RuntimeId:      strings.TrimSpace(request.RuntimeID),
+		RuleId:         ruleID,
+		RowLimit:       uint32(request.RowLimit), // #nosec G115 -- validated above to 1..3000.
+		ParametersJson: parametersJSON,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.RunFindingGraphRule(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("run finding graph rule", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || response.Msg.GetRuleId() != ruleID || len(response.Msg.GetRowsJson()) > request.RowLimit {
+		return nil, errors.New("rust finding graph rule returned an invalid tenant, rule, or bound")
+	}
+	result := &ports.FindingGraphRuleResult{Truncated: response.Msg.GetTruncated()}
+	for _, encoded := range response.Msg.GetRowsJson() {
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.UseNumber()
+		values := map[string]any{}
+		if err := decoder.Decode(&values); err != nil {
+			return nil, fmt.Errorf("decode finding graph rule row: %w", err)
+		}
+		result.Rows = append(result.Rows, ports.CypherRow{Values: values})
+	}
+	if result.Truncated && len(result.Rows) != request.RowLimit {
+		return nil, errors.New("rust finding graph rule returned an invalid truncation")
 	}
 	return result, nil
 }
