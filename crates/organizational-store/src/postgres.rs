@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use cerebro_agent_context::{ContextCoverageCompletenessV1, ContextSnapshotV1};
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
     CanonicalIdentityId, CollectionCompleteness, GraphAssertion, GraphDelta,
@@ -354,6 +355,22 @@ CREATE TABLE IF NOT EXISTS organizational_promotion_evidence_receipts (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (tenant_id, kind, receipt_id)
 );
+CREATE TABLE IF NOT EXISTS organizational_agent_context_snapshot_receipts (
+  tenant_id TEXT NOT NULL,
+  snapshot_id TEXT NOT NULL,
+  graph_revision BIGINT NOT NULL CHECK (graph_revision >= 0),
+  request_digest TEXT NOT NULL,
+  snapshot_digest TEXT NOT NULL,
+  completeness TEXT NOT NULL CHECK (completeness IN ('complete', 'partial')),
+  subject_count BIGINT NOT NULL CHECK (subject_count >= 0),
+  fact_count BIGINT NOT NULL CHECK (fact_count >= 0),
+  contradiction_count BIGINT NOT NULL CHECK (contradiction_count >= 0),
+  unknown_count BIGINT NOT NULL CHECK (unknown_count >= 0),
+  snapshot_json JSONB NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, snapshot_id),
+  UNIQUE (tenant_id, snapshot_digest)
+);
 CREATE TABLE IF NOT EXISTS organizational_consumer_runs (
   consumer_name TEXT NOT NULL,
   run_id TEXT NOT NULL,
@@ -456,6 +473,8 @@ ALTER TABLE organizational_projection_authority ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_authority FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_promotion_evidence_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_promotion_evidence_receipts FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_agent_context_snapshot_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_agent_context_snapshot_receipts FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -475,7 +494,8 @@ BEGIN
     'organizational_projection_outbox',
     'organizational_parity_receipts',
     'organizational_projection_authority',
-    'organizational_promotion_evidence_receipts'
+    'organizational_promotion_evidence_receipts',
+    'organizational_agent_context_snapshot_receipts'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -501,6 +521,28 @@ ON CONFLICT (tenant_id, event_id) DO UPDATE
 SET record_digest = EXCLUDED.record_digest
 WHERE organizational_source_event_receipts.record_digest = EXCLUDED.record_digest
 RETURNING record_digest
+"#;
+
+const RECORD_CONTEXT_SNAPSHOT_QUERY: &str = r#"
+INSERT INTO organizational_agent_context_snapshot_receipts (
+  tenant_id, snapshot_id, graph_revision, request_digest, snapshot_digest,
+  completeness, subject_count, fact_count, contradiction_count, unknown_count,
+  snapshot_json
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (tenant_id, snapshot_id) DO UPDATE
+SET snapshot_digest = EXCLUDED.snapshot_digest
+WHERE organizational_agent_context_snapshot_receipts.graph_revision = EXCLUDED.graph_revision
+  AND organizational_agent_context_snapshot_receipts.request_digest = EXCLUDED.request_digest
+  AND organizational_agent_context_snapshot_receipts.snapshot_digest = EXCLUDED.snapshot_digest
+  AND organizational_agent_context_snapshot_receipts.snapshot_json = EXCLUDED.snapshot_json
+RETURNING snapshot_id
+"#;
+
+const READ_CONTEXT_SNAPSHOT_RECEIPT_QUERY: &str = r#"
+SELECT graph_revision, request_digest, snapshot_digest, completeness,
+       subject_count, fact_count, contradiction_count, unknown_count
+FROM organizational_agent_context_snapshot_receipts
+WHERE tenant_id = $1 AND snapshot_id = $2
 "#;
 
 const IDENTITY_CLAIM_REPLACEMENT_QUERY: &str = r#"
@@ -882,6 +924,31 @@ pub struct SourceCollectionReceipt {
     pub manifest_digest: String,
 }
 
+/// Immutable receipt for one persisted, revision-bound agent context snapshot.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ContextSnapshotReceipt {
+    /// Tenant that owns the snapshot row and every referenced graph fact.
+    pub tenant_id: String,
+    /// Content-addressed snapshot identity.
+    pub snapshot_id: String,
+    /// Exact organizational graph revision captured by the snapshot.
+    pub graph_revision: u64,
+    /// Deterministic digest of the normalized selector request.
+    pub request_digest: String,
+    /// Deterministic digest of the immutable snapshot contents.
+    pub snapshot_digest: String,
+    /// Complete or partial bounded coverage state.
+    pub completeness: ContextCoverageCompletenessV1,
+    /// Number of selector-resolution records in the snapshot.
+    pub subject_count: usize,
+    /// Number of retained security facts.
+    pub fact_count: usize,
+    /// Number of retained contradictions.
+    pub contradiction_count: usize,
+    /// Number of retained explicit unknowns.
+    pub unknown_count: usize,
+}
+
 /// A tenant-scoped, secret-free source-runtime observation for operator reads.
 ///
 /// The stored runtime JSON can contain connector configuration and secret
@@ -1074,6 +1141,141 @@ impl PostgresLedger {
             .batch_execute(POSTGRES_SCHEMA)
             .await?;
         Ok(())
+    }
+
+    /// Persists one immutable context snapshot through the existing receipt ledger.
+    ///
+    /// Replaying the same content-addressed snapshot is idempotent. Reusing its
+    /// `(tenant_id, snapshot_id)` for different revision, request, digest, or
+    /// JSON bytes fails as a stored-contract conflict. The transaction sets the
+    /// tenant RLS context before any insert or conflict read occurs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Conflict`] when snapshot verification fails or a
+    /// stored identity conflicts, and a backend or serialization error otherwise.
+    pub async fn record_context_snapshot(
+        &self,
+        snapshot: &ContextSnapshotV1,
+    ) -> Result<ContextSnapshotReceipt, StoreError> {
+        snapshot.verify().map_err(|error| {
+            StoreError::Conflict(format!("context snapshot verification failed: {error}"))
+        })?;
+        let graph_revision = i64::try_from(snapshot.graph_revision()).map_err(|_| {
+            StoreError::Conflict("context snapshot graph revision overflow".to_owned())
+        })?;
+        let subject_count = i64::try_from(snapshot.subject_resolutions().len()).map_err(|_| {
+            StoreError::Conflict("context snapshot subject count overflow".to_owned())
+        })?;
+        let fact_count = i64::try_from(snapshot.facts().len())
+            .map_err(|_| StoreError::Conflict("context snapshot fact count overflow".to_owned()))?;
+        let contradiction_count = i64::try_from(snapshot.contradictions().len()).map_err(|_| {
+            StoreError::Conflict("context snapshot contradiction count overflow".to_owned())
+        })?;
+        let unknown_count = i64::try_from(snapshot.unknowns().len()).map_err(|_| {
+            StoreError::Conflict("context snapshot unknown count overflow".to_owned())
+        })?;
+        let completeness = snapshot.coverage().completeness();
+        let completeness_value = match completeness {
+            ContextCoverageCompletenessV1::Complete => "complete",
+            ContextCoverageCompletenessV1::Partial => "partial",
+        };
+        let snapshot_json = serde_json::to_value(snapshot)?;
+        let tenant_id = snapshot.tenant_id().as_str();
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                RECORD_CONTEXT_SNAPSHOT_QUERY,
+                &[
+                    &tenant_id,
+                    &snapshot.snapshot_id(),
+                    &graph_revision,
+                    &snapshot.request_digest(),
+                    &snapshot.snapshot_digest(),
+                    &completeness_value,
+                    &subject_count,
+                    &fact_count,
+                    &contradiction_count,
+                    &unknown_count,
+                    &snapshot_json,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "context snapshot {} conflicts with stored evidence",
+                snapshot.snapshot_id()
+            )));
+        }
+        transaction.commit().await?;
+        Ok(ContextSnapshotReceipt {
+            tenant_id: tenant_id.to_owned(),
+            snapshot_id: snapshot.snapshot_id().to_owned(),
+            graph_revision: snapshot.graph_revision(),
+            request_digest: snapshot.request_digest().to_owned(),
+            snapshot_digest: snapshot.snapshot_digest().to_owned(),
+            completeness,
+            subject_count: snapshot.subject_resolutions().len(),
+            fact_count: snapshot.facts().len(),
+            contradiction_count: snapshot.contradictions().len(),
+            unknown_count: snapshot.unknowns().len(),
+        })
+    }
+
+    /// Reads receipt metadata for one snapshot without returning its fact payload.
+    ///
+    /// The tenant is explicit and installed as the PostgreSQL RLS context before
+    /// the exact `(tenant_id, snapshot_id)` lookup. A snapshot owned by another
+    /// tenant is therefore indistinguishable from an absent snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns a backend error or [`StoreError::Conflict`] for malformed stored
+    /// counts, revision, or completeness state.
+    pub async fn context_snapshot_receipt(
+        &self,
+        tenant_id: &TenantId,
+        snapshot_id: &str,
+    ) -> Result<Option<ContextSnapshotReceipt>, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let row = transaction
+            .query_opt(
+                READ_CONTEXT_SNAPSHOT_RECEIPT_QUERY,
+                &[&tenant_id.as_str(), &snapshot_id],
+            )
+            .await?;
+        let receipt = row
+            .as_ref()
+            .map(|row| {
+                let completeness = match row.get::<_, String>(3).as_str() {
+                    "complete" => ContextCoverageCompletenessV1::Complete,
+                    "partial" => ContextCoverageCompletenessV1::Partial,
+                    _ => {
+                        return Err(StoreError::Conflict(
+                            "stored context snapshot completeness is invalid".to_owned(),
+                        ));
+                    }
+                };
+                Ok(ContextSnapshotReceipt {
+                    tenant_id: tenant_id.to_string(),
+                    snapshot_id: snapshot_id.to_owned(),
+                    graph_revision: stored_u64(row, 0, "context snapshot graph revision")?,
+                    request_digest: row.get(1),
+                    snapshot_digest: row.get(2),
+                    completeness,
+                    subject_count: stored_count(row, 4, "context snapshot subject")?,
+                    fact_count: stored_count(row, 5, "context snapshot fact")?,
+                    contradiction_count: stored_count(row, 6, "context snapshot contradiction")?,
+                    unknown_count: stored_count(row, 7, "context snapshot unknown")?,
+                })
+            })
+            .transpose()?;
+        transaction.commit().await?;
+        Ok(receipt)
     }
 
     pub async fn start_consumer_run(
@@ -4293,6 +4495,7 @@ mod tests {
             "organizational_source_event_receipts",
             "organizational_legacy_projection_receipts",
             "organizational_source_collection_receipts",
+            "organizational_agent_context_snapshot_receipts",
             "source_runtime_page_publications",
             "source_runtime_page_publications_recovery_idx",
             "source_runtime_page_events",
@@ -4308,6 +4511,28 @@ mod tests {
         }
         assert!(include_str!("postgres.rs").contains("messages_projected > 0"));
         assert!(include_str!("postgres.rs").contains("messages_rejected = 0"));
+        assert!(
+            RECORD_CONTEXT_SNAPSHOT_QUERY.contains(
+                "organizational_agent_context_snapshot_receipts.snapshot_json = EXCLUDED.snapshot_json"
+            ),
+            "snapshot replay must compare the complete immutable payload"
+        );
+        assert!(
+            READ_CONTEXT_SNAPSHOT_RECEIPT_QUERY
+                .contains("WHERE tenant_id = $1 AND snapshot_id = $2"),
+            "snapshot receipt reads must require the tenant key"
+        );
+        let context_snapshot_schema = POSTGRES_SCHEMA
+            .split("CREATE TABLE IF NOT EXISTS organizational_agent_context_snapshot_receipts")
+            .nth(1)
+            .and_then(|schema| schema.split("CREATE TABLE IF NOT EXISTS").next())
+            .expect("context snapshot receipt schema");
+        assert!(context_snapshot_schema.contains("PRIMARY KEY (tenant_id, snapshot_id)"));
+        assert!(context_snapshot_schema.contains("UNIQUE (tenant_id, snapshot_digest)"));
+        assert!(context_snapshot_schema.contains("snapshot_json JSONB NOT NULL"));
+        assert!(POSTGRES_SCHEMA.contains(
+            "ALTER TABLE organizational_agent_context_snapshot_receipts FORCE ROW LEVEL SECURITY"
+        ));
         assert!(
             START_CONSUMER_RUN_QUERY.contains(
                 "organizational_consumer_runs.mode = 'forward' AND organizational_consumer_runs.end_sequence IS NULL AND EXCLUDED.end_sequence IS NULL"
