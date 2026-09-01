@@ -178,6 +178,10 @@ jobs:
         run: |
           set -euo pipefail
           signed_artifact="signed-pr-rust-graph-${CANDIDATE_SHA}"
+          # Ephemeral Cerebro is dispatched with --ref main, so its headSha is the
+          # head of main at dispatch time rather than the candidate input. Match on
+          # the run name, which embeds the candidate sha and the image source.
+          smoke_title="${CANDIDATE_SHA} (published)"
           find_usable_run() {
             local mode="$1"
             while IFS=$'\t' read -r run_id status conclusion url; do
@@ -198,8 +202,8 @@ jobs:
             done < <(
               gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Ephemeral Cerebro" \
                 --event workflow_dispatch --branch main --limit 30 \
-                --json databaseId,headSha,status,conclusion,url,createdAt \
-                --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\") | [.databaseId,.status,(.conclusion // \"\"),.url] | @tsv"
+                --json databaseId,displayTitle,status,conclusion,url,createdAt \
+                --jq ".[] | select(.displayTitle | contains(\"${smoke_title}\")) | [.databaseId,.status,(.conclusion // \"\"),.url] | @tsv"
             )
             return 1
           }
@@ -217,8 +221,8 @@ jobs:
               discovered="$({
                 gh run list --repo "${GITHUB_REPOSITORY}" --workflow "Ephemeral Cerebro" \
                   --event workflow_dispatch --branch main --limit 30 \
-                  --json databaseId,headSha,status,url,createdAt \
-                  --jq ".[] | select(.headSha == \"${CANDIDATE_SHA}\" and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
+                  --json databaseId,displayTitle,status,url,createdAt \
+                  --jq ".[] | select((.displayTitle | contains(\"${smoke_title}\")) and .createdAt >= \"${requested_at}\") | [.databaseId,.url] | @tsv"
               } | head -n 1)"
               if [[ -n "${discovered}" ]]; then
                 IFS=$'\t' read -r run_id smoke_url <<< "${discovered}"
