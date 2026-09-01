@@ -40,20 +40,25 @@ type assertionQueryStoreStub struct {
 
 type graphServiceStub struct {
 	cerebrographv1connect.UnimplementedOrganizationalGraphServiceHandler
-	expand            func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
-	expandBatch       func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
-	listEntities      func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
-	countRelations    func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
-	impactFact        func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error)
-	impactDependents  func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error)
-	personAccess      func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
-	cloudAttackPaths  func(context.Context, *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error)
-	vendorRegister    func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
-	vendorDiscoveries func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
+	expand              func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
+	expandBatch         func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+	listEntities        func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
+	listEntityRelations func(context.Context, *connect.Request[cerebrographv1.ListEntityRelationsRequest]) (*connect.Response[cerebrographv1.ListEntityRelationsResponse], error)
+	countRelations      func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
+	impactFact          func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error)
+	impactDependents    func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error)
+	personAccess        func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
+	cloudAttackPaths    func(context.Context, *connect.Request[cerebrographv1.ListCloudAttackPathsRequest]) (*connect.Response[cerebrographv1.ListCloudAttackPathsResponse], error)
+	vendorRegister      func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
+	vendorDiscoveries   func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
 
 func (s graphServiceStub) ListEntities(ctx context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
 	return s.listEntities(ctx, request)
+}
+
+func (s graphServiceStub) ListEntityRelations(ctx context.Context, request *connect.Request[cerebrographv1.ListEntityRelationsRequest]) (*connect.Response[cerebrographv1.ListEntityRelationsResponse], error) {
+	return s.listEntityRelations(ctx, request)
 }
 
 func (s graphServiceStub) Expand(ctx context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
@@ -735,6 +740,43 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	}
 	if access.GraphRevision != 9 || len(access.Paths) != 1 || access.Paths[0].AccessTarget.EntityType != "aws.role" {
 		t.Fatalf("access = %#v", access)
+	}
+}
+
+func TestQueryStoreEntityRelationsPreservesBoundedEdgeEvidence(t *testing.T) {
+	neighborURN := "urn:cerebro:tenant-a:aws:task:one"
+	server := newGraphTestServer(t, graphServiceStub{
+		listEntityRelations: func(_ context.Context, request *connect.Request[cerebrographv1.ListEntityRelationsRequest]) (*connect.Response[cerebrographv1.ListEntityRelationsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetAgentKey() != "urn:cerebro:tenant-a:aws:session:one" || request.Msg.GetExpectedGraphRevision() != 19 || request.Msg.GetLimit() != 10 {
+				t.Fatalf("entity relation authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			if keys := request.Msg.GetNeighborAgentKeys(); len(keys) != 1 || keys[0] != neighborURN {
+				t.Fatalf("neighbor agent keys = %#v", keys)
+			}
+			return connect.NewResponse(&cerebrographv1.ListEntityRelationsResponse{
+				TenantId: "tenant-a", GraphRevision: 19,
+				Relations: []*cerebrographv1.EntityRelation{{
+					Direction: cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING,
+					Relation:  "acted_on", Entity: &cerebrographv1.GraphEntity{AgentKey: neighborURN, EntityKind: "aws.task"},
+					SourceId: "aws", AttributesJson: `{"confidence":0.9}`,
+				}},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListEntityRelations(context.Background(), ports.EntityRelationPageRequest{
+		TenantID: "tenant-a", AgentKey: "urn:cerebro:tenant-a:aws:session:one", Directions: []ports.EntityRelationDirection{ports.EntityRelationOutgoing},
+		NeighborAgentKeys: []string{neighborURN}, Limit: 10, ExpectedRevision: 19,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Relations) != 1 || page.Relations[0].SourceID != "aws" || page.Relations[0].AttributesJSON != `{"confidence":0.9}` || page.Relations[0].Entity.URN != neighborURN {
+		t.Fatalf("page = %#v", page)
 	}
 }
 

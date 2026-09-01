@@ -104,26 +104,33 @@ func (s *graphStore) DeleteProjectedEntity(_ context.Context, urn string) error 
 	}
 	return nil
 }
+func (s *graphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	entities := map[string]ports.CatalogEntity{
+		"urn:cerebro:tenant-a:aws:session:actor":              {URN: "urn:cerebro:tenant-a:aws:session:actor", TenantID: "tenant-a", EntityType: "aws.session", SourceID: "aws", Attributes: map[string]string{}},
+		"urn:cerebro:tenant-a:aws:task:task":                  {URN: "urn:cerebro:tenant-a:aws:task:task", TenantID: "tenant-a", EntityType: "aws.task", SourceID: "aws", Attributes: map[string]string{}},
+		"urn:cerebro:tenant-a:aws:task-definition:definition": {URN: "urn:cerebro:tenant-a:aws:task-definition:definition", TenantID: "tenant-a", EntityType: "aws.task_definition", SourceID: "aws", Attributes: map[string]string{"status": "ACTIVE"}},
+	}
+	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: 7}
+	if entity, ok := entities[request.Filter.ExactAgentKey]; ok {
+		page.Entities = []ports.CatalogEntity{entity}
+	}
+	return page, nil
+}
+func (s *graphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *graphStore) ListEntityRelations(_ context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	page := &ports.EntityRelationPage{TenantID: request.TenantID, GraphRevision: 7}
+	if request.AgentKey == "urn:cerebro:tenant-a:aws:session:actor" {
+		page.Relations = []ports.EntityCatalogRelation{{Direction: ports.EntityRelationOutgoing, Relation: "acted_on", Entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:aws:task:task", TenantID: "tenant-a", EntityType: "aws.task"}, SourceID: "aws", AttributesJSON: `{}`}}
+	}
+	if request.AgentKey == "urn:cerebro:tenant-a:aws:task:task" && !s.omitGroundingEdge {
+		page.Relations = []ports.EntityCatalogRelation{{Direction: ports.EntityRelationOutgoing, Relation: "depends_on", Entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:aws:task-definition:definition", TenantID: "tenant-a", EntityType: "aws.task_definition"}, SourceID: "aws", AttributesJSON: `{}`}}
+	}
+	return page, nil
+}
 func (s *graphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	s.requests = append(s.requests, request)
-	if request.Query == groundingNodesQuery {
-		return []ports.CypherRow{
-			{Values: map[string]any{"urn": "urn:cerebro:tenant-a:aws:session:actor", "entity_type": "aws.session", "source_id": "aws", "attributes_json": `{}`}},
-			{Values: map[string]any{"urn": "urn:cerebro:tenant-a:aws:task:task", "entity_type": "aws.task", "source_id": "aws", "attributes_json": `{}`}},
-			{Values: map[string]any{"urn": "urn:cerebro:tenant-a:aws:task-definition:definition", "entity_type": "aws.task_definition", "source_id": "aws", "attributes_json": `{"status":"ACTIVE"}`}},
-		}, nil
-	}
-	if request.Query == groundingEdgesQuery {
-		rows := []ports.CypherRow{{Values: map[string]any{
-			"from_urn": "urn:cerebro:tenant-a:aws:session:actor", "to_urn": "urn:cerebro:tenant-a:aws:task:task", "relation": "acted_on", "source_id": "aws", "attributes_json": `{}`,
-		}}}
-		if !s.omitGroundingEdge {
-			rows = append(rows, ports.CypherRow{Values: map[string]any{
-				"from_urn": "urn:cerebro:tenant-a:aws:task:task", "to_urn": "urn:cerebro:tenant-a:aws:task-definition:definition", "relation": "depends_on", "source_id": "aws", "attributes_json": `{}`,
-			}})
-		}
-		return rows, nil
-	}
 	if s.useShadowRows {
 		return append([]ports.CypherRow(nil), s.shadowRows...), nil
 	}
@@ -147,7 +154,8 @@ func (s *graphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQu
 
 func TestCreateRejectsLiveIdentifiersAndPersistsGroundedDraft(t *testing.T) {
 	store := &memoryStore{}
-	service := Service{Store: store, Graph: newGraphStore(), Catalog: noOverlapCatalog(), Now: func() time.Time { return time.Unix(100, 0) }}
+	graph := newGraphStore()
+	service := Service{Store: store, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog(), Now: func() time.Time { return time.Unix(100, 0) }}
 	request := validCreateRequest()
 	request.Hypothesis = "Review arn:aws:iam::123456789012:role/private"
 	if _, err := service.Create(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
@@ -157,6 +165,9 @@ func TestCreateRejectsLiveIdentifiersAndPersistsGroundedDraft(t *testing.T) {
 	candidate, err := service.Create(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(graph.requests) != 0 {
+		t.Fatalf("grounding used raw Cypher: %#v", graph.requests)
 	}
 	if candidate.Status != StatusGrounded || candidate.Revision != 1 || candidate.PRReady {
 		t.Fatalf("candidate = %#v", candidate)
@@ -176,7 +187,7 @@ func TestCreateFailsClosedWithoutCurrentGraphGrounding(t *testing.T) {
 func TestCreateRejectsInventedTopology(t *testing.T) {
 	graph := newGraphStore()
 	graph.omitGroundingEdge = true
-	service := Service{Store: &memoryStore{}, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: &memoryStore{}, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	if _, err := service.Create(context.Background(), validCreateRequest()); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Create() error = %v, want invalid request for absent current edge", err)
 	}
@@ -184,7 +195,7 @@ func TestCreateRejectsInventedTopology(t *testing.T) {
 
 func TestCreateRejectsInventedRiskAttribute(t *testing.T) {
 	graph := newGraphStore()
-	service := Service{Store: &memoryStore{}, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: &memoryStore{}, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	request := validCreateRequest()
 	request.GraphEvidence.Nodes[2].Attributes["status"] = "INACTIVE"
 	if _, err := service.Create(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
@@ -199,7 +210,7 @@ func TestCreateRejectsOneHopEvidence(t *testing.T) {
 	request.GraphEvidence.CriticalEdge = policyauthor.GraphEvidenceEdgeRef{FromID: "source-actor", ToID: "source-task", Relation: "acted_on"}
 	request.GraphEvidence.EvidenceNodeIDs = []string{"source-actor", "source-task"}
 	request.Grounding.Bindings = request.Grounding.Bindings[:2]
-	service := Service{Store: &memoryStore{}, Graph: newGraphStore(), Catalog: noOverlapCatalog()}
+	service := Service{Store: &memoryStore{}, GroundingGraph: newGraphStore(), Catalog: noOverlapCatalog()}
 	if _, err := service.Create(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Create() error = %v, want invalid request for one-hop evidence", err)
 	}
@@ -214,7 +225,7 @@ func TestCreateRejectsDisconnectedCriticalEdge(t *testing.T) {
 	}
 	request.GraphEvidence.CriticalEdge = policyauthor.GraphEvidenceEdgeRef{FromID: "source-definition", ToID: "source-extra", Relation: "owns"}
 	request.Grounding.Bindings = append(request.Grounding.Bindings, GroundingBinding{NodeID: "source-extra", EntityURN: "urn:cerebro:tenant-a:aws:extra:extra"})
-	service := Service{Store: &memoryStore{}, Graph: newGraphStore(), Catalog: noOverlapCatalog()}
+	service := Service{Store: &memoryStore{}, GroundingGraph: newGraphStore(), Catalog: noOverlapCatalog()}
 	if _, err := service.Create(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Create() error = %v, want invalid request for disconnected critical edge", err)
 	}
@@ -227,7 +238,7 @@ func TestCreateRejectsExistingSupersetCoverage(t *testing.T) {
 		RequiredEdges:       []CoverageEdge{{FromEntityType: "aws.task", Relation: "depends_on", ToEntityType: "aws.task_definition"}},
 		RequiredPredicates:  []CoveragePredicate{{EntityType: "aws.task_definition", Key: "status", Value: "ACTIVE"}},
 	}}}
-	service := Service{Store: &memoryStore{}, Graph: newGraphStore(), Catalog: catalog}
+	service := Service{Store: &memoryStore{}, GroundingGraph: newGraphStore(), Catalog: catalog}
 	if _, err := service.Create(context.Background(), validCreateRequest()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("Create() error = %v, want conflict for broader existing coverage", err)
 	}
@@ -254,7 +265,7 @@ func TestProveExcludesOriginAndSourceHandlesFromModelContext(t *testing.T) {
 	rule := graphRule()
 	raw, _ := json.Marshal(rule)
 	model := &draftModel{raw: raw}
-	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	candidate, err := service.Create(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +293,7 @@ func TestProveRechecksCatalogBeforeAuthoring(t *testing.T) {
 	graph := newGraphStore()
 	catalog := noOverlapCatalog()
 	model := &draftModel{raw: []byte(`{}`)}
-	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, Catalog: catalog}
+	service := Service{Store: store, Author: &agentauthoring.Service{Model: model, PolicyGraphStore: policyauthor.NewCompatibilityGraphTestStore(graph, graph)}, Graph: graph, GroundingGraph: graph, Catalog: catalog}
 	candidate, err := service.Create(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +316,7 @@ func TestShadowSetsRuntimeBoundsAndReviewReadiness(t *testing.T) {
 	graph := newGraphStore()
 	graph.useShadowRows = true
 	graph.shadowRows = []ports.CypherRow{{Values: map[string]any{"primary_urn": "local"}}}
-	service := Service{Store: store, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	candidate, err := service.Create(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +344,7 @@ func TestShadowRefusesUnsafeStoredQueryBeforeExecution(t *testing.T) {
 	store := &memoryStore{}
 	graph := newGraphStore()
 	graph.useShadowRows = true
-	service := Service{Store: store, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	candidate := createProvedCandidate(t, service, store)
 	stored, err := store.GetPolicyCandidate(context.Background(), candidate.ID)
 	if err != nil {
@@ -356,7 +367,7 @@ func TestShadowZeroMatchesPreservesProvedState(t *testing.T) {
 	store := &memoryStore{}
 	graph := newGraphStore()
 	graph.useShadowRows = true
-	service := Service{Store: store, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	candidate := createProvedCandidate(t, service, store)
 	result, err := service.Shadow(context.Background(), candidate.ID)
 	if err != nil || result == nil {
@@ -378,7 +389,7 @@ func TestShadowTruncatedMatchesPreservesProvedState(t *testing.T) {
 	for index := 0; index < MaxShadowRows+1; index++ {
 		graph.shadowRows = append(graph.shadowRows, ports.CypherRow{Values: map[string]any{"primary_urn": "local"}})
 	}
-	service := Service{Store: store, Graph: graph, Catalog: noOverlapCatalog()}
+	service := Service{Store: store, Graph: graph, GroundingGraph: graph, Catalog: noOverlapCatalog()}
 	candidate := createProvedCandidate(t, service, store)
 	result, err := service.Shadow(context.Background(), candidate.ID)
 	if err != nil || result == nil {

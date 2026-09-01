@@ -110,7 +110,7 @@ Ranked by unblock power (caller count in parentheses):
 | Aggregations: count/collect, plus a `CountRelations` RPC (4) | attackpath counts, compliance impact, graphagent probe counts, findings rules |
 | URN/agent-key-keyed path endpoints (3) | attackpath, person access, crown jewel |
 | Keyset cursors (2) | compliance impact, workflow projection pruning |
-| Edge properties in results (2) | compliance impact, policy candidate grounding |
+| Edge properties in results (1) | compliance impact |
 | Union arms and optional legs (2) | effective access, findings rules |
 
 ## Wave plan
@@ -122,8 +122,9 @@ Ranked by unblock power (caller count in parentheses):
   aggregations, which proves the full surface.
 - **Wave 2:** migrate effective access (union arms), crown jewel (batched
   traversal), graphagent probe counts (`CountRelations`).
-- **Wave 3:** migrate compliance impact, workflow projection pruning,
-  policy candidate grounding (cursors, edge properties).
+- **Wave 3:** migrate compliance impact and workflow projection pruning.
+  Policy candidate grounding now uses revision-bound typed entity and relation
+  reads, including bounded neighbor keys and relation properties.
 - **Wave 4:** migrate findings rules. These are generated; the generator
   (`internal/findings` catalog generation) should emit structured requests
   instead of Cypher strings, which retires the largest single body of

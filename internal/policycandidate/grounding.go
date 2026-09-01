@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -12,19 +13,7 @@ import (
 	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
-const groundingNodesQuery = `MATCH (e:Entity {tenant_id: $tenant_id})
-WHERE e.urn IN $entity_urns
-RETURN e.urn AS urn, e.entity_type AS entity_type, e.source_id AS source_id, coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY urn
-LIMIT $row_limit`
-
-const groundingEdgesQuery = `MATCH (source:Entity {tenant_id: $tenant_id})-[edge:RELATION]->(target:Entity {tenant_id: $tenant_id})
-WHERE source.urn IN $entity_urns AND target.urn IN $entity_urns
-RETURN source.urn AS from_urn, target.urn AS to_urn, edge.relation AS relation, edge.source_id AS source_id, coalesce(edge.attributes_json, '{}') AS attributes_json
-ORDER BY from_urn, relation, to_urn
-LIMIT $row_limit`
-
-func groundGraphEvidence(ctx context.Context, graph ports.RawCypherQueryStore, tenantID string, evidence policyauthor.GraphEvidence, request GroundingRequest, now func() time.Time) (*GroundingReceipt, error) {
+func groundGraphEvidence(ctx context.Context, graph ports.EntityCatalogStore, tenantID string, evidence policyauthor.GraphEvidence, request GroundingRequest, now func() time.Time) (*GroundingReceipt, error) {
 	if err := validateMultiHopEvidence(evidence); err != nil {
 		return nil, err
 	}
@@ -35,13 +24,7 @@ func groundGraphEvidence(ctx context.Context, graph ports.RawCypherQueryStore, t
 	if err != nil {
 		return nil, err
 	}
-	nodeRows, err := graph.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: groundingNodesQuery, Params: map[string]any{
-		"tenant_id": tenantID, "entity_urns": urns, "row_limit": MaxGroundingNodes + 1,
-	}, RowLimit: MaxGroundingNodes + 1})
-	if err != nil {
-		return nil, fmt.Errorf("ground policy candidate nodes: %w", err)
-	}
-	actualNodes, err := currentGroundingNodes(nodeRows)
+	actualNodes, graphRevision, err := currentGroundingNodes(ctx, graph, tenantID, urns)
 	if err != nil {
 		return nil, err
 	}
@@ -60,18 +43,9 @@ func groundGraphEvidence(ctx context.Context, graph ports.RawCypherQueryStore, t
 			return nil, fmt.Errorf("%w: graph evidence nodes[%d]: %w", ErrInvalidRequest, index, err)
 		}
 	}
-	edgeRows, err := graph.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: groundingEdgesQuery, Params: map[string]any{
-		"tenant_id": tenantID, "entity_urns": urns, "row_limit": MaxGroundingRows,
-	}, RowLimit: MaxGroundingRows})
+	actualEdges, err := currentGroundingEdges(ctx, graph, tenantID, urns, graphRevision)
 	if err != nil {
 		return nil, fmt.Errorf("ground policy candidate edges: %w", err)
-	}
-	if len(edgeRows) >= MaxGroundingRows {
-		return nil, fmt.Errorf("%w: current graph edge grounding reached its bounded row limit", ErrInvalidRequest)
-	}
-	actualEdges, err := currentGroundingEdges(edgeRows)
-	if err != nil {
-		return nil, err
 	}
 	for index, edge := range evidence.Edges {
 		key := groundingEdgeKey(bindings[edge.FromID], bindings[edge.ToID], edge.Relation)
@@ -186,36 +160,88 @@ type currentGroundingObject struct {
 	attributes map[string]any
 }
 
-func currentGroundingNodes(rows []ports.CypherRow) (map[string]currentGroundingObject, error) {
-	result := make(map[string]currentGroundingObject, len(rows))
-	for _, row := range rows {
-		urn := groundingRowString(row, "urn")
-		if urn == "" {
-			return nil, fmt.Errorf("%w: current graph node row omitted urn", ErrInvalidRequest)
-		}
-		attributes, err := groundingAttributes(row.Values["attributes_json"])
+func currentGroundingNodes(ctx context.Context, graph ports.EntityCatalogStore, tenantID string, urns []string) (map[string]currentGroundingObject, uint64, error) {
+	result := make(map[string]currentGroundingObject, len(urns))
+	var graphRevision uint64
+	for _, urn := range urns {
+		page, err := graph.ListEntities(ctx, ports.EntityCatalogPageRequest{
+			Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn, ExpectedRevision: graphRevision},
+			Limit:  1,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("%w: current graph node attributes: %w", ErrInvalidRequest, err)
+			return nil, 0, fmt.Errorf("ground policy candidate node %q: %w", urn, err)
 		}
-		result[urn] = currentGroundingObject{entityType: groundingRowString(row, "entity_type"), sourceID: groundingRowString(row, "source_id"), attributes: attributes}
+		if page == nil || page.TenantID != tenantID || page.GraphRevision == 0 || page.Truncated || len(page.Entities) != 1 || page.Entities[0].URN != urn || page.Entities[0].TenantID != tenantID {
+			return nil, 0, fmt.Errorf("%w: current graph did not resolve exactly one bound node", ErrInvalidRequest)
+		}
+		if graphRevision == 0 {
+			graphRevision = page.GraphRevision
+		} else if page.GraphRevision != graphRevision {
+			return nil, 0, fmt.Errorf("%w: current graph revision changed during grounding", ErrInvalidRequest)
+		}
+		entity := page.Entities[0]
+		attributes := make(map[string]any, len(entity.Attributes))
+		for key, value := range entity.Attributes {
+			attributes[key] = value
+		}
+		result[urn] = currentGroundingObject{entityType: strings.TrimSpace(entity.EntityType), sourceID: strings.TrimSpace(entity.SourceID), attributes: attributes}
 	}
-	return result, nil
+	return result, graphRevision, nil
 }
 
-func currentGroundingEdges(rows []ports.CypherRow) (map[string]currentGroundingObject, error) {
-	result := make(map[string]currentGroundingObject, len(rows))
-	for _, row := range rows {
-		fromURN := groundingRowString(row, "from_urn")
-		toURN := groundingRowString(row, "to_urn")
-		relation := groundingRowString(row, "relation")
-		if fromURN == "" || toURN == "" || relation == "" {
-			return nil, fmt.Errorf("%w: current graph edge row omitted identity fields", ErrInvalidRequest)
+func currentGroundingEdges(ctx context.Context, graph ports.EntityCatalogStore, tenantID string, urns []string, graphRevision uint64) (map[string]currentGroundingObject, error) {
+	result := make(map[string]currentGroundingObject)
+	boundURNs := make(map[string]struct{}, len(urns))
+	for _, urn := range urns {
+		boundURNs[urn] = struct{}{}
+	}
+	rowCount := 0
+	for _, fromURN := range urns {
+		request := ports.EntityRelationPageRequest{
+			TenantID: tenantID, AgentKey: fromURN, Directions: []ports.EntityRelationDirection{ports.EntityRelationOutgoing},
+			NeighborAgentKeys: append([]string(nil), urns...), ExpectedRevision: graphRevision,
 		}
-		attributes, err := groundingAttributes(row.Values["attributes_json"])
-		if err != nil {
-			return nil, fmt.Errorf("%w: current graph edge attributes: %w", ErrInvalidRequest, err)
+		for {
+			request.Limit = min(500, MaxGroundingRows-rowCount)
+			page, err := graph.ListEntityRelations(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+			if page == nil || page.TenantID != tenantID || page.GraphRevision != graphRevision || len(page.Relations) > request.Limit {
+				return nil, fmt.Errorf("%w: current graph returned an invalid relation page", ErrInvalidRequest)
+			}
+			for _, relation := range page.Relations {
+				if relation.Direction != ports.EntityRelationOutgoing || relation.Entity.TenantID != tenantID || strings.TrimSpace(relation.Relation) == "" {
+					return nil, fmt.Errorf("%w: current graph relation omitted identity fields", ErrInvalidRequest)
+				}
+				if _, ok := boundURNs[relation.Entity.URN]; !ok {
+					return nil, fmt.Errorf("%w: current graph relation escaped the bound evidence set", ErrInvalidRequest)
+				}
+				attributes, err := groundingAttributes(relation.AttributesJSON)
+				if err != nil {
+					return nil, fmt.Errorf("%w: current graph edge attributes: %w", ErrInvalidRequest, err)
+				}
+				key := groundingEdgeKey(fromURN, relation.Entity.URN, relation.Relation)
+				current := currentGroundingObject{sourceID: strings.TrimSpace(relation.SourceID), attributes: attributes}
+				if previous, exists := result[key]; exists && (previous.sourceID != current.sourceID || !reflect.DeepEqual(previous.attributes, current.attributes)) {
+					return nil, fmt.Errorf("%w: current graph returned conflicting duplicate relation identities", ErrInvalidRequest)
+				}
+				result[key] = current
+			}
+			rowCount += len(page.Relations)
+			if rowCount >= MaxGroundingRows {
+				return nil, fmt.Errorf("%w: current graph edge grounding reached its bounded row limit", ErrInvalidRequest)
+			}
+			if !page.Truncated {
+				break
+			}
+			if page.NextAfterAgentKey == "" || page.NextAfterRelation == "" || page.NextAfterDirection == "" {
+				return nil, fmt.Errorf("%w: current graph relation continuation is incomplete", ErrInvalidRequest)
+			}
+			request.AfterAgentKey = page.NextAfterAgentKey
+			request.AfterRelation = page.NextAfterRelation
+			request.AfterDirection = page.NextAfterDirection
 		}
-		result[groundingEdgeKey(fromURN, toURN, relation)] = currentGroundingObject{sourceID: groundingRowString(row, "source_id"), attributes: attributes}
 	}
 	return result, nil
 }
@@ -268,20 +294,6 @@ func semanticGroundingString(value any) string {
 	default:
 		encoded, _ := json.Marshal(typed)
 		return string(encoded)
-	}
-}
-
-func groundingRowString(row ports.CypherRow, key string) string {
-	if row.Values == nil {
-		return ""
-	}
-	switch value := row.Values[key].(type) {
-	case string:
-		return strings.TrimSpace(value)
-	case []byte:
-		return strings.TrimSpace(string(value))
-	default:
-		return ""
 	}
 }
 

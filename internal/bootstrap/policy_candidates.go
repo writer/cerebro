@@ -196,7 +196,7 @@ func (a *App) policyCandidateService() policycandidate.Service {
 	if a.deps.FindingRules != nil {
 		catalog = findingRuleCoverageCatalog{registry: a.deps.FindingRules}
 	}
-	return policycandidate.Service{Store: store, Experiments: experiments, Datasets: datasets, Author: author, Graph: graph, Catalog: catalog}
+	return policycandidate.Service{Store: store, Experiments: experiments, Datasets: datasets, Author: author, Graph: graph, GroundingGraph: a.deps.GraphReads.Catalog, Catalog: catalog}
 }
 
 func policyCandidateServiceForStore(store ports.StateStore) policycandidate.Service {

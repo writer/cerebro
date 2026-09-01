@@ -1024,7 +1024,7 @@ func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.Enti
 	default:
 		return nil, errors.New("entity relation continuation direction is invalid")
 	}
-	message := connect.NewRequest(&cerebrographv1.ListEntityRelationsRequest{TenantId: tenantID, AgentKey: strings.TrimSpace(request.AgentKey), Directions: directions, Relations: append([]string(nil), request.Relations...), NeighborKinds: append([]string(nil), request.NeighborKinds...), Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey), ExpectedGraphRevision: request.ExpectedRevision, AfterRelation: strings.TrimSpace(request.AfterRelation), AfterDirection: afterDirection}) // #nosec G115 -- bounded above.
+	message := connect.NewRequest(&cerebrographv1.ListEntityRelationsRequest{TenantId: tenantID, AgentKey: strings.TrimSpace(request.AgentKey), Directions: directions, Relations: append([]string(nil), request.Relations...), NeighborKinds: append([]string(nil), request.NeighborKinds...), NeighborAgentKeys: append([]string(nil), request.NeighborAgentKeys...), Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey), ExpectedGraphRevision: request.ExpectedRevision, AfterRelation: strings.TrimSpace(request.AfterRelation), AfterDirection: afterDirection}) // #nosec G115 -- bounded above.
 	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
 		return nil, err
 	}
@@ -1053,7 +1053,7 @@ func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.Enti
 		default:
 			return nil, errors.New("rust entity relations returned an invalid direction")
 		}
-		page.Relations = append(page.Relations, ports.EntityCatalogRelation{Direction: direction, Relation: relation.GetRelation(), Entity: entity})
+		page.Relations = append(page.Relations, ports.EntityCatalogRelation{Direction: direction, Relation: relation.GetRelation(), Entity: entity, SourceID: relation.GetSourceId(), AttributesJSON: relation.GetAttributesJson()})
 	}
 	switch response.Msg.GetNextAfterDirection() {
 	case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING:

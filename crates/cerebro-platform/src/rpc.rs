@@ -1092,6 +1092,11 @@ impl OrganizationalGraphService for GraphRpc {
             .iter()
             .map(|value| (*value).to_owned())
             .collect::<Vec<_>>();
+        let neighbor_agent_keys = request
+            .neighbor_agent_keys
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect::<Vec<_>>();
         let result = tokio::time::timeout(
             GRAPH_RPC_TIMEOUT,
             projection.list_catalog_relations(
@@ -1100,6 +1105,7 @@ impl OrganizationalGraphService for GraphRpc {
                 &directions,
                 &relations,
                 &neighbor_kinds,
+                &neighbor_agent_keys,
                 limit,
                 request.after_agent_key,
                 request.after_relation,
@@ -2218,6 +2224,8 @@ fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelati
                 .into(),
                 relation: value.relation,
                 entity: graph_entity(value.entity).into(),
+                source_id: value.source_id,
+                attributes_json: value.attributes_json,
                 ..Default::default()
             })
             .collect(),
@@ -3025,6 +3033,8 @@ mod tests {
                     direction,
                     relation: "owns".to_owned(),
                     entity: entity.clone(),
+                    source_id: "source-a".to_owned(),
+                    attributes_json: "{\"confidence\":\"high\"}".to_owned(),
                 }],
                 truncated: true,
                 next_after_agent_key: entity.agent_key.clone(),
@@ -3041,6 +3051,11 @@ mod tests {
             assert_ne!(
                 relations.next_after_direction.as_known(),
                 Some(EntityRelationDirection::Unspecified)
+            );
+            assert_eq!(relations.relations[0].source_id, "source-a");
+            assert_eq!(
+                relations.relations[0].attributes_json,
+                "{\"confidence\":\"high\"}"
             );
         }
         let first_page = catalog_relation_response(StoreCatalogRelationPage {

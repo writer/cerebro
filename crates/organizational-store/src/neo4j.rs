@@ -958,6 +958,10 @@ pub struct EntityCatalogRelation {
     pub relation: String,
     /// Neighbor entity.
     pub entity: ContextEntity,
+    /// Source that projected the relation.
+    pub source_id: String,
+    /// Canonical relation attributes from the legacy projection.
+    pub attributes_json: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1835,6 +1839,7 @@ ORDER BY runtime_id
         directions: &[EntityCatalogDirection],
         relations: &[String],
         neighbor_kinds: &[String],
+        neighbor_agent_keys: &[String],
         limit: usize,
         after_agent_key: &str,
         after_relation: &str,
@@ -1847,6 +1852,7 @@ ORDER BY runtime_id
             directions,
             relations,
             neighbor_kinds,
+            neighbor_agent_keys,
             limit,
             CatalogRelationCursor {
                 agent_key: after_agent_key,
@@ -1904,7 +1910,7 @@ ORDER BY runtime_id
                 EntityCatalogDirection::Outgoing => "outgoing",
             })
             .unwrap_or("");
-        let statement = "MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) MATCH (root)-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE (size($directions) = 0 OR direction IN $directions) AND (size($relations) = 0 OR edge.relation IN $relations) AND (size($neighbor_kinds) = 0 OR neighbor.entity_type IN $neighbor_kinds) AND ($after_key = '' OR neighbor.urn > $after_key OR (neighbor.urn = $after_key AND edge.relation > $after_relation) OR (neighbor.urn = $after_key AND edge.relation = $after_relation AND direction > $after_direction)) RETURN direction, edge.relation AS relation, neighbor.urn AS entity_key, coalesce(neighbor.entity_type, 'unknown') AS entity_kind, coalesce(neighbor.label, neighbor.urn) AS entity_label, coalesce(neighbor.attributes_json, '{}') AS entity_properties, coalesce(neighbor.source_id, '') AS entity_source_id, coalesce(neighbor.runtime_id, '') AS entity_runtime_id ORDER BY neighbor.urn, edge.relation, direction LIMIT $row_limit";
+        let statement = "MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) MATCH (root)-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE (size($directions) = 0 OR direction IN $directions) AND (size($relations) = 0 OR edge.relation IN $relations) AND (size($neighbor_kinds) = 0 OR neighbor.entity_type IN $neighbor_kinds) AND (size($neighbor_agent_keys) = 0 OR neighbor.urn IN $neighbor_agent_keys) AND ($after_key = '' OR neighbor.urn > $after_key OR (neighbor.urn = $after_key AND edge.relation > $after_relation) OR (neighbor.urn = $after_key AND edge.relation = $after_relation AND direction > $after_direction)) RETURN direction, edge.relation AS relation, coalesce(edge.source_id, '') AS edge_source_id, coalesce(edge.attributes_json, '{}') AS edge_attributes_json, neighbor.urn AS entity_key, coalesce(neighbor.entity_type, 'unknown') AS entity_kind, coalesce(neighbor.label, neighbor.urn) AS entity_label, coalesce(neighbor.attributes_json, '{}') AS entity_properties, coalesce(neighbor.source_id, '') AS entity_source_id, coalesce(neighbor.runtime_id, '') AS entity_runtime_id ORDER BY neighbor.urn, edge.relation, direction LIMIT $row_limit";
         let mut rows = transaction
             .execute(
                 query(statement)
@@ -1913,6 +1919,7 @@ ORDER BY runtime_id
                     .param("directions", string_list(&direction_names))
                     .param("relations", string_list(relations))
                     .param("neighbor_kinds", string_list(neighbor_kinds))
+                    .param("neighbor_agent_keys", string_list(neighbor_agent_keys))
                     .param("after_key", after_agent_key)
                     .param("after_relation", after_relation)
                     .param("after_direction", after_direction_name)
@@ -1933,6 +1940,8 @@ ORDER BY runtime_id
             values.push(EntityCatalogRelation {
                 direction,
                 relation: catalog_row_string(&row, "relation")?,
+                source_id: catalog_row_string(&row, "edge_source_id")?,
+                attributes_json: catalog_row_string(&row, "edge_attributes_json")?,
                 entity: legacy_context_entity(
                     tenant_id,
                     &catalog_row_string(&row, "entity_key")?,
@@ -4058,12 +4067,14 @@ struct CatalogRelationCursor<'a> {
     direction: Option<EntityCatalogDirection>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_catalog_relation_request(
     tenant_id: &TenantId,
     agent_key: &str,
     directions: &[EntityCatalogDirection],
     relations: &[String],
     neighbor_kinds: &[String],
+    neighbor_agent_keys: &[String],
     limit: usize,
     cursor: CatalogRelationCursor<'_>,
 ) -> Result<(), StoreError> {
@@ -4081,6 +4092,16 @@ fn validate_catalog_relation_request(
     }
     validate_catalog_list("relations", relations, 64)?;
     validate_catalog_list("neighbor_kinds", neighbor_kinds, 500)?;
+    validate_catalog_list("neighbor_agent_keys", neighbor_agent_keys, 500)?;
+    let tenant_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+    if neighbor_agent_keys
+        .iter()
+        .any(|key| !key.starts_with(&tenant_prefix))
+    {
+        return Err(StoreError::Conflict(
+            "entity catalog neighbor_agent_keys are not tenant scoped".to_owned(),
+        ));
+    }
     if directions.len() > 2 || directions.iter().collect::<BTreeSet<_>>().len() != directions.len()
     {
         return Err(StoreError::Conflict(
@@ -6382,6 +6403,7 @@ mod tests {
                 &[EntityCatalogDirection::Incoming],
                 &["associated_with".to_owned()],
                 &["contract".to_owned()],
+                &[],
                 100,
                 CatalogRelationCursor {
                     agent_key: "urn:cerebro:writer:contract:one",
@@ -6391,6 +6413,24 @@ mod tests {
             )
             .is_err(),
             "all composite cursor fields are required"
+        );
+        assert!(
+            validate_catalog_relation_request(
+                &tenant,
+                "urn:cerebro:writer:vendor:example",
+                &[EntityCatalogDirection::Outgoing],
+                &[],
+                &[],
+                &["urn:cerebro:other:contract:one".to_owned()],
+                100,
+                CatalogRelationCursor {
+                    agent_key: "",
+                    relation: "",
+                    direction: None,
+                },
+            )
+            .is_err(),
+            "neighbor keys must remain tenant scoped"
         );
     }
 

@@ -24,7 +24,7 @@
     { "package": "internal/grcpolicylifecycle", "status": "compat", "blocked_on": "attribute substring predicates, per-type subqueries" },
     { "package": "internal/grcvendor", "status": "migrated" },
     { "package": "internal/knowledge", "status": "migrated" },
-    { "package": "internal/policycandidate", "status": "compat", "note": "shadow/experiment evaluation is a permanent resident (rule.Spec.Graph.Query); grounding still migrates, then flip this entry to permanent" },
+    { "package": "internal/policycandidate", "status": "permanent", "note": "grounding uses revision-bound typed Rust entity and relation reads; only shadow/experiment evaluation remains on the validated compatibility boundary because rule.Spec.Graph.Query is stored runtime-authored query text" },
     { "package": "internal/reports", "status": "migrated" },
     { "package": "internal/runtimeorchestration", "status": "migrated" },
     { "package": "internal/workflowprojection", "status": "migrated" }
