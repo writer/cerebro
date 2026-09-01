@@ -915,11 +915,12 @@ mod tests {
             10,
         )
         .unwrap();
+        let receipt = collection.receipt().clone();
         let provenance = || {
             AssertionProvenance::direct(
                 vec![
                     ObservationRef::new(
-                        collection.receipt(),
+                        &receipt,
                         ObservationId::parse("observation-1").unwrap(),
                         "okta.user:user-1",
                     )
