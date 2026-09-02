@@ -161,6 +161,10 @@ describe("real-service E2E isolation", () => {
     expect(seed).toContain("example.org");
     expect(seed).toContain(":OrganizationalEntity");
     expect(seed).toContain(":ORGANIZATIONAL_RELATION");
+    expect(seed).toContain("relation.provenance_json = row.provenance_json");
+    expect(seed).toContain("relation.source_collection_id = row.source_collection_id");
+    expect(seed).toContain("relation.collection_observed_at_unix_ms = row.collection_observed_at_unix_ms");
+    expect(seed).toContain("relation.graph_revision = 1");
     expect(seed).not.toMatch(/\breplace\s|GOPRIVATE|example\.com|unused-local/);
   });
 
