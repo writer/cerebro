@@ -2433,6 +2433,7 @@ fn graph_entity(entity: ContextEntity) -> GraphEntity {
 }
 
 fn graph_edge(edge: ContextEdge) -> GraphEdge {
+    let provenance = edge.provenance;
     GraphEdge {
         assertion_id: edge.assertion_id.to_string(),
         from_entity_id: edge.from.to_string(),
@@ -2440,6 +2441,38 @@ fn graph_edge(edge: ContextEdge) -> GraphEdge {
         to_entity_id: edge.to.to_string(),
         source_runtime_id: edge.source_runtime_id,
         identity_binding: edge.identity_binding,
+        application_workspace_id: edge.application_workspace_id,
+        provenance: GraphEdgeProvenance {
+            source_collection_id: provenance.source_collection_id,
+            collection_scope: provenance.collection_scope,
+            records: provenance
+                .records
+                .into_iter()
+                .map(|record| GraphRecordProvenance {
+                    observation_id: record.observation_id,
+                    source_record: record.source_record,
+                    ..Default::default()
+                })
+                .collect(),
+            producer: provenance.producer,
+            producer_version: provenance.producer_version,
+            observed_at_unix_ms: provenance.observed_at_unix_ms,
+            collection_completeness: provenance.collection_completeness,
+            collection_observed_at_unix_ms: provenance.collection_observed_at_unix_ms,
+            assertion_graph_revision: provenance.assertion_graph_revision,
+            truncated: provenance.truncated,
+            ..Default::default()
+        }
+        .into(),
+        identity_binding_detail: edge
+            .identity_binding_detail
+            .map(|binding| GraphIdentityBinding {
+                state: binding.state,
+                method: binding.method,
+                canonical: binding.canonical,
+                ..Default::default()
+            })
+            .into(),
         ..Default::default()
     }
 }
@@ -2803,6 +2836,22 @@ mod tests {
             source_runtime_id: "runtime-a".to_owned(),
             application_workspace_id: String::new(),
             identity_binding: false,
+            provenance: cerebro_agent_context::ContextEdgeProvenance {
+                source_collection_id: "collection-a".to_owned(),
+                collection_scope: "tenant-a".to_owned(),
+                records: vec![cerebro_agent_context::ContextRecordProvenance {
+                    observation_id: "observation-a".to_owned(),
+                    source_record: "record-a".to_owned(),
+                }],
+                producer: "source-runtime".to_owned(),
+                producer_version: "1".to_owned(),
+                observed_at_unix_ms: 1,
+                collection_completeness: "complete".to_owned(),
+                collection_observed_at_unix_ms: 1,
+                assertion_graph_revision: 1,
+                truncated: false,
+            },
+            identity_binding_detail: None,
         }
     }
 
@@ -3225,7 +3274,7 @@ mod tests {
     }
 
     #[test]
-    fn graph_projection_helpers_preserve_identity_bindings_and_query_variables() {
+    fn graph_projection_helpers_preserve_provenance_identity_and_query_variables() {
         let entity_a = context_entity("entity-a", "service");
         let entity_b = context_entity("entity-b", "team");
         let edge = context_edge("assertion-a");
@@ -3243,6 +3292,36 @@ mod tests {
         let projected_edge = graph_edge(edge.clone());
         assert_eq!(projected_edge.assertion_id, "assertion-a");
         assert_eq!(projected_edge.relation, "owns");
+        let provenance = projected_edge.provenance.as_option().unwrap();
+        assert_eq!(provenance.source_collection_id, "collection-a");
+        assert_eq!(provenance.collection_scope, "tenant-a");
+        assert_eq!(provenance.records[0].observation_id, "observation-a");
+        assert_eq!(provenance.records[0].source_record, "record-a");
+        assert_eq!(provenance.producer, "source-runtime");
+        assert_eq!(provenance.producer_version, "1");
+        assert_eq!(provenance.observed_at_unix_ms, 1);
+        assert_eq!(provenance.collection_completeness, "complete");
+        assert_eq!(provenance.collection_observed_at_unix_ms, 1);
+        assert_eq!(provenance.assertion_graph_revision, 1);
+        assert!(!provenance.truncated);
+        assert!(projected_edge.identity_binding_detail.as_option().is_none());
+        let mut binding_edge = edge.clone();
+        binding_edge.relation = "represents".to_owned();
+        binding_edge.identity_binding = true;
+        binding_edge.identity_binding_detail =
+            Some(cerebro_agent_context::ContextIdentityBinding {
+                state: "proposed".to_owned(),
+                method: "agent_proposal".to_owned(),
+                canonical: false,
+            });
+        let projected_binding = graph_edge(binding_edge);
+        let binding = projected_binding
+            .identity_binding_detail
+            .as_option()
+            .unwrap();
+        assert_eq!(binding.state, "proposed");
+        assert_eq!(binding.method, "agent_proposal");
+        assert!(!binding.canonical);
 
         let path = graph_path(ContextPath {
             entities: vec![entity_a.clone(), entity_b.clone()],

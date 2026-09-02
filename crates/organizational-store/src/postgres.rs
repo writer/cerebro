@@ -727,8 +727,18 @@ pub(crate) struct ProjectionAssertion {
     #[serde(default)]
     pub application_workspace_id: String,
     pub state: String,
+    #[serde(default)]
+    pub identity_binding_method: String,
     pub provenance_json: String,
     pub observed_at_unix_ms: i64,
+    #[serde(default)]
+    pub source_collection_id: String,
+    #[serde(default)]
+    pub collection_scope: String,
+    #[serde(default)]
+    pub collection_completeness: String,
+    #[serde(default)]
+    pub collection_observed_at_unix_ms: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -3995,16 +4005,21 @@ pub(crate) fn projection_commit(
         .iter()
         .map(|assertion| {
             let (from, to, relation) = assertion_endpoints(assertion);
-            let (state, observed_at_unix_ms, application_workspace_id) = match assertion {
-                GraphAssertion::Relationship(value) => (
-                    "confirmed".to_owned(),
-                    value.observed_at_unix_ms(),
-                    value.application_workspace_id(),
-                ),
-                GraphAssertion::IdentityBinding(value) => {
-                    (enum_name(&value.state())?, value.observed_at_unix_ms(), "")
-                }
-            };
+            let (state, identity_binding_method, observed_at_unix_ms, application_workspace_id) =
+                match assertion {
+                    GraphAssertion::Relationship(value) => (
+                        "confirmed".to_owned(),
+                        String::new(),
+                        value.observed_at_unix_ms(),
+                        value.application_workspace_id(),
+                    ),
+                    GraphAssertion::IdentityBinding(value) => (
+                        enum_name(&value.state())?,
+                        enum_name(&value.method())?,
+                        value.observed_at_unix_ms(),
+                        "",
+                    ),
+                };
             Ok(ProjectionAssertion {
                 assertion_id: assertion.id().as_str().to_owned(),
                 from_entity_id: from.to_owned(),
@@ -4017,8 +4032,13 @@ pub(crate) fn projection_commit(
                     .to_owned(),
                 application_workspace_id: application_workspace_id.to_owned(),
                 state,
+                identity_binding_method,
                 provenance_json: serde_json::to_string(assertion.provenance())?,
                 observed_at_unix_ms,
+                source_collection_id: delta.collection().collection_id().to_string(),
+                collection_scope: delta.collection().scope().to_owned(),
+                collection_completeness: completeness(delta.collection().completeness()).to_owned(),
+                collection_observed_at_unix_ms: delta.collection().observed_at_unix_ms(),
             })
         })
         .collect::<Result<_, StoreError>>()?;

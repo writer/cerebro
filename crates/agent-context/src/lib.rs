@@ -38,7 +38,8 @@ use std::{
 use async_trait::async_trait;
 use cerebro_organizational_graph::GraphRead;
 use cerebro_organizational_model::{
-    AssertionId, Entity, EntityId, EntityKind, GraphAssertion, TenantId,
+    AssertionId, AssertionProvenance, Entity, EntityId, EntityKind, GraphAssertion,
+    IdentityBindingState, IdentityResolutionMethod, TenantId,
 };
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -59,6 +60,8 @@ const MAX_QUERY_ABSENCE_CHECKS: usize = 8;
 const MAX_QUERY_KEYS_PER_NODE: usize = 100;
 /// Closed upper bound covering every entity kind admitted by query validation.
 const MAX_QUERY_KINDS: usize = 29;
+/// Maximum direct source records retained on one agent-facing assertion.
+pub const MAX_EDGE_PROVENANCE_RECORDS: usize = 64;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Rejection produced by the bounded context or backend contract.
@@ -102,6 +105,53 @@ impl fmt::Display for ContextError {
 impl Error for ContextError {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One source record that directly supports an agent-facing assertion.
+pub struct ContextRecordProvenance {
+    /// Stable observation identity from the organizational ledger.
+    pub observation_id: String,
+    /// Source-native record locator or identifier.
+    pub source_record: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Bounded collection and producer provenance for one graph assertion.
+pub struct ContextEdgeProvenance {
+    /// Collection shared by every retained source record.
+    pub source_collection_id: String,
+    /// Source-defined scope covered by the collection.
+    pub collection_scope: String,
+    /// Direct source records retained under the public provenance bound.
+    pub records: Vec<ContextRecordProvenance>,
+    /// Component that produced the assertion.
+    pub producer: String,
+    /// Version of the producing component.
+    pub producer_version: String,
+    /// Time at which the assertion was observed, in Unix milliseconds.
+    pub observed_at_unix_ms: i64,
+    /// Exact collection completeness, or `unknown` when the read projection lacks it.
+    pub collection_completeness: String,
+    /// Time at which the collection scope was observed, in Unix milliseconds.
+    /// Zero means the compatibility projection did not retain this value.
+    pub collection_observed_at_unix_ms: i64,
+    /// Graph revision at which this assertion was last projected.
+    /// Zero means the in-memory or compatibility projection cannot prove it.
+    pub assertion_graph_revision: u64,
+    /// Whether any requested provenance field or direct record was unavailable.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Explicit decision semantics for an identity-binding assertion.
+pub struct ContextIdentityBinding {
+    /// `proposed`, `confirmed`, `rejected`, or `ambiguous`.
+    pub state: String,
+    /// Authority or workflow used to reach the decision, or `unknown`.
+    pub method: String,
+    /// Whether this binding may participate in canonical identity resolution.
+    pub canonical: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 /// Source-attributed directed assertion exposed to an agent.
 pub struct ContextEdge {
     /// Stable assertion identity used for explanation and deterministic ordering.
@@ -119,6 +169,25 @@ pub struct ContextEdge {
     pub application_workspace_id: String,
     /// Whether this edge projects an identity-binding assertion.
     pub identity_binding: bool,
+    /// Direct collection, record, producer, observation, and revision provenance.
+    pub provenance: ContextEdgeProvenance,
+    /// Explicit binding decision semantics; absent for ordinary relationships.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity_binding_detail: Option<ContextIdentityBinding>,
+}
+
+impl ContextEdge {
+    /// Returns whether this edge may be used as a canonical graph relation.
+    ///
+    /// Ordinary relationships are canonical graph facts. Identity bindings are
+    /// canonical only when their explicit decision detail says `confirmed`.
+    pub fn is_canonical_relation(&self) -> bool {
+        !self.identity_binding
+            || self
+                .identity_binding_detail
+                .as_ref()
+                .is_some_and(|binding| binding.canonical && binding.state == "confirmed")
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -558,7 +627,7 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         for edge in edges {
             // Path finding is directed even though neighborhood expansion is
             // undirected: only assertions whose source is current may advance.
-            if &edge.from != current {
+            if &edge.from != current || !edge.is_canonical_relation() {
                 continue;
             }
             // Per-path membership, rather than a global visited set, excludes
@@ -1060,10 +1129,10 @@ fn collect_query_matches(
     let from_pattern = node_patterns[pattern.from_variable.as_str()];
     let to_pattern = node_patterns[pattern.to_variable.as_str()];
     used_edges[edge_index] = true;
-    for edge in graph_edges
-        .iter()
-        .filter(|edge| edge.relation == pattern.relation)
-    {
+    for edge in graph_edges.iter().filter(|edge| {
+        edge.relation == pattern.relation
+            && (pattern.relation != "represents" || edge.is_canonical_relation())
+    }) {
         if entity_bindings
             .get(&pattern.from_variable)
             .is_some_and(|entity_id| entity_id != &edge.from)
@@ -1147,7 +1216,9 @@ fn query_absence_holds(
             return false;
         };
         !edges.iter().any(|edge| {
-            if edge.relation != absence.relation {
+            if edge.relation != absence.relation
+                || (absence.relation == "represents" && !edge.is_canonical_relation())
+            {
                 return false;
             }
             let other = match absence.direction {
@@ -1479,6 +1550,8 @@ fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
             source_runtime_id: value.provenance().source_runtime_id().to_string(),
             application_workspace_id: value.application_workspace_id().to_owned(),
             identity_binding: false,
+            provenance: context_provenance(value.provenance(), value.observed_at_unix_ms()),
+            identity_binding_detail: None,
         },
         GraphAssertion::IdentityBinding(value) => ContextEdge {
             assertion_id: value.id().clone(),
@@ -1488,7 +1561,60 @@ fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
             source_runtime_id: value.provenance().source_runtime_id().to_string(),
             application_workspace_id: String::new(),
             identity_binding: true,
+            provenance: context_provenance(value.provenance(), value.observed_at_unix_ms()),
+            identity_binding_detail: Some(ContextIdentityBinding {
+                state: identity_binding_state(value.state()).to_owned(),
+                method: identity_resolution_method(value.method()).to_owned(),
+                canonical: value.state() == IdentityBindingState::Confirmed,
+            }),
         },
+    }
+}
+
+fn context_provenance(
+    provenance: &AssertionProvenance,
+    observed_at_unix_ms: i64,
+) -> ContextEdgeProvenance {
+    let mut records = provenance
+        .observations()
+        .iter()
+        .map(|observation| ContextRecordProvenance {
+            observation_id: observation.observation_id().to_string(),
+            source_record: observation.source_record().to_owned(),
+        })
+        .collect::<Vec<_>>();
+    records.truncate(MAX_EDGE_PROVENANCE_RECORDS);
+    ContextEdgeProvenance {
+        source_collection_id: provenance.observations()[0].collection_id().to_string(),
+        collection_scope: String::new(),
+        records,
+        producer: provenance.producer().to_owned(),
+        producer_version: provenance.producer_version().to_owned(),
+        observed_at_unix_ms,
+        // GraphRead retains assertion provenance but not the collection receipt.
+        // Unknown coverage cannot be upgraded to a completeness claim.
+        collection_completeness: "unknown".to_owned(),
+        collection_observed_at_unix_ms: 0,
+        assertion_graph_revision: 0,
+        truncated: true,
+    }
+}
+
+fn identity_binding_state(state: IdentityBindingState) -> &'static str {
+    match state {
+        IdentityBindingState::Proposed => "proposed",
+        IdentityBindingState::Confirmed => "confirmed",
+        IdentityBindingState::Rejected => "rejected",
+    }
+}
+
+fn identity_resolution_method(method: IdentityResolutionMethod) -> &'static str {
+    match method {
+        IdentityResolutionMethod::AuthoritativeEmployeeId => "authoritative_employee_id",
+        IdentityResolutionMethod::VerifiedEmail => "verified_email",
+        IdentityResolutionMethod::ExistingClaimMatch => "existing_claim_match",
+        IdentityResolutionMethod::HumanDecision => "human_decision",
+        IdentityResolutionMethod::AgentProposal => "agent_proposal",
     }
 }
 
@@ -2006,6 +2132,165 @@ mod tests {
                 .map(|edge| edge.relation.as_str())
                 .collect::<Vec<_>>(),
             ["represents", "member_of", "provisioned_as", "grants"]
+        );
+    }
+
+    #[test]
+    fn identity_decisions_remain_explicit_and_only_confirmed_bindings_are_canonical() {
+        let tenant = TenantId::parse("tenant-bindings").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("identity-runtime").unwrap(),
+            CollectionId::parse("identity-collection").unwrap(),
+            "identity.users",
+            10,
+        )
+        .unwrap();
+        let evidence = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    collection.receipt(),
+                    ObservationId::parse("identity-observation").unwrap(),
+                    "identity.user:one",
+                )
+                .unwrap(),
+            ],
+            "identity-projector",
+            "v2",
+        )
+        .unwrap();
+        let claim = IdentityClaim::verified_email("person@example.com").unwrap();
+        let person = CanonicalIdentity::for_claim(tenant.clone(), &claim, "Person").unwrap();
+        let proposed = ProviderIdentity::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("identity-runtime").unwrap(),
+            ProviderKind::parse("provider.proposed_user").unwrap(),
+            "proposed-user",
+            "Proposed Person",
+        )
+        .unwrap();
+        let rejected = ProviderIdentity::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("identity-runtime").unwrap(),
+            ProviderKind::parse("provider.rejected_user").unwrap(),
+            "rejected-user",
+            "Rejected Person",
+        )
+        .unwrap();
+        let proposed_binding = IdentityBindingAssertion::new(
+            &proposed,
+            &person,
+            IdentityResolutionMethod::AgentProposal,
+            None,
+            IdentityBindingState::Proposed,
+            evidence.clone(),
+            11,
+        )
+        .unwrap();
+        let rejected_binding = IdentityBindingAssertion::new(
+            &rejected,
+            &person,
+            IdentityResolutionMethod::HumanDecision,
+            None,
+            IdentityBindingState::Rejected,
+            evidence,
+            12,
+        )
+        .unwrap();
+        let proposed_id = proposed.entity().id().clone();
+        let rejected_id = rejected.entity().id().clone();
+        let person_id = person.entity().id().clone();
+        let mut builder = collection.begin_delta();
+        for entity in [
+            proposed.into_entity(),
+            rejected.into_entity(),
+            person.into_entity(),
+        ] {
+            builder.add_entity(entity).unwrap();
+        }
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(proposed_binding))
+            .unwrap();
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(rejected_binding))
+            .unwrap();
+        let mut graph = OrganizationalGraph::new();
+        graph.apply(builder.build()).unwrap();
+
+        let proposed_neighborhood = AgentContext::new(&graph)
+            .expand(&tenant, &proposed_id, 1, 10)
+            .unwrap();
+        assert_eq!(proposed_neighborhood.edges.len(), 1);
+        let proposed_edge = &proposed_neighborhood.edges[0];
+        assert_eq!(
+            proposed_edge.provenance.source_collection_id,
+            "identity-collection"
+        );
+        assert_eq!(
+            proposed_edge.provenance.records[0].source_record,
+            "identity.user:one"
+        );
+        assert_eq!(proposed_edge.provenance.producer, "identity-projector");
+        assert_eq!(proposed_edge.provenance.producer_version, "v2");
+        assert_eq!(proposed_edge.provenance.observed_at_unix_ms, 11);
+        assert_eq!(proposed_edge.provenance.collection_completeness, "unknown");
+        assert!(proposed_edge.provenance.truncated);
+        assert_eq!(
+            proposed_edge.identity_binding_detail,
+            Some(ContextIdentityBinding {
+                state: "proposed".to_owned(),
+                method: "agent_proposal".to_owned(),
+                canonical: false,
+            })
+        );
+
+        let rejected_neighborhood = AgentContext::new(&graph)
+            .expand(&tenant, &rejected_id, 1, 10)
+            .unwrap();
+        assert_eq!(
+            rejected_neighborhood.edges[0].identity_binding_detail,
+            Some(ContextIdentityBinding {
+                state: "rejected".to_owned(),
+                method: "human_decision".to_owned(),
+                canonical: false,
+            })
+        );
+        assert!(
+            AgentContext::new(&graph)
+                .find_paths(&tenant, &proposed_id, &person_id, 1, 10)
+                .unwrap()
+                .is_empty()
+        );
+
+        let query = FactQuery::new(
+            vec![
+                QueryNode {
+                    variable: "provider".to_owned(),
+                    kinds: vec!["provider".to_owned()],
+                    keys: vec![proposed_id.to_string()],
+                },
+                QueryNode {
+                    variable: "person".to_owned(),
+                    kinds: vec!["person".to_owned()],
+                    keys: vec![person_id.to_string()],
+                },
+            ],
+            vec![QueryEdge {
+                variable: "binding".to_owned(),
+                from_variable: "provider".to_owned(),
+                relation: "represents".to_owned(),
+                to_variable: "person".to_owned(),
+            }],
+            Vec::new(),
+            10,
+        )
+        .unwrap();
+        assert!(
+            AgentContext::new(&graph)
+                .query(&tenant, &query)
+                .unwrap()
+                .matches
+                .is_empty()
         );
     }
 

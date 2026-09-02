@@ -7,8 +7,10 @@ use std::{
 
 use async_trait::async_trait;
 use cerebro_agent_context::{
-    AgentGraph, ContextEdge, ContextEntity, ContextError, FactQuery, GraphPath, Neighborhood,
-    QueryDirection, QueryMatch, QueryResult, validate_bounds, validate_root_keys,
+    AgentGraph, ContextEdge, ContextEdgeProvenance, ContextEntity, ContextError,
+    ContextIdentityBinding, ContextRecordProvenance, FactQuery, GraphPath,
+    MAX_EDGE_PROVENANCE_RECORDS, Neighborhood, QueryDirection, QueryMatch, QueryResult,
+    validate_bounds, validate_root_keys,
 };
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
@@ -121,8 +123,13 @@ SET assertion.relation = row.relation,
     assertion.source_runtime_id = row.source_runtime_id,
     assertion.application_workspace_id = row.application_workspace_id,
     assertion.state = row.state,
+    assertion.identity_binding_method = CASE WHEN row.identity_binding_method = '' THEN null ELSE row.identity_binding_method END,
     assertion.provenance_json = row.provenance_json,
     assertion.observed_at_unix_ms = row.observed_at_unix_ms,
+    assertion.source_collection_id = row.source_collection_id,
+    assertion.collection_scope = row.collection_scope,
+    assertion.collection_completeness = row.collection_completeness,
+    assertion.collection_observed_at_unix_ms = row.collection_observed_at_unix_ms,
     assertion.graph_revision = $graph_revision
 "#;
 
@@ -301,19 +308,28 @@ RETURN root_key,
        coalesce(edge.relation, '') AS relation,
        coalesce(edge.source_runtime_id, '') AS source_runtime_id,
        coalesce(edge.application_workspace_id, '') AS application_workspace_id,
+       coalesce(edge.state, '') AS assertion_state,
+       coalesce(edge.identity_binding_method, '') AS identity_binding_method,
+       coalesce(edge.provenance_json, '') AS provenance_json,
+       coalesce(edge.observed_at_unix_ms, 0) AS observed_at_unix_ms,
+       coalesce(edge.source_collection_id, '') AS source_collection_id,
+       coalesce(edge.collection_scope, '') AS collection_scope,
+       coalesce(edge.collection_completeness, '') AS collection_completeness,
+       coalesce(edge.collection_observed_at_unix_ms, 0) AS collection_observed_at_unix_ms,
+       coalesce(edge.graph_revision, 0) AS assertion_graph_revision,
        coalesce(revision.graph_revision, 0) AS graph_revision
 ORDER BY root_key, assertion_id
 "#;
 
 fn expand_statement(depth: usize) -> String {
     format!(
-        "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id ORDER BY assertion_id LIMIT $row_limit"
+        "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id, coalesce(edge.state, '') AS assertion_state, coalesce(edge.identity_binding_method, '') AS identity_binding_method, coalesce(edge.provenance_json, '') AS provenance_json, coalesce(edge.observed_at_unix_ms, 0) AS observed_at_unix_ms, coalesce(edge.source_collection_id, '') AS source_collection_id, coalesce(edge.collection_scope, '') AS collection_scope, coalesce(edge.collection_completeness, '') AS collection_completeness, coalesce(edge.collection_observed_at_unix_ms, 0) AS collection_observed_at_unix_ms, coalesce(edge.graph_revision, 0) AS assertion_graph_revision ORDER BY assertion_id LIMIT $row_limit"
     )
 }
 
 fn paths_statement(max_depth: usize) -> String {
     format!(
-        "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(node IN nodes(path) WHERE single(other IN nodes(path) WHERE other = node)) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids, [edge IN relationships(path) | coalesce(edge.application_workspace_id, '')] AS application_workspace_ids ORDER BY length(path), assertion_ids LIMIT $limit"
+        "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(node IN nodes(path) WHERE single(other IN nodes(path) WHERE other = node)) AND all(edge IN relationships(path) WHERE edge.relation <> 'represents' OR (edge.state = 'confirmed' AND edge.identity_binding_method IS NOT NULL)) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids, [edge IN relationships(path) | coalesce(edge.application_workspace_id, '')] AS application_workspace_ids, [edge IN relationships(path) | coalesce(edge.state, '')] AS assertion_states, [edge IN relationships(path) | coalesce(edge.identity_binding_method, '')] AS identity_binding_methods, [edge IN relationships(path) | coalesce(edge.provenance_json, '')] AS provenance_jsons, [edge IN relationships(path) | coalesce(edge.observed_at_unix_ms, 0)] AS observed_at_values, [edge IN relationships(path) | coalesce(edge.source_collection_id, '')] AS source_collection_ids, [edge IN relationships(path) | coalesce(edge.collection_scope, '')] AS collection_scopes, [edge IN relationships(path) | coalesce(edge.collection_completeness, '')] AS collection_completeness_values, [edge IN relationships(path) | coalesce(edge.collection_observed_at_unix_ms, 0)] AS collection_observed_at_values, [edge IN relationships(path) | coalesce(edge.graph_revision, 0)] AS assertion_graph_revisions ORDER BY length(path), assertion_ids LIMIT $limit"
     )
 }
 
@@ -350,7 +366,7 @@ fn fact_query_statement(fact_query: &FactQuery) -> String {
     }
     for index in 0..fact_query.edges().len() {
         predicates.push(format!(
-            "edge_{index}.tenant_id = $tenant_id AND edge_{index}.relation = $edge_{index}_relation"
+            "edge_{index}.tenant_id = $tenant_id AND edge_{index}.relation = $edge_{index}_relation AND ($edge_{index}_relation <> 'represents' OR (edge_{index}.state = 'confirmed' AND edge_{index}.identity_binding_method IS NOT NULL))"
         ));
     }
     for (index, absence) in fact_query.absent_edges().iter().enumerate() {
@@ -364,7 +380,7 @@ fn fact_query_statement(fact_query: &FactQuery) -> String {
             ),
         };
         predicates.push(format!(
-            "NOT EXISTS {{ MATCH {pattern} WHERE absence_edge_{index}.tenant_id = $tenant_id AND absence_edge_{index}.relation = $absence_{index}_relation AND absence_other_{index}.tenant_id = $tenant_id AND (size($absence_{index}_kinds) = 0 OR absence_other_{index}.entity_kind IN $absence_{index}_kinds) }}"
+            "NOT EXISTS {{ MATCH {pattern} WHERE absence_edge_{index}.tenant_id = $tenant_id AND absence_edge_{index}.relation = $absence_{index}_relation AND ($absence_{index}_relation <> 'represents' OR (absence_edge_{index}.state = 'confirmed' AND absence_edge_{index}.identity_binding_method IS NOT NULL)) AND absence_other_{index}.tenant_id = $tenant_id AND (size($absence_{index}_kinds) = 0 OR absence_other_{index}.entity_kind IN $absence_{index}_kinds) }}"
         ));
     }
     parts.push(format!("WHERE {}", predicates.join(" AND ")));
@@ -390,6 +406,15 @@ fn fact_query_statement(fact_query: &FactQuery) -> String {
             format!("node_{to}.entity_id AS edge_{index}_to_id"),
             format!("edge_{index}.source_runtime_id AS edge_{index}_source_runtime_id"),
             format!("coalesce(edge_{index}.application_workspace_id, '') AS edge_{index}_application_workspace_id"),
+            format!("coalesce(edge_{index}.state, '') AS edge_{index}_assertion_state"),
+            format!("coalesce(edge_{index}.identity_binding_method, '') AS edge_{index}_identity_binding_method"),
+            format!("coalesce(edge_{index}.provenance_json, '') AS edge_{index}_provenance_json"),
+            format!("coalesce(edge_{index}.observed_at_unix_ms, 0) AS edge_{index}_observed_at_unix_ms"),
+            format!("coalesce(edge_{index}.source_collection_id, '') AS edge_{index}_source_collection_id"),
+            format!("coalesce(edge_{index}.collection_scope, '') AS edge_{index}_collection_scope"),
+            format!("coalesce(edge_{index}.collection_completeness, '') AS edge_{index}_collection_completeness"),
+            format!("coalesce(edge_{index}.collection_observed_at_unix_ms, 0) AS edge_{index}_collection_observed_at_unix_ms"),
+            format!("coalesce(edge_{index}.graph_revision, 0) AS edge_{index}_assertion_graph_revision"),
         ]);
         order.push(format!("edge_{index}.assertion_id"));
     }
@@ -3575,18 +3600,24 @@ impl AgentGraph for Neo4jProjector {
             let to = context_entity_prefix(&row, "to")?;
             entities.insert(from.entity_id.clone(), from);
             entities.insert(to.entity_id.clone(), to);
-            edges.push(ContextEdge {
-                assertion_id: AssertionId::parse(row_string(&row, "assertion_id")?)
-                    .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                from: EntityId::parse(row_string(&row, "from_id")?)
-                    .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                relation: row_string(&row, "relation")?,
-                to: EntityId::parse(row_string(&row, "to_id")?)
-                    .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                source_runtime_id: row_string(&row, "source_runtime_id")?,
-                application_workspace_id: row_string(&row, "application_workspace_id")?,
-                identity_binding: row_string(&row, "relation")? == "represents",
-            });
+            edges.push(projected_context_edge(
+                tenant_id,
+                row_string(&row, "assertion_id")?,
+                row_string(&row, "from_id")?,
+                row_string(&row, "relation")?,
+                row_string(&row, "to_id")?,
+                row_string(&row, "source_runtime_id")?,
+                row_string(&row, "application_workspace_id")?,
+                row_string(&row, "assertion_state")?,
+                row_string(&row, "identity_binding_method")?,
+                row_string(&row, "provenance_json")?,
+                context_row_i64(&row, "observed_at_unix_ms")?,
+                row_string(&row, "source_collection_id")?,
+                row_string(&row, "collection_scope")?,
+                row_string(&row, "collection_completeness")?,
+                context_row_i64(&row, "collection_observed_at_unix_ms")?,
+                context_row_u64(&row, "assertion_graph_revision")?,
+            )?);
         }
         let truncated = truncate_to_limit(&mut edges, limit);
         retain_edge_entities(&mut entities, &edges);
@@ -3676,6 +3707,28 @@ impl AgentGraph for Neo4jProjector {
             let application_workspace_ids: Vec<String> = row
                 .get("application_workspace_ids")
                 .map_err(context_decode)?;
+            let assertion_states: Vec<String> =
+                row.get("assertion_states").map_err(context_decode)?;
+            let identity_binding_methods: Vec<String> = row
+                .get("identity_binding_methods")
+                .map_err(context_decode)?;
+            let provenance_jsons: Vec<String> =
+                row.get("provenance_jsons").map_err(context_decode)?;
+            let observed_at_values: Vec<i64> =
+                row.get("observed_at_values").map_err(context_decode)?;
+            let source_collection_ids: Vec<String> =
+                row.get("source_collection_ids").map_err(context_decode)?;
+            let collection_scopes: Vec<String> =
+                row.get("collection_scopes").map_err(context_decode)?;
+            let collection_completeness_values: Vec<String> = row
+                .get("collection_completeness_values")
+                .map_err(context_decode)?;
+            let collection_observed_at_values: Vec<i64> = row
+                .get("collection_observed_at_values")
+                .map_err(context_decode)?;
+            let assertion_graph_revisions: Vec<i64> = row
+                .get("assertion_graph_revisions")
+                .map_err(context_decode)?;
             if !same_len(&[
                 entity_ids.len(),
                 entity_kinds.len(),
@@ -3688,6 +3741,15 @@ impl AgentGraph for Neo4jProjector {
                     relations.len(),
                     runtime_ids.len(),
                     application_workspace_ids.len(),
+                    assertion_states.len(),
+                    identity_binding_methods.len(),
+                    provenance_jsons.len(),
+                    observed_at_values.len(),
+                    source_collection_ids.len(),
+                    collection_scopes.len(),
+                    collection_completeness_values.len(),
+                    collection_observed_at_values.len(),
+                    assertion_graph_revisions.len(),
                 ])
             {
                 return Err(ContextError::BackendUnavailable(
@@ -3709,16 +3771,30 @@ impl AgentGraph for Neo4jProjector {
             }
             let mut edges = Vec::with_capacity(assertion_ids.len());
             for index in 0..assertion_ids.len() {
-                edges.push(ContextEdge {
-                    assertion_id: AssertionId::parse(&assertion_ids[index])
-                        .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                    from: entities[index].entity_id.clone(),
-                    relation: relations[index].clone(),
-                    to: entities[index + 1].entity_id.clone(),
-                    source_runtime_id: runtime_ids[index].clone(),
-                    application_workspace_id: application_workspace_ids[index].clone(),
-                    identity_binding: relations[index] == "represents",
-                });
+                let assertion_graph_revision = u64::try_from(assertion_graph_revisions[index])
+                    .map_err(|_| {
+                        ContextError::BackendUnavailable(
+                            "Neo4j assertion graph revision is negative".to_owned(),
+                        )
+                    })?;
+                edges.push(projected_context_edge(
+                    tenant_id,
+                    assertion_ids[index].clone(),
+                    entities[index].entity_id.as_str().to_owned(),
+                    relations[index].clone(),
+                    entities[index + 1].entity_id.as_str().to_owned(),
+                    runtime_ids[index].clone(),
+                    application_workspace_ids[index].clone(),
+                    assertion_states[index].clone(),
+                    identity_binding_methods[index].clone(),
+                    provenance_jsons[index].clone(),
+                    observed_at_values[index],
+                    source_collection_ids[index].clone(),
+                    collection_scopes[index].clone(),
+                    collection_completeness_values[index].clone(),
+                    collection_observed_at_values[index],
+                    assertion_graph_revision,
+                )?);
             }
             paths.push(GraphPath { entities, edges });
         }
@@ -3756,7 +3832,7 @@ impl AgentGraph for Neo4jProjector {
         let mut stream = self
             .graph
             .execute(
-                query("MATCH (source:OrganizationalEntity)-[edge:ORGANIZATIONAL_RELATION {tenant_id: $tenant_id, assertion_id: $assertion_id}]->(target:OrganizationalEntity) RETURN source.entity_id AS from_id, target.entity_id AS to_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id")
+                query("MATCH (source:OrganizationalEntity)-[edge:ORGANIZATIONAL_RELATION {tenant_id: $tenant_id, assertion_id: $assertion_id}]->(target:OrganizationalEntity) RETURN source.entity_id AS from_id, target.entity_id AS to_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id, coalesce(edge.state, '') AS assertion_state, coalesce(edge.identity_binding_method, '') AS identity_binding_method, coalesce(edge.provenance_json, '') AS provenance_json, coalesce(edge.observed_at_unix_ms, 0) AS observed_at_unix_ms, coalesce(edge.source_collection_id, '') AS source_collection_id, coalesce(edge.collection_scope, '') AS collection_scope, coalesce(edge.collection_completeness, '') AS collection_completeness, coalesce(edge.collection_observed_at_unix_ms, 0) AS collection_observed_at_unix_ms, coalesce(edge.graph_revision, 0) AS assertion_graph_revision")
                     .param("tenant_id", tenant_id.as_str())
                     .param("assertion_id", assertion_id.as_str()),
             )
@@ -3767,18 +3843,24 @@ impl AgentGraph for Neo4jProjector {
             .await
             .map_err(context_backend)?
             .ok_or(ContextError::EntityNotFound)?;
-        let relation = row_string(&row, "relation")?;
-        Ok(ContextEdge {
-            assertion_id: assertion_id.clone(),
-            from: EntityId::parse(row_string(&row, "from_id")?)
-                .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-            relation: relation.clone(),
-            to: EntityId::parse(row_string(&row, "to_id")?)
-                .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-            source_runtime_id: row_string(&row, "source_runtime_id")?,
-            application_workspace_id: row_string(&row, "application_workspace_id")?,
-            identity_binding: relation == "represents",
-        })
+        projected_context_edge(
+            tenant_id,
+            assertion_id.as_str().to_owned(),
+            row_string(&row, "from_id")?,
+            row_string(&row, "relation")?,
+            row_string(&row, "to_id")?,
+            row_string(&row, "source_runtime_id")?,
+            row_string(&row, "application_workspace_id")?,
+            row_string(&row, "assertion_state")?,
+            row_string(&row, "identity_binding_method")?,
+            row_string(&row, "provenance_json")?,
+            context_row_i64(&row, "observed_at_unix_ms")?,
+            row_string(&row, "source_collection_id")?,
+            row_string(&row, "collection_scope")?,
+            row_string(&row, "collection_completeness")?,
+            context_row_i64(&row, "collection_observed_at_unix_ms")?,
+            context_row_u64(&row, "assertion_graph_revision")?,
+        )
     }
 
     async fn query(
@@ -3838,30 +3920,29 @@ impl AgentGraph for Neo4jProjector {
             }
             let mut edges = std::collections::BTreeMap::new();
             for (index, pattern) in fact_query.edges().iter().enumerate() {
-                let relation = row_string(&row, &format!("edge_{index}_relation"))?;
                 edges.insert(
                     pattern.variable.clone(),
-                    ContextEdge {
-                        assertion_id: AssertionId::parse(row_string(
+                    projected_context_edge(
+                        tenant_id,
+                        row_string(&row, &format!("edge_{index}_assertion_id"))?,
+                        row_string(&row, &format!("edge_{index}_from_id"))?,
+                        row_string(&row, &format!("edge_{index}_relation"))?,
+                        row_string(&row, &format!("edge_{index}_to_id"))?,
+                        row_string(&row, &format!("edge_{index}_source_runtime_id"))?,
+                        row_string(&row, &format!("edge_{index}_application_workspace_id"))?,
+                        row_string(&row, &format!("edge_{index}_assertion_state"))?,
+                        row_string(&row, &format!("edge_{index}_identity_binding_method"))?,
+                        row_string(&row, &format!("edge_{index}_provenance_json"))?,
+                        context_row_i64(&row, &format!("edge_{index}_observed_at_unix_ms"))?,
+                        row_string(&row, &format!("edge_{index}_source_collection_id"))?,
+                        row_string(&row, &format!("edge_{index}_collection_scope"))?,
+                        row_string(&row, &format!("edge_{index}_collection_completeness"))?,
+                        context_row_i64(
                             &row,
-                            &format!("edge_{index}_assertion_id"),
-                        )?)
-                        .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                        from: EntityId::parse(row_string(&row, &format!("edge_{index}_from_id"))?)
-                            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                        relation: relation.clone(),
-                        to: EntityId::parse(row_string(&row, &format!("edge_{index}_to_id"))?)
-                            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                        source_runtime_id: row_string(
-                            &row,
-                            &format!("edge_{index}_source_runtime_id"),
+                            &format!("edge_{index}_collection_observed_at_unix_ms"),
                         )?,
-                        application_workspace_id: row_string(
-                            &row,
-                            &format!("edge_{index}_application_workspace_id"),
-                        )?,
-                        identity_binding: relation == "represents",
-                    },
+                        context_row_u64(&row, &format!("edge_{index}_assertion_graph_revision"))?,
+                    )?,
                 );
             }
             matches.push(QueryMatch { entities, edges });
@@ -3936,17 +4017,24 @@ impl Neo4jProjector {
             }
             let from = context_entity_prefix(&row, "from")?;
             let to = context_entity_prefix(&row, "to")?;
-            let relation = row_string(&row, "relation")?;
-            let edge = ContextEdge {
-                assertion_id: AssertionId::parse(assertion_id)
-                    .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
-                from: from.entity_id.clone(),
-                relation: relation.clone(),
-                to: to.entity_id.clone(),
-                source_runtime_id: row_string(&row, "source_runtime_id")?,
-                application_workspace_id: row_string(&row, "application_workspace_id")?,
-                identity_binding: relation == "represents",
-            };
+            let edge = projected_context_edge(
+                tenant_id,
+                assertion_id,
+                from.entity_id.as_str().to_owned(),
+                row_string(&row, "relation")?,
+                to.entity_id.as_str().to_owned(),
+                row_string(&row, "source_runtime_id")?,
+                row_string(&row, "application_workspace_id")?,
+                row_string(&row, "assertion_state")?,
+                row_string(&row, "identity_binding_method")?,
+                row_string(&row, "provenance_json")?,
+                context_row_i64(&row, "observed_at_unix_ms")?,
+                row_string(&row, "source_collection_id")?,
+                row_string(&row, "collection_scope")?,
+                row_string(&row, "collection_completeness")?,
+                context_row_i64(&row, "collection_observed_at_unix_ms")?,
+                context_row_u64(&row, "assertion_graph_revision")?,
+            )?;
             accumulator.entities.insert(from.entity_id.clone(), from);
             accumulator.entities.insert(to.entity_id.clone(), to);
             accumulator.edges.push(edge);
@@ -5840,6 +5928,195 @@ fn retain_edge_entities(
     entities.retain(|entity_id, _| retained.contains(entity_id));
 }
 
+#[derive(serde::Deserialize)]
+struct StoredAssertionProvenance {
+    observations: Vec<StoredObservationProvenance>,
+    producer: String,
+    producer_version: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StoredObservationProvenance {
+    observation_id: String,
+    tenant_id: String,
+    source_runtime_id: String,
+    collection_id: String,
+    source_record: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn projected_context_edge(
+    tenant_id: &TenantId,
+    assertion_id: String,
+    from: String,
+    relation: String,
+    to: String,
+    source_runtime_id: String,
+    application_workspace_id: String,
+    state: String,
+    identity_binding_method: String,
+    provenance_json: String,
+    observed_at_unix_ms: i64,
+    source_collection_id: String,
+    collection_scope: String,
+    collection_completeness: String,
+    collection_observed_at_unix_ms: i64,
+    assertion_graph_revision: u64,
+) -> Result<ContextEdge, ContextError> {
+    if observed_at_unix_ms <= 0 {
+        return Err(ContextError::BackendUnavailable(
+            "projected assertion has an invalid observation time".to_owned(),
+        ));
+    }
+    let stored: StoredAssertionProvenance = parse_json(&provenance_json)?;
+    if stored.observations.is_empty()
+        || !valid_projected_text(&stored.producer, 256)
+        || !valid_projected_text(&stored.producer_version, 256)
+    {
+        return Err(ContextError::BackendUnavailable(
+            "projected assertion provenance is incomplete".to_owned(),
+        ));
+    }
+    let first_collection = stored.observations[0].collection_id.clone();
+    if stored.observations.iter().any(|observation| {
+        observation.tenant_id != tenant_id.as_str()
+            || observation.source_runtime_id != source_runtime_id
+            || observation.collection_id != first_collection
+            || !valid_projected_text(&observation.observation_id, 256)
+            || !valid_projected_text(&observation.source_record, 1_024)
+    }) {
+        return Err(ContextError::BackendUnavailable(
+            "projected assertion provenance conflicts with its edge".to_owned(),
+        ));
+    }
+
+    let mut truncated = stored.observations.len() > MAX_EDGE_PROVENANCE_RECORDS;
+    let records = stored
+        .observations
+        .into_iter()
+        .take(MAX_EDGE_PROVENANCE_RECORDS)
+        .map(|observation| ContextRecordProvenance {
+            observation_id: observation.observation_id,
+            source_record: observation.source_record,
+        })
+        .collect();
+    let source_collection_id = if source_collection_id.is_empty() {
+        truncated = true;
+        first_collection.clone()
+    } else if source_collection_id == first_collection {
+        source_collection_id
+    } else {
+        return Err(ContextError::BackendUnavailable(
+            "projected assertion collection provenance conflicts".to_owned(),
+        ));
+    };
+    let collection_completeness = match collection_completeness.as_str() {
+        "partial" | "incremental" | "complete" => collection_completeness,
+        "" => {
+            truncated = true;
+            "unknown".to_owned()
+        }
+        _ => {
+            return Err(ContextError::BackendUnavailable(
+                "projected assertion collection completeness is invalid".to_owned(),
+            ));
+        }
+    };
+    if collection_scope.is_empty()
+        || collection_observed_at_unix_ms <= 0
+        || assertion_graph_revision == 0
+    {
+        truncated = true;
+    }
+    let identity_binding = relation == "represents";
+    if !identity_binding && !identity_binding_method.is_empty() {
+        return Err(ContextError::BackendUnavailable(
+            "ordinary relationship carries identity binding semantics".to_owned(),
+        ));
+    }
+    let identity_binding_detail = if identity_binding {
+        let (state, state_complete) = match state.as_str() {
+            "proposed" | "confirmed" | "rejected" => (state, true),
+            "" | "ambiguous" => ("ambiguous".to_owned(), false),
+            _ => (state, false),
+        };
+        let (method, method_complete) = match identity_binding_method.as_str() {
+            "authoritative_employee_id"
+            | "verified_email"
+            | "existing_claim_match"
+            | "human_decision"
+            | "agent_proposal" => (identity_binding_method, true),
+            "" | "unknown" => ("unknown".to_owned(), false),
+            _ => (identity_binding_method, false),
+        };
+        if !state_complete || !method_complete {
+            truncated = true;
+        }
+        if state == "confirmed" && method == "agent_proposal" {
+            return Err(ContextError::BackendUnavailable(
+                "projected identity binding grants confirmation to an agent proposal".to_owned(),
+            ));
+        }
+        Some(ContextIdentityBinding {
+            canonical: state == "confirmed" && method_complete && method != "agent_proposal",
+            state,
+            method,
+        })
+    } else {
+        None
+    };
+    if let Some(binding) = &identity_binding_detail
+        && ((!matches!(
+            binding.state.as_str(),
+            "proposed" | "confirmed" | "rejected" | "ambiguous"
+        )) || (!matches!(
+            binding.method.as_str(),
+            "authoritative_employee_id"
+                | "verified_email"
+                | "existing_claim_match"
+                | "human_decision"
+                | "agent_proposal"
+                | "unknown"
+        )))
+    {
+        return Err(ContextError::BackendUnavailable(
+            "projected identity binding semantics are invalid".to_owned(),
+        ));
+    }
+    Ok(ContextEdge {
+        assertion_id: AssertionId::parse(assertion_id)
+            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+        from: EntityId::parse(from)
+            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+        relation,
+        to: EntityId::parse(to)
+            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+        source_runtime_id,
+        application_workspace_id,
+        identity_binding,
+        provenance: ContextEdgeProvenance {
+            source_collection_id,
+            collection_scope,
+            records,
+            producer: stored.producer,
+            producer_version: stored.producer_version,
+            observed_at_unix_ms,
+            collection_completeness,
+            collection_observed_at_unix_ms,
+            assertion_graph_revision,
+            truncated,
+        },
+        identity_binding_detail,
+    })
+}
+
+fn valid_projected_text(value: &str, limit: usize) -> bool {
+    !value.is_empty()
+        && value.trim() == value
+        && value.len() <= limit
+        && !value.chars().any(char::is_control)
+}
+
 fn context_entity(row: &neo4rs::Row) -> Result<ContextEntity, ContextError> {
     let properties = parse_json(&row_string(row, "properties_json")?)?;
     Ok(ContextEntity {
@@ -5884,6 +6161,16 @@ fn context_agent_key(
 
 fn row_string(row: &neo4rs::Row, field: &str) -> Result<String, ContextError> {
     row.get(field).map_err(context_decode)
+}
+
+fn context_row_i64(row: &neo4rs::Row, field: &str) -> Result<i64, ContextError> {
+    row.get(field).map_err(context_decode)
+}
+
+fn context_row_u64(row: &neo4rs::Row, field: &str) -> Result<u64, ContextError> {
+    let value = context_row_i64(row, field)?;
+    u64::try_from(value)
+        .map_err(|_| ContextError::BackendUnavailable(format!("Neo4j {field} value is negative")))
 }
 
 fn parse_json<T: serde::de::DeserializeOwned>(value: &str) -> Result<T, ContextError> {
@@ -6144,10 +6431,109 @@ fn legacy_context_edge(
     } else {
         typed_runtime_id.to_owned()
     };
-    let identity_binding = relation == "represents"
-        || properties
-            .get("identity_binding")
-            .is_some_and(|value| value == "true");
+    let identity_binding_marker = properties.get("identity_binding").map(String::as_str);
+    if !matches!(identity_binding_marker, None | Some("true") | Some("false"))
+        || matches!(identity_binding_marker, Some("true")) && relation != "represents"
+        || matches!(identity_binding_marker, Some("false")) && relation == "represents"
+    {
+        return Err(ContextError::BackendUnavailable(
+            "legacy relation identity binding metadata conflicts".to_owned(),
+        ));
+    }
+    let identity_binding = relation == "represents";
+    let mut truncated = true;
+    let identity_binding_detail = if identity_binding {
+        let state = properties
+            .get("identity_binding_state")
+            .or_else(|| properties.get("state"))
+            .map(String::as_str)
+            .unwrap_or("ambiguous");
+        if !matches!(state, "proposed" | "confirmed" | "rejected" | "ambiguous") {
+            return Err(ContextError::BackendUnavailable(
+                "legacy relation identity binding state is invalid".to_owned(),
+            ));
+        }
+        let method = properties
+            .get("identity_binding_method")
+            .or_else(|| properties.get("method"))
+            .map(String::as_str)
+            .unwrap_or("unknown");
+        if !matches!(
+            method,
+            "authoritative_employee_id"
+                | "verified_email"
+                | "existing_claim_match"
+                | "human_decision"
+                | "agent_proposal"
+                | "unknown"
+        ) {
+            return Err(ContextError::BackendUnavailable(
+                "legacy relation identity binding method is invalid".to_owned(),
+            ));
+        }
+        Some(ContextIdentityBinding {
+            state: state.to_owned(),
+            method: method.to_owned(),
+            canonical: state == "confirmed" && !matches!(method, "unknown" | "agent_proposal"),
+        })
+    } else {
+        None
+    };
+    let collection_completeness = properties
+        .get("collection_completeness")
+        .map(String::as_str)
+        .unwrap_or("unknown");
+    if !matches!(
+        collection_completeness,
+        "partial" | "incremental" | "complete" | "unknown"
+    ) {
+        return Err(ContextError::BackendUnavailable(
+            "legacy relation collection completeness is invalid".to_owned(),
+        ));
+    }
+    let observed_at_unix_ms = legacy_i64_property(&properties, "observed_at_unix_ms")?;
+    let collection_observed_at_unix_ms =
+        legacy_i64_property(&properties, "collection_observed_at_unix_ms")?;
+    let assertion_graph_revision = legacy_u64_property(&properties, "graph_revision")?;
+    let records = match (
+        properties.get("observation_id"),
+        properties.get("source_record"),
+    ) {
+        (Some(observation_id), Some(source_record))
+            if valid_projected_text(observation_id, 256)
+                && valid_projected_text(source_record, 1_024) =>
+        {
+            vec![ContextRecordProvenance {
+                observation_id: observation_id.clone(),
+                source_record: source_record.clone(),
+            }]
+        }
+        (None, None) => Vec::new(),
+        _ => {
+            return Err(ContextError::BackendUnavailable(
+                "legacy relation record provenance is incomplete".to_owned(),
+            ));
+        }
+    };
+    if !records.is_empty()
+        && properties
+            .get("source_collection_id")
+            .is_some_and(|value| !value.is_empty())
+        && properties
+            .get("producer")
+            .is_some_and(|value| !value.is_empty())
+        && properties
+            .get("producer_version")
+            .is_some_and(|value| !value.is_empty())
+        && observed_at_unix_ms > 0
+        && assertion_graph_revision > 0
+    {
+        truncated = collection_observed_at_unix_ms == 0
+            || properties
+                .get("collection_scope")
+                .is_none_or(String::is_empty)
+            || collection_completeness == "unknown";
+    }
     let assertion_id = legacy_assertion_id(tenant_id, &from, &relation, &to);
     Ok(ContextEdge {
         assertion_id,
@@ -6157,6 +6543,54 @@ fn legacy_context_edge(
         source_runtime_id,
         application_workspace_id: application_workspace_id.to_owned(),
         identity_binding,
+        provenance: ContextEdgeProvenance {
+            source_collection_id: properties
+                .get("source_collection_id")
+                .cloned()
+                .unwrap_or_default(),
+            collection_scope: properties
+                .get("collection_scope")
+                .cloned()
+                .unwrap_or_default(),
+            records,
+            producer: properties.get("producer").cloned().unwrap_or_default(),
+            producer_version: properties
+                .get("producer_version")
+                .cloned()
+                .unwrap_or_default(),
+            observed_at_unix_ms,
+            collection_completeness: collection_completeness.to_owned(),
+            collection_observed_at_unix_ms,
+            assertion_graph_revision,
+            truncated,
+        },
+        identity_binding_detail,
+    })
+}
+
+fn legacy_u64_property(
+    properties: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<u64, ContextError> {
+    properties.get(field).map_or(Ok(0), |value| {
+        value.parse::<u64>().map_err(|_| {
+            ContextError::BackendUnavailable(format!("legacy relation {field} is invalid"))
+        })
+    })
+}
+
+fn legacy_i64_property(
+    properties: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<i64, ContextError> {
+    properties.get(field).map_or(Ok(0), |value| {
+        value
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| {
+                ContextError::BackendUnavailable(format!("legacy relation {field} is invalid"))
+            })
     })
 }
 
@@ -6320,8 +6754,28 @@ fn assertion_row(assertion: &ProjectionAssertion) -> BoltMap {
             assertion.application_workspace_id.clone().into(),
         ),
         ("state", assertion.state.clone().into()),
+        (
+            "identity_binding_method",
+            assertion.identity_binding_method.clone().into(),
+        ),
         ("provenance_json", assertion.provenance_json.clone().into()),
         ("observed_at_unix_ms", assertion.observed_at_unix_ms.into()),
+        (
+            "source_collection_id",
+            assertion.source_collection_id.clone().into(),
+        ),
+        (
+            "collection_scope",
+            assertion.collection_scope.clone().into(),
+        ),
+        (
+            "collection_completeness",
+            assertion.collection_completeness.clone().into(),
+        ),
+        (
+            "collection_observed_at_unix_ms",
+            assertion.collection_observed_at_unix_ms.into(),
+        ),
     ])
 }
 
@@ -6374,6 +6828,15 @@ mod tests {
         assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.label ="));
         assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.authority_json ="));
         assert!(ASSERTION_QUERY.contains("ORGANIZATIONAL_RELATION"));
+        for field in [
+            "identity_binding_method",
+            "source_collection_id",
+            "collection_scope",
+            "collection_completeness",
+            "collection_observed_at_unix_ms",
+        ] {
+            assert!(ASSERTION_QUERY.contains(field));
+        }
         assert!(
             NEO4J_SCHEMA
                 .iter()
@@ -6629,6 +7092,15 @@ mod tests {
         let paths = paths_statement(3);
         assert!(paths.contains("single(other IN nodes(path) WHERE other = node)"));
         assert!(paths.contains("node.tenant_id = $tenant_id"));
+        assert!(paths.contains("edge.state = 'confirmed'"));
+        assert!(paths.contains("edge.identity_binding_method IS NOT NULL"));
+        for field in [
+            "provenance_jsons",
+            "collection_completeness_values",
+            "assertion_graph_revisions",
+        ] {
+            assert!(paths.contains(field));
+        }
         assert!(PATH_ENDPOINTS_STATEMENT.contains("source IS NOT NULL"));
         assert!(PATH_ENDPOINTS_STATEMENT.contains("target IS NOT NULL"));
 
@@ -7089,6 +7561,15 @@ mod tests {
         assert_eq!(edge.application_workspace_id, "workspace-a");
         assert!(edge.identity_binding);
         assert_eq!(
+            edge.identity_binding_detail,
+            Some(ContextIdentityBinding {
+                state: "ambiguous".to_owned(),
+                method: "unknown".to_owned(),
+                canonical: false,
+            })
+        );
+        assert!(edge.provenance.truncated);
+        assert_eq!(
             edge.assertion_id,
             legacy_assertion_id(&tenant_id, from, "represents", to)
         );
@@ -7183,6 +7664,129 @@ mod tests {
                     application_workspace_ids: vec![String::new()],
                     properties_values: vec!["{}".to_owned()],
                 },
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn projected_edges_preserve_provenance_and_fail_closed_on_identity_conflicts() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let provenance = r#"{"observations":[{"observation_id":"observation-a","tenant_id":"writer","source_runtime_id":"runtime-a","collection_id":"collection-a","source_record":"provider.record:a"}],"producer":"provider-projector","producer_version":"v3"}"#;
+        let confirmed = projected_context_edge(
+            &tenant_id,
+            "assertion-a".to_owned(),
+            "provider-a".to_owned(),
+            "represents".to_owned(),
+            "person-a".to_owned(),
+            "runtime-a".to_owned(),
+            String::new(),
+            "confirmed".to_owned(),
+            "verified_email".to_owned(),
+            provenance.to_owned(),
+            20,
+            "collection-a".to_owned(),
+            "identity.users".to_owned(),
+            "complete".to_owned(),
+            10,
+            7,
+        )
+        .expect("projected edge");
+        assert_eq!(confirmed.provenance.source_collection_id, "collection-a");
+        assert_eq!(confirmed.provenance.collection_scope, "identity.users");
+        assert_eq!(
+            confirmed.provenance.records[0].observation_id,
+            "observation-a"
+        );
+        assert_eq!(confirmed.provenance.producer, "provider-projector");
+        assert_eq!(confirmed.provenance.producer_version, "v3");
+        assert_eq!(confirmed.provenance.observed_at_unix_ms, 20);
+        assert_eq!(confirmed.provenance.collection_observed_at_unix_ms, 10);
+        assert_eq!(confirmed.provenance.assertion_graph_revision, 7);
+        assert!(!confirmed.provenance.truncated);
+        assert_eq!(
+            confirmed.identity_binding_detail,
+            Some(ContextIdentityBinding {
+                state: "confirmed".to_owned(),
+                method: "verified_email".to_owned(),
+                canonical: true,
+            })
+        );
+
+        let ambiguous = projected_context_edge(
+            &tenant_id,
+            "assertion-b".to_owned(),
+            "provider-a".to_owned(),
+            "represents".to_owned(),
+            "person-a".to_owned(),
+            "runtime-a".to_owned(),
+            String::new(),
+            String::new(),
+            String::new(),
+            provenance.to_owned(),
+            20,
+            String::new(),
+            String::new(),
+            String::new(),
+            0,
+            0,
+        )
+        .expect("compatible projected edge");
+        assert_eq!(
+            ambiguous.identity_binding_detail,
+            Some(ContextIdentityBinding {
+                state: "ambiguous".to_owned(),
+                method: "unknown".to_owned(),
+                canonical: false,
+            })
+        );
+        assert!(ambiguous.provenance.truncated);
+
+        for (state, method) in [
+            ("certain", "verified_email"),
+            ("confirmed", "untrusted_similarity"),
+            ("confirmed", "agent_proposal"),
+        ] {
+            assert!(
+                projected_context_edge(
+                    &tenant_id,
+                    "assertion-invalid".to_owned(),
+                    "provider-a".to_owned(),
+                    "represents".to_owned(),
+                    "person-a".to_owned(),
+                    "runtime-a".to_owned(),
+                    String::new(),
+                    state.to_owned(),
+                    method.to_owned(),
+                    provenance.to_owned(),
+                    20,
+                    "collection-a".to_owned(),
+                    "identity.users".to_owned(),
+                    "complete".to_owned(),
+                    10,
+                    7,
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            projected_context_edge(
+                &tenant_id,
+                "assertion-conflict".to_owned(),
+                "provider-a".to_owned(),
+                "represents".to_owned(),
+                "person-a".to_owned(),
+                "runtime-b".to_owned(),
+                String::new(),
+                "confirmed".to_owned(),
+                "verified_email".to_owned(),
+                provenance.to_owned(),
+                20,
+                "collection-a".to_owned(),
+                "identity.users".to_owned(),
+                "complete".to_owned(),
+                10,
+                7,
             )
             .is_err()
         );
@@ -7629,6 +8233,9 @@ CREATE (:Entity {tenant_id: $other_tenant, urn: $other_subject, entity_type: 'id
         assert!(statement.contains("NOT EXISTS"));
         assert!(statement.contains("$edge_0_relation"));
         assert!(statement.contains("$absence_0_relation"));
+        assert!(statement.contains("identity_binding_method IS NOT NULL"));
+        assert!(statement.contains("edge_0_provenance_json"));
+        assert!(statement.contains("edge_0_assertion_graph_revision"));
         assert!(statement.ends_with("LIMIT $row_limit"));
         assert!(!statement.contains("mapped_to_control"));
         assert!(!statement.contains("control-1"));

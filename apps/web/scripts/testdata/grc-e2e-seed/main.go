@@ -136,12 +136,33 @@ func seedRustAuthorityGraph(ctx context.Context, entities []*ports.ProjectedEnti
 	}
 	linkRows := make([]map[string]any, 0, len(links))
 	for index, link := range links {
+		collectionID := fmt.Sprintf("grc-e2e-collection-%d", index+1)
+		observationID := fmt.Sprintf("grc-e2e-observation-%d", index+1)
+		sourceRecord := fmt.Sprintf("grc-e2e-record-%d", index+1)
+		provenance, err := json.Marshal(map[string]any{
+			"observations": []map[string]string{{
+				"observation_id":    observationID,
+				"tenant_id":         tenantID,
+				"source_runtime_id": link.RuntimeID,
+				"collection_id":     collectionID,
+				"source_record":     sourceRecord,
+			}},
+			"producer":         "grc-e2e-seed",
+			"producer_version": "v1",
+		})
+		must(err)
 		linkRows = append(linkRows, map[string]any{
-			"assertion_id":      fmt.Sprintf("grc-e2e-%d", index+1),
-			"from_entity_id":    entityIDs[link.FromURN],
-			"relation":          link.Relation,
-			"source_runtime_id": link.RuntimeID,
-			"to_entity_id":      entityIDs[link.ToURN],
+			"assertion_id":                   fmt.Sprintf("grc-e2e-%d", index+1),
+			"collection_completeness":        "complete",
+			"collection_observed_at_unix_ms": int64(1),
+			"collection_scope":               "grc-e2e",
+			"from_entity_id":                 entityIDs[link.FromURN],
+			"observed_at_unix_ms":            int64(1),
+			"provenance_json":                string(provenance),
+			"relation":                       link.Relation,
+			"source_collection_id":           collectionID,
+			"source_runtime_id":              link.RuntimeID,
+			"to_entity_id":                   entityIDs[link.ToURN],
 		})
 	}
 
@@ -181,7 +202,14 @@ MERGE (source)-[relation:ORGANIZATIONAL_RELATION {
   assertion_id: row.assertion_id
 }]->(target)
 SET relation.relation = row.relation,
-    relation.source_runtime_id = row.source_runtime_id
+    relation.source_runtime_id = row.source_runtime_id,
+    relation.provenance_json = row.provenance_json,
+    relation.observed_at_unix_ms = row.observed_at_unix_ms,
+    relation.source_collection_id = row.source_collection_id,
+    relation.collection_scope = row.collection_scope,
+    relation.collection_completeness = row.collection_completeness,
+    relation.collection_observed_at_unix_ms = row.collection_observed_at_unix_ms,
+    relation.graph_revision = 1
 RETURN count(relation) AS projected`, map[string]any{"links": linkRows, "tenant_id": tenantID})
 		if err != nil {
 			return nil, err
