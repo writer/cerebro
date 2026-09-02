@@ -2,9 +2,9 @@
   "units": 73,
   "candidate_units": 0,
   "blocked_units": 73,
-  "production_lines": 332,
-  "test_lines": 221,
-  "deletion_targets": 2,
+  "production_lines": 0,
+  "test_lines": 0,
+  "deletion_targets": 0,
   "blocked_source_ids": [
     "projection/abnormal_security",
     "projection/abuseipdb",

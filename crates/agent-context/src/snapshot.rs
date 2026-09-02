@@ -27,6 +27,10 @@ const MAX_AMBIGUITY_CANDIDATES: usize = 20;
 pub enum SnapshotError {
     /// One request field violates the bounded snapshot contract.
     Invalid(&'static str),
+    /// The graph reader returned an entity owned by a different tenant.
+    EntityTenantMismatch,
+    /// The graph reader returned an assertion owned by a different tenant.
+    AssertionTenantMismatch,
     /// The graph revision changed while the snapshot was being assembled.
     RevisionChanged {
         /// Revision read before graph materialization.
@@ -42,6 +46,12 @@ impl fmt::Display for SnapshotError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(field) => write!(formatter, "invalid context snapshot {field}"),
+            Self::EntityTenantMismatch => {
+                formatter.write_str("context graph returned a cross-tenant entity")
+            }
+            Self::AssertionTenantMismatch => {
+                formatter.write_str("context graph returned a cross-tenant assertion")
+            }
             Self::RevisionChanged { before, after } => write!(
                 formatter,
                 "context graph revision changed during capture ({before} to {after})"
@@ -410,8 +420,9 @@ impl ContextSnapshotV1 {
     ///
     /// # Errors
     ///
-    /// Returns [`SnapshotError::RevisionChanged`] if the graph changes during
-    /// capture or [`SnapshotError::Canonicalization`] if canonical digesting fails.
+    /// Returns a tenant-mismatch error if the graph reader crosses the request
+    /// boundary, [`SnapshotError::RevisionChanged`] if the graph changes during
+    /// capture, or [`SnapshotError::Canonicalization`] if canonical digesting fails.
     pub fn capture<Reader: GraphRead>(
         reader: &Reader,
         request: ContextSnapshotRequestV1,
@@ -423,6 +434,18 @@ impl ContextSnapshotV1 {
         let after = reader.graph_revision(request.tenant_id());
         if before != after {
             return Err(SnapshotError::RevisionChanged { before, after });
+        }
+        if entities
+            .iter()
+            .any(|entity| entity.tenant_id() != request.tenant_id())
+        {
+            return Err(SnapshotError::EntityTenantMismatch);
+        }
+        if assertions
+            .iter()
+            .any(|assertion| assertion.tenant_id() != request.tenant_id())
+        {
+            return Err(SnapshotError::AssertionTenantMismatch);
         }
         entities.sort_by(|left, right| left.id().cmp(right.id()));
         assertions.sort_by(|left, right| left.id().cmp(right.id()));
@@ -883,6 +906,12 @@ mod tests {
         revision_reads: Cell<usize>,
     }
 
+    struct TenantMixingGraph {
+        graph: OrganizationalGraph,
+        leaked_entities: Vec<Entity>,
+        leaked_assertions: Vec<GraphAssertion>,
+    }
+
     impl GraphRead for RevisionChangingGraph {
         fn graph_revision(&self, tenant_id: &TenantId) -> u64 {
             let revision = self.graph.graph_revision(tenant_id);
@@ -901,6 +930,28 @@ mod tests {
 
         fn assertions(&self, tenant_id: &TenantId) -> Vec<GraphAssertion> {
             self.graph.assertions(tenant_id)
+        }
+    }
+
+    impl GraphRead for TenantMixingGraph {
+        fn graph_revision(&self, tenant_id: &TenantId) -> u64 {
+            self.graph.graph_revision(tenant_id)
+        }
+
+        fn entity(&self, tenant_id: &TenantId, entity_id: &EntityId) -> Option<Entity> {
+            self.graph.entity(tenant_id, entity_id)
+        }
+
+        fn entities(&self, tenant_id: &TenantId) -> Vec<Entity> {
+            let mut entities = self.graph.entities(tenant_id);
+            entities.extend(self.leaked_entities.clone());
+            entities
+        }
+
+        fn assertions(&self, tenant_id: &TenantId) -> Vec<GraphAssertion> {
+            let mut assertions = self.graph.assertions(tenant_id);
+            assertions.extend(self.leaked_assertions.clone());
+            assertions
         }
     }
 
@@ -1066,6 +1117,100 @@ mod tests {
                 after: 2,
             })
         );
+    }
+
+    #[test]
+    fn capture_rejects_a_cross_tenant_entity_without_exposing_tenant_ids() {
+        let fixture = fixture(None, 0);
+        let foreign_tenant = TenantId::parse("tenant-b").unwrap();
+        let leaked_entity = Entity::canonical(
+            foreign_tenant,
+            EntityId::parse("foreign-person").unwrap(),
+            EntityKind::Person,
+            "Foreign Person",
+        )
+        .unwrap();
+        let graph = TenantMixingGraph {
+            graph: fixture.graph,
+            leaked_entities: vec![leaked_entity],
+            leaked_assertions: Vec::new(),
+        };
+        let request = ContextSnapshotRequestV1::new(
+            fixture.tenant,
+            vec![ContextSelectorV1::canonical_person("foreign-person").unwrap()],
+            20,
+        )
+        .unwrap();
+
+        let error = ContextSnapshotV1::capture(&graph, request).unwrap_err();
+        assert_eq!(error, SnapshotError::EntityTenantMismatch);
+        assert!(!error.to_string().contains("tenant-b"));
+    }
+
+    #[test]
+    fn capture_rejects_a_cross_tenant_assertion_without_exposing_tenant_ids() {
+        let fixture = fixture(None, 0);
+        let foreign_tenant = TenantId::parse("tenant-b").unwrap();
+        let collection = CompleteCollection::new(
+            foreign_tenant.clone(),
+            SourceRuntimeId::parse("foreign-runtime").unwrap(),
+            CollectionId::parse("foreign-collection").unwrap(),
+            "foreign-access",
+            20,
+        )
+        .unwrap();
+        let provenance = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    collection.receipt(),
+                    ObservationId::parse("foreign-observation").unwrap(),
+                    "foreign.relationship:1",
+                )
+                .unwrap(),
+            ],
+            "snapshot-test",
+            "v1",
+        )
+        .unwrap();
+        let foreign_person = Entity::canonical(
+            foreign_tenant.clone(),
+            EntityId::parse("foreign-person").unwrap(),
+            EntityKind::Person,
+            "Foreign Person",
+        )
+        .unwrap();
+        let foreign_group = Entity::canonical(
+            foreign_tenant,
+            EntityId::parse("foreign-group").unwrap(),
+            EntityKind::Group,
+            "Foreign Group",
+        )
+        .unwrap();
+        let leaked_assertion = GraphAssertion::Relationship(
+            RelationshipAssertion::new(
+                &foreign_person,
+                RelationKind::MemberOf,
+                &foreign_group,
+                provenance,
+                20,
+            )
+            .unwrap(),
+        );
+        let graph = TenantMixingGraph {
+            graph: fixture.graph,
+            leaked_entities: Vec::new(),
+            leaked_assertions: vec![leaked_assertion],
+        };
+        let request = ContextSnapshotRequestV1::new(
+            fixture.tenant,
+            vec![ContextSelectorV1::canonical_person(fixture.person_key).unwrap()],
+            20,
+        )
+        .unwrap();
+
+        let error = ContextSnapshotV1::capture(&graph, request).unwrap_err();
+        assert_eq!(error, SnapshotError::AssertionTenantMismatch);
+        assert!(!error.to_string().contains("tenant-b"));
     }
 
     #[test]

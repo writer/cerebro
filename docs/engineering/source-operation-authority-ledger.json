@@ -129,13 +129,13 @@
         "role": "preview_rust_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "PreviewRustFamily",
-        "digest_sha256": "56b5c44da5095f267eb725bf76a3919c1ae3d322b8a0be4a98dfd6ef00c948dd"
+        "digest_sha256": "508fe47d0e99470700b508e61a93f68f69d61e502105c32ddf434fd8a288ef0e"
       },
       {
         "role": "rust_authoritative_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "135f2c9dd69cbefbfab20044910ad84cd12a121df72bbb46b6b4920d8130baa5"
+        "digest_sha256": "e2918a94b5b4067c817e06d615943b5e9313717e2c2ae8da03d6c4dbfe7e3997"
       },
       {
         "role": "rust_output_conversion",
@@ -153,6 +153,13 @@
     "durable_pull": {
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
+        { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "aha", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "akeneo", "all_catalog_families": true, "default_family": "attribute", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "amplitude", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "anthropic", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "asana", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "aws_bedrock", "all_catalog_families": true, "default_family": "foundation_models", "unknown_family_policy": "rust_fail_closed" },
@@ -197,6 +204,13 @@
     "preview": {
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
+        { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "aha", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "akeneo", "all_catalog_families": true, "default_family": "attribute", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "amplitude", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "anthropic", "all_catalog_families": true, "default_family": "user", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "asana", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "aws_bedrock", "all_catalog_families": true, "default_family": "foundation_models", "unknown_family_policy": "rust_fail_closed" },

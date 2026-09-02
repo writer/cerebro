@@ -64,7 +64,7 @@ class CIDeliveryControlTests(unittest.TestCase):
     def test_security_workflows_cancel_only_superseded_pull_requests(self):
         group = (
             "group: ${{ github.workflow }}-"
-            "${{ github.event.pull_request.number || github.ref }}"
+            "${{ github.event.pull_request.number || github.sha }}"
         )
         cancellation = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
         for workflow_name, workflow in self.security_workflows.items():

@@ -11,14 +11,14 @@ use crate::source_execution::{
     SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
     seal_page_program_v2,
 };
-use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::{
-    AhaFamily,
-    source_execution::{AHA_SOURCE_EXECUTION_ADAPTERS, AhaSourceExecutionAdapter},
+    AdpFamily,
+    source_execution::{ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS, AdpSourceExecutionAdapter},
 };
 
 const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
+const ORIGIN: &str = "https://api.adp.com";
 
 #[derive(Deserialize)]
 struct GoOracleEvent {
@@ -29,35 +29,46 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-fn adapter(family: AhaFamily) -> &'static AhaSourceExecutionAdapter {
-    AHA_SOURCE_EXECUTION_ADAPTERS
+fn family_adapter(family: AdpFamily) -> &'static AdpSourceExecutionAdapter {
+    ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS
         .iter()
         .find(|adapter| adapter.family_id() == family.as_str())
         .unwrap()
 }
 
-fn fixture(family: AhaFamily) -> Value {
+/// The Go oracle payload carries the normalized `schema_ref`, `source_id`,
+/// `tenant_id`, and (for events) `actor` fields that the kernel adds itself;
+/// strip them back to the raw provider record shape.
+fn fixture(family: AdpFamily) -> Value {
     let bytes = fs::read(root().join(format!(
-        "sources/aha/testdata/read_{}.json",
+        "sources/adp_workforce_now/testdata/read_{}.json",
         family.as_str()
     )))
     .unwrap();
-    serde_json::from_slice::<Vec<GoOracleEvent>>(&bytes)
+    let mut payload = serde_json::from_slice::<Vec<GoOracleEvent>>(&bytes)
         .unwrap()
         .pop()
         .unwrap()
-        .payload
+        .payload;
+    let values = payload.as_object_mut().unwrap();
+    for key in ["schema_ref", "source_id", "tenant_id"] {
+        values.remove(key);
+    }
+    if family == AdpFamily::EventNotifications {
+        values.remove("actor");
+    }
+    payload
 }
 
-fn response(family: AhaFamily, records: Vec<Value>) -> Vec<u8> {
+fn response(family: AdpFamily, records: Vec<Value>) -> Vec<u8> {
     serde_json::to_vec(&json!({family.response_key(): records})).unwrap()
 }
 
 fn context(cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
         tenant_id: "tenant".to_owned(),
-        runtime_id: "aha-runtime".to_owned(),
-        logical_page_id: format!("source-page-v2:aha-{page}"),
+        runtime_id: "adp-workforce-now-runtime".to_owned(),
+        logical_page_id: format!("source-page-v2:adp-workforce-now-{page}"),
         prior_cursor: cursor.to_owned(),
         runtime_generation: 7,
         lease_generation: 11,
@@ -65,20 +76,16 @@ fn context(cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     }
 }
 
-fn metadata(family: AhaFamily) -> SourceWorkerRuntimeMetadataV2 {
+fn family_metadata(family: AdpFamily) -> SourceWorkerRuntimeMetadataV2 {
     SourceWorkerRuntimeMetadataV2 {
-        public_config: HashMap::from([
-            ("family".to_owned(), family.as_str().to_owned()),
-            ("base_url".to_owned(), "https://example.aha.io".to_owned()),
-            ("product_id".to_owned(), "product-1".to_owned()),
-        ]),
+        public_config: HashMap::from([("family".to_owned(), family.as_str().to_owned())]),
         prior_terminal_watermark_unix_millis: 0,
         prior_checkpoint: String::new(),
     }
 }
 
 fn plan_page(
-    adapter: &AhaSourceExecutionAdapter,
+    adapter: &AdpSourceExecutionAdapter,
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -92,6 +99,23 @@ fn plan_page(
             metadata: Some(metadata.clone()),
         })
         .unwrap()
+}
+
+fn plan_error(
+    adapter: &AdpSourceExecutionAdapter,
+    plan: &SourceExecutionPlanV1,
+    context: &SourceWorkerExecutionContextV1,
+    metadata: &SourceWorkerRuntimeMetadataV2,
+) -> SourceExecutionError {
+    adapter
+        .plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap_err()
 }
 
 fn receipt(
@@ -119,7 +143,7 @@ fn receipt(
 }
 
 fn decode_page(
-    adapter: &AhaSourceExecutionAdapter,
+    adapter: &AdpSourceExecutionAdapter,
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -152,34 +176,49 @@ fn decode_page(
 }
 
 #[test]
-fn aha_plans_all_five_families_without_credentials() {
-    for family in AhaFamily::ALL {
-        let adapter = adapter(family);
+fn adp_workforce_now_plans_both_families_without_credentials() {
+    for (family, cursor, page, expected_url) in [
+        (
+            AdpFamily::EventNotifications,
+            "",
+            1,
+            "https://api.adp.com/core/v1/event-notification-messages",
+        ),
+        (
+            AdpFamily::Users,
+            "",
+            1,
+            "https://api.adp.com/hr/v2/workers?%24top=100&%24skip=0",
+        ),
+        (
+            AdpFamily::Users,
+            "100",
+            2,
+            "https://api.adp.com/hr/v2/workers?%24top=100&%24skip=100",
+        ),
+    ] {
+        let adapter = family_adapter(family);
         let plan = adapter.compiled_plan();
-        assert_eq!(plan.source_id, "aha");
+        assert_eq!(plan.source_id, "adp_workforce_now");
         assert_eq!(plan.family_id, family.as_str());
         assert_eq!(plan.provider_kernel, family.event_kind());
-        assert_eq!(plan.origin, "https://{account}.aha.io");
-        assert_eq!(
-            plan.path,
-            format!("/api/v1{}", family.path(Some("{product_id}")).unwrap())
-        );
+        assert_eq!(plan.origin, ORIGIN);
+        assert_eq!(plan.path, family.path());
         assert_eq!(plan.id_field, family.id_field());
         assert_eq!(plan.event_kind, family.event_kind());
         assert_eq!(plan.schema_ref, family.schema_ref());
+        assert_eq!(plan.max_response_bytes, 8 << 20);
 
-        let context = context("", 1);
-        let metadata = metadata(family);
+        let context = context(cursor, page);
+        let metadata = family_metadata(family);
         let execution = plan_page(adapter, &plan, &context, &metadata);
         assert_eq!(execution.credential_operation, "source.bearer");
-        assert_eq!(execution.allowed_origin, "https://example.aha.io");
+        assert_eq!(execution.allowed_origin, ORIGIN);
         assert!(execution.body.is_empty());
         assert!(execution.declared_headers.is_empty());
         let request = execution.request.unwrap();
         assert_eq!(request.method, "GET");
         assert_eq!(request.accept, "application/json");
-        let suffix = family.path(Some("product-1")).unwrap();
-        let expected_url = format!("https://example.aha.io/api/v1{suffix}?per_page=100&page=1");
         assert_eq!(request.url, expected_url);
         for secret_marker in ["authorization", "bearer", "token", "secret"] {
             assert!(!request.url.to_ascii_lowercase().contains(secret_marker));
@@ -188,12 +227,12 @@ fn aha_plans_all_five_families_without_credentials() {
 }
 
 #[test]
-fn aha_decodes_every_fixture_with_exact_contract_and_seals() {
-    for family in AhaFamily::ALL {
-        let adapter = adapter(family);
+fn adp_workforce_now_decodes_both_families_with_exact_contract_and_seals() {
+    for family in AdpFamily::ALL {
+        let adapter = family_adapter(family);
         let plan = adapter.compiled_plan();
         let context = context("", 1);
-        let metadata = metadata(family);
+        let metadata = family_metadata(family);
         let execution = plan_page(adapter, &plan, &context, &metadata);
         let body = response(family, vec![fixture(family)]);
         let safe_receipt = receipt(&plan, &context, &execution, 200, &body);
@@ -206,24 +245,29 @@ fn aha_decodes_every_fixture_with_exact_contract_and_seals() {
             &body,
             HashMap::new(),
         )
-        .unwrap_or_else(|error| panic!("{family:?}: {error:?}"));
+        .unwrap();
         assert!(result.next_cursor.is_empty());
         assert_eq!(result.records.len(), 1);
         let record = &result.records[0];
         assert_eq!(record.attributes["tenant_id"], "tenant");
         assert_eq!(record.attributes["source_event_id"], record.provider_id);
-        assert!(record.event_id.starts_with("aha-tenant-"));
+        assert_eq!(record.attributes["resource_id"], "G3GMA28TB2SVJ2TF");
+        assert!(record.event_id.starts_with("adp-workforce-now-tenant-"));
         for attribute in &plan.required_attributes {
             assert!(
                 record
                     .attributes
                     .get(attribute)
-                    .is_some_and(|value| !value.is_empty())
+                    .is_some_and(|value| !value.is_empty()),
+                "{family:?} missing required attribute {attribute}"
             );
         }
         let payload: Value = serde_json::from_slice(&record.payload_json).unwrap();
         for field in &plan.required_payload_fields {
-            assert!(payload.get(field).is_some_and(|value| !value.is_null()));
+            assert!(
+                payload.get(field).is_some_and(|value| !value.is_null()),
+                "{family:?} missing required payload field {field}"
+            );
         }
         adapter
             .validate_record_identity_v2(&context, record, &metadata)
@@ -246,41 +290,38 @@ fn aha_decodes_every_fixture_with_exact_contract_and_seals() {
 }
 
 #[test]
-fn aha_pagination_and_provider_failures_are_typed() {
-    let paged_family = AhaFamily::Features;
-    let paged_adapter = adapter(paged_family);
-    let paged_plan = paged_adapter.compiled_plan();
-    let paged_context = context("", 1);
-    let paged_metadata = metadata(paged_family);
-    let template = fixture(paged_family);
-    let body = response(
-        paged_family,
-        (1..=100)
-            .map(|number| {
-                let mut record = template.clone();
-                record["id"] = Value::String(format!("feature-{number}"));
-                record["name"] = Value::String(format!("Feature {number}"));
-                record
+fn adp_workforce_now_pagination_and_provider_failures_are_typed() {
+    let family = AdpFamily::Users;
+    let adapter = family_adapter(family);
+    let plan = adapter.compiled_plan();
+    let context = context("", 1);
+    let metadata = family_metadata(family);
+    let full_page = (1..=100)
+        .map(|number| {
+            json!({
+                "associateOID": format!("worker-{number}"),
+                "person": {"legalName": {"formattedName": format!("Worker {number}")}},
+                "workerDates": {"originalHireDate": "2026-07-01"}
             })
-            .collect(),
-    );
+        })
+        .collect();
     let result = decode_page(
-        paged_adapter,
-        &paged_plan,
-        &paged_context,
-        &paged_metadata,
+        adapter,
+        &plan,
+        &context,
+        &metadata,
         200,
-        &body,
+        &response(family, full_page),
         HashMap::new(),
     )
     .unwrap();
-    assert_eq!(result.next_cursor, "2");
+    assert_eq!(result.records.len(), 100);
+    assert_eq!(result.next_cursor, "100");
 
-    let family = AhaFamily::Users;
-    let adapter = adapter(family);
+    let family = AdpFamily::EventNotifications;
+    let adapter = family_adapter(family);
     let plan = adapter.compiled_plan();
-    let context = context("", 1);
-    let metadata = metadata(family);
+    let metadata = family_metadata(family);
     for (status, expected) in [
         (401, SourceExecutionError::AuthenticationRejected),
         (403, SourceExecutionError::RequiredProviderScopeMissing),
@@ -315,42 +356,43 @@ fn aha_pagination_and_provider_failures_are_typed() {
 }
 
 #[test]
-fn aha_rejects_bad_scope_cursor_duplicates_and_secret_material() {
-    let family = AhaFamily::Products;
-    let adapter = adapter(family);
+fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
+    let family = AdpFamily::Users;
+    let adapter = family_adapter(family);
     let plan = adapter.compiled_plan();
-    let metadata = metadata(family);
-    let bad_context = context("0", 2);
+    let metadata = family_metadata(family);
+    for cursor in ["next", "-1", "10000001"] {
+        assert_eq!(
+            plan_error(adapter, &plan, &context(cursor, 2), &metadata),
+            SourceExecutionError::InvalidCursor
+        );
+    }
+    let events = family_adapter(AdpFamily::EventNotifications);
     assert_eq!(
-        adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
-            request: Some(SourceWorkerPlanRequestV1 {
-                plan: Some(plan.clone()),
-                context: Some(bad_context),
-            }),
-            metadata: Some(metadata.clone()),
-        }),
-        Err(SourceExecutionError::InvalidCursor)
+        plan_error(
+            events,
+            &events.compiled_plan(),
+            &context("100", 2),
+            &family_metadata(AdpFamily::EventNotifications),
+        ),
+        SourceExecutionError::InvalidCursor
     );
 
-    let release_adapter = AHA_SOURCE_EXECUTION_ADAPTERS
-        .iter()
-        .find(|candidate| candidate.family_id() == AhaFamily::Releases.as_str())
-        .unwrap();
-    let release_plan = release_adapter.compiled_plan();
-    let mut missing_product = metadata.clone();
-    missing_product
+    let mut wrong_family = metadata.clone();
+    wrong_family
         .public_config
-        .insert("family".to_owned(), "releases".to_owned());
-    missing_product.public_config.remove("product_id");
+        .insert("family".to_owned(), "event_notifications".to_owned());
     assert_eq!(
-        release_adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
-            request: Some(SourceWorkerPlanRequestV1 {
-                plan: Some(release_plan),
-                context: Some(context("", 1)),
-            }),
-            metadata: Some(missing_product),
-        }),
-        Err(SourceExecutionError::MissingConfiguration)
+        plan_error(adapter, &plan, &context("", 1), &wrong_family),
+        SourceExecutionError::MissingConfiguration
+    );
+    let mut foreign_origin = metadata.clone();
+    foreign_origin
+        .public_config
+        .insert("base_url".to_owned(), "https://other.adp.com".to_owned());
+    assert_eq!(
+        plan_error(adapter, &plan, &context("", 1), &foreign_origin),
+        SourceExecutionError::MissingConfiguration
     );
 
     let execution_context = context("", 1);
@@ -369,7 +411,7 @@ fn aha_rejects_bad_scope_cursor_duplicates_and_secret_material() {
     assert_eq!(result.records.len(), 1);
 
     let mut conflicting = original.clone();
-    conflicting["updated_at"] = Value::from("2026-06-03T00:00:00Z");
+    conflicting["workerID"] = json!({"idValue": "different"});
     let conflicting_body = response(family, vec![original.clone(), conflicting]);
     assert_eq!(
         decode_page(
@@ -384,7 +426,7 @@ fn aha_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         Err(SourceExecutionError::DuplicateConflict)
     );
 
-    let mut secret = original;
+    let mut secret = original.clone();
     secret["nested"] = json!({"client_secret": "credential-material"});
     let secret_body = response(family, vec![secret]);
     let error = decode_page(
@@ -400,8 +442,8 @@ fn aha_rejects_bad_scope_cursor_duplicates_and_secret_material() {
     assert_eq!(error, SourceExecutionError::InvalidProviderRecord);
     assert!(!format!("{error:?}").contains("credential-material"));
 
-    let mut untrusted_scope = fixture(family);
-    untrusted_scope["nested"] = json!({"runtime_id": "untrusted-runtime"});
+    let mut untrusted_scope = original;
+    untrusted_scope["nested"] = json!({"tenant_id": "untrusted-tenant"});
     let untrusted_scope_body = response(family, vec![untrusted_scope]);
     assert_eq!(
         decode_page(
@@ -415,59 +457,29 @@ fn aha_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         ),
         Err(SourceExecutionError::TenantMismatch)
     );
-
-    let mut wrong_family = metadata;
-    wrong_family
-        .public_config
-        .insert("family".to_owned(), "users".to_owned());
-    assert_eq!(
-        adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
-            request: Some(SourceWorkerPlanRequestV1 {
-                plan: Some(plan),
-                context: Some(execution_context),
-            }),
-            metadata: Some(wrong_family),
-        }),
-        Err(SourceExecutionError::MissingConfiguration)
-    );
 }
 
 #[test]
-fn closed_dispatcher_registers_exactly_the_aha_families() {
-    let dispatcher = SourceExecutionDispatcher;
-    assert_eq!(AHA_SOURCE_EXECUTION_ADAPTERS.len(), 5);
-    for adapter in &AHA_SOURCE_EXECUTION_ADAPTERS {
-        let compiled = dispatcher
-            .compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "aha".to_owned(),
-                family_id: adapter.family_id().to_owned(),
-            })
-            .unwrap();
-        assert_eq!(compiled, adapter.compiled_plan());
-        assert_eq!(compiled.source_id, "aha");
-        assert_eq!(compiled.family_id, adapter.family_id());
-        assert_eq!(compiled.provider_kernel, adapter.provider_kernel());
-        let registered = dispatcher.adapter_for(&compiled).unwrap();
+fn adapter_set_covers_exactly_the_adp_workforce_now_families() {
+    assert_eq!(
+        ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS.len(),
+        AdpFamily::ALL.len()
+    );
+    for (adapter, family) in ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS
+        .iter()
+        .zip(AdpFamily::ALL)
+    {
+        let compiled = adapter.compiled_plan();
+        assert_eq!(compiled.source_id, "adp_workforce_now");
+        assert_eq!(compiled.family_id, family.as_str());
+        assert_eq!(compiled.provider_kernel, family.event_kind());
         assert_eq!(
-            (
-                registered.source_id(),
-                registered.family_id(),
-                registered.provider_kernel()
-            ),
             (
                 adapter.source_id(),
                 adapter.family_id(),
                 adapter.provider_kernel()
-            )
-        );
-    }
-    for family in ["", "future"] {
-        assert_eq!(
-            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "aha".to_owned(),
-                family_id: family.to_owned(),
-            }),
-            Err(SourceExecutionError::UnknownAdapter)
+            ),
+            ("adp_workforce_now", family.as_str(), family.event_kind())
         );
     }
 }

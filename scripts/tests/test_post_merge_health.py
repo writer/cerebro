@@ -120,6 +120,112 @@ jobs:
         self.assertFalse(context["healthy"])
         self.assertEqual(len(context["failed_runs"]), 1)
 
+    def test_collect_branch_runs_queries_branch_pushes_without_a_head(self):
+        response = {"workflow_runs": [{"id": 7, "name": "Candidate Build", "head_sha": "newer", "status": "completed", "conclusion": "success", "created_at": "2026-09-01T10:05:00Z"}]}
+        with mock.patch.object(pm, "request_json", return_value=response) as request:
+            runs = pm.collect_branch_runs("main", "token", "writer/cerebro", 25)
+        request.assert_called_once_with("/actions/runs?branch=main&event=push&per_page=25", "token", "writer/cerebro")
+        self.assertEqual(runs[0]["head_sha"], "newer")
+
+    def test_summarize_treats_a_superseded_candidate_cancellation_as_informational(self):
+        cancelled = {
+            "workflow_name": "Candidate Build",
+            "head_sha": "abc",
+            "status": "completed",
+            "conclusion": "cancelled",
+            "created_at": "2026-09-01T10:00:00Z",
+            "url": "https://candidate",
+        }
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[*[run for run in successful_required_runs() if run["workflow_name"] != "Candidate Build"], cancelled],
+            branch_runs=[
+                cancelled,
+                {"workflow_name": "Candidate Build", "head_sha": "newer", "status": "in_progress", "created_at": "2026-09-01T10:05:00Z"},
+            ],
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(context["failed_runs"], [])
+        self.assertEqual(context["superseded_runs"], [cancelled])
+
+    def test_summarize_keeps_a_cancelled_candidate_failing_without_a_newer_run(self):
+        cancelled = {
+            "workflow_name": "Rust-only Candidate",
+            "head_sha": "abc",
+            "status": "completed",
+            "conclusion": "cancelled",
+            "created_at": "2026-09-01T10:00:00Z",
+        }
+        older = {"workflow_name": "Rust-only Candidate", "head_sha": "older", "status": "completed", "conclusion": "success", "created_at": "2026-09-01T09:00:00Z"}
+        same_head = {"workflow_name": "Rust-only Candidate", "head_sha": "abc", "status": "completed", "conclusion": "cancelled", "created_at": "2026-09-01T10:30:00Z"}
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[*[run for run in successful_required_runs() if run["workflow_name"] != "Rust-only Candidate"], cancelled],
+            branch_runs=[cancelled, older, same_head],
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(context["failed_runs"], [cancelled])
+        self.assertEqual(context["superseded_runs"], [])
+
+    def test_summarize_never_supersedes_a_cancelled_non_serialized_workflow(self):
+        cancelled = {
+            "workflow_name": "CI",
+            "head_sha": "abc",
+            "status": "completed",
+            "conclusion": "cancelled",
+            "created_at": "2026-09-01T10:00:00Z",
+        }
+        context = pm.summarize(
+            branch="main",
+            head_sha="abc",
+            runs=[*[run for run in successful_required_runs() if run["workflow_name"] != "CI"], cancelled],
+            branch_runs=[cancelled, {"workflow_name": "CI", "head_sha": "newer", "status": "completed", "conclusion": "success", "created_at": "2026-09-01T10:05:00Z"}],
+        )
+        self.assertFalse(context["healthy"])
+        self.assertEqual(context["failed_runs"], [cancelled])
+
+    def test_wait_for_terminal_summary_passes_branch_runs_to_each_summary(self):
+        cancelled = {
+            "workflow_name": "Candidate Build",
+            "head_sha": "abc",
+            "status": "completed",
+            "conclusion": "cancelled",
+            "created_at": "2026-09-01T10:00:00Z",
+        }
+        head_runs = [*[run for run in successful_required_runs() if run["workflow_name"] != "Candidate Build"], cancelled]
+        newer = {"workflow_name": "Candidate Build", "head_sha": "newer", "status": "queued", "created_at": "2026-09-01T10:05:00Z"}
+        context = pm.wait_for_terminal_summary(
+            "main",
+            "abc",
+            lambda: head_runs,
+            collect_branch=lambda: [cancelled, newer],
+            wait_seconds=0,
+            sleep=lambda _seconds: None,
+        )
+        self.assertTrue(context["healthy"])
+        self.assertEqual(context["superseded_runs"], [cancelled])
+
+    def test_render_markdown_lists_superseded_runs(self):
+        markdown = pm.render_markdown(
+            {
+                "branch": "main",
+                "head_sha": "abc",
+                "healthy": True,
+                "runs": successful_required_runs(),
+                "failed_runs": [],
+                "pending_runs": [],
+                "missing_workflows": [],
+                "superseded_runs": [{"workflow_name": "Candidate Build", "url": "https://candidate"}],
+                "release_status": {},
+            }
+        )
+        self.assertIn("- Superseded runs: `1`", markdown)
+        self.assertIn("### Superseded", markdown)
+        self.assertIn("`Candidate Build` cancelled behind a newer main commit", markdown)
+        self.assertIn("All observed exact-head sibling workflow runs are terminal and non-failing.", markdown)
+
     def test_summarize_ignores_current_and_prior_health_runs(self):
         context = pm.summarize(
             branch="main",

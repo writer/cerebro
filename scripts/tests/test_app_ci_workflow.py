@@ -23,6 +23,13 @@ class AppCIWorkflowTests(unittest.TestCase):
             self.workflow,
         )
 
+    def test_main_pushes_keep_exact_head_evidence(self):
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}",
+            self.workflow,
+        )
+        self.assertNotIn("github.event.pull_request.number || github.ref", self.workflow)
+
     def test_core_matrices_use_the_tested_scope(self):
         self.assertEqual(
             self.workflow.count("if: needs.ci-scope.outputs.core == 'true'"),

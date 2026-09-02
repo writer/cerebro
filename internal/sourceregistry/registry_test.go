@@ -362,11 +362,18 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 
 func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 	retired := []string{
+		"abnormal_security",
+		"activtrak",
 		"acunetix",
+		"ada_support",
+		"addigy",
 		"adobe_workfront",
+		"aha",
 		"aircall",
 		"airfocus",
+		"akeneo",
 		"akeyless",
+		"amplitude",
 		"asana",
 		"backstage",
 		"beezup",

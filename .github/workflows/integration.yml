@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Fall back to direct module fetches when proxy.golang.org returns a
+  # transient error; go.sum still verifies every module either way.
+  GOPROXY: https://proxy.golang.org|direct
+
 jobs:
   postgres:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration')

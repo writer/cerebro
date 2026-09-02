@@ -71,6 +71,42 @@ def package_for_go_file(path: str, repo: Path) -> str:
     return "./" + directory.as_posix()
 
 
+SOURCE_RUNTIME_CRATE_DIRS = ("cerebro-platform", "source-catalog", "source-runtime-next")
+
+
+def rust_crate_package(crate_dir: str, repo: Path) -> str:
+    manifest = repo / "crates" / crate_dir / "Cargo.toml"
+    if not manifest.is_file():
+        return ""
+    in_package = False
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_package = stripped == "[package]"
+            continue
+        if in_package and stripped.startswith("name"):
+            _, _, value = stripped.partition("=")
+            return value.strip().strip('"')
+    return ""
+
+
+def rust_crate_packages(files: list[str], repo: Path) -> list[str]:
+    """Workspace crate package names for changed paths under crates/<dir>/.
+
+    The source runtime crates are excluded because they have their own focused
+    rule; every other crate maps to its Cargo package name.
+    """
+    packages: set[str] = set()
+    for path in files:
+        parts = path.split("/")
+        if len(parts) < 3 or parts[0] != "crates" or parts[1] in SOURCE_RUNTIME_CRATE_DIRS:
+            continue
+        package = rust_crate_package(parts[1], repo)
+        if package:
+            packages.add(package)
+    return sorted(packages)
+
+
 def go_packages(files: list[str], repo: Path) -> list[str]:
     packages = {package_for_go_file(path, repo) for path in files if path.endswith(".go")}
     packages.discard("")
@@ -134,6 +170,41 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
                 "warnings",
             ],
             "Rust source catalog, runtime, or platform code changed.",
+        )
+
+    crate_packages = rust_crate_packages(files, repo)
+    if crate_packages:
+        crate_args = [argument for package in crate_packages for argument in ("-p", package)]
+        add_command(
+            commands,
+            seen,
+            "rust-crate-fmt",
+            ["cargo", "fmt", "--all", "--", "--check"],
+            "Rust workspace crate code changed.",
+        )
+        add_command(
+            commands,
+            seen,
+            "rust-crate-test",
+            ["cargo", "test", "--locked", *crate_args],
+            "Rust workspace crate code changed.",
+        )
+        add_command(
+            commands,
+            seen,
+            "rust-crate-clippy",
+            [
+                "cargo",
+                "clippy",
+                "--locked",
+                *crate_args,
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            "Rust workspace crate code changed.",
         )
 
     if any(path_matches(path, prefixes=("internal/connectorcatalog/catalog/", "internal/connectordefinitions/", "internal/sourcegen/"), exact=("cmd/cerebro/source_runtime_sdk.go",)) for path in files):

@@ -111,6 +111,48 @@ class ChangedChecksTests(unittest.TestCase):
                     ],
                 )
 
+    def test_other_workspace_crates_select_per_crate_rust_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for crate, package in (
+                ("agent-runtime", "cerebro-agent-runtime"),
+                ("organizational-store", "cerebro-organizational-store"),
+            ):
+                manifest = root / "crates" / crate / "Cargo.toml"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(
+                    f'[package]\nname = "{package}"\nversion = "0.1.0"\n\n[dependencies]\nname = "not-the-package"\n',
+                    encoding="utf-8",
+                )
+            selected = changed.select_commands(
+                [
+                    "crates/organizational-store/src/neo4j.rs",
+                    "crates/agent-runtime/src/session.rs",
+                    "crates/agent-runtime/tests/wake.rs",
+                ],
+                root,
+            )
+            commands = {plan.name: plan.argv for plan in selected}
+        packages = ["-p", "cerebro-agent-runtime", "-p", "cerebro-organizational-store"]
+        self.assertEqual(commands["rust-crate-fmt"], ["cargo", "fmt", "--all", "--", "--check"])
+        self.assertEqual(commands["rust-crate-test"], ["cargo", "test", "--locked", *packages])
+        self.assertEqual(
+            commands["rust-crate-clippy"],
+            ["cargo", "clippy", "--locked", *packages, "--all-targets", "--all-features", "--", "-D", "warnings"],
+        )
+        self.assertNotIn("rust-source-runtime-test", commands)
+
+    def test_source_runtime_crates_do_not_duplicate_the_generic_crate_rule(self):
+        selected = changed.select_commands(["crates/source-runtime-next/src/http.rs"], Path("."))
+        names = [plan.name for plan in selected]
+        self.assertIn("rust-source-runtime-test", names)
+        self.assertNotIn("rust-crate-test", names)
+
+    def test_unknown_or_missing_crate_manifest_selects_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            names = [plan.name for plan in changed.select_commands(["crates/ghost/src/lib.rs"], Path(tmp))]
+        self.assertNotIn("rust-crate-test", names)
+
     def test_workspace_manifests_and_policy_select_workspace_check(self):
         for path in (
             "Cargo.toml",

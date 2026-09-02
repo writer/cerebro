@@ -9,6 +9,7 @@ use crate::source_execution::{
     SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2,
     SourceWorkerSafeReceiptV1, response_digest, seal_page_program_v2, tenant_scoped_event_id,
 };
+use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::source_execution::{
     AMPLITUDE_SOURCE_EXECUTION_ADAPTERS, AmplitudeSourceExecutionAdapter,
@@ -337,4 +338,44 @@ fn amplitude_rejects_duplicate_conflicts_and_scrubs_untrusted_scope_and_credenti
         ),
         Err(SourceExecutionError::DuplicateConflict)
     );
+}
+
+#[test]
+fn closed_dispatcher_registers_exactly_the_amplitude_families() {
+    let dispatcher = SourceExecutionDispatcher;
+    assert_eq!(AMPLITUDE_SOURCE_EXECUTION_ADAPTERS.len(), 2);
+    for adapter in &AMPLITUDE_SOURCE_EXECUTION_ADAPTERS {
+        let compiled = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "amplitude".to_owned(),
+                family_id: adapter.family_id().to_owned(),
+            })
+            .unwrap();
+        assert_eq!(compiled, adapter.compiled_plan());
+        assert_eq!(compiled.source_id, "amplitude");
+        assert_eq!(compiled.family_id, adapter.family_id());
+        assert_eq!(compiled.provider_kernel, adapter.provider_kernel());
+        let registered = dispatcher.adapter_for(&compiled).unwrap();
+        assert_eq!(
+            (
+                registered.source_id(),
+                registered.family_id(),
+                registered.provider_kernel()
+            ),
+            (
+                adapter.source_id(),
+                adapter.family_id(),
+                adapter.provider_kernel()
+            )
+        );
+    }
+    for family in ["", "future"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "amplitude".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
+        );
+    }
 }
