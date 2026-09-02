@@ -1,3 +1,4 @@
+import argparse
 import json
 import tempfile
 import threading
@@ -41,6 +42,11 @@ class SecurityOperatorBenchmarkTests(unittest.TestCase):
                     "3",
                     "--warmup",
                     "0",
+                    # This test exercises the complete journey, semantic gates,
+                    # and redaction. Localhost scheduler jitter is not a stable
+                    # latency comparison across CI hosts.
+                    "--max-p95-regression-pct",
+                    "1000000",
                     "--json-out",
                     str(json_out),
                     "--markdown-out",
@@ -60,6 +66,25 @@ class SecurityOperatorBenchmarkTests(unittest.TestCase):
             self.assertEqual(receipt["comparison"]["semantic_parity_rate"], 1.0)
             self.assertNotIn("tenant-secret", receipt_text)
             self.assertIn("Decision measured", markdown_out.read_text(encoding="utf-8"))
+
+    def test_rejects_latency_regression_above_configured_threshold(self):
+        failures = benchmark.evaluate_gates(
+            {"actionable_answer_rate": 1.0},
+            {
+                "answer_retention_rate": 1.0,
+                "semantic_parity_rate": 1.0,
+                "latency_comparable": True,
+                "p95_analyst_journey_delta_pct": 5.01,
+            },
+            argparse.Namespace(
+                min_actionable_rate=1.0,
+                min_answer_retention_rate=1.0,
+                min_semantic_parity_rate=1.0,
+                max_p95_regression_pct=5.0,
+            ),
+        )
+
+        self.assertEqual(failures, ["candidate p95 analyst journey regressed 5.01%"])
 
     def test_fails_when_candidate_loses_actionable_security_context(self):
         with (
