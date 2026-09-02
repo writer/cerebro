@@ -15,7 +15,6 @@ mod origin;
 mod projection;
 mod request;
 mod response;
-#[allow(dead_code)]
 mod source_execution;
 mod types;
 
@@ -30,7 +29,6 @@ pub use types::{
     ActiveCampaignRecord, ActiveCampaignRequest,
 };
 
-#[allow(unused_imports)]
 pub(crate) use source_execution::ACTIVECAMPAIGN_SOURCE_EXECUTION_ADAPTERS;
 
 #[cfg(test)]

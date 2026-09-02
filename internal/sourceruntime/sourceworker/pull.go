@@ -239,6 +239,30 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Unknown families fail there instead of restoring the catalog-runtime Go
 		// path.
 		return familyID, true
+	case "activecampaign":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every cataloged ActiveCampaign family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "acunetix":
+		if familyID == "" {
+			familyID = "reports"
+		}
+		// Every cataloged Acunetix family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
+	case "adp_workforce_now":
+		if familyID == "" {
+			familyID = "event_notifications"
+		}
+		// Every cataloged ADP Workforce Now family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
 	case "azure":
 		return familyID, familyID == "authorization_policy"
 	case "digitalocean":
@@ -303,7 +327,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // intentionally excludes durable-only routes such as Twilio.
 func PreviewRustFamily(sourceID, familyID string) (string, bool) {
 	switch strings.TrimSpace(sourceID) {
-	case "abnormal_security", "abuseipdb", "activtrak", "ada_support", "addigy", "aha", "akeneo", "amplitude", "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
+	case "abnormal_security", "abuseipdb", "activecampaign", "activtrak", "acunetix", "ada_support", "addigy", "adp_workforce_now", "aha", "akeneo", "amplitude", "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return RustAuthoritativeFamily(sourceID, familyID)
 	default:
 		return "", false

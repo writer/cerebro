@@ -244,6 +244,28 @@ func TestCredentialHeaderAppliesAbuseIPDBKeyOnlyInsideTheTrustedHost(t *testing.
 	}
 }
 
+func TestCredentialHeaderAppliesActivecampaignHeaderOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("activecampaign.api_token", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Api-Token" || string(value) != "synthetic-secret" {
+		t.Fatal("activecampaign credential operation did not produce the exact host-owned header")
+	}
+}
+
+func TestCredentialHeaderAppliesAcunetixHeaderOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("acunetix.x_auth", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "X-Auth" || string(value) != "synthetic-secret" {
+		t.Fatal("acunetix credential operation did not produce the exact host-owned header")
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyClosedAnthropicSchemes(t *testing.T) {
 	for _, operation := range []string{"anthropic.admin_x_api_key", "anthropic.compliance_x_api_key"} {
 		header, value, err := credentialHeader(operation, []byte("synthetic-secret"))

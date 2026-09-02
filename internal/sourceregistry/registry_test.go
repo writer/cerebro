@@ -364,11 +364,13 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 	retired := []string{
 		"abnormal_security",
 		"abuseipdb",
+		"activecampaign",
 		"activtrak",
 		"acunetix",
 		"ada_support",
 		"addigy",
 		"adobe_workfront",
+		"adp_workforce_now",
 		"aha",
 		"aircall",
 		"airfocus",

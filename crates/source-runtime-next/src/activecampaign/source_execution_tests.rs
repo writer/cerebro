@@ -11,6 +11,7 @@ use crate::source_execution::{
     SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
     seal_page_program_v2,
 };
+use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::{
     ActiveCampaignFamily,
@@ -511,5 +512,41 @@ fn activecampaign_adapter_set_covers_exactly_the_closed_family_set() {
             format!("source-plan-v1:activecampaign:{}", family.as_str())
         );
         assert!(!compiled.plan_digest_sha256.is_empty());
+    }
+}
+
+#[test]
+fn closed_dispatcher_registers_exactly_the_activecampaign_families() {
+    let dispatcher = SourceExecutionDispatcher;
+    for adapter in &ACTIVECAMPAIGN_SOURCE_EXECUTION_ADAPTERS {
+        let compiled = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "activecampaign".to_owned(),
+                family_id: adapter.family_id().to_owned(),
+            })
+            .unwrap();
+        assert_eq!(compiled, adapter.compiled_plan());
+        let registered = dispatcher.adapter_for(&compiled).unwrap();
+        assert_eq!(
+            (
+                registered.source_id(),
+                registered.family_id(),
+                registered.provider_kernel()
+            ),
+            (
+                adapter.source_id(),
+                adapter.family_id(),
+                adapter.provider_kernel()
+            )
+        );
+    }
+    for family in ["", "future"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "activecampaign".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
+        );
     }
 }

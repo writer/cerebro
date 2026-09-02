@@ -171,6 +171,8 @@ pub fn validate_http_execution(
                 | "twilio.basic"
                 | "pagerduty.token"
                 | "abuseipdb.key"
+                | "acunetix.x_auth"
+                | "activecampaign.api_token"
         )
     {
         return Err(SourceExecutionError::InvalidPlan);

@@ -11,6 +11,7 @@ use crate::source_execution::{
     SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
     seal_page_program_v2,
 };
+use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::{
     AdpFamily,
@@ -480,6 +481,42 @@ fn adapter_set_covers_exactly_the_adp_workforce_now_families() {
                 adapter.provider_kernel()
             ),
             ("adp_workforce_now", family.as_str(), family.event_kind())
+        );
+    }
+}
+
+#[test]
+fn closed_dispatcher_registers_exactly_the_adp_workforce_now_families() {
+    let dispatcher = SourceExecutionDispatcher;
+    for adapter in &ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS {
+        let compiled = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "adp_workforce_now".to_owned(),
+                family_id: adapter.family_id().to_owned(),
+            })
+            .unwrap();
+        assert_eq!(compiled, adapter.compiled_plan());
+        let registered = dispatcher.adapter_for(&compiled).unwrap();
+        assert_eq!(
+            (
+                registered.source_id(),
+                registered.family_id(),
+                registered.provider_kernel()
+            ),
+            (
+                adapter.source_id(),
+                adapter.family_id(),
+                adapter.provider_kernel()
+            )
+        );
+    }
+    for family in ["", "future"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "adp_workforce_now".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
         );
     }
 }

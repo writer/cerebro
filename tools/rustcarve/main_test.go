@@ -204,7 +204,14 @@ func TestGeneratedJSONIsCanonicalAndClosed(t *testing.T) {
 		t.Fatalf("Acunetix compiled plan = %#v", result.IR.Standard)
 	}
 	assertReason(t, result.Manifest.ReasonCodes, reasonActiveGoProjectionPath)
-	assertReason(t, result.Manifest.ReasonCodes, reasonMissingRustRuntimeFence)
+	// Acunetix collection is closed in the Rust dispatcher, so the fence is
+	// present and the remaining gate is the parity receipt.
+	assertReason(t, result.Manifest.ReasonCodes, reasonMissingParityReceipt)
+	for _, reason := range result.Manifest.ReasonCodes {
+		if reason == reasonMissingRustRuntimeFence {
+			t.Fatalf("Acunetix reasons %v still report a missing Rust runtime fence", result.Manifest.ReasonCodes)
+		}
+	}
 	assertReason(t, result.Manifest.ReasonCodes, reasonNoDeletionTargets)
 	for _, path := range []string{"migration-ir.json", "deletion-manifest.json"} {
 		var decoded any
