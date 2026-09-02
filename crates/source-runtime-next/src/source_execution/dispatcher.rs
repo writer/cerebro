@@ -1,6 +1,7 @@
 use prost::Message;
 
 use crate::abnormal_security::ABNORMAL_SECURITY_SOURCE_EXECUTION_ADAPTERS;
+use crate::abuseipdb::ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS;
 use crate::activtrak::ACTIVTRAK_SOURCE_EXECUTION_ADAPTERS;
 use crate::ada_support::ADA_SUPPORT_SOURCE_EXECUTION_ADAPTERS;
 use crate::addigy::ADDIGY_SOURCE_EXECUTION_ADAPTERS;
@@ -250,6 +251,11 @@ impl SourceExecutionDispatcher {
         }) {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
+        }
         if request.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -441,6 +447,13 @@ impl SourceExecutionDispatcher {
             return Ok(adapter);
         }
         if let Some(adapter) = AMPLITUDE_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()

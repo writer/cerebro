@@ -230,6 +230,20 @@ func TestCredentialHeaderAppliesGenericXAPIKeyOnlyInsideTheTrustedHost(t *testin
 	}
 }
 
+func TestCredentialHeaderAppliesAbuseIPDBKeyOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("abuseipdb.key", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Key" || string(value) != "synthetic-secret" {
+		t.Fatal("abuseipdb key operation did not produce the exact host-owned header")
+	}
+	if _, _, err := credentialHeader("abuseipdb.bearer", []byte("synthetic-secret")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered abuseipdb operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyClosedAnthropicSchemes(t *testing.T) {
 	for _, operation := range []string{"anthropic.admin_x_api_key", "anthropic.compliance_x_api_key"} {
 		header, value, err := credentialHeader(operation, []byte("synthetic-secret"))

@@ -129,13 +129,13 @@
         "role": "preview_rust_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "PreviewRustFamily",
-        "digest_sha256": "508fe47d0e99470700b508e61a93f68f69d61e502105c32ddf434fd8a288ef0e"
+        "digest_sha256": "688eeac0d3f650ce544e492c036043376a4c448722e3ef496e83395297a86e4e"
       },
       {
         "role": "rust_authoritative_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "e2918a94b5b4067c817e06d615943b5e9313717e2c2ae8da03d6c4dbfe7e3997"
+        "digest_sha256": "231595054aabcb6c5c0243f4f9854fae6b37993d7a7e4c8c8d161bb3fc2330c0"
       },
       {
         "role": "rust_output_conversion",
@@ -154,6 +154,7 @@
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
         { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "abuseipdb", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },
@@ -205,6 +206,7 @@
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
         { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "abuseipdb", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },

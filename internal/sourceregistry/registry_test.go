@@ -363,6 +363,7 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 	retired := []string{
 		"abnormal_security",
+		"abuseipdb",
 		"activtrak",
 		"acunetix",
 		"ada_support",

@@ -249,6 +249,10 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Amplitude default":                {" amplitude ", "", "users", true},
 		"Amplitude groups":                 {"amplitude", " groups ", "groups", true},
 		"unknown Amplitude family":         {"amplitude", "future-family", "future-family", true},
+		"AbuseIPDB default":                {" abuseipdb ", "", "reports", true},
+		"AbuseIPDB reports":                {"abuseipdb", " reports ", "reports", true},
+		"AbuseIPDB ip addresses":           {"abuseipdb", "ip_addresses", "ip_addresses", true},
+		"unknown AbuseIPDB family":         {"abuseipdb", "future-family", "future-family", true},
 		"Discord default":                  {" discord ", "", "audit_log", true},
 		"Discord audit log":                {"discord", " audit_log ", "audit_log", true},
 		"Discord member":                   {"discord", "member", "member", true},
@@ -313,6 +317,7 @@ func TestPreviewRustFamilyPreservesTheClosedPreviewRoutes(t *testing.T) {
 		"Aha! family":              {"aha", " releases ", "releases", true},
 		"Akeneo family":            {"akeneo", " products_uuid_draft ", "products_uuid_draft", true},
 		"Amplitude family":         {"amplitude", " groups ", "groups", true},
+		"AbuseIPDB family":         {"abuseipdb", " ip_addresses ", "ip_addresses", true},
 		"selected unknown closed":  {"tailscale", "future-family", "future-family", true},
 		"restricted selected":      {"azure", "authorization_policy", "authorization_policy", true},
 		"restricted compatibility": {"azure", "user", "user", false},
@@ -404,6 +409,11 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "twilio", references: map[string]string{"username": "AC123", "password": "credential:twilio:password"},
 			resolved: map[string]string{"username": "AC123", "password": "synthetic-password"}, wantReference: "credential:twilio:password", wantResolved: "QUMxMjM6c3ludGhldGljLXBhc3N3b3Jk",
+		},
+		"AbuseIPDB api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "abuseipdb", references: map[string]string{"api_key": "credential:abuseipdb:api-key", "token": "credential:abuseipdb:fallback"},
+			resolved: map[string]string{"api_key": "resolved-api-key", "token": "resolved-fallback"}, wantReference: "credential:abuseipdb:api-key", wantResolved: "resolved-api-key",
 		},
 		"aliases cannot cross": {
 			source: "jumpcloud", references: map[string]string{"api_key": "credential:jumpcloud:api-key"},
@@ -505,5 +515,18 @@ func tailscaleOutput(nextCursor, checkpointCursor string, watermark int64) *Exec
 	return &ExecutionOutput{
 		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{NextCursor: nextCursor, ResultDigestSha256: "digest"},
 		Program: &PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: checkpointCursor, CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func TestAbuseIPDBPublicExecutionConfigCarriesOnlyDeclaredFilters(t *testing.T) {
+	public := PublicExecutionConfigForSource("abuseipdb", map[string]string{
+		"family": " reports ", "ip_address": " 192.0.2.10 ", "max_age_in_days": " 30 ",
+		"confidence_minimum": " 90 ", "ip_version": " 4 ", "api_key": "must-not-cross", "token": "must-not-cross-either",
+	})
+	if public["family"] != "reports" || public["ip_address"] != "192.0.2.10" || public["max_age_in_days"] != "30" || public["confidence_minimum"] != "90" || public["ip_version"] != "4" {
+		t.Fatalf("AbuseIPDB public config lost declared filters: %#v", public)
+	}
+	if public["api_key"] != "" || public["token"] != "" {
+		t.Fatalf("AbuseIPDB public config leaked credential-shaped fields: %#v", public)
 	}
 }
