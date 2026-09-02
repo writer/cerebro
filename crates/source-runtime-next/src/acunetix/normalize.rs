@@ -194,7 +194,7 @@ fn admit(record: &AcunetixRecord) -> Result<(), AcunetixError> {
     Ok(())
 }
 
-fn event_id(kernel: &AcunetixKernel, provider_id: &str) -> String {
+pub(super) fn event_id(kernel: &AcunetixKernel, provider_id: &str) -> String {
     let scope = Sha256::digest(format!(
         "{}\0{}",
         kernel.base_url.as_str(),
