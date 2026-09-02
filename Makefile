@@ -441,7 +441,7 @@ lint-sources: lint-bootstrap ## Run golangci-lint over source packages.
 lint-bootstrap: ## Install golangci-lint if missing.
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then \
 		attempt=1; \
-		until GOFLAGS= GOTOOLCHAIN=go1.26.6 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); do \
+		until $(PINNED_GO) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); do \
 			if [ "$$attempt" -ge 3 ]; then exit 1; fi; \
 			echo "golangci-lint install attempt $$attempt failed; retrying" >&2; \
 			attempt=$$((attempt + 1)); \
