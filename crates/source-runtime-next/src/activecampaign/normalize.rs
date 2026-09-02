@@ -138,7 +138,7 @@ fn validate_contract(
     Ok(())
 }
 
-fn event_id(kernel: &ActiveCampaignKernel, provider_id: &str) -> String {
+pub(super) fn event_id(kernel: &ActiveCampaignKernel, provider_id: &str) -> String {
     let scope = Sha256::digest(format!(
         "{}\0{}",
         kernel.base_url.as_str().trim_end_matches('/'),

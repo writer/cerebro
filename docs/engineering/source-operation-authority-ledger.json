@@ -129,13 +129,13 @@
         "role": "preview_rust_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "PreviewRustFamily",
-        "digest_sha256": "508fe47d0e99470700b508e61a93f68f69d61e502105c32ddf434fd8a288ef0e"
+        "digest_sha256": "03ff14f49010fb3c5a674d68a99dadce740d45777c5a798c204a5a49d18429c4"
       },
       {
         "role": "rust_authoritative_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "e2918a94b5b4067c817e06d615943b5e9313717e2c2ae8da03d6c4dbfe7e3997"
+        "digest_sha256": "45d6217b9f9e75f6e0d7b11de84c1d2dc894a704826e9176e9bf6109d996c608"
       },
       {
         "role": "rust_output_conversion",
@@ -154,9 +154,13 @@
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
         { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "abuseipdb", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "activecampaign", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "acunetix", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "adp_workforce_now", "all_catalog_families": true, "default_family": "event_notifications", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "aha", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "akeneo", "all_catalog_families": true, "default_family": "attribute", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "amplitude", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
@@ -166,6 +170,7 @@
         { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
         { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare", "all_catalog_families": true, "default_family": "access_application", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
@@ -205,9 +210,13 @@
       "default_kernel": "go_compatibility",
       "rust_kernel_rules": [
         { "source_id": "abnormal_security", "all_catalog_families": true, "default_family": "resources", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "abuseipdb", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "activecampaign", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "activtrak", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "acunetix", "all_catalog_families": true, "default_family": "reports", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "ada_support", "all_catalog_families": true, "default_family": "end_users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "addigy", "all_catalog_families": true, "default_family": "devices", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "adp_workforce_now", "all_catalog_families": true, "default_family": "event_notifications", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "aha", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "akeneo", "all_catalog_families": true, "default_family": "attribute", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "amplitude", "all_catalog_families": true, "default_family": "users", "unknown_family_policy": "rust_fail_closed" },
@@ -217,6 +226,7 @@
         { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
         { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare", "all_catalog_families": true, "default_family": "access_application", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },

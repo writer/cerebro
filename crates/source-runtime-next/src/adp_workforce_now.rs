@@ -13,7 +13,6 @@ mod origin;
 mod projection;
 mod request;
 mod response;
-#[allow(dead_code)]
 mod source_execution;
 mod types;
 
@@ -23,7 +22,6 @@ pub use family::AdpFamily;
 pub use projection::{AdpEntityFact, AdpProjectionFacts, project_adp_records};
 pub use types::{AdpCheckpointCandidate, AdpKernel, AdpPage, AdpRecord, AdpRequest};
 
-#[allow(unused_imports)]
 pub(crate) use source_execution::ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS;
 
 #[cfg(test)]

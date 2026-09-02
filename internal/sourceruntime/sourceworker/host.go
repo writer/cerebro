@@ -207,6 +207,12 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "source.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
+	case "abuseipdb.key":
+		return "Key", append([]byte(nil), credential...), nil
+	case "acunetix.x_auth":
+		return "X-Auth", append([]byte(nil), credential...), nil
+	case "activecampaign.api_token":
+		return "Api-Token", append([]byte(nil), credential...), nil
 	case "anthropic.admin_x_api_key", "anthropic.compliance_x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "anthropic.org_admin_bearer":

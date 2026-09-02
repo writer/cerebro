@@ -15,6 +15,7 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+mod source_execution;
 mod types;
 
 pub use catalog::{ActiveCampaignEventContract, ActiveCampaignRuntimeDefinition};
@@ -28,5 +29,9 @@ pub use types::{
     ActiveCampaignRecord, ActiveCampaignRequest,
 };
 
+pub(crate) use source_execution::ACTIVECAMPAIGN_SOURCE_EXECUTION_ADAPTERS;
+
+#[cfg(test)]
+mod source_execution_tests;
 #[cfg(test)]
 mod tests;

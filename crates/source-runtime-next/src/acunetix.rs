@@ -14,6 +14,7 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+mod source_execution;
 mod types;
 
 pub use catalog::{AcunetixEventContract, AcunetixRuntimeDefinition};
@@ -23,6 +24,11 @@ pub use projection::{AcunetixEntityFact, AcunetixProjectionFacts, project_acunet
 pub use types::{
     AcunetixCheckpointCandidate, AcunetixKernel, AcunetixPage, AcunetixRecord, AcunetixRequest,
 };
+
+pub(crate) use source_execution::ACUNETIX_SOURCE_EXECUTION_ADAPTERS;
+
+#[cfg(test)]
+mod source_execution_tests;
 
 #[cfg(test)]
 mod tests;

@@ -1,75 +1,71 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::collections::HashMap;
 
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::source_execution::{
-    SourceExecutionAdapter, SourceExecutionError, SourceExecutionLifecycleEnvelopeV2,
-    SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2,
-    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-    SourceWorkerHttpExecutionV2, SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1,
-    SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
-    seal_page_program_v2,
+    SourceExecutionAdapter, SourceExecutionDispatcher, SourceExecutionError,
+    SourceExecutionLifecycleEnvelopeV2, SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1,
+    SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1,
+    SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2,
+    SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2,
+    SourceWorkerSafeReceiptV1, response_digest, seal_page_program_v2,
 };
-use crate::source_execution::{SourceExecutionDispatcher, SourceExecutionSelectionRequestV1};
 
 use super::{
-    AdpFamily,
-    source_execution::{ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS, AdpSourceExecutionAdapter},
+    AbuseIpDbFamily,
+    source_execution::{
+        ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS, AbuseIpDbSourceExecutionAdapter, CREDENTIAL_OPERATION,
+    },
 };
 
 const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
-const ORIGIN: &str = "https://api.adp.com";
+const ORIGIN: &str = "https://api.abuseipdb.com/api/v2";
 
-#[derive(Deserialize)]
-struct GoOracleEvent {
-    payload: Value,
-}
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn family_adapter(family: AdpFamily) -> &'static AdpSourceExecutionAdapter {
-    ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS
+fn family_adapter(family: AbuseIpDbFamily) -> &'static AbuseIpDbSourceExecutionAdapter {
+    ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS
         .iter()
         .find(|adapter| adapter.family_id() == family.as_str())
         .unwrap()
 }
 
-/// The Go oracle payload carries the normalized `schema_ref`, `source_id`,
-/// `tenant_id`, and (for events) `actor` fields that the kernel adds itself;
-/// strip them back to the raw provider record shape.
-fn fixture(family: AdpFamily) -> Value {
-    let bytes = fs::read(root().join(format!(
-        "sources/adp_workforce_now/testdata/read_{}.json",
-        family.as_str()
-    )))
-    .unwrap();
-    let mut payload = serde_json::from_slice::<Vec<GoOracleEvent>>(&bytes)
-        .unwrap()
-        .pop()
-        .unwrap()
-        .payload;
-    let values = payload.as_object_mut().unwrap();
-    for key in ["schema_ref", "source_id", "tenant_id"] {
-        values.remove(key);
+fn raw(family: AbuseIpDbFamily) -> Value {
+    match family {
+        AbuseIpDbFamily::Reports => json!({
+            "reportedAt": "2026-06-01T00:00:00Z",
+            "reporterId": 43121,
+            "comment": "SSH login attempts",
+            "categories": [18, 22],
+            "reporterCountryCode": "US"
+        }),
+        AbuseIpDbFamily::IpAddresses => json!({
+            "ipAddress": "192.0.2.10",
+            "abuseConfidenceScore": 100,
+            "countryCode": "US",
+            "lastReportedAt": "2026-06-01T00:00:00Z"
+        }),
     }
-    if family == AdpFamily::EventNotifications {
-        values.remove("actor");
-    }
-    payload
 }
 
-fn response(family: AdpFamily, records: Vec<Value>) -> Vec<u8> {
-    serde_json::to_vec(&json!({family.response_key(): records})).unwrap()
+fn response(family: AbuseIpDbFamily, records: Vec<Value>, last_page: Option<u64>) -> Vec<u8> {
+    let body = match family {
+        AbuseIpDbFamily::Reports => json!({
+            "data": {
+                "results": records,
+                "page": 1,
+                "perPage": 100,
+                "lastPage": last_page.unwrap_or(1)
+            }
+        }),
+        AbuseIpDbFamily::IpAddresses => json!({"data": records}),
+    };
+    serde_json::to_vec(&body).unwrap()
 }
 
 fn context(cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
         tenant_id: "tenant".to_owned(),
-        runtime_id: "adp-workforce-now-runtime".to_owned(),
-        logical_page_id: format!("source-page-v2:adp-workforce-now-{page}"),
+        runtime_id: "abuseipdb-runtime".to_owned(),
+        logical_page_id: format!("source-page-v2:abuseipdb-{page}"),
         prior_cursor: cursor.to_owned(),
         runtime_generation: 7,
         lease_generation: 11,
@@ -77,16 +73,24 @@ fn context(cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     }
 }
 
-fn family_metadata(family: AdpFamily) -> SourceWorkerRuntimeMetadataV2 {
+/// The host forwards every declared AbuseIPDB selector regardless of family;
+/// the bridge must read only the selectors that belong to the selected family.
+fn family_metadata(family: AbuseIpDbFamily) -> SourceWorkerRuntimeMetadataV2 {
     SourceWorkerRuntimeMetadataV2 {
-        public_config: HashMap::from([("family".to_owned(), family.as_str().to_owned())]),
+        public_config: HashMap::from([
+            ("family".to_owned(), family.as_str().to_owned()),
+            ("ip_address".to_owned(), "192.0.2.10".to_owned()),
+            ("max_age_in_days".to_owned(), "30".to_owned()),
+            ("confidence_minimum".to_owned(), "90".to_owned()),
+            ("ip_version".to_owned(), "4".to_owned()),
+        ]),
         prior_terminal_watermark_unix_millis: 0,
         prior_checkpoint: String::new(),
     }
 }
 
 fn plan_page(
-    adapter: &AdpSourceExecutionAdapter,
+    adapter: &AbuseIpDbSourceExecutionAdapter,
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -103,7 +107,7 @@ fn plan_page(
 }
 
 fn plan_error(
-    adapter: &AdpSourceExecutionAdapter,
+    adapter: &AbuseIpDbSourceExecutionAdapter,
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -144,7 +148,7 @@ fn receipt(
 }
 
 fn decode_page(
-    adapter: &AdpSourceExecutionAdapter,
+    adapter: &AbuseIpDbSourceExecutionAdapter,
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -177,35 +181,28 @@ fn decode_page(
 }
 
 #[test]
-fn adp_workforce_now_plans_both_families_without_credentials() {
+fn abuseipdb_plans_both_families_without_credentials() {
     for (family, cursor, page, expected_url) in [
         (
-            AdpFamily::EventNotifications,
-            "",
-            1,
-            "https://api.adp.com/core/v1/event-notification-messages",
-        ),
-        (
-            AdpFamily::Users,
-            "",
-            1,
-            "https://api.adp.com/hr/v2/workers?%24top=100&%24skip=0",
-        ),
-        (
-            AdpFamily::Users,
-            "100",
+            AbuseIpDbFamily::Reports,
+            "2",
             2,
-            "https://api.adp.com/hr/v2/workers?%24top=100&%24skip=100",
+            "https://api.abuseipdb.com/api/v2/reports?ipAddress=192.0.2.10&maxAgeInDays=30&perPage=100&page=2",
+        ),
+        (
+            AbuseIpDbFamily::IpAddresses,
+            "",
+            1,
+            "https://api.abuseipdb.com/api/v2/blacklist?confidenceMinimum=90&ipVersion=4&limit=10000",
         ),
     ] {
         let adapter = family_adapter(family);
         let plan = adapter.compiled_plan();
-        assert_eq!(plan.source_id, "adp_workforce_now");
+        assert_eq!(plan.source_id, "abuseipdb");
         assert_eq!(plan.family_id, family.as_str());
         assert_eq!(plan.provider_kernel, family.event_kind());
         assert_eq!(plan.origin, ORIGIN);
-        assert_eq!(plan.path, family.path());
-        assert_eq!(plan.id_field, family.id_field());
+        assert_eq!(plan.path, format!("/api/v2{}", family.path()));
         assert_eq!(plan.event_kind, family.event_kind());
         assert_eq!(plan.schema_ref, family.schema_ref());
         assert_eq!(plan.max_response_bytes, 8 << 20);
@@ -213,7 +210,8 @@ fn adp_workforce_now_plans_both_families_without_credentials() {
         let context = context(cursor, page);
         let metadata = family_metadata(family);
         let execution = plan_page(adapter, &plan, &context, &metadata);
-        assert_eq!(execution.credential_operation, "source.bearer");
+        assert_eq!(execution.credential_operation, CREDENTIAL_OPERATION);
+        assert_eq!(execution.credential_operation, "abuseipdb.key");
         assert_eq!(execution.allowed_origin, ORIGIN);
         assert!(execution.body.is_empty());
         assert!(execution.declared_headers.is_empty());
@@ -221,21 +219,21 @@ fn adp_workforce_now_plans_both_families_without_credentials() {
         assert_eq!(request.method, "GET");
         assert_eq!(request.accept, "application/json");
         assert_eq!(request.url, expected_url);
-        for secret_marker in ["authorization", "bearer", "token", "secret"] {
+        for secret_marker in ["authorization", "bearer", "token", "secret", "key="] {
             assert!(!request.url.to_ascii_lowercase().contains(secret_marker));
         }
     }
 }
 
 #[test]
-fn adp_workforce_now_decodes_both_families_with_exact_contract_and_seals() {
-    for family in AdpFamily::ALL {
+fn abuseipdb_decodes_both_families_with_exact_contract_and_seals() {
+    for family in AbuseIpDbFamily::ALL {
         let adapter = family_adapter(family);
         let plan = adapter.compiled_plan();
         let context = context("", 1);
         let metadata = family_metadata(family);
         let execution = plan_page(adapter, &plan, &context, &metadata);
-        let body = response(family, vec![fixture(family)]);
+        let body = response(family, vec![raw(family)], None);
         let safe_receipt = receipt(&plan, &context, &execution, 200, &body);
         let result = decode_page(
             adapter,
@@ -252,8 +250,8 @@ fn adp_workforce_now_decodes_both_families_with_exact_contract_and_seals() {
         let record = &result.records[0];
         assert_eq!(record.attributes["tenant_id"], "tenant");
         assert_eq!(record.attributes["source_event_id"], record.provider_id);
-        assert_eq!(record.attributes["resource_id"], "G3GMA28TB2SVJ2TF");
-        assert!(record.event_id.starts_with("adp-workforce-now-tenant-"));
+        assert_eq!(record.attributes["resource_id"], "192.0.2.10");
+        assert!(record.event_id.starts_with("abuseipdb-tenant-"));
         for attribute in &plan.required_attributes {
             assert!(
                 record
@@ -291,35 +289,26 @@ fn adp_workforce_now_decodes_both_families_with_exact_contract_and_seals() {
 }
 
 #[test]
-fn adp_workforce_now_pagination_and_provider_failures_are_typed() {
-    let family = AdpFamily::Users;
+fn abuseipdb_pagination_and_provider_failures_are_typed() {
+    let family = AbuseIpDbFamily::Reports;
     let adapter = family_adapter(family);
     let plan = adapter.compiled_plan();
     let context = context("", 1);
     let metadata = family_metadata(family);
-    let full_page = (1..=100)
-        .map(|number| {
-            json!({
-                "associateOID": format!("worker-{number}"),
-                "person": {"legalName": {"formattedName": format!("Worker {number}")}},
-                "workerDates": {"originalHireDate": "2026-07-01"}
-            })
-        })
-        .collect();
+    let body = response(family, vec![raw(family)], Some(2));
     let result = decode_page(
         adapter,
         &plan,
         &context,
         &metadata,
         200,
-        &response(family, full_page),
+        &body,
         HashMap::new(),
     )
     .unwrap();
-    assert_eq!(result.records.len(), 100);
-    assert_eq!(result.next_cursor, "100");
+    assert_eq!(result.next_cursor, "2");
 
-    let family = AdpFamily::EventNotifications;
+    let family = AbuseIpDbFamily::IpAddresses;
     let adapter = family_adapter(family);
     let plan = adapter.compiled_plan();
     let metadata = family_metadata(family);
@@ -357,48 +346,51 @@ fn adp_workforce_now_pagination_and_provider_failures_are_typed() {
 }
 
 #[test]
-fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
-    let family = AdpFamily::Users;
+fn abuseipdb_rejects_bad_scope_cursor_filters_duplicates_and_secret_material() {
+    let family = AbuseIpDbFamily::Reports;
     let adapter = family_adapter(family);
     let plan = adapter.compiled_plan();
     let metadata = family_metadata(family);
-    for cursor in ["next", "-1", "10000001"] {
-        assert_eq!(
-            plan_error(adapter, &plan, &context(cursor, 2), &metadata),
-            SourceExecutionError::InvalidCursor
-        );
-    }
-    let events = family_adapter(AdpFamily::EventNotifications);
+    assert_eq!(
+        plan_error(adapter, &plan, &context("0", 2), &metadata),
+        SourceExecutionError::InvalidCursor
+    );
     assert_eq!(
         plan_error(
-            events,
-            &events.compiled_plan(),
-            &context("100", 2),
-            &family_metadata(AdpFamily::EventNotifications),
+            family_adapter(AbuseIpDbFamily::IpAddresses),
+            &family_adapter(AbuseIpDbFamily::IpAddresses).compiled_plan(),
+            &context("2", 2),
+            &family_metadata(AbuseIpDbFamily::IpAddresses),
         ),
         SourceExecutionError::InvalidCursor
     );
 
+    let mut missing_ip = metadata.clone();
+    missing_ip.public_config.remove("ip_address");
+    assert_eq!(
+        plan_error(adapter, &plan, &context("", 1), &missing_ip),
+        SourceExecutionError::MissingConfiguration
+    );
+    let mut bad_age = metadata.clone();
+    bad_age
+        .public_config
+        .insert("max_age_in_days".to_owned(), "soon".to_owned());
+    assert_eq!(
+        plan_error(adapter, &plan, &context("", 1), &bad_age),
+        SourceExecutionError::MissingConfiguration
+    );
     let mut wrong_family = metadata.clone();
     wrong_family
         .public_config
-        .insert("family".to_owned(), "event_notifications".to_owned());
+        .insert("family".to_owned(), "ip_addresses".to_owned());
     assert_eq!(
         plan_error(adapter, &plan, &context("", 1), &wrong_family),
         SourceExecutionError::MissingConfiguration
     );
-    let mut foreign_origin = metadata.clone();
-    foreign_origin
-        .public_config
-        .insert("base_url".to_owned(), "https://other.adp.com".to_owned());
-    assert_eq!(
-        plan_error(adapter, &plan, &context("", 1), &foreign_origin),
-        SourceExecutionError::MissingConfiguration
-    );
 
     let execution_context = context("", 1);
-    let original = fixture(family);
-    let duplicate_body = response(family, vec![original.clone(), original.clone()]);
+    let original = raw(family);
+    let duplicate_body = response(family, vec![original.clone(), original.clone()], None);
     let result = decode_page(
         adapter,
         &plan,
@@ -412,8 +404,8 @@ fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
     assert_eq!(result.records.len(), 1);
 
     let mut conflicting = original.clone();
-    conflicting["workerID"] = json!({"idValue": "different"});
-    let conflicting_body = response(family, vec![original.clone(), conflicting]);
+    conflicting["comment"] = Value::from("different");
+    let conflicting_body = response(family, vec![original.clone(), conflicting], None);
     assert_eq!(
         decode_page(
             adapter,
@@ -428,8 +420,8 @@ fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
     );
 
     let mut secret = original.clone();
-    secret["nested"] = json!({"client_secret": "credential-material"});
-    let secret_body = response(family, vec![secret]);
+    secret["nested"] = json!({"api_key": "credential-material"});
+    let secret_body = response(family, vec![secret], None);
     let error = decode_page(
         adapter,
         &plan,
@@ -445,7 +437,7 @@ fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
 
     let mut untrusted_scope = original;
     untrusted_scope["nested"] = json!({"tenant_id": "untrusted-tenant"});
-    let untrusted_scope_body = response(family, vec![untrusted_scope]);
+    let untrusted_scope_body = response(family, vec![untrusted_scope], None);
     assert_eq!(
         decode_page(
             adapter,
@@ -458,44 +450,43 @@ fn adp_workforce_now_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         ),
         Err(SourceExecutionError::TenantMismatch)
     );
-}
 
-#[test]
-fn adapter_set_covers_exactly_the_adp_workforce_now_families() {
+    let mut foreign_ip = raw(family);
+    foreign_ip["ipAddress"] = Value::from("198.51.100.7");
+    let foreign_ip_body = response(family, vec![foreign_ip], None);
     assert_eq!(
-        ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS.len(),
-        AdpFamily::ALL.len()
+        decode_page(
+            adapter,
+            &plan,
+            &execution_context,
+            &metadata,
+            200,
+            &foreign_ip_body,
+            HashMap::new(),
+        ),
+        Err(SourceExecutionError::InvalidProviderRecord)
     );
-    for (adapter, family) in ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS
-        .iter()
-        .zip(AdpFamily::ALL)
-    {
-        let compiled = adapter.compiled_plan();
-        assert_eq!(compiled.source_id, "adp_workforce_now");
-        assert_eq!(compiled.family_id, family.as_str());
-        assert_eq!(compiled.provider_kernel, family.event_kind());
-        assert_eq!(
-            (
-                adapter.source_id(),
-                adapter.family_id(),
-                adapter.provider_kernel()
-            ),
-            ("adp_workforce_now", family.as_str(), family.event_kind())
-        );
-    }
 }
 
 #[test]
-fn closed_dispatcher_registers_exactly_the_adp_workforce_now_families() {
+fn closed_dispatcher_registers_exactly_the_abuseipdb_families() {
     let dispatcher = SourceExecutionDispatcher;
-    for adapter in &ADP_WORKFORCE_NOW_SOURCE_EXECUTION_ADAPTERS {
+    assert_eq!(ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS.len(), 2);
+    assert_eq!(
+        ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS.len(),
+        AbuseIpDbFamily::ALL.len()
+    );
+    for adapter in &ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS {
         let compiled = dispatcher
             .compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "adp_workforce_now".to_owned(),
+                source_id: "abuseipdb".to_owned(),
                 family_id: adapter.family_id().to_owned(),
             })
             .unwrap();
         assert_eq!(compiled, adapter.compiled_plan());
+        assert_eq!(compiled.source_id, "abuseipdb");
+        assert_eq!(compiled.family_id, adapter.family_id());
+        assert_eq!(compiled.provider_kernel, adapter.provider_kernel());
         let registered = dispatcher.adapter_for(&compiled).unwrap();
         assert_eq!(
             (
@@ -513,7 +504,7 @@ fn closed_dispatcher_registers_exactly_the_adp_workforce_now_families() {
     for family in ["", "future"] {
         assert_eq!(
             dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "adp_workforce_now".to_owned(),
+                source_id: "abuseipdb".to_owned(),
                 family_id: family.to_owned(),
             }),
             Err(SourceExecutionError::UnknownAdapter)

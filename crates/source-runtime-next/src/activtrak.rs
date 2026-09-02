@@ -14,7 +14,6 @@ mod origin;
 mod projection;
 mod request;
 mod response;
-#[allow(dead_code)]
 #[path = "activtrak/source_execution.rs"]
 mod source_execution;
 mod types;
@@ -27,7 +26,6 @@ pub use types::{
     ActivTrakCheckpointCandidate, ActivTrakKernel, ActivTrakPage, ActivTrakRecord, ActivTrakRequest,
 };
 
-#[allow(unused_imports)]
 pub(crate) use source_execution::ACTIVTRAK_SOURCE_EXECUTION_ADAPTERS;
 
 #[cfg(test)]
