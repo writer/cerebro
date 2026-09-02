@@ -13,6 +13,7 @@ use crate::akeneo::AKENEO_SOURCE_EXECUTION_ADAPTERS;
 use crate::amplitude::AMPLITUDE_SOURCE_EXECUTION_ADAPTERS;
 use crate::anthropic::ANTHROPIC_SOURCE_EXECUTION_ADAPTERS;
 use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
+use crate::cloudflare::CLOUDFLARE_SOURCE_EXECUTION_ADAPTERS;
 use crate::deepseek::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
@@ -259,6 +260,11 @@ impl SourceExecutionDispatcher {
         }) {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = CLOUDFLARE_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
+        }
         if let Some(adapter) = ACTIVECAMPAIGN_SOURCE_EXECUTION_ADAPTERS
             .iter()
             .find(|adapter| {
@@ -478,6 +484,13 @@ impl SourceExecutionDispatcher {
             return Ok(adapter);
         }
         if let Some(adapter) = ABUSEIPDB_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = CLOUDFLARE_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()

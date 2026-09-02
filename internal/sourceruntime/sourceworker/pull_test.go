@@ -262,6 +262,9 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"ADP Workforce Now default":        {" adp_workforce_now ", "", "event_notifications", true},
 		"ADP Workforce Now users":          {"adp_workforce_now", " users ", "users", true},
 		"unknown ADP Workforce Now family": {"adp_workforce_now", "future-family", "future-family", true},
+		"Cloudflare default":               {" cloudflare ", "", "access_application", true},
+		"Cloudflare dns_record":            {"cloudflare", " dns_record ", "dns_record", true},
+		"unknown Cloudflare family":        {"cloudflare", "future-family", "future-family", true},
 		"Discord default":                  {" discord ", "", "audit_log", true},
 		"Discord audit log":                {"discord", " audit_log ", "audit_log", true},
 		"Discord member":                   {"discord", "member", "member", true},
@@ -330,6 +333,7 @@ func TestPreviewRustFamilyPreservesTheClosedPreviewRoutes(t *testing.T) {
 		"ActiveCampaign family":    {"activecampaign", " contacts ", "contacts", true},
 		"Acunetix family":          {"acunetix", " vulnerabilities ", "vulnerabilities", true},
 		"ADP Workforce Now family": {"adp_workforce_now", " users ", "users", true},
+		"Cloudflare family":        {"cloudflare", " dns_record ", "dns_record", true},
 		"selected unknown closed":  {"tailscale", "future-family", "future-family", true},
 		"restricted selected":      {"azure", "authorization_policy", "authorization_policy", true},
 		"restricted compatibility": {"azure", "user", "user", false},
@@ -540,5 +544,17 @@ func TestAbuseIPDBPublicExecutionConfigCarriesOnlyDeclaredFilters(t *testing.T) 
 	}
 	if public["api_key"] != "" || public["token"] != "" {
 		t.Fatalf("AbuseIPDB public config leaked credential-shaped fields: %#v", public)
+	}
+}
+
+func TestCloudflarePublicExecutionConfigCarriesOnlyDeclaredSelectors(t *testing.T) {
+	public := PublicExecutionConfigForSource("cloudflare", map[string]string{
+		"family": " access_application ", "account_id": " account_id-1 ", "zone_id": " zone_id-1 ", "token": "must-not-cross",
+	})
+	if public["family"] != "access_application" || public["account_id"] != "account_id-1" || public["zone_id"] != "zone_id-1" {
+		t.Fatalf("Cloudflare public config lost declared selectors: %#v", public)
+	}
+	if public["token"] != "" {
+		t.Fatalf("Cloudflare public config leaked credential-shaped fields: %#v", public)
 	}
 }

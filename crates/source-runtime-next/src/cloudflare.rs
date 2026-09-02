@@ -10,7 +10,6 @@ mod family;
 mod kernel;
 mod normalize;
 mod origin;
-#[allow(dead_code)]
 mod source_execution;
 
 pub use error::CloudflareError;
@@ -19,7 +18,6 @@ pub use kernel::{
     CloudflareKernel, CloudflarePage, CloudflareRecord, CloudflareRequest, CloudflareRequestKind,
 };
 
-#[allow(unused_imports)]
 pub(crate) use source_execution::CLOUDFLARE_SOURCE_EXECUTION_ADAPTERS;
 
 #[cfg(test)]

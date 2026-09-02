@@ -129,13 +129,13 @@
         "role": "preview_rust_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "PreviewRustFamily",
-        "digest_sha256": "75b0f3d252fd1556ee08375bbb6dee4b8f0a39a410b4b3ce299bba09c2d3ac86"
+        "digest_sha256": "03ff14f49010fb3c5a674d68a99dadce740d45777c5a798c204a5a49d18429c4"
       },
       {
         "role": "rust_authoritative_selector",
         "path": "internal/sourceruntime/sourceworker/pull.go",
         "symbol": "RustAuthoritativeFamily",
-        "digest_sha256": "a76021405974e09a06230e346dce64fc519a170bbe053be8f284fd86c437c331"
+        "digest_sha256": "45d6217b9f9e75f6e0d7b11de84c1d2dc894a704826e9176e9bf6109d996c608"
       },
       {
         "role": "rust_output_conversion",
@@ -170,6 +170,7 @@
         { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
         { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare", "all_catalog_families": true, "default_family": "access_application", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
@@ -225,6 +226,7 @@
         { "source_id": "azure", "families": ["authorization_policy"], "unknown_family_policy": "go_compatibility" },
         { "source_id": "azure_openai", "all_catalog_families": true, "default_family": "deployments", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cerebras", "all_catalog_families": true, "default_family": "projects", "unknown_family_policy": "rust_fail_closed" },
+        { "source_id": "cloudflare", "all_catalog_families": true, "default_family": "access_application", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cloudflare_workers_ai", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "cohere", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },
         { "source_id": "deepseek", "all_catalog_families": true, "default_family": "model_catalog", "unknown_family_policy": "rust_fail_closed" },

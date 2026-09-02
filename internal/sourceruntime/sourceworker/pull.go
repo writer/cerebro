@@ -263,6 +263,14 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Unknown families fail there instead of restoring the catalog-runtime Go
 		// path.
 		return familyID, true
+	case "cloudflare":
+		if familyID == "" {
+			familyID = "access_application"
+		}
+		// Every cataloged Cloudflare family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the catalog-runtime Go
+		// path.
+		return familyID, true
 	case "azure":
 		return familyID, familyID == "authorization_policy"
 	case "digitalocean":
@@ -327,7 +335,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // intentionally excludes durable-only routes such as Twilio.
 func PreviewRustFamily(sourceID, familyID string) (string, bool) {
 	switch strings.TrimSpace(sourceID) {
-	case "abnormal_security", "abuseipdb", "activecampaign", "activtrak", "acunetix", "ada_support", "addigy", "adp_workforce_now", "aha", "akeneo", "amplitude", "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
+	case "abnormal_security", "abuseipdb", "activecampaign", "activtrak", "acunetix", "ada_support", "addigy", "adp_workforce_now", "aha", "akeneo", "amplitude", "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "doppler", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "jumpcloud", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return RustAuthoritativeFamily(sourceID, familyID)
 	default:
 		return "", false
@@ -511,6 +519,10 @@ func PublicExecutionConfigForSource(sourceID string, values map[string]string) m
 		// These catalog-defined families need no public provider selectors.
 	case "abuseipdb":
 		for _, key := range []string{"ip_address", "max_age_in_days", "confidence_minimum", "ip_version"} {
+			copyPublicValue(public, values, key)
+		}
+	case "cloudflare":
+		for _, key := range []string{"account_id", "zone_id"} {
 			copyPublicValue(public, values, key)
 		}
 	case "aws_bedrock":
