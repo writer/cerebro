@@ -3,6 +3,11 @@
 # Build stage - use buildx cross-compilation (no QEMU needed)
 ARG GO_VERSION=1.26.6
 ARG RUST_VERSION=1.93.1
+# Runtime base, overridable so the shipped image can be retargeted at a hardened
+# base without editing this file. Matches Dockerfile.runtime and Dockerfile.rust.
+# Note: the runtime stage below still uses apk and adduser, so a base without a
+# package manager needs those removed in the same change.
+ARG RUNTIME_BASE_IMAGE=alpine:3.24
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 ARG TARGETOS
@@ -62,7 +67,7 @@ COPY sources /app/sources
 RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
 
 # Runtime image
-FROM alpine:3.24
+FROM ${RUNTIME_BASE_IMAGE}
 
 RUN apk upgrade --no-cache && \
     apk add --no-cache curl && \
