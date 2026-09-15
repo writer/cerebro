@@ -278,6 +278,8 @@ jobs:
             checkout_fetch_depth: '0'
           - name: docs-drift
             command: make docs-drift-check
+          - name: rust-migration-ledger
+            command: make rust-migration-ledger-check
           - name: readme
             command: make readme-check
             checkout_fetch_depth: '0'
