@@ -184,11 +184,30 @@ jobs:
           cp "target/${RUST_TARGET}/release/cerebro-event-admission-worker" ".dist/bin/${name}/cerebro-event-admission-worker"
           cp "target/${RUST_TARGET}/release/source_worker" ".dist/bin/${name}/source_worker"
           tar -C .dist/bin -czf ".dist/release/${name}.tar.gz" "${name}/cerebro" "${name}/cerebro-event-admission-worker" "${name}/source_worker"
+      # Uploading is a network call on a runner that has already done all the
+      # expensive work, so a transient DNS or connectivity blip here throws away
+      # a completed build and fails the candidate. One retry absorbs that.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload_candidate_binary
+        continue-on-error: true
         with:
           name: candidate-binary-${{ needs.resolve.outputs.sha }}-${{ matrix.os }}-${{ matrix.arch }}
           path: .dist/release/*.tar.gz
           if-no-files-found: error
+      - name: Wait before retrying candidate binary upload
+        if: steps.upload_candidate_binary.outcome == 'failure'
+        shell: bash
+        run: sleep 30
+      - name: Retry candidate binary upload
+        if: steps.upload_candidate_binary.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-binary-${{ needs.resolve.outputs.sha }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: .dist/release/*.tar.gz
+          if-no-files-found: error
+          # The first attempt can fail after registering the artifact name, so
+          # the retry has to be allowed to replace it rather than collide.
+          overwrite: true
 
   binaries:
     runs-on: ubuntu-latest
