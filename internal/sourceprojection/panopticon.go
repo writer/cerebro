@@ -15,10 +15,11 @@ var (
 	panopticonAWSInstancePattern      = regexp.MustCompile(`\bi-[0-9a-fA-F]{8,17}\b`)
 	panopticonGCPProjectFieldPattern  = regexp.MustCompile(`(?i)\b(?:gcp|google)\s*project(?:\s+id)?\s*[:=]?\s*([a-z][a-z0-9-]{4,28}[a-z0-9])\b`)
 	panopticonGitHubRepositoryPattern = regexp.MustCompile(`\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b`)
-	panopticonGitHubURLPattern        = regexp.MustCompile(`(?i)(?:https?://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:\.git)?\b`)
-	panopticonIPv4Pattern             = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	panopticonKubernetesPairPattern   = regexp.MustCompile(`\(([a-z0-9][a-z0-9.-]*)/([a-z0-9][a-z0-9.-]*)\)`)
-	panopticonURLPattern              = regexp.MustCompile(`https?://[^\s)"']+`)
+	// The leading boundary keeps a github.com URL nested inside another URL from being read as a repository reference.
+	panopticonGitHubURLPattern      = regexp.MustCompile(`(?i)(?:\A|[\s"'(<\[,;])(?:https?://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:\.git)?\b`)
+	panopticonIPv4Pattern           = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	panopticonKubernetesPairPattern = regexp.MustCompile(`\(([a-z0-9][a-z0-9.-]*)/([a-z0-9][a-z0-9.-]*)\)`)
+	panopticonURLPattern            = regexp.MustCompile(`https?://[^\s)"']+`)
 )
 
 const maxPanopticonResourceObjects = 128
@@ -1779,7 +1780,8 @@ func panopticonContextGitHubRepositories(samples []panopticonContextSample) []st
 		if !panopticonGitHubContext(sample) {
 			continue
 		}
-		bareValue := panopticonGitHubURLPattern.ReplaceAllString(sample.value, " ")
+		// A URL surviving the github.com pass is some other host, so its host/path must not read as a repository.
+		bareValue := panopticonURLPattern.ReplaceAllString(panopticonGitHubURLPattern.ReplaceAllString(sample.value, " "), " ")
 		for _, match := range panopticonGitHubRepositoryPattern.FindAllString(bareValue, -1) {
 			panopticonAppendGitHubRepository(&out, seen, match)
 		}
