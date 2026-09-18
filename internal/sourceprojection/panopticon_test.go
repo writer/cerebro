@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1101,5 +1102,29 @@ func assertPanopticonAssetHasNoCanonicalAssetLink(t *testing.T, recorder *projec
 		if len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && panopticonAllowedCanonicalAssetKind(parts[3]) {
 			t.Fatalf("asset %q should not directly stitch to canonical asset %q; link=%#v", assetURN, link.ToURN, link)
 		}
+	}
+}
+
+func TestPanopticonContextGitHubRepositoriesRejectsNonGitHubHosts(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		key   string
+		value string
+		want  []string
+	}{
+		{name: "plain url", key: "description", value: "see https://github.com/writer/cerebro for details", want: []string{"writer/cerebro"}},
+		{name: "ssh remote", key: "repo_url", value: "git@github.com:writer/cerebro.git", want: []string{"writer/cerebro"}},
+		{name: "parenthesized url", key: "description", value: "(https://github.com/writer/cerebro)", want: []string{"writer/cerebro"}},
+		{name: "two urls", key: "description", value: "https://github.com/a/b and https://github.com/c/d", want: []string{"a/b", "c/d"}},
+		{name: "github url nested in another url", key: "description", value: "https://evil.example/redirect?u=https://github.com/attacker/repo", want: nil},
+		{name: "scheme glued to preceding text", key: "note", value: "prefixhttps://github.com/attacker/repo", want: nil},
+		{name: "lookalike host", key: "note", value: "https://github.com.evil.example/attacker/repo", want: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := panopticonContextGitHubRepositories([]panopticonContextSample{{key: tc.key, value: tc.value}})
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("panopticonContextGitHubRepositories(%q) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
 	}
 }
