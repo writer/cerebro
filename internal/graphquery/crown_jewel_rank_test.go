@@ -100,6 +100,9 @@ func TestNormalizeCrownJewelBoundClampsWithoutOverflow(t *testing.T) {
 		{name: "at bound passes through", value: 100, fallback: 25, maxValue: 100, want: 100},
 		{name: "above bound clamps", value: 101, fallback: 25, maxValue: 100, want: 100},
 		{name: "max uint32 clamps", value: math.MaxUint32, fallback: 25, maxValue: 100, want: 100},
+		{name: "past the 32-bit ceiling clamps", value: math.MaxInt32 + 1, fallback: 25, maxValue: 100, want: 100},
+		{name: "the ceiling itself survives a wide max", value: math.MaxInt32, fallback: 25, maxValue: math.MaxInt32, want: math.MaxInt32},
+		{name: "a wide max still clamps past the ceiling", value: 4_000_000_000, fallback: 25, maxValue: math.MaxInt32, want: math.MaxInt32},
 		{name: "negative max leaves the value unclamped", value: 7, fallback: 25, maxValue: -1, want: 7},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
