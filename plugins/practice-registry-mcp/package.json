@@ -39,15 +39,15 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^13.0.3",
     "minimatch": "^10.2.6",
-    "yaml": "^2.9.0",
-    "zod": "^4.5.1"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^26.4.0",
-    "tsx": "^4.21.0",
+    "@types/node": "^26.6.1",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^4.0.16"
+    "vitest": "^5.0.1"
   },
   "engines": {
     "node": ">=22"
