@@ -76,7 +76,7 @@ jobs:
 
       - name: Fetch org-level secrets from Infisical
         if: steps.infisical.outputs.configured == 'true'
-        uses: Infisical/secrets-action@6cd3f7c0e4cc0d2395ee4ef414eb6eeb5d3e73db # v1.0.17
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
@@ -86,7 +86,7 @@ jobs:
           export-type: env
       - name: Fetch repo-level secrets from Infisical
         if: steps.infisical.outputs.configured == 'true'
-        uses: Infisical/secrets-action@6cd3f7c0e4cc0d2395ee4ef414eb6eeb5d3e73db # v1.0.17
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
