@@ -1245,7 +1245,8 @@ func TestProjectOktaPolicyRule(t *testing.T) {
 func TestProjectOktaUserCarriesLifecycleMFAAndSourceFacts(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
-	observed := time.Date(2026, time.June, 20, 12, 30, 0, 0, time.UTC)
+	// Must stay inside the projector's 90-day freshness window, or observed_at is replaced with the projection time.
+	observed := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "okta-user-00u1",

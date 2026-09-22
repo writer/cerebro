@@ -129,18 +129,18 @@ func normalizeCrownJewelRankSeedLimit(limit uint32) int {
 }
 
 func normalizeCrownJewelBound(value uint32, fallback int, maxValue int) int {
-	maxBound := uint32(math.MaxUint32)
-	if maxValue >= 0 && maxValue < math.MaxUint32 {
-		maxBound = uint32(maxValue)
-	}
-	switch {
-	case value == 0:
+	if value == 0 {
 		return fallback
-	case value > maxBound:
-		return maxValue
-	default:
-		return int(value)
 	}
+	// int is only guaranteed 32 bits, so refuse anything past that ceiling before converting.
+	if value > math.MaxInt32 {
+		return maxValue
+	}
+	bounded := int(value)
+	if maxValue >= 0 && bounded > maxValue {
+		return maxValue
+	}
+	return bounded
 }
 
 type crownJewelRankGraph struct {

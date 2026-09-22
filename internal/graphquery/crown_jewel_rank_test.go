@@ -3,6 +3,7 @@ package graphquery
 import (
 	"context"
 	"errors"
+	"math"
 	"slices"
 	"testing"
 
@@ -84,4 +85,34 @@ func crownJewelRankByURN(ranks []CrownJewelRank, urn string) (CrownJewelRank, bo
 		}
 	}
 	return CrownJewelRank{}, false
+}
+
+func TestNormalizeCrownJewelBoundClampsWithoutOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		value    uint32
+		fallback int
+		maxValue int
+		want     int
+	}{
+		{name: "zero uses fallback", value: 0, fallback: 25, maxValue: 100, want: 25},
+		{name: "within bound passes through", value: 42, fallback: 25, maxValue: 100, want: 42},
+		{name: "at bound passes through", value: 100, fallback: 25, maxValue: 100, want: 100},
+		{name: "above bound clamps", value: 101, fallback: 25, maxValue: 100, want: 100},
+		{name: "max uint32 clamps", value: math.MaxUint32, fallback: 25, maxValue: 100, want: 100},
+		{name: "past the 32-bit ceiling clamps", value: math.MaxInt32 + 1, fallback: 25, maxValue: 100, want: 100},
+		{name: "the ceiling itself survives a wide max", value: math.MaxInt32, fallback: 25, maxValue: math.MaxInt32, want: math.MaxInt32},
+		{name: "a wide max still clamps past the ceiling", value: 4_000_000_000, fallback: 25, maxValue: math.MaxInt32, want: math.MaxInt32},
+		{name: "negative max leaves the value unclamped", value: 7, fallback: 25, maxValue: -1, want: 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeCrownJewelBound(tc.value, tc.fallback, tc.maxValue)
+			if got != tc.want {
+				t.Fatalf("normalizeCrownJewelBound(%d, %d, %d) = %d, want %d", tc.value, tc.fallback, tc.maxValue, got, tc.want)
+			}
+			if got < 0 {
+				t.Fatalf("normalizeCrownJewelBound returned a negative bound: %d", got)
+			}
+		})
+	}
 }
