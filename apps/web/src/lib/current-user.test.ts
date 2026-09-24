@@ -68,6 +68,20 @@ const signedJwtWithPayload = (payload: Record<string, unknown>, privateKey: KeyO
   return `${input}.${signature}`;
 };
 
+// JWS carries ECDSA signatures as raw r||s, while Node defaults to DER.
+const ecSignedJwtWithPayload = (
+  payload: Record<string, unknown>,
+  privateKey: KeyObject,
+  { algorithm = "ES256", digest = "SHA256", kid = "test-ec-key" } = {},
+) => {
+  const input = `${base64UrlJson({ alg: algorithm, kid, typ: "JWT" })}.${base64UrlJson(payload)}`;
+  const signature = createSign(digest)
+    .update(input)
+    .end()
+    .sign({ dsaEncoding: "ieee-p1363", key: privateKey }, "base64url");
+  return `${input}.${signature}`;
+};
+
 const headersFromFixture = (fixture: {
   headers: Record<string, string>;
   jwtHeader?: string;
@@ -488,6 +502,104 @@ describe("current user identity", () => {
       keyId: "test-key",
       signature: "verified",
     });
+  });
+
+  it("uses configured JWKS to verify ES256 bearer JWT signatures", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const publicJwk = publicKey.export({ format: "jwk" });
+    process.env.CEREBRO_IDENTITY_PROFILE = "oidc-bearer";
+    process.env.CEREBRO_IDENTITY_ISSUER = "https://login.example.com/oauth2/default";
+    process.env.CEREBRO_IDENTITY_AUDIENCE = "cerebro-web";
+    process.env.CEREBRO_IDENTITY_JWKS_URL = "https://login.example.com/oauth2/default/v1/keys";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      keys: [{ ...publicJwk, alg: "ES256", kid: "test-ec-key", use: "sig" }],
+    })));
+
+    const user = await resolveCurrentUserFromHeaders(new Headers({
+      authorization: `Bearer ${ecSignedJwtWithPayload({
+        aud: "cerebro-web",
+        email: "ec.user@example.com",
+        exp: Math.floor(Date.now() / 1000) + 60,
+        iss: "https://login.example.com/oauth2/default",
+        name: "EC User",
+        sub: "ec-subject",
+      }, privateKey)}`,
+    }));
+
+    expect(user).toMatchObject({
+      actorId: "ec-subject",
+      confidence: "signature-verified",
+      provider: "bearer-jwt",
+    });
+    expect(user?.warnings).toBeUndefined();
+    expect(user?.evidence?.jwt).toMatchObject({
+      algorithm: "ES256",
+      keyId: "test-ec-key",
+      signature: "verified",
+    });
+  });
+
+  it("verifies ES384 bearer JWT signatures against a P-384 key", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+    const publicJwk = publicKey.export({ format: "jwk" });
+    process.env.CEREBRO_IDENTITY_PROFILE = "oidc-bearer";
+    process.env.CEREBRO_IDENTITY_JWKS_URL = "https://login.example.com/oauth2/default/v1/keys";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      keys: [{ ...publicJwk, alg: "ES384", kid: "test-ec-key", use: "sig" }],
+    })));
+
+    const user = await resolveCurrentUserFromHeaders(new Headers({
+      authorization: `Bearer ${ecSignedJwtWithPayload({
+        email: "ec384.user@example.com",
+        sub: "ec384-subject",
+      }, privateKey, { algorithm: "ES384", digest: "SHA384" })}`,
+    }));
+
+    expect(user).toMatchObject({ actorId: "ec384-subject", confidence: "signature-verified" });
+    expect(user?.evidence?.jwt?.signature).toBe("verified");
+  });
+
+  it("downgrades an ES256 token signed by a different EC key", async () => {
+    const { publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const { privateKey: otherPrivateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const publicJwk = publicKey.export({ format: "jwk" });
+    process.env.CEREBRO_IDENTITY_PROFILE = "oidc-bearer";
+    process.env.CEREBRO_IDENTITY_JWKS_URL = "https://login.example.com/oauth2/default/v1/keys";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      keys: [{ ...publicJwk, alg: "ES256", kid: "test-ec-key", use: "sig" }],
+    })));
+
+    const user = await resolveCurrentUserFromHeaders(new Headers({
+      authorization: `Bearer ${ecSignedJwtWithPayload({
+        email: "ec.user@example.com",
+        sub: "ec-subject",
+      }, otherPrivateKey)}`,
+    }));
+
+    expect(user).toMatchObject({ actorId: "ec-subject", confidence: "unverified" });
+    expect(user?.warnings).toContain("signature-invalid");
+    expect(user?.evidence?.jwt?.signature).toBe("failed");
+  });
+
+  it("does not match an EC JWKS key against an RSA-signed token", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const { publicKey: ecPublicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const publicJwk = ecPublicKey.export({ format: "jwk" });
+    process.env.CEREBRO_IDENTITY_PROFILE = "oidc-bearer";
+    process.env.CEREBRO_IDENTITY_JWKS_URL = "https://login.example.com/oauth2/default/v1/keys";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      keys: [{ ...publicJwk, kid: "test-key", use: "sig" }],
+    })));
+
+    const user = await resolveCurrentUserFromHeaders(new Headers({
+      authorization: `Bearer ${signedJwtWithPayload({
+        email: "rsa.user@example.com",
+        sub: "rsa-subject",
+      }, privateKey)}`,
+    }));
+
+    expect(user?.warnings).toContain("signature-key-not-found");
+    expect(user?.evidence?.jwt?.signature).toBe("failed");
   });
 
   it("fails closed when bearer verification material is unavailable", async () => {
