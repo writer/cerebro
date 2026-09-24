@@ -4,7 +4,10 @@ import {
   authorizationRoleLabelsForUser,
   effectiveAuthorizationPermissionsForUser,
   hasExplicitCerebroRoleOrScope,
+  authorizationRoleCatalog,
+  parseRoleClaimMappings,
   permissionForCerebroProxyRequest,
+  rolesFromClaimMappings,
 } from "./rbac";
 import type { CurrentUser } from "./identity";
 
@@ -117,5 +120,84 @@ describe("Cerebro proxy route permissions", () => {
     expect(permissionForCerebroProxyRequest("POST", "grc/dashboards/dashboard-1/clone")).toBe("dashboards:write");
     expect(permissionForCerebroProxyRequest("POST", "platform/runtime-response/actions")).toBe("runtime-response:write");
     expect(permissionForCerebroProxyRequest("PUT", "user/preferences")).toBe("preferences:write");
+  });
+});
+
+describe("claim to role mappings", () => {
+  const groupUser = (groups: string[]): CurrentUser => ({
+    actorId: "subject-2",
+    actorLabel: "person@example.com",
+    confidence: "trusted-proxy",
+    displayName: "Person Example",
+    entitlements: { groups },
+    initials: "PE",
+    provider: "alb-oidc",
+    source: "headers",
+    subject: "subject-2",
+  });
+
+  it("grants no roles when nothing is configured", () => {
+    expect(parseRoleClaimMappings(undefined)).toEqual([]);
+    expect(rolesFromClaimMappings(groupUser(["DEPT - SECURITY"]), [])).toEqual([]);
+  });
+
+  it("maps a group claim onto a role and its permissions", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "DEPT - SECURITY": ["cerebro.viewer"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["DEPT - SECURITY"]), mappings)).toEqual(["cerebro.viewer"]);
+  });
+
+  it("matches group values case insensitively", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "dept - security": ["cerebro.analyst"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["DEPT - SECURITY"]), mappings)).toEqual(["cerebro.analyst"]);
+  });
+
+  it("grants nothing for an unmatched group", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "CEREBRO Admins": ["cerebro.admin"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["DEPT - SECURITY"]), mappings)).toEqual([]);
+  });
+
+  it("ignores roles that are not real bundles so a typo grants nothing", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "DEPT - SECURITY": ["cerebro.superuser"] } }),
+    );
+    expect(mappings).toEqual([]);
+  });
+
+  it("returns no mappings for unparseable configuration", () => {
+    expect(parseRoleClaimMappings("{not json")).toEqual([]);
+    expect(parseRoleClaimMappings("[]")).toEqual([]);
+  });
+
+  it("resolves permissions from a mapped group claim", () => {
+    process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS = JSON.stringify({
+      groups: { "DEPT - SECURITY": ["cerebro.viewer"] },
+    });
+    try {
+      expect(effectiveAuthorizationPermissionsForUser(groupUser(["DEPT - SECURITY"]))).toEqual([
+        "identity:read",
+        "agent:ask",
+        "cerebro:read",
+        "preferences:write",
+      ]);
+    } finally {
+      delete process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS;
+    }
+  });
+
+  it("resolves no permissions from a group claim when mappings are absent", () => {
+    expect(effectiveAuthorizationPermissionsForUser(groupUser(["DEPT - SECURITY"]))).toEqual([]);
+  });
+
+  it("gives the admin role every permission including admin:read", () => {
+    const admin = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.admin");
+    expect(admin?.permissions).toContain("admin:read");
+    const viewer = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.viewer");
+    expect(viewer?.permissions).not.toContain("admin:read");
   });
 });

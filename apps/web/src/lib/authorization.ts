@@ -29,6 +29,7 @@ type EntitlementPolicy = {
 };
 
 const permissionEnvPrefix: Record<AuthorizationPermission, string> = {
+  "admin:read": "CEREBRO_AUTHZ_ADMIN",
   "agent:ask": "CEREBRO_AUTHZ_AGENT",
   "cerebro:read": "CEREBRO_AUTHZ_READ",
   "cerebro:write": "CEREBRO_AUTHZ_WRITE",
@@ -57,7 +58,7 @@ const splitEnvList = (value: string | undefined) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const entitlementPolicyFor = (permission: AuthorizationPermission): EntitlementPolicy => {
+export const entitlementPolicyFor = (permission: AuthorizationPermission): EntitlementPolicy => {
   const prefix = permissionEnvPrefix[permission];
   return {
     groups: [

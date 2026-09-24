@@ -198,6 +198,13 @@ const commandOnlyNavLinks: NavigationEntry[] = [
 
 export const utilityLinks: NavigationEntry[] = [
   {
+    label: "Admin",
+    href: "/admin",
+    description: "Access control, roles, claim mappings, integrations, and credential stores.",
+    section: "Advanced",
+    keywords: ["admin", "settings", "access control", "rbac", "roles", "permissions", "claims", "oidc", "groups", "sso", "integrations"],
+  },
+  {
     label: "Developer Tools",
     href: "/developer",
     description: "API status, OpenAPI resources, and developer utilities.",

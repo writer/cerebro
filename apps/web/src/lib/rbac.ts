@@ -2,6 +2,7 @@ import type { CurrentUser } from "@/lib/identity";
 import { normalizeProxyPath } from "@/lib/identity-write-stamp";
 
 export type AuthorizationPermission =
+  | "admin:read"
   | "agent:ask"
   | "cerebro:read"
   | "cerebro:write"
@@ -44,6 +45,7 @@ const permissionOrder: AuthorizationPermission[] = [
   "sources:preview",
   "source-runtimes:write",
   "jobs:write",
+  "admin:read",
 ];
 
 const allPermissions = permissionOrder;
@@ -185,11 +187,91 @@ const orderedPermissions = (values: Iterable<AuthorizationPermission>) => {
 const hasPermissionScope = (scope: string): scope is AuthorizationPermission =>
   directPermissionScopes.has(scope as AuthorizationPermission);
 
+export type RoleClaimSource = "groups" | "roles" | "scopes";
+
+export type RoleClaimMapping = {
+  claim: RoleClaimSource;
+  value: string;
+  roles: string[];
+};
+
+const roleClaimSources: RoleClaimSource[] = ["groups", "roles", "scopes"];
+
+const asRoleList = (value: unknown): string[] => {
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  const roles: string[] = [];
+  for (const entry of raw) {
+    const role = String(entry).trim().toLowerCase();
+    if (role && Object.hasOwn(rolePermissionBundles, role) && !roles.includes(role)) {
+      roles.push(role);
+    }
+  }
+  return roles;
+};
+
+/** Parse claim-to-role mappings; an unparseable value grants nothing rather than everything. */
+export const parseRoleClaimMappings = (raw: string | undefined | null): RoleClaimMapping[] => {
+  const text = (raw ?? "").trim();
+  if (!text) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+
+  const mappings: RoleClaimMapping[] = [];
+  for (const claim of roleClaimSources) {
+    const section = (parsed as Record<string, unknown>)[claim];
+    if (!section || typeof section !== "object" || Array.isArray(section)) continue;
+    for (const [value, roleValue] of Object.entries(section as Record<string, unknown>)) {
+      const normalized = value.trim().toLowerCase();
+      const roles = asRoleList(roleValue);
+      if (!normalized || roles.length === 0) continue;
+      mappings.push({ claim, value: normalized, roles });
+    }
+  }
+  return mappings;
+};
+
+export const roleClaimMappings = (): RoleClaimMapping[] =>
+  parseRoleClaimMappings(process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS);
+
+/** Roles a user earns from mapped claim values, on top of any role claim they already carry. */
+export const rolesFromClaimMappings = (
+  user: CurrentUser | null | undefined,
+  mappings: RoleClaimMapping[] = roleClaimMappings(),
+): string[] => {
+  if (mappings.length === 0) return [];
+  const claimValues: Record<RoleClaimSource, string[]> = {
+    groups: cleanList(user?.entitlements?.groups),
+    roles: cleanList(user?.entitlements?.roles),
+    scopes: cleanList(user?.entitlements?.scopes),
+  };
+  const roles: string[] = [];
+  for (const mapping of mappings) {
+    if (!claimValues[mapping.claim].includes(mapping.value)) continue;
+    for (const role of mapping.roles) {
+      if (!roles.includes(role)) roles.push(role);
+    }
+  }
+  return roles;
+};
+
+export const authorizationPermissionCatalog = (): AuthorizationPermission[] => [...permissionOrder];
+
+export const authorizationRoleCatalog = (): { role: string; permissions: AuthorizationPermission[] }[] =>
+  Array.from(explicitCerebroRoles)
+    .sort()
+    .map((role) => ({ role, permissions: orderedPermissions(rolePermissionBundles[role] ?? []) }));
+
 export const effectiveAuthorizationPermissionsForUser = (
   user: CurrentUser | null | undefined,
 ): AuthorizationPermission[] => {
   const permissions = new Set<AuthorizationPermission>();
-  for (const role of cleanList(user?.entitlements?.roles)) {
+  const mappedRoles = rolesFromClaimMappings(user);
+  for (const role of [...cleanList(user?.entitlements?.roles), ...mappedRoles]) {
     const rolePermissions = Object.hasOwn(rolePermissionBundles, role)
       ? rolePermissionBundles[role]
       : undefined;
