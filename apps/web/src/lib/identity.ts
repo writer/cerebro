@@ -553,10 +553,19 @@ export const clearIdentityJwksCache = () => {
   jwksCache.clear();
 };
 
-const rsaJwtAlgorithms: Record<string, RsaHashedImportParams> = {
-  RS256: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-  RS384: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" },
-  RS512: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-512" },
+type JwtAlgorithmParams = {
+  importParams: RsaHashedImportParams | EcKeyImportParams;
+  keyType: "EC" | "RSA";
+  verifyParams: AlgorithmIdentifier | EcdsaParams;
+};
+
+const jwtAlgorithms: Record<string, JwtAlgorithmParams> = {
+  RS256: { importParams: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, keyType: "RSA", verifyParams: { name: "RSASSA-PKCS1-v1_5" } },
+  RS384: { importParams: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" }, keyType: "RSA", verifyParams: { name: "RSASSA-PKCS1-v1_5" } },
+  RS512: { importParams: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-512" }, keyType: "RSA", verifyParams: { name: "RSASSA-PKCS1-v1_5" } },
+  ES256: { importParams: { name: "ECDSA", namedCurve: "P-256" }, keyType: "EC", verifyParams: { name: "ECDSA", hash: "SHA-256" } },
+  ES384: { importParams: { name: "ECDSA", namedCurve: "P-384" }, keyType: "EC", verifyParams: { name: "ECDSA", hash: "SHA-384" } },
+  ES512: { importParams: { name: "ECDSA", namedCurve: "P-521" }, keyType: "EC", verifyParams: { name: "ECDSA", hash: "SHA-512" } },
 };
 
 const fetchJwks = async (jwksUrl: string) => {
@@ -581,8 +590,8 @@ const verifyJwtSignature = async (token: string, jwksUrl: string): Promise<JwtSi
   if (!parsed) return { verified: false, warning: "token-unparseable" };
   const algorithm = cleanString(parsed.header.alg);
   const keyId = cleanString(parsed.header.kid);
-  const importParams = rsaJwtAlgorithms[algorithm];
-  if (!importParams) {
+  const algorithmParams = jwtAlgorithms[algorithm];
+  if (!algorithmParams) {
     return { algorithm, keyId, verified: false, warning: "signature-algorithm-unsupported" };
   }
   if (!globalThis.crypto?.subtle) {
@@ -592,7 +601,7 @@ const verifyJwtSignature = async (token: string, jwksUrl: string): Promise<JwtSi
   try {
     const keys = await fetchJwks(jwksUrl);
     const candidates = keys.filter((key) =>
-      key.kty === "RSA" &&
+      key.kty === algorithmParams.keyType &&
       (!keyId || key.kid === keyId) &&
       (!key.alg || key.alg === algorithm) &&
       (!key.use || key.use === "sig"),
@@ -607,12 +616,12 @@ const verifyJwtSignature = async (token: string, jwksUrl: string): Promise<JwtSi
       const cryptoKey = await globalThis.crypto.subtle.importKey(
         "jwk",
         key,
-        importParams,
+        algorithmParams.importParams,
         false,
         ["verify"],
       );
       const verified = await globalThis.crypto.subtle.verify(
-        importParams,
+        algorithmParams.verifyParams,
         cryptoKey,
         signature,
         signingInput,
