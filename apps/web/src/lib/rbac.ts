@@ -261,10 +261,34 @@ export const rolesFromClaimMappings = (
 
 export const authorizationPermissionCatalog = (): AuthorizationPermission[] => [...permissionOrder];
 
-export const authorizationRoleCatalog = (): { role: string; permissions: AuthorizationPermission[] }[] =>
+// Mirrors the role table in docs/reference/auth-tenancy.md.
+const roleDescriptions: Record<string, string> = {
+  "cerebro.admin": "Every Cerebro permission, including this admin console.",
+  "cerebro.analyst":
+    "Viewer access plus finding promotion, finding lifecycle writes, GRC inventory and policy writes, and dashboards.",
+  "cerebro.connector_manager":
+    "Viewer access plus connector credential, definition, and connection writes.",
+  "cerebro.finding_manager": "Viewer access plus finding promotion and finding lifecycle writes.",
+  "cerebro.grc_reviewer": "Viewer access plus GRC inventory writes, policy writes, and dashboards.",
+  "cerebro.job_manager": "Viewer access plus platform job writes.",
+  "cerebro.responder":
+    "Viewer access plus runtime response writes: running a response action and revoking a blocklist entry.",
+  "cerebro.source_manager": "Viewer access plus report runs, source previews, and source runtime writes.",
+  "cerebro.viewer": "Read-only Cerebro routes, asking questions, and saving personal preferences.",
+};
+
+export const authorizationRoleCatalog = (): {
+  description: string;
+  permissions: AuthorizationPermission[];
+  role: string;
+}[] =>
   Array.from(explicitCerebroRoles)
     .sort()
-    .map((role) => ({ role, permissions: orderedPermissions(rolePermissionBundles[role] ?? []) }));
+    .map((role) => ({
+      description: roleDescriptions[role] ?? "",
+      permissions: orderedPermissions(rolePermissionBundles[role] ?? []),
+      role,
+    }));
 
 export const effectiveAuthorizationPermissionsForUser = (
   user: CurrentUser | null | undefined,

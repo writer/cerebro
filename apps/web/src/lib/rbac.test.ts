@@ -201,3 +201,17 @@ describe("claim to role mappings", () => {
     expect(viewer?.permissions).not.toContain("admin:read");
   });
 });
+
+describe("role catalog descriptions", () => {
+  it("describes every role so an opaque name is explained in the console", () => {
+    const undescribed = authorizationRoleCatalog().filter((entry) => !entry.description.trim());
+    expect(undescribed.map((entry) => entry.role)).toEqual([]);
+  });
+
+  it("says what the responder role actually does", () => {
+    const responder = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.responder");
+    expect(responder?.description).toContain("runtime response");
+    expect(responder?.permissions).toContain("runtime-response:write");
+    expect(responder?.permissions).not.toContain("findings:write");
+  });
+});

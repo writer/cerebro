@@ -15,7 +15,7 @@ type PermissionRow = {
   granted: boolean;
 };
 
-type RoleRow = { role: string; permissions: string[] };
+type RoleRow = { description: string; permissions: string[]; role: string };
 
 type ClaimMappingRow = { claim: string; value: string; roles: string[] };
 
@@ -198,8 +198,14 @@ export default function AdminPage() {
           <Panel title="Roles">
             <div className="space-y-3">
               {data.roles.map((role) => (
-                <div key={role.role} className="flex flex-wrap items-baseline gap-2">
-                  <span className="min-w-[190px] text-[13px] font-medium text-[var(--text-primary)]">{role.role}</span>
+                <div
+                  key={role.role}
+                  className="space-y-1.5 border-b border-[color:var(--border)] pb-3 last:border-0 last:pb-0"
+                >
+                  <div className="text-[13px] font-medium text-[var(--text-primary)]">{role.role}</div>
+                  {role.description && (
+                    <p className="text-[12px] leading-5 text-[var(--text-muted)]">{role.description}</p>
+                  )}
                   <span className="flex flex-wrap gap-1.5">
                     {role.permissions.map((permission) => (
                       <Badge key={permission} value={permission} />
