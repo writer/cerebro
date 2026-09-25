@@ -17,7 +17,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["dashboard", "overview", "metrics", "home"],
   },
   {
-    label: "Work",
+    label: "Risks",
     href: "/risk-inbox",
     description: "Prioritized findings and control work by owner, due date, and evidence state.",
     section: "Operator",
@@ -196,7 +196,25 @@ const commandOnlyNavLinks: NavigationEntry[] = [
   },
 ];
 
+export const adminNavLinks: NavigationEntry[] = [
+  {
+    label: "Access control",
+    href: "/admin/access-control",
+    description: "Sign-in verification, roles, claim mappings, and the permissions each console action requires.",
+    section: "Advanced",
+    keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization", "authentication", "identity", "oidc", "sso", "jwks", "issuer", "login"],
+  },
+];
+
 export const utilityLinks: NavigationEntry[] = [
+  {
+    label: "Admin",
+    href: "/admin",
+    description: "Access control, sign-in posture, integrations, and credential stores.",
+    section: "Advanced",
+    keywords: ["admin", "settings", "access control", "rbac", "roles", "permissions", "claims", "oidc", "groups", "sso", "integrations"],
+  },
+  ...adminNavLinks,
   {
     label: "Developer Tools",
     href: "/developer",

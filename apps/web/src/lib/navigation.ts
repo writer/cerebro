@@ -1,5 +1,5 @@
 export type { NavigationEntry } from "@/lib/routes";
-export { navigationEntries, operatorNavLinks, utilityLinks } from "@/lib/routes";
+export { adminNavLinks, navigationEntries, operatorNavLinks, utilityLinks } from "@/lib/routes";
 
 const legacyControlHref = /^\/grc\/controls(?=[?#]|$)/;
 
