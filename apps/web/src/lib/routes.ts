@@ -200,16 +200,9 @@ export const adminNavLinks: NavigationEntry[] = [
   {
     label: "Access control",
     href: "/admin/access-control",
-    description: "Roles, claim mappings, and the permissions each console action requires.",
+    description: "Sign-in verification, roles, claim mappings, and the permissions each console action requires.",
     section: "Advanced",
-    keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization"],
-  },
-  {
-    label: "Sign-in",
-    href: "/admin/identity",
-    description: "Identity provider wiring, trusted headers, and signature verification posture.",
-    section: "Advanced",
-    keywords: ["identity", "oidc", "sso", "okta", "jwks", "issuer", "audience", "headers", "login"],
+    keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization", "authentication", "identity", "oidc", "sso", "jwks", "issuer", "login"],
   },
 ];
 

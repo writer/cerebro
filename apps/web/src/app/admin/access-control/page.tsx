@@ -35,6 +35,51 @@ type AccessControl = {
   };
 };
 
+type IdentityHealth = {
+  config: {
+    audienceConfigured: boolean;
+    fallbackEnabled: boolean;
+    issuerConfigured: boolean;
+    jwksConfigured: boolean;
+    profile: string;
+    required: boolean;
+    trustedHeaders: string[];
+  };
+  current: { source: string };
+  issues: string[];
+  status: "ready" | "degraded" | "blocked";
+};
+
+// Phrased as requirements so "met" and "missing" read the same way down the
+// column, and each says what is accepted while it is unmet.
+const requirementRows = (config: IdentityHealth["config"]) => [
+  {
+    detail: "A request carrying no recognised identity is still served.",
+    label: "Identity required",
+    met: config.required,
+  },
+  {
+    detail: "An unauthenticated request becomes a local developer account.",
+    label: "Local fallback disabled",
+    met: !config.fallbackEnabled,
+  },
+  {
+    detail: "Token signatures are accepted without being checked.",
+    label: "JWKS configured",
+    met: config.jwksConfigured,
+  },
+  {
+    detail: "A token from any issuer is accepted.",
+    label: "Issuer pinned",
+    met: config.issuerConfigured,
+  },
+  {
+    detail: "A token minted for another audience is accepted.",
+    label: "Audience pinned",
+    met: config.audienceConfigured,
+  },
+];
+
 function ClaimList({ label, values }: { label: string; values: string[] | undefined }) {
   return (
     <div className="flex flex-wrap items-baseline gap-2">
@@ -64,12 +109,30 @@ export default function AdminAccessControlPage() {
     queryKey: ["admin-access-control"],
   });
 
+  // Separate endpoint and separate permission, so a viewer who may read
+  // authorization but not identity still gets the rest of the page.
+  const identityQuery = useQuery<IdentityHealth, Error>({
+    queryFn: async ({ signal }) => {
+      const response = await fetch("/api/identity/health", { cache: "no-store", signal });
+      if (!response.ok) {
+        throw new Error(
+          response.status === 403
+            ? "You do not have the identity:read permission."
+            : `Sign-in posture is unavailable (HTTP ${response.status}).`,
+        );
+      }
+      return (await response.json()) as IdentityHealth;
+    },
+    queryKey: ["admin-identity-health"],
+  });
+
   const data = query.data ?? null;
   const loading = query.isPending;
   const error = query.error?.message ?? "";
   const load = () => {
     void query.refetch();
   };
+  const identity = identityQuery.data ?? null;
 
   const restrictedCount = data?.permissions.filter((row) => row.restricted).length ?? 0;
   const grantedCount = data?.viewer.permissions.length ?? 0;
@@ -78,8 +141,46 @@ export default function AdminAccessControlPage() {
     <div className="space-y-6">
       <PageHeader
         title="Access control"
-        description="Which roles exist, how identity claims map onto them, and what each console action requires."
+        description="How Cerebro establishes who you are, how much of that claim it has verified, and what that identity is allowed to do."
       />
+
+      <Panel title="Sign-in">
+        {identityQuery.isPending && <LoadingBlock label="Loading sign-in posture..." />}
+        {identityQuery.error && (
+          <ErrorBlock error={identityQuery.error.message} onRetry={() => void identityQuery.refetch()} />
+        )}
+        {identity && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-[12px] text-[var(--text-muted)]">
+              <span>
+                status <Badge value={identity.status} />
+              </span>
+              <span>
+                profile <span className="text-[var(--text-primary)]">{identity.config.profile}</span>
+              </span>
+              <span>
+                source <span className="text-[var(--text-primary)]">{identity.current.source}</span>
+              </span>
+              <span>
+                trusted headers{" "}
+                <span className="text-[var(--text-primary)]">
+                  {identity.config.trustedHeaders.length > 0 ? identity.config.trustedHeaders.join(", ") : "none"}
+                </span>
+              </span>
+            </div>
+            {requirementRows(identity.config).map((row) => (
+              <div
+                key={row.label}
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-[color:var(--border)] pb-3 last:border-0 last:pb-0"
+              >
+                <span className="min-w-[170px] text-[13px] font-medium text-[var(--text-primary)]">{row.label}</span>
+                <Badge value={row.met ? "ok" : "missing"} />
+                {!row.met && <span className="text-[12px] leading-5 text-[var(--text-muted)]">{row.detail}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
 
       {loading && <LoadingBlock label="Loading access control..." />}
       {!loading && error && <ErrorBlock error={error} onRetry={load} />}

@@ -5,16 +5,22 @@ import { PageHeader, Panel } from "@/components/grc/Primitives";
 
 const adminSections = [
   {
-    description: "Roles, claim mappings, and the permissions each console action requires.",
+    description: "Sign-in verification, roles, claim mappings, and what each console action requires.",
     href: "/admin/access-control",
     icon: ShieldCheck,
     label: "Access control",
   },
   {
-    description: "Identity provider wiring, trusted headers, and signature verification posture.",
-    href: "/admin/identity",
+    description: "Organizations, users, and login history discovered by ingestion.",
+    href: "/identity",
     icon: UserCog,
-    label: "Sign-in",
+    label: "Members",
+  },
+  {
+    description: "Credential store defaults and accepted reference formats.",
+    href: "/credential-stores",
+    icon: KeyRound,
+    label: "Credential stores",
   },
 ];
 
@@ -24,18 +30,6 @@ const relatedSections = [
     href: "/connectors",
     icon: Plug,
     label: "Integrations",
-  },
-  {
-    description: "Credential store defaults and accepted reference formats.",
-    href: "/credential-stores",
-    icon: KeyRound,
-    label: "Credential stores",
-  },
-  {
-    description: "Organizations, users, and login history discovered by ingestion.",
-    href: "/identity",
-    icon: UserCog,
-    label: "Members",
   },
 ];
 
