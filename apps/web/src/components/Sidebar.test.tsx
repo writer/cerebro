@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { operatorNavLinks } from "@/lib/navigation";
 
-import { hasSidebarIcon, isSidebarLinkActive, sidebarNavGroups, sidebarNavLinks, sidebarPrimaryLinks, sidebarSupportLinks } from "./Sidebar";
+import { hasSidebarIcon, isSidebarLinkActive, sidebarNavGroups, sidebarNavLinks, sidebarPrimaryLinks, sidebarSupportLinks, sidebarUtilityGroups, sidebarUtilityLinks } from "./Sidebar";
 
 const links = [
   { href: "/trends" },
@@ -82,5 +82,30 @@ describe("isSidebarLinkActive", () => {
     expect(operatorHrefs).toContain("/trends/dashboards");
     expect(sidebarHrefs).not.toContain("/trends");
     expect(sidebarHrefs).not.toContain("/trends/dashboards");
+  });
+});
+
+describe("admin sub-tree", () => {
+  const adminGroup = sidebarUtilityGroups.find((group) => group.id === "admin");
+
+  it("expands admin into its own pages instead of a single flat link", () => {
+    expect(adminGroup?.href).toBe("/admin");
+    expect(adminGroup?.links.map((link) => link.href)).toEqual([
+      "/admin/access-control",
+      "/admin/identity",
+    ]);
+  });
+
+  it("does not render a grouped page twice in the utility list", () => {
+    const utilityHrefs = sidebarUtilityLinks.map((link) => link.href);
+    expect(utilityHrefs).not.toContain("/admin");
+    expect(utilityHrefs).not.toContain("/admin/access-control");
+    expect(utilityHrefs).toContain("/developer");
+  });
+
+  it("keeps the parent inactive when a child page owns the route", () => {
+    expect(isSidebarLinkActive("/admin/access-control", "/admin")).toBe(false);
+    expect(isSidebarLinkActive("/admin/access-control", "/admin/access-control")).toBe(true);
+    expect(isSidebarLinkActive("/admin", "/admin")).toBe(true);
   });
 });
