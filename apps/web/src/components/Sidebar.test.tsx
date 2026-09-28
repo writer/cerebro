@@ -42,6 +42,7 @@ describe("isSidebarLinkActive", () => {
     expect(hrefs).toEqual([
       "/actions",
       "/inventory",
+      "/identity",
       "/impact",
       "/explore",
       "/ask",
@@ -87,13 +88,20 @@ describe("isSidebarLinkActive", () => {
 describe("admin sub-tree", () => {
   const adminGroup = sidebarUtilityGroups.find((group) => group.id === "admin");
 
-  it("expands admin into the pages an administrator manages", () => {
+  it("expands admin into the settings an administrator changes", () => {
     expect(adminGroup?.href).toBe("/admin");
     expect(adminGroup?.links.map((link) => link.href)).toEqual([
       "/admin/access-control",
-      "/identity",
       "/credential-stores",
+      "/developer/audit-log",
     ]);
+  });
+
+  it("keeps ingested directory data out of admin settings", () => {
+    const advanced = sidebarNavGroups.find((group) => group.id === "advanced");
+
+    expect(adminGroup?.links.map((link) => link.href)).not.toContain("/identity");
+    expect(advanced?.links.map((link) => link.href)).toContain("/identity");
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {

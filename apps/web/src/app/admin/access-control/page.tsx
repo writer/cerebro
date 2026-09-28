@@ -221,6 +221,10 @@ export default function AdminAccessControlPage() {
           </Panel>
 
           <Panel title="Claim to role mappings">
+            <p className="mb-3 text-[12px] leading-5 text-[var(--text-muted)]">
+              Access is granted to claims, never to individual people. A group named here gives every member of that
+              group the listed roles, so you add and remove access in your identity provider rather than in Cerebro.
+            </p>
             {data.roleClaimMappings.length === 0 ? (
               <EmptyBlock label="No claim mappings are configured, so identity claims grant no roles." />
             ) : (

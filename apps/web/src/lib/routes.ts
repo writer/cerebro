@@ -204,13 +204,20 @@ export const adminNavLinks: NavigationEntry[] = [
     section: "Advanced",
     keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization", "authentication", "identity", "oidc", "sso", "jwks", "issuer", "login"],
   },
+  {
+    label: "Audit events",
+    href: "/developer/audit-log",
+    description: "What changed in this console, who changed it, and when.",
+    section: "Advanced",
+    keywords: ["audit", "log", "history", "who", "changed", "events", "trail"],
+  },
 ];
 
 export const utilityLinks: NavigationEntry[] = [
   {
     label: "Admin",
     href: "/admin",
-    description: "Access control, sign-in posture, integrations, and credential stores.",
+    description: "Who may sign in and what they may do, where connector secrets live, and what changed.",
     section: "Advanced",
     keywords: ["admin", "settings", "access control", "rbac", "roles", "permissions", "claims", "oidc", "groups", "sso", "integrations"],
   },
