@@ -74,14 +74,16 @@ export const sidebarSupportLinks: NavigationEntry[] = [];
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
   {
+    href: "/grc",
     id: "compliance",
     label: "Compliance",
     iconHref: "/controls",
     links: linksFor(["/controls", "/evidence", "/questionnaires"]),
   },
   {
-    id: "advanced",
-    label: "Advanced",
+    href: "/explore",
+    id: "investigate",
+    label: "Investigate",
     iconHref: "/explore",
     links: [
       ...linksFor(["/actions", "/inventory"]),
@@ -99,7 +101,7 @@ export const sidebarUtilityGroups: SidebarNavGroup[] = [
     id: "admin",
     iconHref: "/admin",
     label: "Admin",
-    links: navEntriesFor(["/admin/access-control", "/credential-stores", "/developer/audit-log"]),
+    links: navEntriesFor(["/admin/access-control", "/credential-stores", "/developer/audit-log", "/developer"]),
   },
 ];
 

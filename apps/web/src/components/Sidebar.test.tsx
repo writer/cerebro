@@ -33,12 +33,12 @@ describe("isSidebarLinkActive", () => {
     expect(missingIcons).toEqual([]);
   });
 
-  it("keeps platform machinery behind Advanced", () => {
-    const advancedGroup = sidebarNavGroups.find((group) => group.id === "advanced");
-    const hrefs = advancedGroup?.links.map((link) => link.href);
+  it("keeps platform machinery behind Investigate", () => {
+    const investigateGroup = sidebarNavGroups.find((group) => group.id === "investigate");
+    const hrefs = investigateGroup?.links.map((link) => link.href);
 
-    expect(advancedGroup?.label).toBe("Advanced");
-    expect(advancedGroup?.href).toBeUndefined();
+    expect(investigateGroup?.label).toBe("Investigate");
+    expect(investigateGroup?.href).toBe("/explore");
     expect(hrefs).toEqual([
       "/actions",
       "/inventory",
@@ -94,14 +94,15 @@ describe("admin sub-tree", () => {
       "/admin/access-control",
       "/credential-stores",
       "/developer/audit-log",
+      "/developer",
     ]);
   });
 
   it("keeps ingested directory data out of admin settings", () => {
-    const advanced = sidebarNavGroups.find((group) => group.id === "advanced");
+    const investigate = sidebarNavGroups.find((group) => group.id === "investigate");
 
     expect(adminGroup?.links.map((link) => link.href)).not.toContain("/identity");
-    expect(advanced?.links.map((link) => link.href)).toContain("/identity");
+    expect(investigate?.links.map((link) => link.href)).toContain("/identity");
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {
@@ -110,16 +111,16 @@ describe("admin sub-tree", () => {
     expect(adminGroup?.links).toContain(duplicated[0]);
   });
 
-  it("keeps credential stores out of Advanced now that Admin owns it", () => {
-    const advanced = sidebarNavGroups.find((group) => group.id === "advanced");
-    expect(advanced?.links.map((link) => link.href)).not.toContain("/credential-stores");
+  it("keeps credential stores out of Investigate now that Admin owns it", () => {
+    const investigate = sidebarNavGroups.find((group) => group.id === "investigate");
+    expect(investigate?.links.map((link) => link.href)).not.toContain("/credential-stores");
   });
 
   it("does not render a grouped page twice in the utility list", () => {
     const utilityHrefs = sidebarUtilityLinks.map((link) => link.href);
     expect(utilityHrefs).not.toContain("/admin");
     expect(utilityHrefs).not.toContain("/admin/access-control");
-    expect(utilityHrefs).toContain("/developer");
+    expect(utilityHrefs).not.toContain("/developer");
   });
 
   it("keeps the parent inactive when a child page owns the route", () => {
