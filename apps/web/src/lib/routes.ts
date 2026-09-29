@@ -17,7 +17,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["dashboard", "overview", "metrics", "home"],
   },
   {
-    label: "Work",
+    label: "Risks",
     href: "/risk-inbox",
     description: "Prioritized findings and control work by owner, due date, and evidence state.",
     section: "Operator",
@@ -196,7 +196,32 @@ const commandOnlyNavLinks: NavigationEntry[] = [
   },
 ];
 
+export const adminNavLinks: NavigationEntry[] = [
+  {
+    label: "Access control",
+    href: "/admin/access-control",
+    description: "Sign-in verification, roles, claim mappings, and the permissions each console action requires.",
+    section: "Advanced",
+    keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization", "authentication", "identity", "oidc", "sso", "jwks", "issuer", "login"],
+  },
+  {
+    label: "Audit events",
+    href: "/developer/audit-log",
+    description: "What changed in this console, who changed it, and when.",
+    section: "Advanced",
+    keywords: ["audit", "log", "history", "who", "changed", "events", "trail"],
+  },
+];
+
 export const utilityLinks: NavigationEntry[] = [
+  {
+    label: "Admin",
+    href: "/admin",
+    description: "Who may sign in and what they may do, where connector secrets live, and what changed.",
+    section: "Advanced",
+    keywords: ["admin", "settings", "access control", "rbac", "roles", "permissions", "claims", "oidc", "groups", "sso", "integrations"],
+  },
+  ...adminNavLinks,
   {
     label: "Developer Tools",
     href: "/developer",

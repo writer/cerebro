@@ -31,9 +31,11 @@ describe("navigation entries", () => {
     expect(hrefs).toContain("/credential-stores");
   });
 
-  it("uses operator labels for work, actions, and compliance", () => {
+  it("uses operator labels for risks, actions, and compliance", () => {
+    // The sidebar label has to match the page heading and the pinned
+    // information area, which are both "Risks".
     expect(operatorNavLinks.find((entry) => entry.href === "/risk-inbox")).toMatchObject({
-      label: "Work",
+      label: "Risks",
     });
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",
