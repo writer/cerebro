@@ -66,3 +66,6 @@ infra/aws/__pycache__/*
 sdk/python/cerebro_sdk/__pycache__/*
 **/__pycache__/*
 coverage.out
+
+# Session memory (local only)
+CONTEXT.md
