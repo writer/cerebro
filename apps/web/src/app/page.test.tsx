@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GRCDashboard, GRCProgramReadiness } from "@/lib/grc";
+import type { GRCDashboard } from "@/lib/grc";
 import { defaultUserPreferences } from "@/lib/user-preferences";
 
 const mocks = vi.hoisted(() => ({
@@ -27,15 +27,49 @@ vi.mock("@/lib/grc-scope", async (importOriginal) => {
   return { ...actual, useGRCScopeQueryState: mocks.useGRCScopeQueryState };
 });
 
-import { grcDashboardPath, grcPath, grcProgramReadinessPath } from "@/lib/grc-client";
+import { grcDashboardPath, grcPath } from "@/lib/grc-client";
 
-import Home, { buildHomeQueue, ReviewNowPanel } from "./page";
+import Home from "./page";
+
+const coveragePath = (scope: Record<string, string> = {}) =>
+  grcPath("/connectors/coverage", {
+    coverage_scope: "configured",
+    coverage_view: "page",
+    blind_spots_only: "true",
+    page_size: 3,
+    ...scope,
+  });
+const inventoryPath = (scope: Record<string, string> = {}) =>
+  grcPath("/grc/inventory/assets", { surface: "asset", page_size: 1, ...scope });
+const trendsPath = (scope: Record<string, string> = {}) =>
+  grcPath("/grc/trends", { interval: "day", days: 30, ...scope });
+
+const dashboardSummary = {
+  open_findings: 4,
+  critical_findings: 1,
+  high_findings: 2,
+  overdue_findings: 1,
+  unassigned: 1,
+  controls_failing: 0,
+  evidence_items: 0,
+  connectors: 6,
+  stale_connectors: 2,
+};
+
+const dashboardFixture = {
+  summary: dashboardSummary,
+  findings: [],
+  controls: [],
+  evidence: [],
+  connectors: [],
+  generated_at: "2026-08-25T00:00:00Z",
+} as GRCDashboard;
 
 const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
 };
 
-describe("Home review links", () => {
+describe("Security overview", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -68,33 +102,6 @@ describe("Home review links", () => {
     container.remove();
   });
 
-  it("renders a legacy control work item at the current controls route", async () => {
-    const items = buildHomeQueue({
-      connectors: [],
-      controls: [],
-      coverageBlindSpots: [],
-      findings: [],
-      readinessData: {
-        work_items: [{
-          id: "soc2-cc6.6",
-          kind: "control",
-          status: "failing",
-          title: "SOC 2 CC6.6",
-          href: "/grc/controls?framework=SOC%202&control=CC6.6",
-        }],
-      } as GRCProgramReadiness,
-    });
-
-    expect(items[0]?.href).toBe("/controls?framework=SOC%202&control=CC6.6");
-
-    await act(async () => {
-      root.render(<ReviewNowPanel items={items} />);
-    });
-
-    const links = [...container.querySelectorAll<HTMLAnchorElement>("a")];
-    expect(links.map((link) => link.getAttribute("href"))).toContain("/controls?framework=SOC%202&control=CC6.6");
-  });
-
   it("starts all independent Home queries on the initial render", async () => {
     await act(async () => {
       root.render(<Home />);
@@ -102,14 +109,9 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred" }),
-      grcProgramReadinessPath({ enrichments: "deferred" }),
-      grcPath("/connectors/coverage", {
-        coverage_scope: "configured",
-        coverage_view: "page",
-        blind_spots_only: "true",
-        page_size: 3,
-      }),
-      grcPath("/grc/trends", { interval: "day", days: 30 }),
+      coveragePath(),
+      inventoryPath(),
+      trendsPath(),
     ]);
   });
 
@@ -127,15 +129,9 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a" }),
-      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a" }),
-      grcPath("/connectors/coverage", {
-        coverage_scope: "configured",
-        coverage_view: "page",
-        blind_spots_only: "true",
-        page_size: 3,
-        tenant_id: "tenant-a",
-      }),
-      grcPath("/grc/trends", { interval: "day", days: 30, tenant_id: "tenant-a" }),
+      coveragePath({ tenant_id: "tenant-a" }),
+      inventoryPath({ tenant_id: "tenant-a" }),
+      trendsPath({ tenant_id: "tenant-a" }),
     ]);
   });
 
@@ -150,18 +146,12 @@ describe("Home review links", () => {
       root.render(<Home />);
     });
 
+    const scopeA = { tenant_id: "tenant-a", workspace_id: "workspace-a" };
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
-      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
-      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
-      grcPath("/connectors/coverage", {
-        coverage_scope: "configured",
-        coverage_view: "page",
-        blind_spots_only: "true",
-        page_size: 3,
-        tenant_id: "tenant-a",
-        workspace_id: "workspace-a",
-      }),
-      grcPath("/grc/trends", { interval: "day", days: 30, tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcDashboardPath({ limit: 12, enrichments: "deferred", ...scopeA }),
+      coveragePath(scopeA),
+      inventoryPath(scopeA),
+      trendsPath(scopeA),
     ]);
 
     mocks.useGRCQuery.mockClear();
@@ -175,18 +165,12 @@ describe("Home review links", () => {
       root.render(<Home />);
     });
 
+    const scopeB = { tenant_id: "tenant-a", workspace_id: "workspace-b" };
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
-      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-b" }),
-      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-b" }),
-      grcPath("/connectors/coverage", {
-        coverage_scope: "configured",
-        coverage_view: "page",
-        blind_spots_only: "true",
-        page_size: 3,
-        tenant_id: "tenant-a",
-        workspace_id: "workspace-b",
-      }),
-      grcPath("/grc/trends", { interval: "day", days: 30, tenant_id: "tenant-a", workspace_id: "workspace-b" }),
+      grcDashboardPath({ limit: 12, enrichments: "deferred", ...scopeB }),
+      coveragePath(scopeB),
+      inventoryPath(scopeB),
+      trendsPath(scopeB),
     ]);
   });
 
@@ -217,7 +201,7 @@ describe("Home review links", () => {
       expect(path).toContain("workspace_id=workspace-b");
     }
     expect(container.textContent).toContain("Graph data access unavailable");
-    expect(container.textContent).not.toContain("Fix first");
+    expect(container.textContent).not.toContain("Asset Coverage");
   });
 
   it("does not issue Home reads for a workspace without an explicit tenant", async () => {
@@ -236,31 +220,13 @@ describe("Home review links", () => {
     expect(container.textContent).toContain("Select a tenant before loading a workspace.");
   });
 
-  it("renders dashboard work while both secondary queries are still pending", async () => {
+  it("renders dashboard counts while the secondary queries are still pending", async () => {
     const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
-    const dashboardData = {
-      summary: {
-        open_findings: 0,
-        critical_findings: 0,
-        high_findings: 0,
-        overdue_findings: 0,
-        unassigned: 0,
-        controls_failing: 0,
-        evidence_items: 0,
-        connectors: 0,
-        stale_connectors: 0,
-      },
-      findings: [],
-      controls: [],
-      evidence: [],
-      connectors: [],
-      generated_at: "2026-08-25T00:00:00Z",
-    } as GRCDashboard;
     mocks.useGRCQuery.mockImplementation((path: string | null) => ({
-      data: path === dashboardPath ? dashboardData : null,
+      data: path === dashboardPath ? dashboardFixture : null,
       durationMs: null,
       error: null,
-      lastSuccessfulAt: path === dashboardPath ? Date.parse(dashboardData.generated_at) : null,
+      lastSuccessfulAt: path === dashboardPath ? Date.parse(dashboardFixture.generated_at) : null,
       loading: path !== dashboardPath,
       reload: mocks.reload,
       state: path === dashboardPath ? "ready" : "loading",
@@ -270,32 +236,14 @@ describe("Home review links", () => {
       root.render(<Home />);
     });
 
-    expect(container.textContent).toContain("Fix first");
+    expect(container.textContent).toContain("Open Findings");
     expect(container.textContent).toContain("Loading source coverage.");
+    expect(container.textContent).toContain("Loading asset inventory.");
   });
 
   it("summarises opened against closed work for the trend window", async () => {
     const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
-    const trendsPath = grcPath("/grc/trends", { interval: "day", days: 30 });
-    const dashboardData = {
-      summary: {
-        open_findings: 4,
-        critical_findings: 1,
-        high_findings: 2,
-        overdue_findings: 1,
-        unassigned: 1,
-        controls_failing: 0,
-        evidence_items: 0,
-        connectors: 3,
-        stale_connectors: 0,
-      },
-      findings: [],
-      controls: [],
-      evidence: [],
-      connectors: [],
-      generated_at: "2026-08-25T00:00:00Z",
-    } as GRCDashboard;
-    const trendsData = {
+    const trends = {
       interval: "day",
       start: "2026-07-26",
       end: "2026-08-25",
@@ -307,7 +255,7 @@ describe("Home review links", () => {
       generated_at: "2026-08-25T00:00:00Z",
     };
     mocks.useGRCQuery.mockImplementation((path: string | null) => ({
-      data: path === dashboardPath ? dashboardData : path === trendsPath ? trendsData : null,
+      data: path === dashboardPath ? dashboardFixture : path === trendsPath() ? trends : null,
       durationMs: null,
       error: null,
       lastSuccessfulAt: null,
@@ -320,48 +268,63 @@ describe("Home review links", () => {
       root.render(<Home />);
     });
 
-    expect(container.textContent).toContain("What changed");
+    expect(container.textContent).toContain("What Changed");
     const trendLink = [...container.querySelectorAll<HTMLAnchorElement>("a")]
-      .find((link) => link.getAttribute("href") === "/trends" && link.textContent?.includes("Net 30 days"));
-    expect(trendLink?.textContent).toContain("+4");
-    expect(trendLink?.textContent).toContain("Backlog grew");
+      .find((link) => link.getAttribute("href") === "/trends");
+    expect(trendLink?.textContent).toContain("Open Trends");
+    expect(container.textContent).toContain("+4");
   });
 
-  it("reports source trust from dashboard and readiness coverage", async () => {
+  it("reports asset inventory coverage from the inventory summary", async () => {
     const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
-    const dashboardData = {
+    const inventory = {
+      assets: [],
       summary: {
-        open_findings: 0,
-        critical_findings: 0,
-        high_findings: 0,
-        overdue_findings: 0,
-        unassigned: 0,
-        controls_failing: 0,
-        evidence_items: 0,
-        connectors: 6,
-        stale_connectors: 2,
+        total_assets: 120,
+        in_scope_assets: 110,
+        out_of_scope_assets: 10,
+        high_risk_assets: 7,
+        unassigned_assets: 24,
+        needs_review_assets: 5,
+        accountable_assets: 96,
+        owner_required_assets: 24,
+        org_groups: 9,
+        public_assets: 3,
+        scoped_coverage_pct: 92,
+        assigned_coverage_pct: 80,
       },
-      findings: [],
-      controls: [],
-      evidence: [],
-      connectors: [],
       generated_at: "2026-08-25T00:00:00Z",
-    } as GRCDashboard;
-    const readinessData = {
-      summary: {
-        controls: 36,
-        passing_controls: 0,
-        missing_evidence_items: 32,
-        stale_evidence_items: 2,
-        coverage_blind_spots: 4,
-      },
-      frameworks: [],
-      controls: [],
-      work_items: [],
-      connectors: [],
     };
     mocks.useGRCQuery.mockImplementation((path: string | null) => ({
-      data: path === dashboardPath ? dashboardData : path === grcProgramReadinessPath({ enrichments: "deferred" }) ? readinessData : null,
+      data: path === dashboardPath ? dashboardFixture : path === inventoryPath() ? inventory : null,
+      durationMs: null,
+      error: null,
+      lastSuccessfulAt: null,
+      loading: false,
+      reload: mocks.reload,
+      state: path ? "ready" : "empty",
+    }));
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    const inventoryLinks = [...container.querySelectorAll<HTMLAnchorElement>("a")]
+      .filter((link) => link.getAttribute("href") === "/inventory")
+      .map((link) => link.textContent ?? "");
+
+    expect(inventoryLinks.find((text) => text.includes("Assets Tracked"))).toContain("120");
+    const ownerCoverage = inventoryLinks.find((text) => text.includes("Owner Coverage"));
+    expect(ownerCoverage).toContain("80%");
+    expect(ownerCoverage).toContain("24 assets unowned");
+    expect(inventoryLinks.find((text) => text.includes("Unowned Assets"))).toContain("96 of 120");
+    expect(inventoryLinks.find((text) => text.includes("Publicly Reachable"))).toContain("3");
+  });
+
+  it("reports source trust from the dashboard summary", async () => {
+    const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
+    mocks.useGRCQuery.mockImplementation((path: string | null) => ({
+      data: path === dashboardPath ? dashboardFixture : null,
       durationMs: null,
       error: null,
       lastSuccessfulAt: null,
@@ -377,13 +340,10 @@ describe("Home review links", () => {
     const sourceLinks = [...container.querySelectorAll<HTMLAnchorElement>("a")]
       .filter((link) => link.getAttribute("href") === "/connectors")
       .map((link) => link.textContent ?? "");
-    const reporting = sourceLinks.find((text) => text.includes("Sources reporting"));
-    expect(reporting).toContain("4/6");
-    expect(reporting).toContain("2 stale sources");
-    const gaps = sourceLinks.find((text) => text.includes("Collection gaps"));
-    expect(gaps).toContain("4");
-    // Compliance readiness still loads, but Home must not surface it.
-    expect(container.textContent).not.toContain("32 missing, 2 stale");
+    expect(sourceLinks.find((text) => text.includes("Sources Reporting"))).toContain("4/6");
+    expect(sourceLinks.find((text) => text.includes("Sources Connected"))).toContain("2 stale sources");
+    // Compliance reporting is owned elsewhere; Home must not grow it back.
     expect(container.textContent).not.toContain("Export audit packet");
+    expect(container.textContent).not.toContain("SOC 2");
   });
 });

@@ -1,13 +1,13 @@
 export const HOME_SECTION_IDS = [
-  "reviewNow",
-  "programHealth",
+  "assetCoverage",
+  "signalCoverage",
 ] as const;
 
 export type HomeSectionID = typeof HOME_SECTION_IDS[number];
 
 export const HOME_SECTION_LABELS: Record<HomeSectionID, string> = {
-  reviewNow: "Fix first",
-  programHealth: "Signal coverage",
+  assetCoverage: "Asset Coverage",
+  signalCoverage: "Signal Coverage",
 };
 
 export type DisplayDensity = "comfortable" | "compact";
