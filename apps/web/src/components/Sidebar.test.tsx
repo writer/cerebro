@@ -48,6 +48,16 @@ describe("isSidebarLinkActive", () => {
     ]);
   });
 
+  it("gives detection content a home of its own", () => {
+    const detections = sidebarNavGroups.find((group) => group.id === "detections");
+
+    expect(detections?.label).toBe("Detections");
+    expect(detections?.links.map((link) => link.href)).toEqual([
+      "/detections/rules",
+      "/developer/risk-scoring",
+    ]);
+  });
+
   it("gathers every governance record under Compliance", () => {
     const complianceGroup = sidebarNavGroups.find((group) => group.id === "compliance");
 

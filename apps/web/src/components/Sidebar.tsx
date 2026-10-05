@@ -21,6 +21,8 @@ const icons: Record<string, ReactNode> = {
   "/evidence": <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />,
   "/questionnaires": <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 3h6m-8.25 6h10.5A2.25 2.25 0 0 0 19.5 18.75V5.25A2.25 2.25 0 0 0 17.25 3H6.75A2.25 2.25 0 0 0 4.5 5.25v13.5A2.25 2.25 0 0 0 6.75 21ZM8.25 7.5h.008v.008H8.25V7.5Zm2.25 0h5.25" />,
   "/inventory": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5M7.5 3v18m9-18v18" />,
+  "/detections/rules": <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />,
+  "/developer/risk-scoring": <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />,
   "/vendors": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21V8.25A2.25 2.25 0 0 1 6 6h4.5a2.25 2.25 0 0 1 2.25 2.25V21m-9 0h9m-9 0H2.25m10.5 0h9m-9 0V5.25A2.25 2.25 0 0 1 15 3h3a2.25 2.25 0 0 1 2.25 2.25V21m-12-10.5h1.5m-1.5 3h1.5m4.5-4.5h1.5m-1.5 3h1.5m-1.5 3h1.5" />,
   "/impact": <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V6A2.25 2.25 0 0 0 18 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25Z" />,
   "/explore": <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503-13.498 4.875 2.437c.381.19.622.58.622 1.006v11.21c0 .765-.804 1.262-1.489.92l-4.508-2.254a1.125 1.125 0 0 0-1.006 0l-3.494 1.747a1.125 1.125 0 0 1-1.006 0l-4.875-2.437A1.125 1.125 0 0 1 3 15.37V4.16c0-.765.804-1.262 1.489-.92l4.508 2.254c.317.158.69.158 1.006 0l3.494-1.747a1.125 1.125 0 0 1 1.006 0Z" />,
@@ -82,6 +84,17 @@ export const sidebarNavGroups: SidebarNavGroup[] = [
       // with the other observed inventory rather than with console settings.
       ...navEntriesFor(["/identity"]),
       ...linksFor(["/security/lifecycle"]),
+    ],
+  },
+  {
+    id: "detections",
+    label: "Detections",
+    iconHref: "/detections/rules",
+    links: [
+      ...linksFor(["/detections/rules"]),
+      // Scoring decides how a detection ranks once it fires, so it belongs with
+      // the rules rather than in developer utilities.
+      ...navEntriesFor(["/developer/risk-scoring"]),
     ],
   },
   {

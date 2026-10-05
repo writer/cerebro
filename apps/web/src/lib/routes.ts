@@ -103,6 +103,13 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["questionnaires", "security review", "customer review", "vendor review", "answers", "evidence gaps", "approvals", "owners"],
   },
   {
+    label: "Rules",
+    href: "/detections/rules",
+    description: "Registered detection rules and the event streams each one listens to.",
+    section: "Operator",
+    keywords: ["rules", "detection", "detections", "checks", "catalog", "policy rules", "signatures", "streams"],
+  },
+  {
     label: "Inventory",
     href: "/inventory",
     description: "Browse assets, owners, scope, tests, vulnerabilities, and graph context.",
