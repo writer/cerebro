@@ -319,17 +319,30 @@ describe("product UI contract", () => {
     expect(source).toContain("Page actions are ready. Searching live data...");
   });
 
-  it("keeps overview readiness scoped to explicit framework control counts", () => {
+  it("keeps compliance readiness scoped to explicit framework control counts", () => {
+    const complianceSource = readProjectFile("src/app/grc/page.tsx");
+    const frameworkSource = readProjectFile("src/app/frameworks/[frameworkID]/page.tsx");
+
+    expect(complianceSource).toContain("framework.passing_controls");
+    expect(complianceSource).toContain("framework.controls");
+    expect(frameworkSource).toContain("deriveFrameworkReadiness");
+    expect(complianceSource).not.toContain("sampled dashboard values");
+    expect(complianceSource).not.toContain("sampled total");
+  });
+
+  // Compliance reporting is owned by a dedicated tool, so the operator home
+  // must not grow an audit-readiness surface again.
+  it("keeps the security overview on risk rather than audit readiness", () => {
     const overviewSource = readProjectFile("src/app/page.tsx");
 
     expect(overviewSource).toContain("data?.coverage_blind_spots");
     expect(overviewSource).toContain("data?.coverage_summaries");
     expect(overviewSource).toContain('coverage_view: "page"');
     expect(overviewSource).toContain("coverageSummaries.reduce");
-    expect(overviewSource).toContain("isControlAuditReady");
-    expect(overviewSource).toContain("primaryFrameworkRecord");
-    expect(overviewSource).toContain("passing_controls");
-    expect(overviewSource).toContain("controlProgress");
+    expect(overviewSource).toContain("/grc/trends");
+    expect(overviewSource).not.toContain("passing_controls");
+    expect(overviewSource).not.toContain("Export audit packet");
+    expect(overviewSource).not.toContain("audit-packages");
     expect(overviewSource).not.toContain("sampled dashboard values");
     expect(overviewSource).not.toContain("sampled total");
   });

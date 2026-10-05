@@ -6,7 +6,6 @@ import { useMemo } from "react";
 import { useUserPreferences } from "@/components/providers";
 import { AttentionBanner, DataStateBanner, PageHeader } from "@/components/grc/Primitives";
 import { countLabel } from "@/lib/format";
-import { isControlAuditReady } from "@/lib/framework-readiness";
 import {
   displayDate,
   displayDurationSeconds,
@@ -18,6 +17,7 @@ import {
   GRCProgramWorkItem,
   GRCSourceCoverageRecord,
   GRCSummary,
+  GRCTrends,
   humanize,
   riskSort,
   shortEntity,
@@ -28,10 +28,12 @@ import { normalizeLegacyControlHref } from "@/lib/navigation";
 
 const HOME_DASHBOARD_FINDING_LIMIT = DASHBOARD_FINDING_LIMIT;
 
+const HOME_TREND_DAYS = 30;
+
 export const homeGRCPaths = (scope: GRCScope) => {
   const query = grcScopeQuery(scope);
   if (query.workspace_id && !query.tenant_id) {
-    return { coverage: null, dashboard: null, readiness: null };
+    return { coverage: null, dashboard: null, readiness: null, trends: null };
   }
   return {
     coverage: grcPath("/connectors/coverage", {
@@ -47,6 +49,7 @@ export const homeGRCPaths = (scope: GRCScope) => {
       ...query,
     }),
     readiness: grcProgramReadinessPath({ enrichments: "deferred", ...query }),
+    trends: grcPath("/grc/trends", { interval: "day", days: HOME_TREND_DAYS, ...query }),
   };
 };
 
@@ -66,18 +69,6 @@ function WorkChip({ children, tone = "neutral" }: { children: string | number; t
     </span>
   );
 }
-
-type HomeMetrics = {
-  auditReadinessScore: number;
-  controlTotal: number;
-  coverageBlindSpotCount: number;
-  criticalOrHighFindings: number;
-  evidenceIssues: number;
-  missingEvidenceItems: number;
-  passingControls: number;
-  staleEvidenceItems: number;
-  summary: GRCSummary;
-};
 
 type HomeQueueItem = {
   dedupeKey: string;
@@ -315,14 +306,14 @@ export function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
     <section className="surface-panel min-w-0 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border)] px-5 py-4">
         <div>
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Open work queue</h2>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Items blocking readiness or waiting for an owner.</p>
+          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Fix first</h2>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Highest risk open work, and who it is waiting on.</p>
         </div>
-        <Link href="/risk-inbox" className="secondary-button px-3 py-1.5 text-[12px]">Open queue</Link>
+        <Link href="/risk-inbox" className="secondary-button px-3 py-1.5 text-[12px]">Open risks</Link>
       </div>
       <div className="hidden grid-cols-[minmax(220px,1fr)_120px_140px_100px_120px] gap-3 border-b border-[color:var(--border)] bg-[var(--surface-muted)] px-5 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] lg:grid">
-        <span>Work</span>
-        <span>Framework</span>
+        <span>Risk</span>
+        <span>Context</span>
         <span>Owner</span>
         <span>Due</span>
         <span>Status</span>
@@ -341,7 +332,7 @@ export function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
               </div>
               <div className="mt-1 truncate text-[12px] leading-5 text-[var(--text-muted)]">{item.detail}</div>
             </div>
-            <div className="truncate text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Framework</span>{item.framework}</div>
+            <div className="truncate text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Context</span>{item.framework}</div>
             <div className="truncate text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Owner</span>{item.owner}</div>
             <div className="text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Due</span>{item.due}</div>
             <div className="flex items-center justify-between gap-2">
@@ -351,29 +342,83 @@ export function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
           </Link>
         ))}
         {items.length === 0 && (
-          <div className="px-5 py-8 text-center text-[13px] text-[var(--text-muted)]">No urgent review items.</div>
+          <div className="px-5 py-8 text-center text-[13px] text-[var(--text-muted)]">No open risk is waiting on you.</div>
         )}
       </div>
     </section>
   );
 }
 
-function ReadinessBand({ framework, metrics }: { framework: string; metrics: HomeMetrics }) {
-  const score = Math.max(0, Math.min(100, metrics.auditReadinessScore));
+function SignalTile({
+  detail,
+  href,
+  label,
+  tone,
+  value,
+}: {
+  detail: string;
+  href: string;
+  label: string;
+  tone: WorkChipTone;
+  value: string | number;
+}) {
+  const accent = tone === "danger" ? "text-red-600" : tone === "warning" ? "text-amber-600" : tone === "success" ? "text-emerald-600" : "text-[var(--text-primary)]";
   return (
-    <Link href="/frameworks" className="surface-panel block px-5 py-4 transition hover:border-[color:var(--border-strong)]">
-      <div className="grid items-center gap-4 md:grid-cols-[180px_minmax(0,1fr)_80px_190px]">
-        <div>
-          <div className="text-[12px] font-semibold text-[var(--text-primary)]">{framework} readiness</div>
-          <div className="mt-1 text-[12px] text-[var(--text-muted)]">Open framework details</div>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-          <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${score}%` }} />
-        </div>
-        <div className="text-2xl font-semibold tabular-nums text-[var(--text-primary)]">{Math.round(score)}%</div>
-        <div className="text-[12px] text-[var(--text-muted)]">{metrics.passingControls} of {metrics.controlTotal} controls ready</div>
-      </div>
+    <Link href={href} className="surface-panel block px-4 py-3 transition hover:border-[color:var(--border-strong)]">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${accent}`}>{value}</div>
+      <div className="mt-0.5 truncate text-[12px] text-[var(--text-muted)]">{detail}</div>
     </Link>
+  );
+}
+
+// Opened above the baseline, closed below it, so a week where the backlog grew
+// is visible without reading any number.
+export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
+  const points = trends?.points ?? [];
+  const peak = Math.max(1, ...points.map((point) => Math.max(point.opened, point.closed)));
+  const summary = trends?.summary;
+  const net = summary?.net ?? 0;
+  return (
+    <section className="surface-panel px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">What changed</h2>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Opened against closed over the last {HOME_TREND_DAYS} days.
+          </p>
+        </div>
+        <div className="flex items-center gap-4 text-right">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Opened</div>
+            <div className="text-[18px] font-semibold tabular-nums text-amber-600">{summary?.total_opened ?? 0}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Closed</div>
+            <div className="text-[18px] font-semibold tabular-nums text-emerald-600">{summary?.total_closed ?? 0}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Net</div>
+            <div className={`text-[18px] font-semibold tabular-nums ${net > 0 ? "text-red-600" : "text-emerald-600"}`}>
+              {net > 0 ? `+${net}` : net}
+            </div>
+          </div>
+          <Link href="/trends" className="secondary-button px-3 py-1.5 text-[12px]">Open trends</Link>
+        </div>
+      </div>
+      {points.length === 0 ? (
+        <div className="mt-4 text-[13px] text-[var(--text-muted)]">No finding activity recorded in this window.</div>
+      ) : (
+        <div className="mt-4 flex items-end gap-[3px]" aria-hidden="true">
+          {points.map((point) => (
+            <div key={point.date} className="flex min-w-0 flex-1 flex-col items-center gap-[2px]">
+              <div className="w-full rounded-sm bg-amber-400/80" style={{ height: `${(point.opened / peak) * 28}px` }} />
+              <div className="w-full rounded-sm bg-emerald-400/80" style={{ height: `${(point.closed / peak) * 28}px` }} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -404,61 +449,64 @@ function HealthRow({
   );
 }
 
-function ProgramHealthPanel({
+// Answers "can I trust what this page just told me" before it answers anything
+// about the findings themselves.
+function SignalCoveragePanel({
   coveragePending,
+  coverageBlindSpotCount,
   coverageSourceCount,
-  metrics,
-  readinessLabel,
+  summary,
 }: {
   coveragePending: boolean;
+  coverageBlindSpotCount: number;
   coverageSourceCount: number;
-  metrics: HomeMetrics;
-  readinessLabel: string;
+  summary: GRCSummary;
 }) {
-  const sourceIssues = metrics.summary.stale_connectors + metrics.coverageBlindSpotCount;
-  const sourceDetail = coveragePending
-    ? "Loading source coverage."
-    : `${countLabel(metrics.summary.stale_connectors, "stale source")}, ${countLabel(metrics.coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "source")}`;
+  const healthySources = Math.max(0, summary.connectors - summary.stale_connectors);
   return (
     <aside className="surface-panel p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Program health</h2>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Current program blockers.</p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-semibold text-[var(--text-primary)]">{Math.round(metrics.auditReadinessScore)}%</div>
-          <div className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{readinessLabel}</div>
-        </div>
+      <div>
+        <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Signal coverage</h2>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">What Cerebro can currently see.</p>
       </div>
       <div className="mt-4 divide-y divide-[color:var(--border)]">
         <HealthRow
-          href="/controls"
-          label="Controls"
-          value={Math.max(0, metrics.controlTotal - metrics.passingControls)}
-          detail={`${metrics.passingControls} of ${metrics.controlTotal} ready`}
-          tone={metrics.passingControls < metrics.controlTotal ? "warning" : "success"}
-        />
-        <HealthRow
-          href="/evidence"
-          label="Evidence"
-          value={metrics.evidenceIssues}
-          detail={`${metrics.missingEvidenceItems} missing, ${metrics.staleEvidenceItems} stale`}
-          tone={metrics.evidenceIssues > 0 ? "warning" : "success"}
+          href="/connectors"
+          label="Sources reporting"
+          value={`${healthySources}/${summary.connectors}`}
+          detail={countLabel(summary.stale_connectors, "stale source")}
+          tone={summary.stale_connectors > 0 ? "warning" : "success"}
         />
         <HealthRow
           href="/connectors"
-          label="Sources"
-          value={coveragePending ? "—" : sourceIssues}
-          detail={sourceDetail}
-          tone={coveragePending ? "neutral" : sourceIssues > 0 ? "warning" : "success"}
+          label="Collection gaps"
+          value={coveragePending ? "—" : coverageBlindSpotCount}
+          detail={coveragePending
+            ? "Loading source coverage."
+            : `${countLabel(coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "source")}`}
+          tone={coveragePending ? "neutral" : coverageBlindSpotCount > 0 ? "warning" : "success"}
+        />
+        <HealthRow
+          href="/rules"
+          label="Detection coverage"
+          value="Review"
+          detail="Which rules can fire on collected events."
+          tone="neutral"
         />
       </div>
       <div className="mt-5 border-t border-[color:var(--border)] pt-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Next audit</div>
-        <div className="mt-2 text-[13px] font-semibold text-[var(--text-primary)]">Review the current evidence packet</div>
-        <p className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">Resolve packet blockers before sharing a snapshot.</p>
-        <Link href="/reports/audit-packages" className="secondary-button mt-3 inline-flex px-3 py-1.5 text-[12px]">Open audit packet</Link>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Ask Cerebro</div>
+        <div className="mt-2 space-y-1.5">
+          <Link href="/ask?q=which%20assets%20have%20no%20owner" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
+            Which assets have no owner?
+          </Link>
+          <Link href="/ask?q=what%20changed%20this%20week" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
+            What changed this week?
+          </Link>
+          <Link href="/ask?q=which%20identities%20have%20admin%20access" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
+            Which identities have admin access?
+          </Link>
+        </div>
       </div>
     </aside>
   );
@@ -477,6 +525,7 @@ export default function Home() {
   const coverageQuery = useGRCQuery<{ blind_spots?: GRCSourceCoverageRecord[]; records?: GRCSourceCoverageRecord[] }>(
     paths.coverage,
   );
+  const trendsQuery = useGRCQuery<GRCTrends>(paths.trends);
   const readiness = readinessQuery.data?.summary;
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
 
@@ -492,33 +541,8 @@ export default function Home() {
   const coverageBlindSpotCount = readiness?.coverage_blind_spots ?? coverageSummaries.reduce((total, source) => total + source.blind_spots, 0);
   const coverageSourceCount = coverageSummaries.filter((source) => source.blind_spots > 0).length;
   const coveragePending = !readinessQuery.data && !coverageQuery.data && (readinessQuery.loading || coverageQuery.loading);
-  const missingEvidenceItems = readiness?.missing_evidence_items
-    ?? (data?.controls ?? []).reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0);
-  const staleEvidenceItems = readiness?.stale_evidence_items
-    ?? (data?.controls ?? []).reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0);
-  const primaryFrameworkRecord = readinessQuery.data?.frameworks?.[0];
-  const primaryFramework = primaryFrameworkRecord?.framework_name || "Program";
-  const scopedDashboardControls = (data?.controls ?? []).filter((control) =>
-    !primaryFrameworkRecord || control.framework_name === primaryFrameworkRecord.framework_name,
-  );
-  const controlTotal = primaryFrameworkRecord?.controls ?? scopedDashboardControls.length;
-  const passingControls = primaryFrameworkRecord
-    ? Math.max(0, Math.min(primaryFrameworkRecord.passing_controls, controlTotal))
-    : scopedDashboardControls.filter(isControlAuditReady).length;
-  const controlProgress = controlTotal === 0 ? 0 : (passingControls / controlTotal) * 100;
   const criticalOrHighFindings = (summary?.critical_findings ?? 0) + (summary?.high_findings ?? 0);
-  const evidenceIssues = missingEvidenceItems + staleEvidenceItems;
-  const homeMetrics: HomeMetrics | null = summary ? {
-    auditReadinessScore: controlProgress,
-    controlTotal,
-    coverageBlindSpotCount,
-    criticalOrHighFindings,
-    evidenceIssues,
-    missingEvidenceItems,
-    passingControls,
-    staleEvidenceItems,
-    summary,
-  } : null;
+  const trendNet = trendsQuery.data?.summary?.net ?? 0;
   const queueItems = useMemo(() => buildHomeQueue({
     connectors: data?.connectors ?? [],
     controls: data?.controls ?? [],
@@ -526,26 +550,26 @@ export default function Home() {
     findings: priorityFindings,
     readinessData: readinessQuery.data ?? undefined,
   }), [coverageBlindSpots, data?.connectors, data?.controls, priorityFindings, readinessQuery.data]);
-  const readinessLabel = "Control readiness";
 
   const reload = () => {
     if (invalidWorkspaceScope) return;
     void dashboard.reload();
     void readinessQuery.reload();
     void coverageQuery.reload();
+    void trendsQuery.reload();
   };
 
   return (
     <div className={compactHome ? "space-y-4" : "space-y-5"}>
       <PageHeader
         contractId="overview"
-        title="Compliance overview"
-        description="Review open work, evidence gaps, and audit readiness."
+        title="Security overview"
+        description="What is risky now, what changed, and who needs to act."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh data</button>
             <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Connect source</Link>
-            <Link href="/reports/audit-packages" className="primary-button px-3 py-2 text-[13px]">Export audit packet</Link>
+            <Link href="/risk-inbox" className="primary-button px-3 py-2 text-[13px]">Open risks</Link>
           </div>
         }
       />
@@ -558,21 +582,53 @@ export default function Home() {
         onRetry={invalidWorkspaceScope ? undefined : () => void dashboard.reload()}
         detail={invalidWorkspaceScope
           ? "Select a tenant before loading a workspace."
-          : dashboard.state === "loading" ? "Loading risks, controls, evidence, and sources." : undefined}
+          : dashboard.state === "loading" ? "Loading risks, assets, and source health." : undefined}
       />
 
-      {data && summary && homeMetrics && (
+      {data && summary && (
         <>
-          <ReadinessBand framework={primaryFramework} metrics={homeMetrics} />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SignalTile
+              href="/risk-inbox?severity=CRITICAL"
+              label="Critical & high"
+              value={criticalOrHighFindings}
+              detail={`${countLabel(summary.critical_findings, "critical")}, ${summary.high_findings} high`}
+              tone={criticalOrHighFindings > 0 ? "danger" : "success"}
+            />
+            <SignalTile
+              href="/risk-inbox"
+              label="Past SLA"
+              value={summary.overdue_findings}
+              detail="Breached the remediation window."
+              tone={summary.overdue_findings > 0 ? "danger" : "success"}
+            />
+            <SignalTile
+              href="/risk-inbox"
+              label="Unowned"
+              value={summary.unassigned}
+              detail="Remediation stalls without an owner."
+              tone={summary.unassigned > 0 ? "warning" : "success"}
+            />
+            <SignalTile
+              href="/trends"
+              label={`Net ${HOME_TREND_DAYS} days`}
+              value={trendNet > 0 ? `+${trendNet}` : trendNet}
+              detail={trendNet > 0 ? "Backlog grew in this window." : "Backlog held or shrank."}
+              tone={trendNet > 0 ? "warning" : "success"}
+            />
+          </div>
+
+          <ChangeStrip trends={trendsQuery.data ?? undefined} />
+
           {(visibleSections.reviewNow || visibleSections.programHealth) && (
             <div className={`grid gap-4 ${visibleSections.reviewNow && visibleSections.programHealth ? "xl:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
               {visibleSections.reviewNow && <ReviewNowPanel items={queueItems} />}
               {visibleSections.programHealth && (
-                <ProgramHealthPanel
+                <SignalCoveragePanel
                   coveragePending={coveragePending}
+                  coverageBlindSpotCount={coverageBlindSpotCount}
                   coverageSourceCount={coverageSourceCount}
-                  metrics={homeMetrics}
-                  readinessLabel={readinessLabel}
+                  summary={summary}
                 />
               )}
             </div>
@@ -590,7 +646,7 @@ export default function Home() {
                 </button>
               }
             >
-              Program readiness is unavailable; showing current risks, controls, evidence, and source health.
+              Program readiness is unavailable; showing current risks, sources, and source health.
             </AttentionBanner>
           )}
 

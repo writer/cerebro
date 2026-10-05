@@ -6,8 +6,8 @@ export const HOME_SECTION_IDS = [
 export type HomeSectionID = typeof HOME_SECTION_IDS[number];
 
 export const HOME_SECTION_LABELS: Record<HomeSectionID, string> = {
-  reviewNow: "Review queue",
-  programHealth: "Program health",
+  reviewNow: "Fix first",
+  programHealth: "Signal coverage",
 };
 
 export type DisplayDensity = "comfortable" | "compact";
