@@ -31,7 +31,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["actions", "remediation", "approval", "execution", "verification", "rollback"],
   },
   {
-    label: "Credentials & certificates",
+    label: "Credentials",
     href: "/security/lifecycle",
     description: "Credential and certificate expiry, ownership, findings, and approved rotation routes.",
     section: "Operator",
@@ -104,10 +104,10 @@ export const operatorNavLinks: NavigationEntry[] = [
   },
   {
     label: "Rules",
-    href: "/detections/rules",
-    description: "Registered detection rules and the event streams each one listens to.",
+    href: "/rules",
+    description: "Registered finding rules and the event streams each one listens to.",
     section: "Operator",
-    keywords: ["rules", "detection", "detections", "checks", "catalog", "policy rules", "signatures", "streams"],
+    keywords: ["rules", "finding rules", "checks", "catalog", "policy rules", "signatures", "streams"],
   },
   {
     label: "Inventory",
@@ -190,7 +190,7 @@ const commandOnlyNavLinks: NavigationEntry[] = [
     keywords: ["risk", "scoring", "threshold", "cvss", "epss", "weights", "configuration"],
   },
   {
-    label: "Control Builder",
+    label: "Control builder",
     href: "/controls/builder",
     description: "Build custom control packs, preview coverage, and export YAML.",
     section: "Operator",
@@ -232,7 +232,7 @@ export const utilityLinks: NavigationEntry[] = [
   },
   ...adminNavLinks,
   {
-    label: "Developer Tools",
+    label: "Developer tools",
     href: "/developer",
     description: "API status, OpenAPI resources, and developer utilities.",
     section: "Advanced",

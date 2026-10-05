@@ -129,7 +129,7 @@ export const informationAreas: InformationArea[] = [
     secondaryRoutes: [
       { href: "/trends/dashboards", label: "Dashboards", detail: "Saved compliance and trend widgets." },
       { href: "/reports/schedules", label: "Report schedules", detail: "Recurring packet runs and recent scheduled outputs." },
-      { href: "/controls/builder", label: "Control Builder", detail: "Custom control packs, coverage preview, and YAML export." },
+      { href: "/controls/builder", label: "Control builder", detail: "Custom control packs, coverage preview, and YAML export." },
       { href: "/connectors", label: "Sources", detail: "Source coverage and freshness for evidence." },
       { href: "/risk-inbox", label: "Issues", detail: "Findings that affect controls and framework posture." },
     ],
@@ -171,7 +171,7 @@ export const informationAreas: InformationArea[] = [
       { href: "/impact", label: "Affected assets", detail: "Entity impact and affected paths." },
       { href: "/connectors/activation", label: "Source activation", detail: "Source collection scope, access, and trust posture." },
       { href: "/credential-stores", label: "Credential stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
-      { href: "/developer", label: "Developer Tools", detail: "API status, OpenAPI resources, and diagnostics." },
+      { href: "/developer", label: "Developer tools", detail: "API status, OpenAPI resources, and diagnostics." },
     ],
   },
   {

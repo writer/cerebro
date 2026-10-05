@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { awaitsExternalVerdict } from "./detection-rules";
+import { awaitsExternalVerdict } from "./finding-rules";
 
 describe("awaitsExternalVerdict", () => {
   it("flags a rule that only listens for a verdict decided elsewhere", () => {

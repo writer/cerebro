@@ -31,7 +31,7 @@ export default function DeveloperPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Developer Tools"
+        title="Developer tools"
         description="Diagnostics, evaluation utilities, and OpenAPI resources."
       />
 

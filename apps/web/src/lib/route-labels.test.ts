@@ -18,7 +18,7 @@ describe("route labels", () => {
   });
 
   it("keeps unknown nested developer routes under the developer tools label", () => {
-    expect(routeLabelForPath("/developer/runtime-diagnostics")).toBe("Developer Tools");
+    expect(routeLabelForPath("/developer/runtime-diagnostics")).toBe("Developer tools");
   });
 
   it("falls back only for truly unknown routes", () => {

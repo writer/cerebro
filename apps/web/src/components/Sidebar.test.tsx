@@ -25,6 +25,24 @@ describe("isSidebarLinkActive", () => {
     expect(isSidebarLinkActive("/trends/dashboards/example", "/trends/dashboards", links)).toBe(true);
   });
 
+  it("keeps every group label in sentence case", () => {
+    for (const group of [...sidebarNavGroups, ...sidebarUtilityGroups]) {
+      const [first, ...rest] = group.label.split(" ");
+      expect(first.slice(0, 1)).toBe(first.slice(0, 1).toUpperCase());
+      for (const word of rest) {
+        expect(word, `"${group.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+      }
+    }
+  });
+
+  // A nested row leaves roughly 130px for text at 13px, so a label much past
+  // 20 characters wraps onto a second line while its siblings do not.
+  it("keeps sidebar labels short enough not to wrap", () => {
+    const tooLong = sidebarNavLinks.filter((link) => link.label.length > 20).map((link) => link.label);
+
+    expect(tooLong).toEqual([]);
+  });
+
   it("has icons for visible sidebar routes", () => {
     const missingIcons = sidebarNavLinks
       .filter((link) => !hasSidebarIcon(link.href))
@@ -48,14 +66,12 @@ describe("isSidebarLinkActive", () => {
     ]);
   });
 
-  it("gives detection content a home of its own", () => {
-    const detections = sidebarNavGroups.find((group) => group.id === "detections");
+  it("gives rule content a home of its own", () => {
+    const rules = sidebarNavGroups.find((group) => group.id === "rules");
 
-    expect(detections?.label).toBe("Detections");
-    expect(detections?.links.map((link) => link.href)).toEqual([
-      "/detections/rules",
-      "/developer/risk-scoring",
-    ]);
+    expect(rules?.label).toBe("Rules");
+    expect(rules?.href).toBe("/rules");
+    expect(rules?.links.map((link) => link.href)).toEqual(["/developer/risk-scoring"]);
   });
 
   it("gathers every governance record under Compliance", () => {

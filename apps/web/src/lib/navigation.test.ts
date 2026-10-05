@@ -13,6 +13,21 @@ describe("navigation entries", () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
+  // Menu labels are sentence case: capitalise the first word, and anything
+  // after it only when it is a proper noun.
+  it("keeps every label in sentence case", () => {
+    const properNouns = new Set<string>([]);
+
+    for (const entry of navigationEntries) {
+      const [first, ...rest] = entry.label.split(" ");
+      expect(first.slice(0, 1), `"${entry.label}" should start capitalised`).toBe(first.slice(0, 1).toUpperCase());
+      for (const word of rest) {
+        if (!/^[A-Za-z]/.test(word) || properNouns.has(word)) continue;
+        expect(word, `"${entry.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+      }
+    }
+  });
+
   it("all entries have non-empty keywords", () => {
     for (const entry of navigationEntries) {
       expect(entry.keywords.length, `${entry.label} should have keywords`).toBeGreaterThan(0);

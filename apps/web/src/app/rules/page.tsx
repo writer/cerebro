@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { EmptyBlock, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { awaitsExternalVerdict, type FindingRuleSpec } from "@/lib/detection-rules";
+import { awaitsExternalVerdict, type FindingRuleSpec } from "@/lib/finding-rules";
 
 type ListFindingRulesResponse = { rules?: FindingRuleSpec[] };
 
@@ -14,7 +14,7 @@ type Binding = "all" | "live" | "external";
 const inputClass =
   "w-full rounded-md border border-[color:var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[color:var(--primary)]";
 
-export default function DetectionRulesPage() {
+export default function RulesPage() {
   const [query, setQuery] = useState("");
   const [binding, setBinding] = useState<Binding>("all");
 
@@ -26,7 +26,7 @@ export default function DetectionRulesPage() {
       }
       return response.data?.rules ?? [];
     },
-    queryKey: ["detection-rules"],
+    queryKey: ["finding-rules"],
   });
 
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
@@ -48,12 +48,12 @@ export default function DetectionRulesPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Detection rules"
-        description="Every rule the runtime has registered, and the event streams each one listens to."
-        contractId="detection-rules"
+        title="Rules"
+        description="Every finding rule the runtime has registered, and the event streams each one listens to."
+        contractId="finding-rules"
       />
 
-      {rulesQuery.isPending && <LoadingBlock label="Loading detection rules..." />}
+      {rulesQuery.isPending && <LoadingBlock label="Loading rules..." />}
       {rulesQuery.isError && <ErrorBlock error={rulesQuery.error.message} onRetry={() => void rulesQuery.refetch()} />}
 
       {!rulesQuery.isPending && !rulesQuery.isError && (
