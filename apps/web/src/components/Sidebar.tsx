@@ -64,34 +64,41 @@ const navEntriesFor = (hrefs: string[]) =>
 export const sidebarPrimaryLinks = linksFor([
   "/",
   "/risk-inbox",
-  "/frameworks",
-  "/policies",
-  "/vendors",
-  "/connectors",
-  "/reports/audit-packages",
+  "/actions",
 ]);
-export const sidebarSupportLinks: NavigationEntry[] = [];
+// Renders between the grouped sections and Admin: source configuration is
+// neither daily work nor a console setting.
+export const sidebarSupportLinks = linksFor(["/connectors"]);
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
+  {
+    href: "/inventory",
+    id: "inventory",
+    label: "Inventory",
+    iconHref: "/inventory",
+    links: [
+      ...linksFor(["/explore", "/impact", "/ask"]),
+      // Members is a directory ingested from connected sources, so it belongs
+      // with the other observed inventory rather than with console settings.
+      ...navEntriesFor(["/identity"]),
+      ...linksFor(["/security/lifecycle"]),
+    ],
+  },
   {
     href: "/grc",
     id: "compliance",
     label: "Compliance",
     iconHref: "/controls",
-    links: linksFor(["/controls", "/evidence", "/questionnaires"]),
-  },
-  {
-    href: "/explore",
-    id: "investigate",
-    label: "Investigate",
-    iconHref: "/explore",
-    links: [
-      ...linksFor(["/actions", "/inventory"]),
-      // Members is a directory ingested from connected sources, so it belongs
-      // with the other observed inventory rather than with console settings.
-      ...navEntriesFor(["/identity"]),
-      ...linksFor(["/impact", "/explore", "/ask", "/security/lifecycle"]),
-    ],
+    links: linksFor([
+      "/controls",
+      "/evidence",
+      "/frameworks",
+      "/policies",
+      "/questionnaires",
+      "/vendors",
+      "/reports",
+      "/reports/audit-packages",
+    ]),
   },
 ];
 

@@ -31,7 +31,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["actions", "remediation", "approval", "execution", "verification", "rollback"],
   },
   {
-    label: "Credentials",
+    label: "Credentials & certificates",
     href: "/security/lifecycle",
     description: "Credential and certificate expiry, ownership, findings, and approved rotation routes.",
     section: "Operator",
@@ -73,11 +73,13 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["soc2", "iso", "framework", "control", "audit", "builder", "custom", ...supportedGRCFrameworkNames],
   },
   {
-    label: "Policies",
+    // "Policies" alone reads as detection rules to a cloud security engineer;
+    // this page is written governance documents.
+    label: "Policy documents",
     href: "/policies",
-    description: "Policy versions, approvals, attestations, exceptions, reminders, and mappings.",
+    description: "Written policy versions, approvals, attestations, exceptions, reminders, and mappings.",
     section: "Operator",
-    keywords: ["policy", "policies", "templates", "approvals", "attestations", "exceptions", "reminders", "review", "owner", ...supportedGRCFrameworkNames],
+    keywords: ["policy", "policies", "policy documents", "templates", "approvals", "attestations", "exceptions", "reminders", "review", "owner", ...supportedGRCFrameworkNames],
   },
   {
     label: "Frameworks",

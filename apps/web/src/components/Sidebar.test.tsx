@@ -33,45 +33,51 @@ describe("isSidebarLinkActive", () => {
     expect(missingIcons).toEqual([]);
   });
 
-  it("keeps platform machinery behind Investigate", () => {
-    const investigateGroup = sidebarNavGroups.find((group) => group.id === "investigate");
-    const hrefs = investigateGroup?.links.map((link) => link.href);
+  it("leads the inventory section with the asset register itself", () => {
+    const inventoryGroup = sidebarNavGroups.find((group) => group.id === "inventory");
+    const hrefs = inventoryGroup?.links.map((link) => link.href);
 
-    expect(investigateGroup?.label).toBe("Investigate");
-    expect(investigateGroup?.href).toBe("/explore");
+    expect(inventoryGroup?.label).toBe("Inventory");
+    expect(inventoryGroup?.href).toBe("/inventory");
     expect(hrefs).toEqual([
-      "/actions",
-      "/inventory",
-      "/identity",
-      "/impact",
       "/explore",
+      "/impact",
       "/ask",
+      "/identity",
       "/security/lifecycle",
     ]);
   });
 
-  it("keeps specialist compliance records available without leading with them", () => {
+  it("gathers every governance record under Compliance", () => {
     const complianceGroup = sidebarNavGroups.find((group) => group.id === "compliance");
 
     expect(complianceGroup?.label).toBe("Compliance");
     expect(complianceGroup?.links.map((link) => link.href)).toEqual([
       "/controls",
       "/evidence",
+      "/frameworks",
+      "/policies",
       "/questionnaires",
+      "/vendors",
+      "/reports",
+      "/reports/audit-packages",
     ]);
   });
 
-  it("leads with the compliance jobs customers use every week", () => {
+  it("leads with daily work rather than governance records", () => {
     expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
       "/",
       "/risk-inbox",
-      "/frameworks",
-      "/policies",
-      "/vendors",
-      "/connectors",
-      "/reports/audit-packages",
+      "/actions",
     ]);
-    expect(sidebarSupportLinks).toEqual([]);
+    expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
+  });
+
+  it("never shows a report child without its parent", () => {
+    const hrefs = sidebarNavLinks.map((link) => link.href);
+
+    expect(hrefs).toContain("/reports/audit-packages");
+    expect(hrefs).toContain("/reports");
   });
 
   it("keeps trend pages outside the visible sidebar", () => {
@@ -99,10 +105,10 @@ describe("admin sub-tree", () => {
   });
 
   it("keeps ingested directory data out of admin settings", () => {
-    const investigate = sidebarNavGroups.find((group) => group.id === "investigate");
+    const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
 
     expect(adminGroup?.links.map((link) => link.href)).not.toContain("/identity");
-    expect(investigate?.links.map((link) => link.href)).toContain("/identity");
+    expect(inventory?.links.map((link) => link.href)).toContain("/identity");
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {
@@ -111,9 +117,9 @@ describe("admin sub-tree", () => {
     expect(adminGroup?.links).toContain(duplicated[0]);
   });
 
-  it("keeps credential stores out of Investigate now that Admin owns it", () => {
-    const investigate = sidebarNavGroups.find((group) => group.id === "investigate");
-    expect(investigate?.links.map((link) => link.href)).not.toContain("/credential-stores");
+  it("keeps credential stores out of Inventory now that Admin owns it", () => {
+    const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
+    expect(inventory?.links.map((link) => link.href)).not.toContain("/credential-stores");
   });
 
   it("does not render a grouped page twice in the utility list", () => {
