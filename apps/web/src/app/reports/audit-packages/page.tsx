@@ -279,7 +279,7 @@ export default function AuditPackagesPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="audit-packages"
-        title="Audit workspace"
+        title="Audit Workspace"
         description="Resolve control, evidence, review, and source blockers before sharing an audit packet."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -404,7 +404,7 @@ export default function AuditPackagesPage() {
 
         <section id="shared-snapshot">
           <Panel
-            title="Shared snapshot"
+            title="Shared Snapshot"
             action={
               <Link href={`/reports/shared/${encodeURIComponent(snapshotID)}`} className={buttonClass}>
                 <ArrowUpRight className="h-3.5 w-3.5" />

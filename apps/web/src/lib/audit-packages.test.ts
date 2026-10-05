@@ -164,7 +164,7 @@ describe("audit package helpers", () => {
       expect.objectContaining({ action: "Resolve controls", id: "controls", state: "blocked" }),
       expect.objectContaining({ action: "Complete reviews", id: "reviews", state: "needs_review" }),
       expect.objectContaining({ action: "Refresh sources", id: "sources", state: "blocked" }),
-      expect.objectContaining({ action: "Approve snapshot", detail: "Snapshot snapshot-123", id: "snapshot", state: "waiting", title: "Shared snapshot" }),
+      expect.objectContaining({ action: "Approve snapshot", detail: "Snapshot snapshot-123", id: "snapshot", state: "waiting", title: "Shared Snapshot" }),
     ]);
 
     expect(buildAuditReadinessRows(summary(), "snapshot-456", "2026-01-01T00:00:00Z").at(-1)).toMatchObject({

@@ -132,7 +132,7 @@ export default function ReportSchedulesPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="report-schedules"
-        title="Report schedules"
+        title="Report Schedules"
         description="Run reports automatically on a fixed interval and review recent scheduled runs."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">

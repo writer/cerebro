@@ -68,7 +68,7 @@ export default function CustomDashboardsPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="grc-custom-dashboards"
-        title="Custom dashboards"
+        title="Custom Dashboards"
         description="Create saved GRC trend dashboards with reusable filters, widgets, and sharing scope."
         action={
           <Link href="/trends" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600">

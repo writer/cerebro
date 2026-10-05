@@ -140,7 +140,7 @@ export default function AdminAccessControlPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Access control"
+        title="Access Control"
         description="How Cerebro establishes who you are, how much of that claim it has verified, and what that identity is allowed to do."
       />
 

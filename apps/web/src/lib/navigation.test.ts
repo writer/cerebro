@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { navigationEntries, normalizeLegacyControlHref, operatorNavLinks, utilityLinks } from "./navigation";
+import { MINOR_TITLE_WORDS, navigationEntries, normalizeLegacyControlHref, operatorNavLinks, utilityLinks } from "./navigation";
 
 describe("navigation entries", () => {
   it("has unique hrefs across all entries", () => {
@@ -13,17 +13,15 @@ describe("navigation entries", () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  // Menu labels are sentence case: capitalise the first word, and anything
-  // after it only when it is a proper noun.
-  it("keeps every label in sentence case", () => {
-    const properNouns = new Set<string>([]);
-
+  it("keeps every label in title case", () => {
     for (const entry of navigationEntries) {
-      const [first, ...rest] = entry.label.split(" ");
-      expect(first.slice(0, 1), `"${entry.label}" should start capitalised`).toBe(first.slice(0, 1).toUpperCase());
-      for (const word of rest) {
-        if (!/^[A-Za-z]/.test(word) || properNouns.has(word)) continue;
-        expect(word, `"${entry.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+      for (const [index, word] of entry.label.split(" ").entries()) {
+        if (!/^[A-Za-z]/.test(word)) continue;
+        if (index > 0 && MINOR_TITLE_WORDS.has(word.toLowerCase())) {
+          expect(word, `"${entry.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+          continue;
+        }
+        expect(word.slice(0, 1), `"${entry.label}" should capitalise "${word}"`).toBe(word.slice(0, 1).toUpperCase());
       }
     }
   });

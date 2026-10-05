@@ -967,7 +967,7 @@ export const buildAuditStatusLedgerRows = ({
     rank: auditStatusLedgerRank("ready"),
     reviewer: "Packet reviewers",
     state: "ready",
-    title: "Shared snapshot",
+    title: "Shared Snapshot",
   }];
 };
 
@@ -1018,7 +1018,7 @@ export const buildAuditReadinessRows = (
       detail: generatedAt ? `Generated ${generatedAt}` : `Snapshot ${snapshotID}`,
       owner: "Audit lead",
       state: snapshotReady ? "ready" : "waiting",
-      title: "Shared snapshot",
+      title: "Shared Snapshot",
     },
   ];
 };

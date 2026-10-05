@@ -58,7 +58,7 @@ export const informationAreas: InformationArea[] = [
     tagline: "Risks, owners, evidence, and affected assets.",
     description: "Open risks, evidence, affected assets, owners, due dates, and source freshness.",
     searchPlaceholder: "Search risks, owners, evidence, assets...",
-    priorities: ["Critical/high risks", "Affected assets", "Owners and due dates", "Evidence"],
+    priorities: ["Critical/high risks", "Affected Assets", "Owners and due dates", "Evidence"],
     headline: "active risks need attention",
     summaryFocus: ["critical and high risk", "owners and due dates", "evidence"],
     signals: [
@@ -79,7 +79,7 @@ export const informationAreas: InformationArea[] = [
     primaryRoutes: [
       { href: "/", label: "Home", detail: "Active risk, owners, evidence, and source attention." },
       { href: "/risk-inbox", label: "Issues", detail: "Findings by severity, owner, evidence, SLA, and status." },
-      { href: "/impact", label: "Affected assets", detail: "Impacted entities and risk paths." },
+      { href: "/impact", label: "Affected Assets", detail: "Impacted entities and risk paths." },
       { href: "/ask", label: "Ask", detail: "Ask investigation questions and review cited answers." },
       { href: "/inventory", label: "Inventory", detail: "Assets, owners, scope, vulnerabilities, and graph context." },
       { href: "/vendors", label: "Vendors", detail: "Vendor discoveries, owners, reviews, contracts, assurance records, and open risk." },
@@ -128,8 +128,8 @@ export const informationAreas: InformationArea[] = [
     ],
     secondaryRoutes: [
       { href: "/trends/dashboards", label: "Dashboards", detail: "Saved compliance and trend widgets." },
-      { href: "/reports/schedules", label: "Report schedules", detail: "Recurring packet runs and recent scheduled outputs." },
-      { href: "/controls/builder", label: "Control builder", detail: "Custom control packs, coverage preview, and YAML export." },
+      { href: "/reports/schedules", label: "Report Schedules", detail: "Recurring packet runs and recent scheduled outputs." },
+      { href: "/controls/builder", label: "Control Builder", detail: "Custom control packs, coverage preview, and YAML export." },
       { href: "/connectors", label: "Sources", detail: "Source coverage and freshness for evidence." },
       { href: "/risk-inbox", label: "Issues", detail: "Findings that affect controls and framework posture." },
     ],
@@ -168,10 +168,10 @@ export const informationAreas: InformationArea[] = [
     ],
     secondaryRoutes: [
       { href: "/ask", label: "Ask", detail: "Ask runtime and coverage questions." },
-      { href: "/impact", label: "Affected assets", detail: "Entity impact and affected paths." },
-      { href: "/connectors/activation", label: "Source activation", detail: "Source collection scope, access, and trust posture." },
-      { href: "/credential-stores", label: "Credential stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
-      { href: "/developer", label: "Developer tools", detail: "API status, OpenAPI resources, and diagnostics." },
+      { href: "/impact", label: "Affected Assets", detail: "Entity impact and affected paths." },
+      { href: "/connectors/activation", label: "Source Activation", detail: "Source collection scope, access, and trust posture." },
+      { href: "/credential-stores", label: "Credential Stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
+      { href: "/developer", label: "Developer Tools", detail: "API status, OpenAPI resources, and diagnostics." },
     ],
   },
   {
@@ -205,7 +205,7 @@ export const informationAreas: InformationArea[] = [
       { href: "/trends/dashboards", label: "Dashboards", detail: "Saved scorecards and reusable widgets." },
       { href: "/reports", label: "Reports", detail: "Control evidence packets and finding packets for review." },
       { href: "/reports/audit-packages", label: "Packet review", detail: "Packet blockers, approved evidence, scope exclusions, and shared snapshots." },
-      { href: "/impact", label: "Affected assets", detail: "High-risk entity impact and affected paths." },
+      { href: "/impact", label: "Affected Assets", detail: "High-risk entity impact and affected paths." },
     ],
     secondaryRoutes: [
       { href: "/frameworks", label: "Frameworks", detail: "Framework status, control gaps, and planning." },

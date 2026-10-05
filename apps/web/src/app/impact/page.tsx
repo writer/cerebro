@@ -76,7 +76,7 @@ export default function ImpactPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="impact-map"
-        title="Affected assets"
+        title="Affected Assets"
         description="Assets and relationships touched by a finding or entity."
         action={
           <div className="flex items-center gap-2">

@@ -196,7 +196,7 @@ function OperationsSummary({
         icon={<Database className="h-3.5 w-3.5" />}
       />
       <SummaryTile
-        label="Credential stores"
+        label="Credential Stores"
         value={secretStoreCount}
         detail="Available for setup"
         icon={<KeyRound className="h-3.5 w-3.5" />}
@@ -864,7 +864,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
               {[
                 ["Last activity", summary.last_activity_at ? displayDate(summary.last_activity_at) : "Not observed"],
                 ["Sync frequency", summary.sync_frequency_seconds ? `Every ${formatDuration(summary.sync_frequency_seconds)}` : "Deployment managed"],
-                ["Credential stores", readyStores.map((store) => store.label).join(", ") || "No ready credential store"],
+                ["Credential Stores", readyStores.map((store) => store.label).join(", ") || "No ready credential store"],
                 ["Catalog", connector.catalog_status ? connectorCatalogStatusLabel(connector.catalog_status) : "Compiled source"],
                 ["Runtime", connectorRuntimeSurfaceLabel(connector)],
                 ["Access", connectorAccessStatusLabel(connector.access_status)],

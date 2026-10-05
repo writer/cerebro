@@ -10,10 +10,10 @@ const denseRoutes: Record<string, string> = {
   "/controls": "Controls",
   "/evidence": "Evidence",
   "/frameworks": "Frameworks",
-  "/policies": "Policy documents",
+  "/policies": "Policy Documents",
   "/reports": "Reports",
-  "/reports/audit-packages": "Audit workspace",
-  "/reports/shared/fixture-snapshot-1": "Shared snapshot",
+  "/reports/audit-packages": "Audit Workspace",
+  "/reports/shared/fixture-snapshot-1": "Shared Snapshot",
 };
 
 describe("dense agent route labels", () => {

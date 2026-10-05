@@ -244,7 +244,7 @@ export function AgentPlatformDashboard() {
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <FieldList label="Auth models" values={contract.connectorInfrastructure.authModels} mono />
               <FieldList label="Token boundaries" values={contract.connectorInfrastructure.tokenBoundaries} />
-              <FieldList label="Credential stores" values={contract.connectorInfrastructure.credentialStores} />
+              <FieldList label="Credential Stores" values={contract.connectorInfrastructure.credentialStores} />
               <FieldList label="MCP surfaces" values={contract.connectorInfrastructure.mcpSurfaces} mono />
             </div>
           </div>

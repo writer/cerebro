@@ -394,7 +394,7 @@ export default function ControlBuilderPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="control-builder"
-        title="Control builder"
+        title="Control Builder"
         description="Build a custom framework from reusable control families, preview mapped coverage, and export auditor-ready YAML."
         action={
           <Link href="/controls" className="rounded-md border border-[color:var(--border)] bg-white px-3 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]">

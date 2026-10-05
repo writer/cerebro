@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { navigationEntries, operatorNavLinks } from "@/lib/navigation";
+import { MINOR_TITLE_WORDS, navigationEntries, operatorNavLinks } from "@/lib/navigation";
 
 import { hasSidebarIcon, isSidebarLinkActive, sidebarNavGroups, sidebarNavLinks, sidebarPrimaryLinks, sidebarSupportLinks, sidebarUtilityGroups, sidebarUtilityLinks } from "./Sidebar";
 
@@ -25,12 +25,15 @@ describe("isSidebarLinkActive", () => {
     expect(isSidebarLinkActive("/trends/dashboards/example", "/trends/dashboards", links)).toBe(true);
   });
 
-  it("keeps every group label in sentence case", () => {
+  it("keeps every group label in title case", () => {
     for (const group of [...sidebarNavGroups, ...sidebarUtilityGroups]) {
-      const [first, ...rest] = group.label.split(" ");
-      expect(first.slice(0, 1)).toBe(first.slice(0, 1).toUpperCase());
-      for (const word of rest) {
-        expect(word, `"${group.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+      for (const [index, word] of group.label.split(" ").entries()) {
+        if (!/^[A-Za-z]/.test(word)) continue;
+        if (index > 0 && MINOR_TITLE_WORDS.has(word.toLowerCase())) {
+          expect(word, `"${group.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+          continue;
+        }
+        expect(word.slice(0, 1), `"${group.label}" should capitalise "${word}"`).toBe(word.slice(0, 1).toUpperCase());
       }
     }
   });

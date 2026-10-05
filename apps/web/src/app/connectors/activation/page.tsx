@@ -64,7 +64,7 @@ const resourceTypeLabels: Record<string, string> = {
   finding: "Security findings",
   vulnerability: "Vulnerabilities",
   alert: "Alerts",
-  audit_event: "Audit events",
+  audit_event: "Audit Events",
   policy: "Policies",
   compliance_control: "Compliance controls",
   secret: "Secret references",
@@ -813,7 +813,7 @@ function SourceReadinessContent() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Runtime source activation"
+        title="Runtime Source Activation"
         description="Promote a source definition, preview the data it emits, and connect it at runtime without a GitHub handoff."
         action={
           <div className="flex flex-wrap gap-2">

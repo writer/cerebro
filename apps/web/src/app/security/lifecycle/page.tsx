@@ -307,7 +307,7 @@ export default function SecurityLifecyclePage() {
   return (
     <div>
       <PageHeader
-        title="Credential and certificate lifecycle"
+        title="Credential and Certificate Lifecycle"
         description="Review stable resource slots, current material revisions, policy state, evidence, findings, and external action routing. Only a later complete observation can verify that a finding condition is gone."
         contractId="security-lifecycle"
         action={(

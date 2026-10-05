@@ -455,7 +455,7 @@ function ConnectorBuilderContent() {
         <MetricCard label="Stage" value={stageLabel(draft.stage)} detail={stageDetail} state={metricState} />
         <MetricCard label="Validation" value={connectorDefinitionValidationLabel(draft.validation?.status)} detail={`${blockingChecks} blocking gates`} intent={validationStatus === "blocked" ? "danger" : validationStatus === "warning" ? "warning" : "success"} state={metricState} />
         <MetricCard label="Resource Types" value={resourceFamilies.length} detail="custom resource types" state={metricState} />
-        <MetricCard label="Credential stores" value={selectedStores.length} detail={secretStoreDetail} intent={secretStoreIntent} state={metricState} />
+        <MetricCard label="Credential Stores" value={selectedStores.length} detail={secretStoreDetail} intent={secretStoreIntent} state={metricState} />
         <MetricCard label="Ingest" value={ingestMode === "deposit" ? "Deposit" : "Pull"} detail={ingestMode === "deposit" ? "customer-pushed records" : "scheduled runtime pull"} state={metricState} />
       </div>
 

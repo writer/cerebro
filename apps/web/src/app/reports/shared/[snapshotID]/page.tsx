@@ -97,7 +97,7 @@ export default function SharedAuditPackagePage() {
     <div className="space-y-6">
       <PageHeader
         contractId="external-audit-review"
-        title="Shared snapshot"
+        title="Shared Snapshot"
         description="Approved evidence, packet state, source records, and scope exclusions for review."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
