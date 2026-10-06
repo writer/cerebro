@@ -196,16 +196,17 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Enforced in: the current HTTP route surface in [`internal/bootstrap/routes.go`](../../internal/bootstrap/routes.go), [`docs/reference/api-reference.md`](../reference/api-reference.md), and [`docs/reference/api-contracts.md`](../reference/api-contracts.md).
 - What would change this: nothing. New application surfaces (DataOps, ML observability, supply chain, GRC programs) follow the same boundary.
 
-### Cerebro is not a CSPM, CNAPP, CWPP, EDR, SIEM, SOAR, or IDS replacement.
+### Cerebro is a posture product (CSPM, SSPM, ISPM). It is not a SIEM, EDR, or IDS.
 
-- Cerebro complements those categories; it does not replace them.
-  - It does not retain raw logs forever or expose a SIEM-grade investigation UI.
-  - It does not run an endpoint sensor.
-  - It does not own response automation as its primary product surface; runtime response is a constrained subsystem with explicit gates, not a SOAR.
-  - It does not author cloud posture from Cerebro's own scanners as the source of truth; cloud posture findings come from typed sources whose budgets are explicit.
-- Why: Cerebro's value is the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary). Promising a replacement promise would force the codebase to take on operational scope that is incompatible with that substrate.
-- Enforced in: [`README.md`](../../README.md) "Runtime Boundaries" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
-- What would change this: nothing in this repo. Category-shaped products belong on top of Cerebro, not inside it.
+- Cloud, SaaS, and identity security posture management are Cerebro's starting product surfaces, not adjacent categories it defers to. Posture findings, the evidence behind them, and the Actions that remediate them are first-class product scope.
+- The boundaries that remain:
+  - It does not retain raw logs indefinitely or expose a SIEM-grade investigation UI.
+  - It does not run an endpoint sensor, a kernel agent, or its own packet path.
+  - It does not author posture from Cerebro's own scanners. Posture findings come from typed Sources, and "Sources are the only path to the outside world" still holds.
+  - Remediation stays governed. Actions run through the typed Action contract with validation receipts, approval gates, and independent verification. Owning the posture categories does not loosen "No ungoverned remediation through agents".
+- Why: the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary) is what makes posture defensible instead of another scanner with a dashboard. Owning the category is a product decision; the substrate constraints are what keep it honest.
+- Enforced in: [`README.md`](../../README.md) "Scope" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
+- What would change this: SIEM, EDR, and IDS scope stays out. Log retention, an endpoint sensor, or a packet path would each need its own entry and review before being taken on.
 
 ## Operational And Distribution
 
@@ -251,7 +252,7 @@ These framings will not be adopted as Cerebro's product description:
 - "Security graph" as a product surface noun. Cerebro exposes a graph; one of its applications is security.
 - "AI security" as a positioning frame. Cerebro uses LLMs in narrow, validator-gated places. The substrate, not the LLM, is the product.
 - "Autonomous remediation" or "self-healing security". Cerebro performs constrained Actions under mandates, scoped capability grants, and independent verification. It does not get an unmediated mutation path.
-- "Replacement for [vendor product]". Cerebro is the platform underneath what those products would otherwise be the only source of truth for. Replacement framing misdescribes the seam.
+- "Replacement for [vendor product]". Cerebro competes as a posture product on its own terms and carries its own evidence substrate. Naming a specific vendor as the thing being swapped out describes a migration, not the product.
 
 Vocabulary creep in docs, code comments, marketing surfaces, and AI-generated artifacts is in scope for this document the same way capability creep is. Wording PRs that flatten Cerebro into a single category should cite this section and propose a more precise phrasing.
 
