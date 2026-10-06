@@ -1,12 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
-import { DataStateBanner, EmptyBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
+import { DataStateBanner, EmptyBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { useApiKey, useCurrentUser } from "@/components/providers";
+import { fetchCerebro } from "@/lib/cerebro-client";
 import { GRCFinding, GRCGraph, shortEntity } from "@/lib/grc";
+import {
+  GraphPathRow,
+  graphPathCounts,
+  graphPathRows,
+  graphPathRowsToGraph,
+  graphPathsTruncated,
+  graphRevisionOf,
+  graphViewpointFor,
+  graphViewpointList,
+} from "@/lib/graph-viewpoints";
 import {
   fetchCachedGRC,
   grcClientScopeKey,
@@ -38,6 +50,7 @@ type FindingsResponse = { findings: GRCFinding[]; generated_at: string };
 
 const NEIGHBORS_PER_EXPAND = 50;
 const EXPLORE_NODE_LIMIT = 200;
+const GRAPH_PATH_LIMIT = 50;
 
 const inputClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/30";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-slate-500";
@@ -74,8 +87,19 @@ export default function ExplorePage() {
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
 
+  const [viewpointParam, setViewpointParam] = useQueryParamState("view");
+  const viewpoint = graphViewpointFor(viewpointParam);
+  const isPathViewpoint = viewpoint.method !== null;
+  const [pathQuery, setPathQuery] = useQueryParamState("path_q");
+  const debouncedPathQuery = useDebouncedValue(pathQuery.trim());
+  const [pathRows, setPathRows] = useState<GraphPathRow[] | null>(null);
+  const [pathRevision, setPathRevision] = useState<number | undefined>(undefined);
+  const [pathTruncated, setPathTruncated] = useState(false);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+
   const fallbackFindings = useGRCQuery<FindingsResponse>(
-    needsFallbackRoot && !invalidWorkspaceScope
+    needsFallbackRoot && !invalidWorkspaceScope && !isPathViewpoint
       ? grcPath("/grc/findings", {
         ...grcScopeQuery({ tenantID: normalizedTenantID, workspaceID: normalizedWorkspaceID }),
         status: "open",
@@ -247,6 +271,56 @@ export default function ExplorePage() {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
   }, []);
 
+  useEffect(() => {
+    const method = viewpoint.method;
+    let cancelled = false;
+    const controller = new AbortController();
+    // Connect unary rejects unknown fields, so only the fields this RPC declares are sent.
+    const payload: Record<string, string | number> = { limit: GRAPH_PATH_LIMIT };
+    if (normalizedTenantID) payload.tenant_id = normalizedTenantID;
+    if (viewpoint.queryField && debouncedPathQuery) payload[viewpoint.queryField] = debouncedPathQuery;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      if (!method || invalidWorkspaceScope || userLoading || !actor.trim()) {
+        setPathRows(null);
+        setPathError(null);
+        return;
+      }
+      setPathLoading(true);
+      setPathError(null);
+      void (async () => {
+      try {
+        const response = await fetchCerebro<unknown>(`/${method}`, apiKey, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          setPathError(grcResponseErrorMessage(`/${method}`, response.status, response.data));
+          setPathRows([]);
+          return;
+        }
+        setPathRows(graphPathRows(viewpoint.id, response.data));
+        setPathRevision(graphRevisionOf(response.data));
+        setPathTruncated(graphPathsTruncated(response.data));
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) return;
+        setPathError(err instanceof Error ? err.message : "Unable to load paths.");
+        setPathRows([]);
+      } finally {
+        if (!cancelled) setPathLoading(false);
+      }
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [actor, apiKey, debouncedPathQuery, invalidWorkspaceScope, normalizedTenantID, userLoading, viewpoint.id, viewpoint.method, viewpoint.queryField]);
+
   const resetExploration = useCallback(() => {
     loadKeyRef.current = "";
     setState(null);
@@ -286,6 +360,142 @@ export default function ExplorePage() {
   const metricState = graphDataState === "stale" ? "ready" : graphDataState;
   const showEmpty = !selectedSeed && !loading && !loadError;
 
+  const pathCounts = useMemo(() => graphPathCounts(pathRows ?? []), [pathRows]);
+  const pathGraph = useMemo(
+    () => (pathRows ? graphPathRowsToGraph(pathRows, selectedSeed || undefined) : undefined),
+    [pathRows, selectedSeed],
+  );
+  const viewpoints = graphViewpointList();
+
+  const viewpointPicker = (
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      {viewpoints.map((entry) => {
+        const active = entry.id === viewpoint.id;
+        return (
+          <button
+            key={entry.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => setViewpointParam(entry.id === "entity" ? "" : entry.id)}
+            className={`rounded-lg border px-4 py-3 text-left transition ${
+              active
+                ? "border-[color:var(--primary)] bg-[var(--primary-soft)] shadow-[var(--shadow-sm)]"
+                : "border-[color:var(--border)] bg-[var(--surface)] hover:border-[color:var(--border-strong)]"
+            }`}
+          >
+            <div className="text-[13px] font-semibold text-[var(--text-primary)]">{entry.label}</div>
+            <div className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">{entry.question}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (isPathViewpoint) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          contractId="graph-explorer"
+          title="Graph"
+          description={viewpoint.question}
+          action={
+            <AskAboutLink
+              variant="button"
+              question={`${viewpoint.question} Summarise what the graph shows.`}
+              title="Ask about this viewpoint"
+            >
+              Ask
+            </AskAboutLink>
+          }
+        />
+
+        {viewpointPicker}
+
+        {viewpoint.queryField && (
+          <div className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-5 py-4">
+            <label className={labelClass}>
+              {viewpoint.queryLabel}
+              <input
+                value={pathQuery}
+                onChange={(event) => setPathQuery(event.target.value)}
+                placeholder={`Narrow to one ${viewpoint.queryLabel?.toLowerCase()}, or leave blank for all`}
+                className={inputClass}
+              />
+            </label>
+          </div>
+        )}
+
+        {pathError && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">{pathError}</div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-4">
+          <MetricCard label="Paths" value={pathCounts.paths} detail={pathTruncated ? "more beyond the limit" : "returned by this read"} />
+          <MetricCard label="Entities" value={pathCounts.nodes} detail="distinct across these paths" />
+          <MetricCard label="Relation Kinds" value={pathCounts.relations} detail="distinct hop types" />
+          <MetricCard label="Named Owners" value={pathCounts.owners} detail="observed on these paths" />
+        </div>
+
+        {typeof pathRevision === "number" && (
+          <div className="rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
+            Read at graph revision {pathRevision.toLocaleString()}.
+            {pathTruncated ? ` Showing the first ${GRAPH_PATH_LIMIT} paths; more matched.` : ""}
+          </div>
+        )}
+
+        {pathLoading && <LoadingBlock label="Loading paths..." />}
+
+        {!pathLoading && pathRows?.length === 0 && (
+          <EmptyBlock label="No paths matched. Either nothing in the graph forms this pattern yet, or the sources feeding it have not projected the entities it needs." />
+        )}
+
+        {pathGraph && (
+          <Panel title={`${viewpoint.label} Graph`}>
+            <GraphViewer graph={pathGraph} nodeLimit={EXPLORE_NODE_LIMIT} />
+          </Panel>
+        )}
+
+        {pathRows && pathRows.length > 0 && (
+          <Panel title={`${viewpoint.label} Paths`}>
+            <div className="space-y-3">
+              {pathRows.map((row) => (
+                <div key={row.id} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                    {row.nodes.map((node, index) => (
+                      <span key={`${row.id}:${node.urn}`} className="flex items-center gap-2">
+                        {index > 0 && (
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                            {row.relations[index - 1] || "reaches"} →
+                          </span>
+                        )}
+                        <Link
+                          href={`/inventory/${encodeURIComponent(node.urn)}`}
+                          prefetch={false}
+                          className="font-medium text-[var(--text-primary)] underline-offset-2 hover:underline"
+                        >
+                          {node.label}
+                        </Link>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+                    {row.detail && <span>{row.detail}</span>}
+                    {row.owners.length > 0 && <span>Owner: {row.owners.map((owner) => owner.label).join(", ")}</span>}
+                    <span>
+                      {row.evidence.length > 0
+                        ? `${row.evidence.length} proof edge${row.evidence.length === 1 ? "" : "s"} from ${[...new Set(row.evidence.map((entry) => entry.sourceID).filter(Boolean))].join(", ") || "an unnamed source"}`
+                        : "No proof edges returned"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -315,6 +525,8 @@ export default function ExplorePage() {
           </div>
         }
       />
+
+      {viewpointPicker}
 
       <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
         <div className="grid gap-3">

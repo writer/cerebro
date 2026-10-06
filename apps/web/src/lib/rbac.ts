@@ -169,11 +169,18 @@ const scopePermissionBundles: Record<string, AuthorizationPermission[]> = {
 
 const directPermissionScopes = new Set<AuthorizationPermission>(permissionOrder);
 
+// Connect unary graph reads arrive as POST but only read, so they must not require write permission.
+const ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
+
 const readOnlyPostPaths = new Set([
   "grc/control-packets",
   "grc/control-packets/export",
   "grc/control-packs",
   "grc/control-packs/preview",
+  `${ORGANIZATIONAL_GRAPH_SERVICE}/ListCloudAttackPaths`,
+  `${ORGANIZATIONAL_GRAPH_SERVICE}/ListCrownJewelPaths`,
+  `${ORGANIZATIONAL_GRAPH_SERVICE}/ListEffectiveAccessPaths`,
+  `${ORGANIZATIONAL_GRAPH_SERVICE}/ListPersonAccessPaths`,
 ]);
 
 const cleanList = (values: string[] | undefined) =>

@@ -172,6 +172,11 @@ describe("cerebro proxy cache headers", () => {
     expect(buildCerebroUrl("/platform/graph/neighborhood", "?root_urn=urn%3Acerebro%3Atenant-a%3Aasset%3Aone&limit=50").toString()).toBe(
       "http://rust-platform.internal:8080/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Atenant-a%3Aasset%3Aone&limit=50",
     );
+    expect(buildCerebroUrl("/cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths").toString()).toBe(
+      "http://rust-platform.internal:8080/cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths",
+    );
+    // Only the four bounded path reads are forwarded; no other Connect method is.
+    expect(buildCerebroUrl("/cerebro.graph.v1.OrganizationalGraphService/Project").origin).not.toBe("http://rust-platform.internal:8080");
     expect(buildCerebroUrl("/grc/dashboard").origin).not.toBe("http://rust-platform.internal:8080");
   });
 

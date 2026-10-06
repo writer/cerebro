@@ -4373,6 +4373,145 @@ const lifecycleEnumLabelFixture = (value: string) =>
     .replace(/^SECURITY_LIFECYCLE_STATE_/, "")
     .toLowerCase();
 
+const ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
+const FIXTURE_GRAPH_REVISION = 184;
+
+// CloudAttackPathNode carries a top-level urn; ContextEntity keeps it in properties.entity_urn.
+const attackPathNode = (urn: string, entityKind: string, label: string) => ({ urn, entity_kind: entityKind, label });
+
+const contextEntityFixture = (urn: string, entityKind: string, label: string) => ({
+  entity_id: { value: urn },
+  agent_key: urn,
+  entity_kind: entityKind,
+  authority: { kind: "tenant", tenant_id: tenantID },
+  label,
+  properties: { entity_urn: urn },
+});
+
+const attackEdge = (relation: string, sourceID: string, runtimeID: string) => ({
+  relation,
+  direction: "outbound",
+  source_id: sourceID,
+  source_runtime_id: runtimeID,
+  assertion_runtime_ids: [runtimeID],
+  attributes_json: "{}",
+});
+
+const internetURN = `urn:cerebro:${tenantID}:internet:any`;
+const roleURN = `urn:cerebro:${tenantID}:aws_iam_role:deploy`;
+const permissionURN = `urn:cerebro:${tenantID}:aws_iam_permission:s3-write`;
+const accountURN = `urn:cerebro:${tenantID}:aws_account:prod`;
+const oktaGroupURN = `urn:cerebro:${tenantID}:okta_group:platform`;
+const personURN = `urn:cerebro:${tenantID}:person:ana-ruiz`;
+const databaseURN = `urn:cerebro:${tenantID}:database:customer-records`;
+
+const organizationalGraphPathFixtures: Record<string, () => unknown> = {
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListCloudAttackPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    counts: { paths: 2, exposed_resources: 2, privileged_principals: 1, cloud_accounts: 1 },
+    truncated: false,
+    paths: [
+      {
+        public_principal: attackPathNode(internetURN, "internet.principal", "0.0.0.0/0"),
+        exposed_resource: attackPathNode(bucketURN, "storage_bucket", "audit-bucket"),
+        cloud_account: attackPathNode(accountURN, "aws.account", "prod"),
+        principal: attackPathNode(roleURN, "aws.iam_role", "deploy-role"),
+        permission: attackPathNode(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        ownerships: [{ owner: attackPathNode(adminURN, "identity_user", "platform-admin"), edge: attackEdge("owns", "okta", "rt-okta-1") }],
+        reach_relation: "reachable_from",
+        access_relation: "grants",
+        relation_chain: ["reachable_from", "assumes", "grants"],
+        exposure_edge: attackEdge("reachable_from", "aws-prod", "rt-aws-1"),
+        resource_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-1"),
+        traversal_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        privilege_edge: attackEdge("grants", "aws-prod", "rt-aws-2"),
+        permission_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-2"),
+      },
+      {
+        public_principal: attackPathNode(internetURN, "internet.principal", "0.0.0.0/0"),
+        exposed_resource: attackPathNode(apiURN, "service", "payments-api"),
+        cloud_account: attackPathNode(accountURN, "aws.account", "prod"),
+        principal: attackPathNode(roleURN, "aws.iam_role", "deploy-role"),
+        permission: attackPathNode(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        ownerships: [],
+        reach_relation: "reachable_from",
+        access_relation: "grants",
+        relation_chain: ["reachable_from", "assumes", "grants"],
+        exposure_edge: attackEdge("reachable_from", "aws-prod", "rt-aws-1"),
+        resource_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-1"),
+        traversal_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        privilege_edge: attackEdge("grants", "aws-prod", "rt-aws-2"),
+        permission_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-2"),
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListEffectiveAccessPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    paths: [
+      {
+        identity: contextEntityFixture(adminURN, "identity_user", "platform-admin"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        mediator: contextEntityFixture(oktaGroupURN, "okta_group", "platform"),
+        access_target: contextEntityFixture(bucketURN, "storage_bucket", "audit-bucket"),
+        entitlement: contextEntityFixture(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        capability: contextEntityFixture(`${permissionURN}:write`, "capability", "write"),
+        assignment_kind: "group",
+        identity_relation_chain: ["member_of", "assumes"],
+        identity_edges: [attackEdge("member_of", "okta", "rt-okta-1"), attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        relation_chain: ["grants", "allows"],
+        edges: [attackEdge("grants", "aws-prod", "rt-aws-2"), attackEdge("allows", "aws-prod", "rt-aws-2")],
+      },
+      {
+        identity: contextEntityFixture(apiURN, "service", "payments-api"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        mediator: null,
+        access_target: contextEntityFixture(databaseURN, "database", "customer-records"),
+        entitlement: contextEntityFixture(`${permissionURN}:read`, "aws.iam_permission", "rds:Connect"),
+        capability: contextEntityFixture(`${permissionURN}:read-cap`, "capability", "read"),
+        assignment_kind: "service_account",
+        identity_relation_chain: ["assumes"],
+        identity_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        relation_chain: ["grants", "allows"],
+        edges: [attackEdge("grants", "aws-prod", "rt-aws-2")],
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListPersonAccessPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    paths: [
+      {
+        person: contextEntityFixture(personURN, "person", "Ana Ruiz"),
+        identity: contextEntityFixture(adminURN, "identity_user", "platform-admin"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        access_target: contextEntityFixture(bucketURN, "storage_bucket", "audit-bucket"),
+        relation_chain: ["has_identity", "assumes", "writes_to"],
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListCrownJewelPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    seeds: [contextEntityFixture(databaseURN, "database", "customer-records")],
+    paths: [
+      {
+        seed: contextEntityFixture(databaseURN, "database", "customer-records"),
+        nodes: [
+          contextEntityFixture(databaseURN, "database", "customer-records"),
+          contextEntityFixture(apiURN, "service", "payments-api"),
+          contextEntityFixture(repoURN, "repository", "public-demo"),
+        ],
+        relations: ["read_by", "deployed_from"],
+      },
+    ],
+  }),
+};
+
 export const cerebroFixtureResponseFor = ({
   body,
   method,
@@ -4387,6 +4526,9 @@ export const cerebroFixtureResponseFor = ({
   const normalizedPath = normalizePath(path);
 
   if (normalizedMethod !== "GET") {
+    if (normalizedMethod === "POST" && organizationalGraphPathFixtures[normalizedPath]) {
+      return jsonFixture(organizationalGraphPathFixtures[normalizedPath]());
+    }
     if (normalizedMethod === "POST" && normalizedPath === "grc/control-packets") {
       return jsonFixture(controlPacketFixture(searchParams));
     }

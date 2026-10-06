@@ -224,6 +224,30 @@ describe("product UI contract", () => {
     expect(page).toContain("setExpandingURN(null);");
   });
 
+  it("opens the graph on named viewpoints instead of an empty seed box", () => {
+    const page = readProjectFile("src/app/explore/page.tsx");
+
+    expect(page).toContain("graphViewpointList");
+    expect(page).toContain("graphPathRowsToGraph");
+    expect(page).toContain('aria-pressed={active}');
+    // A path set is only evidence if the page says which revision it was read at and what proved each hop.
+    expect(page).toContain("Read at graph revision");
+    expect(page).toContain("proof edge");
+    expect(page).toContain("No proof edges returned");
+    // The viewpoints must stay server-side reads; the page must not re-derive paths from a neighbourhood crawl.
+    expect(page).not.toContain("attack path heuristic");
+
+    const viewpoints = readProjectFile("src/lib/graph-viewpoints.ts");
+    expect(viewpoints).toContain("cerebro.graph.v1.OrganizationalGraphService");
+    expect(viewpoints).toContain("ListEffectiveAccessPaths");
+    expect(viewpoints).toContain("ListCloudAttackPaths");
+
+    // Connect unary reads arrive as POST and must not be charged write permission.
+    const rbac = readProjectFile("src/lib/rbac.ts");
+    expect(rbac).toContain("ListCloudAttackPaths");
+    expect(rbac).toMatch(/readOnlyPostPaths[\s\S]{0,600}ListPersonAccessPaths/);
+  });
+
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
     const vendorSource = readProjectFile("src/app/vendors/page.tsx");
     const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");
