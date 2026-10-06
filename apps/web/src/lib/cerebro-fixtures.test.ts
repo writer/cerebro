@@ -55,6 +55,7 @@ describe("cerebro fixture proxy responses", () => {
       "identity/users",
       "platform/graph/neighborhood",
       "v1/actions",
+      "v1/action-definitions",
       "v1/actions/fixture-operation",
       "v1/actions/fixture-operation/history",
       "v1/source-runtimes/health",
@@ -63,8 +64,23 @@ describe("cerebro fixture proxy responses", () => {
     for (const fixturePath of paths) {
       expect(cerebroFixtureResponseFor({ method: "GET", path: fixturePath })?.status, fixturePath).toBe(200);
     }
-    expect(parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "v1/actions" })!))
-      .toMatchObject({ actions: [{ proposal: { operation_id: "fixture-operation" } }] });
+    const actionPage = parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "v1/actions" })!) as unknown as {
+      actions: Array<{ proposal: { action_kind: string; operation_id: string } }>;
+    };
+    expect(actionPage.actions[0]).toMatchObject({ proposal: { operation_id: "fixture-operation" } });
+
+    // Every proposed kind must exist in the generated action catalog, so the
+    // fixture cannot advertise remediation the product cannot perform.
+    const definitions = parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "v1/action-definitions" })!) as unknown as Array<{ id: string }>;
+    const catalogIDs = new Set(definitions.map((definition) => definition.id));
+    expect(catalogIDs).toEqual(new Set([
+      "identity.okta.suspend_user",
+      "identity.okta.unsuspend_user",
+      "endpoint.cerebro.revoke_device",
+    ]));
+    for (const action of actionPage.actions) {
+      expect(catalogIDs, action.proposal.operation_id).toContain(action.proposal.action_kind);
+    }
   });
 
   it("uses credential algorithms and store IDs recognized by the connector contract", () => {

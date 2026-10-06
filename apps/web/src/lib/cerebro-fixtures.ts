@@ -570,37 +570,139 @@ const graph = {
   ],
 };
 
-const actionFixture = {
+const deviceURN = `urn:cerebro:${tenantID}:endpoint:laptop-4821`;
+
+// Mirrors crates/action-catalog/src/generated.rs. Only these kinds can be proposed.
+const actionDefinitionFixtures = [
+  {
+    id: "identity.okta.suspend_user",
+    provider: "access-approvals",
+    provider_action: "suspend",
+    target_kind: "identity.okta.user",
+    effect: "deny_access",
+    destructive: true,
+    reversible_by: "identity.okta.unsuspend_user",
+    definition_digest: "8786cfc15b5984021508b1ff90e9693e9d305e1b58e33a10760baddefde9871f",
+  },
+  {
+    id: "identity.okta.unsuspend_user",
+    provider: "access-approvals",
+    provider_action: "unsuspend",
+    target_kind: "identity.okta.user",
+    effect: "restore_access",
+    destructive: false,
+    reversible_by: "identity.okta.suspend_user",
+    definition_digest: "492f24f7b5fdf5679777201441ea963a54357d3f658359e2f554130e7797e605",
+  },
+  {
+    id: "endpoint.cerebro.revoke_device",
+    provider: "cerebro-device-auth",
+    provider_action: "revoke",
+    target_kind: "endpoint.cerebro.device",
+    effect: "deny_device_access",
+    destructive: true,
+    reversible_by: "",
+    definition_digest: "bfe050dbcc8e237d27996d459c12185f94ee9f4a857e6286f87455536d6a9bb8",
+  },
+];
+
+const actionOperation = ({
+  effect,
+  findingID,
+  kind,
+  operationID,
+  proposedAt,
+  state,
+  target,
+  verification = "pending",
+}: {
+  effect: string;
+  findingID: string;
+  kind: string;
+  operationID: string;
+  proposedAt: string;
+  state: string;
+  target: string;
+  verification?: string;
+}) => ({
   proposal: {
-    operation_id: "fixture-operation",
+    operation_id: operationID,
     tenant_id: tenantID,
-    finding_id: "demo-finding-critical",
+    finding_id: findingID,
     finding_revision_digest: "fixture-finding-revision",
     finding_validation_receipt_digest: "fixture-validation-receipt",
     graph_revision: 1,
-    action_kind: "require_mfa",
-    action_definition_digest: "fixture-action-definition",
-    target_id: adminURN,
-    expected_effects: [{
-      target_id: adminURN,
-      effect_kind: "mfa_required",
-      expected_state_digest: "fixture-expected-state",
-    }],
-    rollback_ref: "fixture://actions/fixture-operation/rollback",
-    idempotency_key: "fixture-operation",
+    action_kind: kind,
+    action_definition_digest: actionDefinitionFixtures.find((d) => d.id === kind)?.definition_digest ?? "",
+    target_id: target,
+    expected_effects: [{ target_id: target, effect_kind: effect, expected_state_digest: "fixture-expected-state" }],
+    rollback_ref: `fixture://actions/${operationID}/rollback`,
+    idempotency_key: operationID,
     simulation_digest: "fixture-simulation",
     verification_plan_digest: "fixture-verification-plan",
-    proposed_by: "fixture-operator",
-    proposed_at_unix_ms: Date.parse("2026-01-15T11:00:00.000Z"),
-    proposal_expires_at_unix_ms: Date.parse("2026-01-16T11:00:00.000Z"),
-    proposal_digest: "fixture-proposal",
+    proposed_by: "agent:proposer",
+    proposed_at_unix_ms: Date.parse(proposedAt),
+    proposal_expires_at_unix_ms: Date.parse(proposedAt) + 86_400_000,
+    proposal_digest: `fixture-proposal-${operationID}`,
   },
-  state: "waiting_for_approval",
+  state,
   version: 1,
   approval_receipt: null,
-  verification_state: "pending",
+  verification_state: verification,
   verification_receipt: null,
-};
+});
+
+const actionFixture = actionOperation({
+  effect: "deny_access",
+  findingID: "demo-finding-critical",
+  kind: "identity.okta.suspend_user",
+  operationID: "fixture-operation",
+  proposedAt: "2026-01-15T11:00:00.000Z",
+  state: "waiting_for_approval",
+  target: adminURN,
+});
+
+const actionFixtures = [
+  actionFixture,
+  actionOperation({
+    effect: "deny_device_access",
+    findingID: "demo-finding-device",
+    kind: "endpoint.cerebro.revoke_device",
+    operationID: "fixture-operation-device",
+    proposedAt: "2026-01-14T09:30:00.000Z",
+    state: "verified",
+    target: deviceURN,
+    verification: "verified",
+  }),
+  actionOperation({
+    effect: "restore_access",
+    findingID: "demo-finding-offboard",
+    kind: "identity.okta.unsuspend_user",
+    operationID: "fixture-operation-restore",
+    proposedAt: "2026-01-15T08:15:00.000Z",
+    state: "executing",
+    target: adminURN,
+  }),
+  actionOperation({
+    effect: "deny_access",
+    findingID: "demo-finding-stale-admin",
+    kind: "identity.okta.suspend_user",
+    operationID: "fixture-operation-proposed",
+    proposedAt: "2026-01-15T12:45:00.000Z",
+    state: "proposed",
+    target: adminURN,
+  }),
+  actionOperation({
+    effect: "deny_device_access",
+    findingID: "demo-finding-device-stale",
+    kind: "endpoint.cerebro.revoke_device",
+    operationID: "fixture-operation-failed",
+    proposedAt: "2026-01-13T16:20:00.000Z",
+    state: "failed",
+    target: deviceURN,
+    verification: "rejected",
+  }),
+];
 
 const assets = [
   {
@@ -4323,7 +4425,11 @@ export const cerebroFixtureResponseFor = ({
   }
 
   if (normalizedPath === "v1/actions") {
-    return jsonFixture({ actions: [actionFixture], next_page_token: null });
+    return jsonFixture({ actions: actionFixtures, next_page_token: null });
+  }
+
+  if (normalizedPath === "v1/action-definitions") {
+    return jsonFixture(actionDefinitionFixtures);
   }
 
   const actionPathParts = normalizedPath.split("/");
@@ -4338,9 +4444,9 @@ export const cerebroFixtureResponseFor = ({
   }
 
   if (actionPathParts.length === 3 && actionPathParts[0] === "v1" && actionPathParts[1] === "actions") {
-    return safeDecode(actionPathParts[2]) === actionFixture.proposal.operation_id
-      ? jsonFixture(actionFixture)
-      : jsonFixture({ error: "Action not found" }, 404);
+    const requested = safeDecode(actionPathParts[2]);
+    const match = actionFixtures.find((action) => action.proposal.operation_id === requested);
+    return match ? jsonFixture(match) : jsonFixture({ error: "Action not found" }, 404);
   }
 
   if (normalizedPath === "ask-queries") {
