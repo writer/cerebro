@@ -36,7 +36,7 @@ describe("navigation entries", () => {
     const hrefs = operatorNavLinks.map((e) => e.href);
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/risk-inbox");
-    expect(hrefs).toContain("/actions");
+    expect(hrefs).toContain("/verified-findings");
     expect(hrefs).toContain("/grc");
     expect(hrefs).toContain("/ask");
     expect(hrefs).toContain("/controls");
@@ -53,8 +53,8 @@ describe("navigation entries", () => {
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",
     });
-    expect(operatorNavLinks.find((entry) => entry.href === "/actions")).toMatchObject({
-      label: "Actions",
+    expect(operatorNavLinks.find((entry) => entry.href === "/verified-findings")).toMatchObject({
+      label: "Verified Findings",
     });
   });
 

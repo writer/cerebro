@@ -97,7 +97,7 @@ describe("isSidebarLinkActive", () => {
     expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
       "/",
       "/risk-inbox",
-      "/actions",
+      "/verified-findings",
     ]);
     expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
   });

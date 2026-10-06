@@ -131,7 +131,7 @@ describe("portable web fixture route bug bash", () => {
   it("discovers every app page with safe concrete dynamic route samples", async () => {
     const webRoot = path.resolve(import.meta.dirname, "..");
     const routes = await discoverPageRoutes(webRoot);
-    expect(routes).toContain("/actions/fixture-operation");
+    expect(routes).toContain("/verified-findings/fixture-operation");
     expect(routes).toContain("/connectors/okta/setup");
     expect(routes).toContain("/findings/demo-finding-critical");
     expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");

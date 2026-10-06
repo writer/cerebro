@@ -10,7 +10,6 @@ import {
   ACTION_STAGE_LABELS,
   actionStage,
   actionStageIntent,
-  actionTimeLabel,
   indexActionDefinitions,
   summarizeActionStages,
   type ActionDefinition,
@@ -64,8 +63,8 @@ export default function ActionsPage() {
   return (
     <div>
       <PageHeader
-        title="Actions"
-        description="Remediation for findings that passed validation. Every action carries the evidence it was proposed from and the receipts it collected."
+        title="Verified Findings"
+        description="Findings an agent confirmed against empirical evidence, and the remediation each one produced."
         contractId="rust-actions"
       />
 
@@ -83,19 +82,19 @@ export default function ActionsPage() {
       </div>
 
       <div className="mt-4">
-        {query.loading && !query.data ? <LoadingBlock label="Loading remediation work..." /> : null}
+        {query.loading && !query.data ? <LoadingBlock label="Loading verified findings..." /> : null}
         {query.error ? <ErrorBlock error={query.error} onRetry={() => void query.reload()} recoveryDetail="Check the Action authority and signed browser identity, then try again." /> : null}
         {!query.loading && !query.error && actions.length === 0 ? (
-          <EmptyBlock label="No remediation has been proposed. Actions appear here once a validated finding produces one." />
+          <EmptyBlock label="Nothing has been verified yet. A finding appears here once validation confirms it against evidence." />
         ) : null}
         {actions.length > 0 ? (
           <Panel
-            title={activeStage ? ACTION_STAGE_LABELS[activeStage] : "All Remediation"}
+            title={activeStage ? ACTION_STAGE_LABELS[activeStage] : "All Verified Findings"}
             action={<span className="text-[11px] text-[var(--text-muted)]">Newest authority updates first</span>}
           >
             {/* Stage counts are derived from the loaded page, since the authority list API has no state filter or totals. */}
             <div className="mb-3 rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
-              Counts describe the {actions.length.toLocaleString()} operations on this page.
+              Counts describe the {actions.length.toLocaleString()} verified findings on this page.
             </div>
             {visibleActions.length === 0 ? (
               <EmptyBlock label={`Nothing is ${ACTION_STAGE_LABELS[activeStage ?? "proposed"].toLowerCase()} on this page.`} />
@@ -104,11 +103,11 @@ export default function ActionsPage() {
                 <table className="w-full min-w-[980px] text-left text-[12px]">
                   <thead className="border-b border-[color:var(--border)] bg-[var(--surface-muted)] text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
                     <tr>
+                      <th className="px-3 py-2 font-semibold">Finding</th>
+                      <th className="px-3 py-2 font-semibold">Affected</th>
+                      <th className="px-3 py-2 font-semibold">Verification</th>
                       <th className="px-3 py-2 font-semibold">Remediation</th>
-                      <th className="px-3 py-2 font-semibold">Target</th>
-                      <th className="px-3 py-2 font-semibold">Evidence</th>
                       <th className="px-3 py-2 font-semibold">Stage</th>
-                      <th className="px-3 py-2 font-semibold">Proposed</th>
                       <th className="px-3 py-2 font-semibold"><span className="sr-only">Open</span></th>
                     </tr>
                   </thead>
@@ -203,7 +202,37 @@ function ActionRow({
   return (
     <tr className="align-top">
       <td className="px-3 py-3">
-        <div className="font-semibold text-[var(--text-primary)]">{humanizeKind(action.proposal.action_kind)}</div>
+        <Link
+          href={`/findings/${encodeURIComponent(action.proposal.finding_id)}`}
+          className="block max-w-[20rem] truncate font-semibold text-indigo-700 hover:underline"
+          title={action.proposal.finding_id}
+        >
+          {action.proposal.finding_id}
+        </Link>
+        <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+          Confirmed at graph revision {action.proposal.graph_revision.toLocaleString()}
+        </div>
+      </td>
+      <td className="px-3 py-3">
+        <Link
+          href={`/explore?root_urn=${encodeURIComponent(action.proposal.target_id)}`}
+          className="block max-w-[18rem] truncate font-mono text-[11px] text-indigo-700 hover:underline"
+          title={action.proposal.target_id}
+        >
+          {action.proposal.target_id}
+        </Link>
+      </td>
+      <td className="px-3 py-3">
+        <Badge value={action.verification_state} />
+        <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+          {evidence > 0 ? `${evidence.toLocaleString()} evidence refs` : "No evidence refs returned"}
+        </div>
+        <div className="mt-1 truncate text-[11px] text-[var(--text-muted)]" title={action.proposal.proposed_by}>
+          {action.proposal.proposed_by}{age ? ` - ${age}` : ""}
+        </div>
+      </td>
+      <td className="px-3 py-3">
+        <div className="font-medium text-[var(--text-primary)]">{humanizeKind(action.proposal.action_kind)}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {definition?.destructive
             ? <Badge value="destructive" tone="severity" />
@@ -216,44 +245,16 @@ function ActionRow({
               ? <span className="text-[11px] text-amber-700">No rollback action</span>
               : null}
         </div>
-        <Link
-          href={`/findings/${encodeURIComponent(action.proposal.finding_id)}`}
-          className="mt-1 block max-w-[20rem] truncate font-mono text-[10px] text-indigo-700 hover:underline"
-          title={action.proposal.finding_id}
-        >
-          {action.proposal.finding_id}
-        </Link>
-      </td>
-      <td className="px-3 py-3">
-        <Link
-          href={`/explore?root_urn=${encodeURIComponent(action.proposal.target_id)}`}
-          className="block max-w-[18rem] truncate font-mono text-[11px] text-indigo-700 hover:underline"
-          title={action.proposal.target_id}
-        >
-          {action.proposal.target_id}
-        </Link>
         {definition?.effect && (
           <div className="mt-1 text-[11px] text-[var(--text-muted)]">{humanizeKind(definition.effect)}</div>
         )}
       </td>
       <td className="px-3 py-3">
-        <Badge value={action.verification_state} />
-        <div className="mt-1 text-[11px] text-[var(--text-muted)]">
-          {evidence > 0 ? `${evidence.toLocaleString()} evidence refs` : "Validated at proposal"}
-        </div>
-      </td>
-      <td className="px-3 py-3">
         <Badge value={ACTION_STAGE_LABELS[stage]} />
         <div className="mt-1 text-[11px] text-[var(--text-muted)]">{humanizeKind(action.state)}</div>
       </td>
-      <td className="px-3 py-3 text-[var(--text-secondary)]">
-        <div>{actionTimeLabel(action.proposal.proposed_at_unix_ms)}</div>
-        <div className="mt-1 text-[11px] text-[var(--text-muted)]">
-          {action.proposal.proposed_by}{age ? ` - ${age}` : ""}
-        </div>
-      </td>
       <td className="px-3 py-3 text-right">
-        <Link href={`/actions/${encodeURIComponent(action.proposal.operation_id)}`} className="secondary-button inline-flex px-3 py-1.5 text-[12px]">
+        <Link href={`/verified-findings/${encodeURIComponent(action.proposal.operation_id)}`} className="secondary-button inline-flex px-3 py-1.5 text-[12px]">
           Open
         </Link>
       </td>

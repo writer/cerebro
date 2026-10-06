@@ -24,11 +24,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["issues", "findings", "risk", "sla", "triage", "owner", "framework", ...supportedGRCFrameworkNames],
   },
   {
-    label: "Actions",
-    href: "/actions",
-    description: "Remediation proposals, approvals, execution receipts, and independent verification.",
+    label: "Verified Findings",
+    href: "/verified-findings",
+    description: "Findings an agent confirmed against evidence, and the remediation each one produced.",
     section: "Operator",
-    keywords: ["actions", "remediation", "approval", "execution", "verification", "rollback"],
+    keywords: ["verified", "validated", "findings", "evidence", "agent", "remediation", "actions", "approval", "execution", "verification", "rollback"],
   },
   {
     label: "Credentials",
