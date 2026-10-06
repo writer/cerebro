@@ -199,10 +199,10 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 ### Cerebro is a posture product (CSPM, SSPM, ISPM). It is not a SIEM, EDR, or IDS.
 
 - Cloud, SaaS, and identity security posture management are Cerebro's starting product surfaces, not adjacent categories it defers to. Posture findings, the evidence behind them, and the Actions that remediate them are first-class product scope.
+- Cerebro authors posture itself. Its own rules and policy engine decides what is a finding; it does not re-publish another vendor's verdicts as its own. Sources supply observations and evidence, and "Sources are the only path to the outside world" still holds for the network boundary, but a Source does not get to decide posture.
 - The boundaries that remain:
   - It does not retain raw logs indefinitely or expose a SIEM-grade investigation UI.
   - It does not run an endpoint sensor, a kernel agent, or its own packet path.
-  - It does not author posture from Cerebro's own scanners. Posture findings come from typed Sources, and "Sources are the only path to the outside world" still holds.
   - Remediation stays governed. Actions run through the typed Action contract with validation receipts, approval gates, and independent verification. Owning the posture categories does not loosen "No ungoverned remediation through agents".
 - Why: the typed substrate (events, claims, evidence, decisions, workflows, the read graph, and the safety boundary) is what makes posture defensible instead of another scanner with a dashboard. Owning the category is a product decision; the substrate constraints are what keep it honest.
 - Enforced in: [`README.md`](../../README.md) "Scope" and the current route surface in [`docs/reference/api-reference.md`](../reference/api-reference.md).
