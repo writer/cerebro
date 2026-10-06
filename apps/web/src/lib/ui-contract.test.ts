@@ -167,8 +167,14 @@ describe("product UI contract", () => {
     expect(inventorySource).toContain("metricValueForState");
     expect(inventorySource).toContain("metricDetailForState");
     expect(inventorySource).toContain('data-testid="inventory-results"');
-    expect(inventorySource).toContain('data-label="Accountability"');
-    expect(inventorySource).toContain("Select page");
+    // Inventory is a search surface: the query reaches the catalog and the page says what it covers.
+    expect(inventorySource).toContain("q: debouncedQuery");
+    expect(inventorySource).toContain("every attribute collected from the source");
+    expect(inventorySource).toContain("inventoryMetadataMatch");
+    // Review disposition, owner accountability and compliance scope belong to the risk and compliance pages.
+    expect(inventorySource).not.toContain("Needs review");
+    expect(inventorySource).not.toContain('data-label="Accountability"');
+    expect(inventorySource).not.toContain("review_state");
 
     const inventoryDetailSource = readProjectFile("src/app/inventory/[urn]/page.tsx");
     expect(inventoryDetailSource).toContain('role="tablist"');

@@ -15,18 +15,20 @@ type InventoryNarrowingFilters = {
   tenant: string;
   category: string;
   query: string;
-  framework: string;
-  owner: string;
-  review: string;
-  accountability: string;
+  entityType?: string;
+  framework?: string;
+  owner?: string;
+  review?: string;
+  accountability?: string;
   source: string;
-  scope: string;
+  scope?: string;
 };
 
 export const inventoryNarrowingFilterCount = (filters: InventoryNarrowingFilters): number => [
   inventoryRequestSurface(filters.surface) === inventoryDefaultSurface ? "" : filters.surface,
   filters.category,
   filters.query,
+  filters.entityType,
   filters.framework,
   filters.owner,
   filters.review,
@@ -34,4 +36,4 @@ export const inventoryNarrowingFilterCount = (filters: InventoryNarrowingFilters
   filters.source,
   filters.scope,
   // Tenant selects the operating context; it is not an operator-applied result filter.
-].filter((value) => value.trim()).length;
+].filter((value) => value?.trim()).length;

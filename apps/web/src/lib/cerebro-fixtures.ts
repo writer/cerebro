@@ -1880,15 +1880,18 @@ const filterFindings = (params?: URLSearchParams) => {
 const filterAssets = (params?: URLSearchParams) => {
   const sourceID = params?.get("source_id")?.trim().toLowerCase();
   const categoryID = params?.get("category_id")?.trim().toLowerCase();
+  const entityType = params?.get("entity_type")?.trim().toLowerCase();
   const surface = params?.get("surface")?.trim().toLowerCase() || "all";
   const query = params?.get("q")?.trim().toLowerCase();
   const scopeState = params?.get("scope_state")?.trim().toLowerCase();
   return limitList(assets.filter((asset) => {
     if (sourceID && asset.source_id?.toLowerCase() !== sourceID) return false;
+    if (entityType && asset.entity_type.toLowerCase() !== entityType) return false;
     if (categoryID && asset.entity_type.toLowerCase() !== categoryID && inventoryCategoryID(asset.entity_type).toLowerCase() !== categoryID) return false;
     if (surface && surface !== "all" && assetSurface(asset).toLowerCase() !== surface) return false;
     if (scopeState && asset.scope_state?.toLowerCase() !== scopeState) return false;
-    if (query && ![asset.label, asset.urn, asset.entity_type, asset.source_id, asset.attributes?.owner].some((value) => contains(value, query))) return false;
+    // The catalog matches the URN, the label and every attribute value, so mirror that here.
+    if (query && ![asset.label, asset.urn, asset.entity_type, asset.source_id, ...Object.values(asset.attributes ?? {})].some((value) => contains(value, query))) return false;
     return true;
   }), params);
 };
