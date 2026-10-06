@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import FindingTable from "@/components/grc/FindingTable";
-import { AppliedFilterChips, Badge, DataStateBanner, MetricCard, PageHeader, ResultLimitNotice, RiskBadge, SeverityDot } from "@/components/grc/Primitives";
+import { AppliedFilterChips, Badge, DataStateBanner, EmptyBlock, MetricCard, PageHeader, ResultLimitNotice, RiskBadge, SeverityDot } from "@/components/grc/Primitives";
 import ReviewDrawer from "@/components/grc/ReviewDrawer";
 import { fetchCerebro } from "@/lib/cerebro-client";
 import { countLabel } from "@/lib/format";
@@ -17,7 +17,27 @@ import { GRC_FILTERED_EXPORT_LIMIT, GRC_WORKLIST_LIMIT, grcBoundedRows } from "@
 import { useApiKey } from "@/components/providers";
 import { frameworkOptionLabel, isUpcomingGRCFramework, supportedGRCFrameworkNames } from "@/lib/grc-frameworks";
 import { useQueryParamState } from "@/lib/query-params";
+import {
+  groupFindingsByRule,
+  groupFindingsBySource,
+  RISK_DOMAIN_DETAIL,
+  RISK_DOMAIN_IDS,
+  RISK_DOMAIN_LABELS,
+  riskDomainSummary,
+  type RiskDomainID,
+  type RiskGroup,
+} from "@/lib/risk-domains";
 import type { RuntimeState } from "@/lib/runtime-state";
+
+const RISK_VIEW_IDS = ["list", "rule", "source"] as const;
+type RiskViewID = typeof RISK_VIEW_IDS[number];
+const RISK_VIEW_LABELS: Record<RiskViewID, string> = {
+  list: "List",
+  rule: "By Rule",
+  source: "By Source",
+};
+const isRiskDomain = (value: string): value is RiskDomainID =>
+  (RISK_DOMAIN_IDS as readonly string[]).includes(value);
 
 type FindingsResponse = { findings: GRCFinding[]; meta?: GRCListMeta; generated_at: string };
 
@@ -43,6 +63,9 @@ export default function RiskInboxPage() {
   const [slaStatus, setSLAStatus] = useQueryParamState("sla_status");
   const [owner, setOwner] = useQueryParamState("owner");
   const [query, setQuery] = useQueryParamState("q");
+  const [domain, setDomain] = useQueryParamState("domain");
+  const [view, setView] = useQueryParamState("view", "list");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const debouncedTenantID = useDebouncedValue(tenantID.trim());
   const debouncedRuntimeID = useDebouncedValue(runtimeID.trim());
   const debouncedSourceID = useDebouncedValue(sourceID.trim());
@@ -76,10 +99,22 @@ export default function RiskInboxPage() {
   );
   const loadedFindings = boundedFindingRows.rows;
   const loadedFindingMeta = data ? boundedFindingRows.meta : undefined;
-  const findings = useMemo(
+  const textFilteredFindings = useMemo(
     () => filterRiskInboxFindings(loadedFindings, { framework, owner, query }),
     [framework, loadedFindings, owner, query],
   );
+  const activeDomain = isRiskDomain(domain) ? domain : null;
+  const domains = useMemo(() => riskDomainSummary(textFilteredFindings), [textFilteredFindings]);
+  const findings = useMemo(
+    () => (activeDomain ? domains[activeDomain].findings : textFilteredFindings),
+    [activeDomain, domains, textFilteredFindings],
+  );
+  const activeView: RiskViewID = (RISK_VIEW_IDS as readonly string[]).includes(view) ? view as RiskViewID : "list";
+  const groups = useMemo(() => {
+    if (activeView === "rule") return groupFindingsByRule(findings);
+    if (activeView === "source") return groupFindingsBySource(findings);
+    return [];
+  }, [activeView, findings]);
   const hasLoadedRowFilters = Boolean(owner.trim() || query.trim());
   const usesClientFilteredExport = Boolean(owner.trim() || query.trim());
   const exportFindings = useCallback(async () => {
@@ -184,8 +219,10 @@ export default function RiskInboxPage() {
     { label: "Age max", value: ageMaxDays, onClear: () => setAgeMaxDays("") },
     { label: "SLA", value: slaStatus, onClear: () => setSLAStatus("") },
     { label: "Owner", value: owner, onClear: () => setOwner("") },
+    { label: "Domain", value: activeDomain ? RISK_DOMAIN_LABELS[activeDomain] : "", onClear: () => setDomain("") },
   ];
   const clearFilters = () => {
+    setDomain("");
     setQuery("");
     setTenantID("");
     setRuntimeID("");
@@ -208,7 +245,7 @@ export default function RiskInboxPage() {
       <PageHeader
         contractId="risk-inbox"
         title="Risks"
-        description="Triage findings by risk, severity, owner, entity, and SLA."
+        description="Open risk across cloud and SaaS posture, grouped by what is failing and who owns it."
         action={
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void exportFindings()} disabled={exportState === "working"} title={usesClientFilteredExport ? `Exports up to ${RISK_INBOX_FILTERED_EXPORT_LIMIT} rows matching the owner/search filters.` : undefined} className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
@@ -221,8 +258,21 @@ export default function RiskInboxPage() {
         }
       />
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {RISK_DOMAIN_IDS.map((id) => (
+          <PostureDomainCard
+            key={id}
+            id={id}
+            group={domains[id]}
+            selected={activeDomain === id}
+            state={metricState}
+            onSelect={() => setDomain(activeDomain === id ? "" : id)}
+          />
+        ))}
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
-        <div className="grid gap-3 md:grid-cols-8">
+        <div className="grid gap-3 md:grid-cols-6">
           <div className="md:col-span-2">
             <label className={labelClass}>
               Search
@@ -234,27 +284,39 @@ export default function RiskInboxPage() {
               </div>
             </label>
           </div>
-          <label className={labelClass}>Tenant<input value={tenantID} onChange={(e) => setTenantID(e.target.value)} placeholder="All" className={inputClass} /></label>
-          <label className={labelClass}>Runtime<input value={runtimeID} onChange={(e) => setRuntimeID(e.target.value)} placeholder="All" className={inputClass} /></label>
-          <label className={labelClass}>Source<input value={sourceID} onChange={(e) => setSourceID(e.target.value)} placeholder="All" className={inputClass} /></label>
-          <label className={labelClass}>Owner<input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Loaded rows" className={inputClass} /></label>
-          <label className={labelClass}>
-            Framework
-            <input value={framework} onChange={(e) => setFramework(e.target.value)} placeholder="DORA" list="risk-framework-options" className={inputClass} />
-            <datalist id="risk-framework-options">
-              {frameworkOptions.map((name) => <option key={name} value={name} label={frameworkOptionLabel(name)} />)}
-            </datalist>
-          </label>
           <label className={labelClass}>Severity<select value={severity} onChange={(e) => setSeverity(e.target.value)} className={selectClass}><option value="">All</option><option value="CRITICAL">Critical</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label>
           <label className={labelClass}>Status<select value={status} onChange={(e) => setStatus(e.target.value)} className={selectClass}><option value="open">Open</option><option value="resolved">Resolved</option><option value="all">All</option></select></label>
           <label className={labelClass}>SLA<select value={slaStatus} onChange={(e) => setSLAStatus(e.target.value)} className={selectClass}><option value="">All</option><option value="overdue">Overdue</option><option value="due_soon">Due soon</option><option value="on_track">On track</option><option value="no_due_date">No due date</option><option value="closed">Closed</option></select></label>
-          <label className={labelClass}>Opened after<input type="date" value={openedAfter} onChange={(e) => setOpenedAfter(e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>Opened before<input type="date" value={openedBefore} onChange={(e) => setOpenedBefore(e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>Closed after<input type="date" value={closedAfter} onChange={(e) => setClosedAfter(e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>Closed before<input type="date" value={closedBefore} onChange={(e) => setClosedBefore(e.target.value)} className={inputClass} /></label>
-          <label className={labelClass}>Age min days<input value={ageMinDays} onChange={(e) => setAgeMinDays(e.target.value)} placeholder="0" inputMode="numeric" className={inputClass} /></label>
-          <label className={labelClass}>Age max days<input value={ageMaxDays} onChange={(e) => setAgeMaxDays(e.target.value)} placeholder="30" inputMode="numeric" className={inputClass} /></label>
+          <label className={labelClass}>Owner<input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Loaded rows" className={inputClass} /></label>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((shown) => !shown)}
+          aria-expanded={showAdvanced}
+          className="mt-3 text-[12px] font-medium text-indigo-700 transition hover:text-indigo-900"
+        >
+          {showAdvanced ? "Hide Advanced Filters" : "More Filters"}
+        </button>
+        {showAdvanced && (
+          <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 md:grid-cols-5">
+            <label className={labelClass}>Tenant<input value={tenantID} onChange={(e) => setTenantID(e.target.value)} placeholder="All" className={inputClass} /></label>
+            <label className={labelClass}>Runtime<input value={runtimeID} onChange={(e) => setRuntimeID(e.target.value)} placeholder="All" className={inputClass} /></label>
+            <label className={labelClass}>Source<input value={sourceID} onChange={(e) => setSourceID(e.target.value)} placeholder="All" className={inputClass} /></label>
+            <label className={labelClass}>
+              Framework
+              <input value={framework} onChange={(e) => setFramework(e.target.value)} placeholder="DORA" list="risk-framework-options" className={inputClass} />
+              <datalist id="risk-framework-options">
+                {frameworkOptions.map((name) => <option key={name} value={name} label={frameworkOptionLabel(name)} />)}
+              </datalist>
+            </label>
+            <label className={labelClass}>Opened after<input type="date" value={openedAfter} onChange={(e) => setOpenedAfter(e.target.value)} className={inputClass} /></label>
+            <label className={labelClass}>Opened before<input type="date" value={openedBefore} onChange={(e) => setOpenedBefore(e.target.value)} className={inputClass} /></label>
+            <label className={labelClass}>Closed after<input type="date" value={closedAfter} onChange={(e) => setClosedAfter(e.target.value)} className={inputClass} /></label>
+            <label className={labelClass}>Closed before<input type="date" value={closedBefore} onChange={(e) => setClosedBefore(e.target.value)} className={inputClass} /></label>
+            <label className={labelClass}>Age min days<input value={ageMinDays} onChange={(e) => setAgeMinDays(e.target.value)} placeholder="0" inputMode="numeric" className={inputClass} /></label>
+            <label className={labelClass}>Age max days<input value={ageMaxDays} onChange={(e) => setAgeMaxDays(e.target.value)} placeholder="30" inputMode="numeric" className={inputClass} /></label>
+          </div>
+        )}
         <AppliedFilterChips filters={filterChips} onClearAll={clearFilters} />
       </div>
 
@@ -306,8 +368,24 @@ export default function RiskInboxPage() {
               {mutationError && <span className="w-full text-[12px] text-red-600">{mutationError}</span>}
             </div>
           )}
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[13px] font-semibold text-slate-900">{countLabel(findings.length, "finding")}</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[13px] font-semibold text-slate-900">
+              {countLabel(findings.length, "finding")}
+              {activeDomain && <span className="ml-1.5 font-normal text-slate-500">in {RISK_DOMAIN_LABELS[activeDomain]}</span>}
+            </h2>
+            <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
+              {RISK_VIEW_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  aria-pressed={activeView === id}
+                  className={`rounded px-2.5 py-1 text-[12px] font-medium transition ${activeView === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  {RISK_VIEW_LABELS[id]}
+                </button>
+              ))}
+            </div>
           </div>
           <ResultLimitNotice
             loaded={loadedFindings.length}
@@ -321,17 +399,137 @@ export default function RiskInboxPage() {
               Search and owner filters apply to loaded findings.
             </div>
           )}
-          <FindingTable
-            findings={findings}
-            selectable
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onToggleSelectAll={toggleSelectAll}
-            onPreviewFinding={(finding) => setPreviewFindingId(finding.id)}
-          />
+          {/* Posture domain and group counts are derived client side, so they can only describe the page that was loaded. */}
+          <div className="mb-3 rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
+            Posture domains come from each finding&apos;s rule, and counts describe the {loadedFindings.length.toLocaleString()} findings loaded here. Cloud account, region, and resource type are not returned by this endpoint.
+          </div>
+          {activeView === "list" ? (
+            <FindingTable
+              findings={findings}
+              selectable
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              onPreviewFinding={(finding) => setPreviewFindingId(finding.id)}
+            />
+          ) : (
+            <RiskGroupList
+              groups={groups}
+              noun={activeView === "rule" ? "rule" : "source"}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
+              onPreviewFinding={(finding) => setPreviewFindingId(finding.id)}
+            />
+          )}
         </div>
       )}
       <FindingReviewDrawer finding={previewFinding} onClose={() => setPreviewFindingId(null)} />
+    </div>
+  );
+}
+
+function PostureDomainCard({
+  group,
+  id,
+  onSelect,
+  selected,
+  state,
+}: {
+  group: RiskGroup;
+  id: RiskDomainID;
+  onSelect: () => void;
+  selected: boolean;
+  state: RuntimeState;
+}) {
+  const accent = group.critical > 0
+    ? "border-l-red-500"
+    : group.high > 0
+      ? "border-l-amber-500"
+      : group.findings.length > 0
+        ? "border-l-slate-300"
+        : "border-l-emerald-500";
+  const loading = state === "loading";
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      title={RISK_DOMAIN_DETAIL[id]}
+      className={`rounded-lg border border-l-4 bg-white px-4 py-3 text-left transition ${accent} ${selected ? "border-indigo-400 ring-1 ring-indigo-200" : "border-slate-200 hover:border-slate-300"}`}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{RISK_DOMAIN_LABELS[id]}</div>
+      <div className="mt-1 text-[22px] font-semibold leading-none text-slate-900">
+        {loading ? "--" : group.findings.length.toLocaleString()}
+      </div>
+      <div className="mt-1.5 text-[12px] text-slate-600">
+        {group.findings.length === 0 ? "No findings loaded" : `${group.critical.toLocaleString()} critical, ${group.high.toLocaleString()} high`}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-slate-500">
+        {group.unowned > 0 ? `${group.unowned.toLocaleString()} without an owner` : RISK_DOMAIN_DETAIL[id]}
+      </div>
+    </button>
+  );
+}
+
+function RiskGroupList({
+  groups,
+  noun,
+  onPreviewFinding,
+  onToggleSelect,
+  onToggleSelectAll,
+  selectedIds,
+}: {
+  groups: RiskGroup[];
+  noun: string;
+  onPreviewFinding: (finding: GRCFinding) => void;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (ids: string[], selected: boolean) => void;
+  selectedIds: Set<string>;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(groups[0]?.id ?? null);
+
+  if (groups.length === 0) {
+    return <EmptyBlock label={`No findings match the current filters, so there is nothing to group by ${noun}.`} />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {groups.map((group) => {
+        const open = expanded === group.id;
+        return (
+          <div key={group.id} className="rounded-lg border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={() => setExpanded(open ? null : group.id)}
+              aria-expanded={open}
+              className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`h-4 w-4 shrink-0 text-slate-400 transition ${open ? "rotate-90" : ""}`}>
+                <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900">{group.label}</span>
+              {group.critical > 0 && <Badge value={`${group.critical} critical`} tone="severity" />}
+              {group.high > 0 && <Badge value={`${group.high} high`} />}
+              {group.unowned > 0 && <span className="text-[12px] text-amber-700">{group.unowned.toLocaleString()} unowned</span>}
+              <RiskBadge score={group.topRisk} />
+              <span className="text-[12px] font-medium text-slate-600">{countLabel(group.findings.length, "finding")}</span>
+            </button>
+            {open && (
+              <div className="border-t border-slate-200 px-2 pb-2">
+                <FindingTable
+                  findings={group.findings}
+                  selectable
+                  selectedIds={selectedIds}
+                  onToggleSelect={onToggleSelect}
+                  onToggleSelectAll={onToggleSelectAll}
+                  onPreviewFinding={onPreviewFinding}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
