@@ -38,7 +38,6 @@ describe("navigation entries", () => {
     expect(hrefs).toContain("/risk-inbox");
     expect(hrefs).toContain("/verified-findings");
     expect(hrefs).toContain("/grc");
-    expect(hrefs).toContain("/ask");
     expect(hrefs).toContain("/controls");
     expect(hrefs).toContain("/connectors");
     expect(hrefs).toContain("/credential-stores");

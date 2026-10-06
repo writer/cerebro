@@ -301,15 +301,15 @@ describe("product UI contract", () => {
 
   it("keeps Ask readiness public-safe and visible before a question runs", () => {
     const routeSource = readProjectFile("src/app/api/agent/ask/status/route.ts");
-    const pageSource = readProjectFile("src/app/ask/page.tsx");
-    const inputSource = readProjectFile("src/components/ask/AskInput.tsx");
+    const providerSource = readProjectFile("src/components/agent/CerebroAgentProvider.tsx");
+    const panelSource = readProjectFile("src/components/agent/CerebroAgentPanel.tsx");
 
     expect(routeSource).toContain("askAgentReadiness");
     expect(routeSource).toContain("NextResponse.json");
-    expect(pageSource).toContain("/api/agent/ask/status");
-    expect(inputSource).toContain("useForm");
-    expect(inputSource).toContain("Checking Ask path");
-    expect(inputSource).not.toMatch(/env|token|credential|not configured/i);
+    expect(providerSource).toContain("/api/agent/ask/status");
+    expect(panelSource).toContain("readinessLoading");
+    expect(panelSource).toContain("Ask path unavailable");
+    expect(panelSource).not.toMatch(/env|token|credential|not configured/i);
   });
 
   it("keeps command palette page actions ahead of unavailable live search", () => {

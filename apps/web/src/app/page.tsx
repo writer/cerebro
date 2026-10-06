@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+
+import AskAboutLink from "@/components/ask/AskAboutLink";
 import { useMemo } from "react";
 
 import { useUserPreferences } from "@/components/providers";
@@ -80,6 +82,12 @@ function OverviewTile({
     </Link>
   );
 }
+
+const HOME_ASK_PROMPTS = [
+  "Which assets have no owner?",
+  "What changed this week?",
+  "Which identities have admin access?",
+];
 
 function CoverageRow({
   detail,
@@ -250,15 +258,15 @@ export function SignalCoveragePanel({
       <div className="mt-5 border-t border-[color:var(--border)] pt-4">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Ask Cerebro</div>
         <div className="mt-2 space-y-1.5">
-          <Link href="/ask?q=which%20assets%20have%20no%20owner" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
-            Which assets have no owner?
-          </Link>
-          <Link href="/ask?q=what%20changed%20this%20week" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
-            What changed this week?
-          </Link>
-          <Link href="/ask?q=which%20identities%20have%20admin%20access" className="block truncate text-[12px] text-[var(--primary)] hover:underline">
-            Which identities have admin access?
-          </Link>
+          {HOME_ASK_PROMPTS.map((question) => (
+            <AskAboutLink
+              key={question}
+              question={question}
+              className="block truncate text-left text-[12px] text-[var(--primary)] hover:underline"
+            >
+              {question}
+            </AskAboutLink>
+          ))}
         </div>
       </div>
     </section>

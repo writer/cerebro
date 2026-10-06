@@ -534,7 +534,7 @@ export default function AuditPackagesPage() {
               detail="Start from an entity and expand assets, findings, owners, and sources."
             />
             <InvestigationLink
-              href={`/ask?question=${encodeURIComponent(`Which controls need evidence for ${framework || selectedProfileID}?`)}`}
+              href={`/reports/audit-packages?ask_q=${encodeURIComponent(`Which controls need evidence for ${framework || selectedProfileID}?`)}`}
               title="Ask about evidence"
               detail="Ask for missing evidence, stale evidence, owner gaps, or affected assets."
             />

@@ -80,7 +80,6 @@ export const informationAreas: InformationArea[] = [
       { href: "/", label: "Home", detail: "Active risk, owners, evidence, and source attention." },
       { href: "/risk-inbox", label: "Issues", detail: "Findings by severity, owner, evidence, SLA, and status." },
       { href: "/impact", label: "Affected Assets", detail: "Impacted entities and risk paths." },
-      { href: "/ask", label: "Ask", detail: "Ask investigation questions and review cited answers." },
       { href: "/inventory", label: "Inventory", detail: "Assets, owners, scope, vulnerabilities, and graph context." },
       { href: "/vendors", label: "Vendors", detail: "Vendor discoveries, owners, reviews, contracts, assurance records, and open risk." },
     ],
@@ -167,7 +166,6 @@ export const informationAreas: InformationArea[] = [
       { href: "/trends", label: "Trends", detail: "Runtime-backed risk and backlog movement." },
     ],
     secondaryRoutes: [
-      { href: "/ask", label: "Ask", detail: "Ask runtime and coverage questions." },
       { href: "/impact", label: "Affected Assets", detail: "Entity impact and affected paths." },
       { href: "/connectors/activation", label: "Source Activation", detail: "Source collection scope, access, and trust posture." },
       { href: "/credential-stores", label: "Credential Stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
@@ -210,7 +208,6 @@ export const informationAreas: InformationArea[] = [
     secondaryRoutes: [
       { href: "/frameworks", label: "Frameworks", detail: "Framework status, control gaps, and planning." },
       { href: "/risk-inbox", label: "Issues", detail: "Priority findings behind the summary." },
-      { href: "/ask", label: "Ask", detail: "Ask follow-up questions against the graph." },
     ],
   },
 ];

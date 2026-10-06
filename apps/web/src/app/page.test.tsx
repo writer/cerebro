@@ -26,6 +26,10 @@ vi.mock("@/lib/grc-scope", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/grc-scope")>();
   return { ...actual, useGRCScopeQueryState: mocks.useGRCScopeQueryState };
 });
+// The home page renders Ask prompts through the agent dock, which has its own provider and tests.
+vi.mock("@/components/ask/AskAboutLink", () => ({
+  default: ({ children }: { children?: React.ReactNode }) => <button type="button">{children}</button>,
+}));
 
 import { grcDashboardPath, grcPath } from "@/lib/grc-client";
 

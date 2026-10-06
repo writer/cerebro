@@ -59,13 +59,6 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["custom dashboard", "dashboards", "trends", "widgets", "workspace", "saved views"],
   },
   {
-    label: "Ask",
-    href: "/ask",
-    description: "Ask questions about risks, owners, evidence, affected assets, and what changed.",
-    section: "Operator",
-    keywords: ["ask", "question", "owner", "evidence", "query", "search"],
-  },
-  {
     label: "Controls",
     href: "/controls",
     description: "Control status, custom framework packs, mapped findings, and evidence gaps.",
@@ -251,7 +244,6 @@ const routeLabels: Record<string, string> = Object.fromEntries(
 );
 
 routeLabels["/"] = "Home";
-routeLabels["/ask"] = "Ask";
 routeLabels["/evidence"] = "Evidence";
 routeLabels["/findings"] = "Finding detail";
 routeLabels["/identity"] = "Members";

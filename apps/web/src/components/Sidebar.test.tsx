@@ -63,7 +63,6 @@ describe("isSidebarLinkActive", () => {
     expect(hrefs).toEqual([
       "/explore",
       "/impact",
-      "/ask",
       "/identity",
       "/security/lifecycle",
     ]);

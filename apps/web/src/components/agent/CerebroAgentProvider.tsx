@@ -25,6 +25,7 @@ import {
   reduceAskEvent,
   streamAgentAsk,
 } from "@/lib/ask";
+import type { AskAgentReadiness } from "@/lib/ask-agent-status";
 import { routeLabelForPath } from "@/lib/route-labels";
 import type { AskImageAttachment } from "@/lib/ask-images";
 
@@ -57,6 +58,8 @@ type CerebroAgentContextValue = {
   agentMode: AskAgentMode;
   setAgentMode: (value: AskAgentMode) => void;
   pageContext: AskAgentContext;
+  readiness: AskAgentReadiness | null;
+  readinessLoading: boolean;
   openAgent: (options?: OpenAgentOptions) => void;
   runAgent: (input: RunAgentInput) => Promise<void>;
   retryTurn: (turn: AskTurnState) => void;
@@ -66,6 +69,12 @@ type CerebroAgentContextValue = {
 };
 
 const CerebroAgentContext = createContext<CerebroAgentContextValue | undefined>(undefined);
+
+// Shared Ask links carry their question in ask_q, since pages already use q for search.
+const sharedAskQuestion = (): string => {
+  if (typeof window === "undefined") return "";
+  return new URL(window.location.href).searchParams.get("ask_q")?.trim() ?? "";
+};
 
 const capturePageContext = (): AskAgentContext => {
   if (typeof window === "undefined") {
@@ -141,8 +150,10 @@ const mergeContext = (
 
 export function CerebroAgentProvider({ children }: { children: React.ReactNode }) {
   const { apiKey } = useApiKey();
-  const [isOpen, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [isOpen, setOpen] = useState(() => sharedAskQuestion().length > 0);
+  const [draft, setDraft] = useState(sharedAskQuestion);
+  const [readiness, setReadiness] = useState<AskAgentReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(true);
   const [images, setImages] = useState<AskImageAttachment[]>([]);
   const [turns, setTurns] = useState<AskTurnState[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
@@ -155,6 +166,22 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
   const conversationTenantRef = useRef("writer");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch("/api/agent/ask/status", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return;
+        setReadiness(await response.json() as AskAgentReadiness);
+      } catch {
+        if (!controller.signal.aborted) setReadiness(null);
+      } finally {
+        if (!controller.signal.aborted) setReadinessLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const refresh = () => setPageContext(capturePageContext());
@@ -353,6 +380,8 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       agentMode,
       setAgentMode,
       pageContext,
+      readiness,
+      readinessLoading,
       openAgent,
       runAgent,
       retryTurn,
@@ -369,6 +398,8 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       images,
       openAgent,
       pageContext,
+      readiness,
+      readinessLoading,
       retryTurn,
       runAgent,
       stopActiveTurn,
