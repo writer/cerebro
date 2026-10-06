@@ -44,7 +44,7 @@ import {
 } from "@/lib/graph-explore";
 import { grcScopeQuery, useGRCScopeQueryState } from "@/lib/grc-scope";
 import { useQueryParamState } from "@/lib/query-params";
-import { metricValueForState, runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
+import { runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
 type FindingsResponse = { findings: GRCFinding[]; generated_at: string };
 
@@ -357,7 +357,6 @@ export default function ExplorePage() {
   const apiUnavailable = runtimeState === "unavailable";
   const graphDataState: RuntimeState = loading && !graph?.root ? "loading" : loadError && graph?.root ? "stale" : loadError ? runtimeState : "ready";
   const showUnavailableState = Boolean(loadError && apiUnavailable && !graph?.root);
-  const metricState = graphDataState === "stale" ? "ready" : graphDataState;
   const showEmpty = !selectedSeed && !loading && !loadError;
 
   const pathCounts = useMemo(() => graphPathCounts(pathRows ?? []), [pathRows]);
@@ -376,7 +375,7 @@ export default function ExplorePage() {
             key={entry.id}
             type="button"
             aria-pressed={active}
-            onClick={() => setViewpointParam(entry.id === "entity" ? "" : entry.id)}
+            onClick={() => setViewpointParam(entry.id === "connections" ? "" : entry.id)}
             className={`rounded-lg border px-4 py-3 text-left transition ${
               active
                 ? "border-[color:var(--primary)] bg-[var(--primary-soft)] shadow-[var(--shadow-sm)]"
@@ -432,8 +431,8 @@ export default function ExplorePage() {
         <div className="grid gap-4 md:grid-cols-4">
           <MetricCard label="Paths" value={pathCounts.paths} detail={pathTruncated ? "more beyond the limit" : "returned by this read"} />
           <MetricCard label="Entities" value={pathCounts.nodes} detail="distinct across these paths" />
-          <MetricCard label="Relation Kinds" value={pathCounts.relations} detail="distinct hop types" />
-          <MetricCard label="Named Owners" value={pathCounts.owners} detail="observed on these paths" />
+          <MetricCard label="Relation Types" value={pathCounts.relations} detail="distinct kinds of hop" />
+          <MetricCard label="Owners" value={pathCounts.owners} detail="named on these paths" />
         </div>
 
         {typeof pathRevision === "number" && (
@@ -450,13 +449,13 @@ export default function ExplorePage() {
         )}
 
         {pathGraph && (
-          <Panel title={`${viewpoint.label} Graph`}>
+          <Panel title="Path Graph">
             <GraphViewer graph={pathGraph} nodeLimit={EXPLORE_NODE_LIMIT} />
           </Panel>
         )}
 
         {pathRows && pathRows.length > 0 && (
-          <Panel title={`${viewpoint.label} Paths`}>
+          <Panel title="Paths">
             <div className="space-y-3">
               {pathRows.map((row) => (
                 <div key={row.id} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-4 py-3">
@@ -501,7 +500,7 @@ export default function ExplorePage() {
       <PageHeader
         contractId="graph-explorer"
         title="Graph"
-        description="Start from an entity and expand nearby assets, findings, owners, and sources."
+        description={viewpoint.question}
         action={
           <div className="flex items-center gap-2">
             {selectedSeed && (
@@ -530,15 +529,15 @@ export default function ExplorePage() {
 
       <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
         <div className="grid gap-3">
-          <label className={labelClass}>Seed entity<input value={rootURN} onChange={(event) => setRootURN(event.target.value)} placeholder={fallbackRoot || "urn:cerebro:..."} className={inputClass} /></label>
+          <label className={labelClass}>Start from<input value={rootURN} onChange={(event) => setRootURN(event.target.value)} placeholder={fallbackRoot || "urn:cerebro:..."} className={inputClass} /></label>
         </div>
         {seedValidation && <div className="mt-2 text-[12px] text-amber-700">{seedValidation}</div>}
         {!rootURN && fallbackRoot && (
           <div className="mt-2 text-[12px] text-slate-500">
-            Suggested start available: <span className="font-mono text-slate-700">{shortEntity(fallbackRoot)}</span>
+            Suggested start: <span className="font-mono text-slate-700">{shortEntity(fallbackRoot)}</span>
           </div>
         )}
-        <div className="mt-2 text-[12px] text-slate-500">Select a node in the graph, then choose <span className="font-medium text-slate-700">Expand neighbors</span> to grow the view or <span className="font-medium text-slate-700">Remove</span> to prune it.</div>
+        <div className="mt-2 text-[12px] text-slate-500">Select a node in the graph, then <span className="font-medium text-slate-700">Expand neighbors</span> to grow the view or <span className="font-medium text-slate-700">Remove</span> to prune it.</div>
       </div>
 
       <DataStateBanner
@@ -561,17 +560,20 @@ export default function ExplorePage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Seed entity" value={metricValueForState({ state: metricState, value: selectedSeed ? shortEntity(selectedSeed) : "None" })} detail={showUnavailableState ? "waiting for API" : "exploration anchor"} />
-        <MetricCard label="Nodes" value={metricValueForState({ state: metricState, value: nodeCount > 0 ? `${visibleNodeCount}/${nodeCount}` : "0" })} detail={hiddenNodeCount > 0 ? `${hiddenNodeCount} hidden by cap` : "visible / accumulated"} />
-        <MetricCard label="Relations" value={metricValueForState({ state: metricState, value: relationCount })} detail={showUnavailableState ? "waiting for API" : "accumulated graph links"} />
-        <MetricCard label="Expanded" value={metricValueForState({ state: metricState, value: expandedCount })} detail={showUnavailableState ? "waiting for API" : "entities explored"} />
-      </div>
+      {/* These describe the view the operator has built, so they are a status line rather than posture metrics. */}
+      {graph?.root && (
+        <div className="rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
+          {visibleNodeCount.toLocaleString()} {visibleNodeCount === 1 ? "entity" : "entities"} and{" "}
+          {relationCount.toLocaleString()} {relationCount === 1 ? "relation" : "relations"} in view,{" "}
+          {expandedCount.toLocaleString()} expanded.
+          {hiddenNodeCount > 0 ? ` ${hiddenNodeCount.toLocaleString()} hidden by the ${EXPLORE_NODE_LIMIT}-entity cap.` : ""}
+        </div>
+      )}
 
       {showEmpty && (
-        <Panel title="Start an exploration">
+        <Panel title="Pick a Starting Point">
           <div className="space-y-4">
-            <EmptyBlock label="Enter an entity URN, or start from a suggested entity attached to an open finding." />
+            <EmptyBlock label="Enter an entity URN, or start from an entity attached to an open finding." />
             {seedSuggestions.length > 0 && (
               <div className="grid gap-3 md:grid-cols-2">
                 {seedSuggestions.map((suggestion) => (

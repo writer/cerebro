@@ -1,11 +1,11 @@
 import { GRCGraph, GRCGraphNode, GRCGraphRelation } from "@/lib/grc";
 
 export const GRAPH_VIEWPOINT_IDS = [
-  "entity",
+  "connections",
   "effective-access",
-  "person-access",
-  "cloud-attack",
-  "crown-jewel",
+  "human-access",
+  "attack-paths",
+  "sensitive-assets",
 ] as const;
 
 export type GraphViewpointID = (typeof GRAPH_VIEWPOINT_IDS)[number];
@@ -26,42 +26,42 @@ export type GraphViewpoint = {
 const CONNECT_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
 
 export const GRAPH_VIEWPOINTS: Record<GraphViewpointID, GraphViewpoint> = {
-  entity: {
-    id: "entity",
-    label: "Entity Neighborhood",
-    question: "What is directly connected to one entity?",
+  connections: {
+    id: "connections",
+    label: "Connections",
+    question: "What does one asset or identity connect to, hop by hop?",
     method: null,
     needsSeed: true,
   },
   "effective-access": {
     id: "effective-access",
     label: "Effective Access",
-    question: "Which identities, human or service, reach which capability?",
+    question: "Which identities reach which permission once groups and roles resolve?",
     method: `${CONNECT_SERVICE}/ListEffectiveAccessPaths`,
     needsSeed: false,
     queryField: "identity_query",
     queryLabel: "Identity",
   },
-  "person-access": {
-    id: "person-access",
-    label: "Person Access",
-    question: "What does a person reach through their accounts?",
+  "human-access": {
+    id: "human-access",
+    label: "Human Access",
+    question: "What does one person reach across every account they hold?",
     method: `${CONNECT_SERVICE}/ListPersonAccessPaths`,
     needsSeed: false,
     queryField: "person_query",
     queryLabel: "Person",
   },
-  "cloud-attack": {
-    id: "cloud-attack",
-    label: "Cloud Attack Paths",
-    question: "Where does public exposure reach a privileged permission?",
+  "attack-paths": {
+    id: "attack-paths",
+    label: "Attack Paths",
+    question: "Where does internet exposure reach a privileged cloud permission?",
     method: `${CONNECT_SERVICE}/ListCloudAttackPaths`,
     needsSeed: false,
   },
-  "crown-jewel": {
-    id: "crown-jewel",
-    label: "Crown Jewel Paths",
-    question: "What reaches a designated sensitive asset?",
+  "sensitive-assets": {
+    id: "sensitive-assets",
+    label: "Sensitive Assets",
+    question: "What can reach an asset classified as sensitive?",
     method: `${CONNECT_SERVICE}/ListCrownJewelPaths`,
     needsSeed: false,
   },
@@ -74,7 +74,7 @@ export const isGraphViewpointID = (value: string | null | undefined): value is G
   Boolean(value) && (GRAPH_VIEWPOINT_IDS as readonly string[]).includes(value as string);
 
 export const graphViewpointFor = (value: string | null | undefined): GraphViewpoint =>
-  isGraphViewpointID(value) ? GRAPH_VIEWPOINTS[value] : GRAPH_VIEWPOINTS.entity;
+  isGraphViewpointID(value) ? GRAPH_VIEWPOINTS[value] : GRAPH_VIEWPOINTS.connections;
 
 export type GraphPathNode = {
   urn: string;
@@ -232,11 +232,11 @@ export const crownJewelPathRows = (payload: unknown): GraphPathRow[] =>
   });
 
 const ROW_ADAPTERS: Record<GraphViewpointID, (payload: unknown) => GraphPathRow[]> = {
-  entity: () => [],
+  connections: () => [],
   "effective-access": effectiveAccessPathRows,
-  "person-access": personAccessPathRows,
-  "cloud-attack": cloudAttackPathRows,
-  "crown-jewel": crownJewelPathRows,
+  "human-access": personAccessPathRows,
+  "attack-paths": cloudAttackPathRows,
+  "sensitive-assets": crownJewelPathRows,
 };
 
 export const graphPathRows = (viewpoint: GraphViewpointID, payload: unknown): GraphPathRow[] =>

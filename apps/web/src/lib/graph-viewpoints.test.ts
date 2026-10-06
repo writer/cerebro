@@ -36,14 +36,14 @@ describe("graph viewpoint catalog", () => {
       expect(viewpoint.question.length).toBeGreaterThan(10);
       expect(viewpoint.label.length).toBeLessThanOrEqual(20);
     });
-    expect(graphViewpointFor("cloud-attack").id).toBe("cloud-attack");
-    expect(graphViewpointFor("not-a-viewpoint").id).toBe("entity");
-    expect(graphViewpointFor(null).id).toBe("entity");
+    expect(graphViewpointFor("attack-paths").id).toBe("attack-paths");
+    expect(graphViewpointFor("not-a-viewpoint").id).toBe("connections");
+    expect(graphViewpointFor(null).id).toBe("connections");
   });
 
-  it("only routes the entity viewpoint to the neighborhood read", () => {
-    expect(graphViewpointFor("entity").method).toBeNull();
-    GRAPH_VIEWPOINT_IDS.filter((id) => id !== "entity").forEach((id) => {
+  it("only routes the connections viewpoint to the neighborhood read", () => {
+    expect(graphViewpointFor("connections").method).toBeNull();
+    GRAPH_VIEWPOINT_IDS.filter((id) => id !== "connections").forEach((id) => {
       expect(graphViewpointFor(id).method).toContain("OrganizationalGraphService/");
     });
   });
@@ -218,9 +218,9 @@ describe("graphPathRowsToGraph", () => {
 });
 
 describe("graphPathRows dispatch", () => {
-  it("routes each viewpoint to its own adapter and yields nothing for the entity view", () => {
-    expect(graphPathRows("entity", { paths: [{}] })).toEqual([]);
-    expect(graphPathRows("person-access", {
+  it("routes each viewpoint to its own adapter and yields nothing for the connections view", () => {
+    expect(graphPathRows("connections", { paths: [{}] })).toEqual([]);
+    expect(graphPathRows("human-access", {
       paths: [{
         person: contextEntity("urn:p", "person", "Ana"),
         identity: contextEntity("urn:i", "identity", "ana"),
