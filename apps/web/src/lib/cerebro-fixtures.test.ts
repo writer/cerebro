@@ -120,6 +120,18 @@ describe("cerebro fixture proxy responses", () => {
     });
   });
 
+  it("does not dispatch a graph fixture from an inherited object key", () => {
+    withFixtureMode();
+    for (const inherited of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      const response = cerebroFixtureResponseFor({
+        method: "POST",
+        path: inherited,
+        body: "{}",
+      });
+      expect(response?.status, inherited).toBe(404);
+    }
+  });
+
   it("does not advertise the unsupported vendor discovery sync route", () => {
     withFixtureMode();
     for (const searchParams of [

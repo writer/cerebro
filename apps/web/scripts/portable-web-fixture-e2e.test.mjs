@@ -164,7 +164,7 @@ describe("portable web fixture route bug bash", () => {
     expect(sameOriginApplicationRoute("/api/cerebro/grc/vendors", baseUrl)).toBeNull();
     expect(sameOriginApplicationRoute("https://example.com/vendors", baseUrl)).toBeNull();
     expect(sameOriginApplicationRoute("/_next/static/chunk.js", baseUrl)).toBeNull();
-    expect(sameOriginApplicationRoute("/impact?root_urn=%5Bidentity-user-1%5D", baseUrl)).toBeNull();
+    expect(sameOriginApplicationRoute("/explore?root_urn=%5Bidentity-user-1%5D", baseUrl)).toBeNull();
   });
 
   it("allows only the two optional local evaluation reports to be absent", () => {

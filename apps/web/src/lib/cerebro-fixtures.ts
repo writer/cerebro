@@ -4526,8 +4526,12 @@ export const cerebroFixtureResponseFor = ({
   const normalizedPath = normalizePath(path);
 
   if (normalizedMethod !== "GET") {
-    if (normalizedMethod === "POST" && organizationalGraphPathFixtures[normalizedPath]) {
-      return jsonFixture(organizationalGraphPathFixtures[normalizedPath]());
+    // A bare lookup also matches inherited keys such as "constructor", so only own keys may dispatch.
+    const graphPathFixture = Object.hasOwn(organizationalGraphPathFixtures, normalizedPath)
+      ? organizationalGraphPathFixtures[normalizedPath]
+      : undefined;
+    if (normalizedMethod === "POST" && graphPathFixture) {
+      return jsonFixture(graphPathFixture());
     }
     if (normalizedMethod === "POST" && normalizedPath === "grc/control-packets") {
       return jsonFixture(controlPacketFixture(searchParams));

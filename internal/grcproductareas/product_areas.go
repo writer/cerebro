@@ -87,7 +87,7 @@ var registry = []Area{
 		Href:        "/risk-inbox",
 		Workflows: []Workflow{
 			{Label: "Risk Inbox", Href: "/risk-inbox"},
-			{Label: "Impact Map", Href: "/impact"},
+			{Label: "Graph", Href: "/explore"},
 			{Label: "Risk Scoring", Href: "/developer/risk-scoring"},
 			{Label: "Trends", Href: "/trends"},
 		},
@@ -137,7 +137,7 @@ var registry = []Area{
 		Workflows: []Workflow{
 			{Label: "Inventory", Href: "/inventory"},
 			{Label: "Vulnerabilities", Href: "/risk-inbox?source_id=grc&q=vulnerability"},
-			{Label: "Impact", Href: "/impact"},
+			{Label: "Graph", Href: "/explore"},
 			{Label: "Trends", Href: "/trends"},
 		},
 		SourceFamilies:     []string{"integration", "vulnerability", "vulnerable_asset", "vulnerability_remediation", "event_log"},

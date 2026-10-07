@@ -204,7 +204,7 @@ const allRouteSpecs = [
     ],
   },
   {
-    route: `/impact?root_urn=${encodeURIComponent(impactRootURN)}`,
+    route: `/explore?root_urn=${encodeURIComponent(impactRootURN)}`,
     label: "Impact Map",
     readySelector: 'input[placeholder="Search graph"]',
     filterSelector: 'input[placeholder="Search graph"]',

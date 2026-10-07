@@ -68,4 +68,19 @@ describe("GRC browser route contract", () => {
       expect(source).toContain(`contractId="${contract.pageId}"`);
     }
   });
+
+  // The browser run matches these headings exactly, so a page rename must fail here first.
+  it("matches the PageHeader titles the browser run waits for", () => {
+    const contracts = grcBrowserRouteContracts({ adminURN: "urn:cerebro:e2e-tenant:identity:admin" });
+    for (const contract of contracts) {
+      const sourcePath = pageSourcesByRoute[contract.route.split("?")[0]];
+      const source = readFileSync(new URL(`../${sourcePath}`, import.meta.url), "utf8");
+      // title may sit either side of contractId, so read the enclosing PageHeader tag.
+      const at = source.indexOf(`contractId="${contract.pageId}"`);
+      const open = source.lastIndexOf("<PageHeader", at);
+      const header = source.slice(open, source.indexOf("/>", at));
+      const title = /title=\{?"([^"]+)"/.exec(header)?.[1];
+      expect(title, `${contract.route} renders a different heading than the contract`).toBe(contract.heading);
+    }
+  });
 });
