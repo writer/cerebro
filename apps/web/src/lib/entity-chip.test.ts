@@ -5,7 +5,6 @@ import type { GRCGraph } from "@/lib/grc";
 import {
   entityDetailHref,
   entityExploreHref,
-  entityImpactHref,
   entityPivotQuestion,
   entityTypeKey,
   entityTypeLabel,
@@ -61,9 +60,8 @@ describe("entity hrefs", () => {
   const urn = "urn:cerebro:writer:repo:writer/cerebro";
   const encoded = encodeURIComponent(urn);
 
-  it("builds detail, impact, and explore links", () => {
+  it("builds detail and graph links", () => {
     expect(entityDetailHref(urn)).toBe(`/inventory/${encoded}`);
-    expect(entityImpactHref(urn)).toBe(`/impact?root_urn=${encoded}`);
     expect(entityExploreHref(urn)).toBe(`/explore?root_urn=${encoded}`);
   });
 

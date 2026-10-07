@@ -75,9 +75,6 @@ export const entityTypeLabel = (key: EntityTypeKey): string =>
 export const entityDetailHref = (urn: string): string =>
   `/inventory/${encodeURIComponent(urn)}`;
 
-export const entityImpactHref = (urn: string): string =>
-  `/impact?root_urn=${encodeURIComponent(urn)}`;
-
 export const entityExploreHref = (urn: string): string =>
   `/explore?root_urn=${encodeURIComponent(urn)}`;
 

@@ -62,7 +62,6 @@ describe("isSidebarLinkActive", () => {
     expect(inventoryGroup?.href).toBe("/inventory");
     expect(hrefs).toEqual([
       "/explore",
-      "/impact",
       "/identity",
       "/security/lifecycle",
     ]);

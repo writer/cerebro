@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
+import FindingTable from "@/components/grc/FindingTable";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { DataStateBanner, EmptyBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { useApiKey, useCurrentUser } from "@/components/providers";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { GRCFinding, GRCGraph, shortEntity } from "@/lib/grc";
+import { GRCEntityImpact, GRCFinding, GRCGraph, riskSort, shortEntity } from "@/lib/grc";
 import {
   GraphPathRow,
   graphPathCounts,
@@ -22,6 +23,7 @@ import {
 import {
   fetchCachedGRC,
   grcClientScopeKey,
+  grcEntityImpactPath,
   grcPath,
   grcResponseErrorMessage,
   grcTimeoutMessage,
@@ -31,6 +33,7 @@ import {
   useGRCQuery,
   type GRCQueryScope,
 } from "@/lib/grc-client";
+import { GRC_DETAIL_LIMIT } from "@/lib/grc-list";
 import {
   ExploreGraphState,
   emptyExploreState,
@@ -110,6 +113,23 @@ export default function ExplorePage() {
   const fallbackRoot = fallbackFindings.data?.findings?.find((finding) => finding.entity || finding.resource_urns?.[0])?.entity ?? fallbackFindings.data?.findings?.find((finding) => finding.resource_urns?.[0])?.resource_urns?.[0] ?? "";
   const seedValidation = debouncedRootURN && !isLikelyEntityURN(debouncedRootURN) ? "Use a full entity URN, for example urn:cerebro:tenant:asset:id." : "";
   const selectedSeed = seedValidation ? "" : debouncedRootURN;
+
+  // The impact read joins findings and evidence counts to one entity; the graph itself stays on the
+  // neighborhood read so the seed and every expansion come from the same projection.
+  const entityImpact = useGRCQuery<GRCEntityImpact>(
+    !isPathViewpoint && selectedSeed && !invalidWorkspaceScope
+      ? grcEntityImpactPath(selectedSeed, {
+        ...grcScopeQuery({ tenantID: normalizedTenantID, workspaceID: normalizedWorkspaceID }),
+        limit: GRC_DETAIL_LIMIT,
+      })
+      : null,
+  );
+  const impactFindings = useMemo(
+    () => (entityImpact.data?.findings ?? []).slice(0, GRC_DETAIL_LIMIT).sort(riskSort),
+    [entityImpact.data?.findings],
+  );
+  const resolvedAnchor = entityImpact.data?.entity_urn?.trim() ?? "";
+  const anchorWasResolved = Boolean(resolvedAnchor && selectedSeed && resolvedAnchor !== selectedSeed);
 
   const [state, setState] = useState<ExploreGraphState | null>(null);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -610,6 +630,20 @@ export default function ExplorePage() {
             nodeLimit={EXPLORE_NODE_LIMIT}
             pinnedURNs={pinnedURNs}
           />
+        </Panel>
+      )}
+
+      {/* Findings come from the impact read, so this panel must not wait on the neighborhood graph. */}
+      {selectedSeed && (
+        <Panel title="Findings on This Entity">
+          {anchorWasResolved && (
+            <div className="mb-3 rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
+              Read against the canonical URN <span className="font-mono text-[11px] text-[var(--text-primary)]">{resolvedAnchor}</span>.
+            </div>
+          )}
+          {entityImpact.loading && !entityImpact.data
+            ? <LoadingBlock label="Loading findings for this entity..." />
+            : <FindingTable findings={impactFindings} empty="No findings are attached to this entity." />}
         </Panel>
       )}
     </div>

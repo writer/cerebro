@@ -79,13 +79,12 @@ export const informationAreas: InformationArea[] = [
     primaryRoutes: [
       { href: "/", label: "Home", detail: "Active risk, owners, evidence, and source attention." },
       { href: "/risk-inbox", label: "Issues", detail: "Findings by severity, owner, evidence, SLA, and status." },
-      { href: "/impact", label: "Affected Assets", detail: "Impacted entities and risk paths." },
+      { href: "/explore", label: "Graph", detail: "Relationships and findings around an asset or identity." },
       { href: "/inventory", label: "Inventory", detail: "Assets, owners, scope, vulnerabilities, and graph context." },
       { href: "/vendors", label: "Vendors", detail: "Vendor discoveries, owners, reviews, contracts, assurance records, and open risk." },
     ],
     secondaryRoutes: [
       { href: "/trends", label: "Trends", detail: "Opened, closed, aged, and breached finding flow." },
-      { href: "/explore", label: "Graph", detail: "Trace relationships around entities and findings." },
       { href: "/connectors", label: "Sources", detail: "Source freshness and ingestion health." },
     ],
   },
@@ -166,7 +165,6 @@ export const informationAreas: InformationArea[] = [
       { href: "/trends", label: "Trends", detail: "Runtime-backed risk and backlog movement." },
     ],
     secondaryRoutes: [
-      { href: "/impact", label: "Affected Assets", detail: "Entity impact and affected paths." },
       { href: "/connectors/activation", label: "Source Activation", detail: "Source collection scope, access, and trust posture." },
       { href: "/credential-stores", label: "Credential Stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
       { href: "/developer", label: "Developer Tools", detail: "API status, OpenAPI resources, and diagnostics." },
@@ -183,7 +181,7 @@ export const informationAreas: InformationArea[] = [
     headline: "items need follow-up",
     summaryFocus: ["top risks", "owner follow-up", "packet blockers"],
     signals: [
-      { key: "highImpact", label: "High-risk assets", href: "/impact" },
+      { key: "highImpact", label: "High-risk assets", href: "/explore" },
       { key: "auditReadiness", label: "Review packet", href: "/reports?report_type=control&profile=soc2-security-core" },
       { key: "ownerGaps", label: "Owner follow-up", href: "/risk-inbox?owner=unassigned" },
       { key: "controlFailures", label: "Failing controls", href: "/controls" },
@@ -203,7 +201,7 @@ export const informationAreas: InformationArea[] = [
       { href: "/trends/dashboards", label: "Dashboards", detail: "Saved scorecards and reusable widgets." },
       { href: "/reports", label: "Reports", detail: "Control evidence packets and finding packets for review." },
       { href: "/reports/audit-packages", label: "Packet review", detail: "Packet blockers, approved evidence, scope exclusions, and shared snapshots." },
-      { href: "/impact", label: "Affected Assets", detail: "High-risk entity impact and affected paths." },
+      { href: "/explore", label: "Graph", detail: "Relationships and findings around a high-risk asset." },
     ],
     secondaryRoutes: [
       { href: "/frameworks", label: "Frameworks", detail: "Framework status, control gaps, and planning." },

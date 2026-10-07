@@ -119,7 +119,7 @@ function LifecycleDrawer({
               <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/inventory/${encodeURIComponent(observation.subject_ref.id)}`}>
                 Open inventory record
               </Link>
-              <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/impact?root_urn=${encodeURIComponent(observation.subject_ref.id)}`}>
+              <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/explore?root_urn=${encodeURIComponent(observation.subject_ref.id)}`}>
                 View impact
               </Link>
             </div>

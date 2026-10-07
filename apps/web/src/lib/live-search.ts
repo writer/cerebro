@@ -282,7 +282,7 @@ const entityCommands = (query: string, dashboard: GRCDashboard): LiveSearchComma
     commands.push({
       id: `live:entity:${urn}`,
       label: shortEntity(urn),
-      href: `/impact?root_urn=${encodeURIComponent(urn)}`,
+      href: `/explore?root_urn=${encodeURIComponent(urn)}`,
       description: `${details.findings} findings · ${details.evidence} evidence roots · ${urn}`,
       section: "Entity",
       keywords,

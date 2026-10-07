@@ -3582,7 +3582,7 @@ const inventoryAssetDetailFixture = (params?: URLSearchParams) => {
     ],
     actions: [
       { title: "Review owner", description: "Confirm the current accountability owner.", priority: "medium", href: "/inventory" },
-      { title: "Inspect graph", description: "Open the impact graph for this fixture asset.", priority: "low", href: `/impact?urn=${encodeURIComponent(asset.urn)}` },
+      { title: "Inspect graph", description: "Open the graph for this fixture asset.", priority: "low", href: `/explore?root_urn=${encodeURIComponent(asset.urn)}` },
     ],
     generated_at: generatedAt,
   };

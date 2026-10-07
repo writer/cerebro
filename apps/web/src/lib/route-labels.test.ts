@@ -5,7 +5,6 @@ import { routeLabelForPath } from "./route-labels";
 describe("route labels", () => {
   it("uses curated labels for known app routes", () => {
     expect(routeLabelForPath("/")).toBe("Home");
-    expect(routeLabelForPath("/impact")).toBe("Affected Assets");
     expect(routeLabelForPath("/controls/builder")).toBe("Control Builder");
     expect(routeLabelForPath("/connectors/builder")).toBe("Connector builder");
     expect(routeLabelForPath("/connectors/activation")).toBe("Source Activation");

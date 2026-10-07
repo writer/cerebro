@@ -7,7 +7,7 @@ import { useCerebroAgent } from "@/components/agent/CerebroAgentProvider";
 import type { GRCGraph } from "@/lib/grc";
 import {
   entityDetailHref,
-  entityImpactHref,
+  entityExploreHref,
   entityPivotQuestion,
   entityTypeLabel,
   resolveEntityPeek,
@@ -116,11 +116,11 @@ export default function EntityChip({ urn, label, graph, className }: Props) {
               Pivot here
             </button>
             <Link
-              href={entityImpactHref(urn)}
+              href={entityExploreHref(urn)}
               onClick={() => setOpen(false)}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
             >
-              Blast radius
+              Connections
             </Link>
             <Link
               href={entityDetailHref(urn)}

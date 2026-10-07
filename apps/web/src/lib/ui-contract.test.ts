@@ -248,6 +248,32 @@ describe("product UI contract", () => {
     expect(rbac).toMatch(/readOnlyPostPaths[\s\S]{0,600}ListPersonAccessPaths/);
   });
 
+  it("carries the findings join on the graph page rather than a separate affected-assets page", () => {
+    const page = readProjectFile("src/app/explore/page.tsx");
+
+    // The impact read is what joins findings and evidence counts to one entity.
+    expect(page).toContain("grcEntityImpactPath");
+    expect(page).toContain("Findings on This Entity");
+    expect(page).toContain("<FindingTable");
+    // Findings come from the Go impact read and must not wait on the Rust neighbourhood graph.
+    expect(page).toMatch(/\{selectedSeed && \([\s\S]{0,400}Findings on This Entity/);
+    // The backend canonicalizes the requested URN, so the page must name the URN it actually read.
+    expect(page).toContain("Read against the canonical URN");
+
+    // The retired page must not come back as a second destination for the same question.
+    expect(() => readProjectFile("src/app/impact/page.tsx")).toThrow();
+    for (const file of [
+      "src/lib/routes.ts",
+      "src/lib/entity-chip.ts",
+      "src/lib/information-areas.ts",
+      "src/components/Sidebar.tsx",
+      "src/components/CommandPalette.tsx",
+      "src/components/grc/GraphViewer.tsx",
+    ]) {
+      expect(readProjectFile(file), `${file} still links the retired page`).not.toMatch(/["'`]\/impact\b/);
+    }
+  });
+
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
     const vendorSource = readProjectFile("src/app/vendors/page.tsx");
     const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");

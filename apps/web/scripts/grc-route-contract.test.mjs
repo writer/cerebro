@@ -14,7 +14,7 @@ const pageSourcesByRoute = {
   "/questionnaires": "src/app/questionnaires/page.tsx",
   "/vendors": "src/app/vendors/page.tsx",
   "/connectors": "src/app/connectors/page.tsx",
-  "/impact": "src/app/impact/page.tsx",
+  "/explore": "src/app/explore/page.tsx",
   "/reports": "src/app/reports/page.tsx",
   "/reports/audit-packages": "src/app/reports/audit-packages/page.tsx",
 };
@@ -33,7 +33,7 @@ describe("GRC browser route contract", () => {
       "/questionnaires",
       "/vendors",
       "/connectors",
-      "/impact?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
+      "/explore?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
       "/reports",
       "/reports/audit-packages",
     ]);
@@ -48,7 +48,7 @@ describe("GRC browser route contract", () => {
       "questionnaires",
       "vendors",
       "connectors",
-      "impact-map",
+      "graph-explorer",
       "reports",
       "audit-packages",
     ]);

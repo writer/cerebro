@@ -71,7 +71,7 @@ describe("EntityChip", () => {
 
   it("opens a peek with type, risk, and entity actions on click", async () => {
     await render(<EntityChip urn={urn} graph={graph} />);
-    expect(container.textContent).not.toContain("Blast radius");
+    expect(container.textContent).not.toContain("Connections");
 
     await act(async () => {
       chipButton()?.click();
@@ -82,11 +82,11 @@ describe("EntityChip", () => {
     expect(container.textContent).toContain("identity");
     expect(container.textContent).toContain("Risk critical · 88");
 
-    const blastRadius = Array.from(container.querySelectorAll("a")).find(
-      (link) => link.textContent === "Blast radius",
+    const connections = Array.from(container.querySelectorAll("a")).find(
+      (link) => link.textContent === "Connections",
     );
-    expect(blastRadius?.getAttribute("href")).toBe(
-      `/impact?root_urn=${encodeURIComponent(urn)}`,
+    expect(connections?.getAttribute("href")).toBe(
+      `/explore?root_urn=${encodeURIComponent(urn)}`,
     );
     const open = Array.from(container.querySelectorAll("a")).find(
       (link) => link.textContent === "Open",

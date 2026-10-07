@@ -554,8 +554,7 @@ function FindingReviewDrawer({
       footer={finding && (
         <div className="flex flex-wrap gap-2">
           <Link href={`/findings/${encodeURIComponent(finding.id)}`} className="primary-button px-3 py-1.5 text-[12px]">Open finding</Link>
-          {entity && <Link href={`/explore?root_urn=${encodeURIComponent(entity)}`} className="secondary-button px-3 py-1.5 text-[12px]">Relationships</Link>}
-          {entity && <Link href={`/impact?root_urn=${encodeURIComponent(entity)}`} className="secondary-button px-3 py-1.5 text-[12px]">Affected assets</Link>}
+          {entity && <Link href={`/explore?root_urn=${encodeURIComponent(entity)}`} className="secondary-button px-3 py-1.5 text-[12px]">Open in graph</Link>}
         </div>
       )}
     >

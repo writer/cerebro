@@ -10,7 +10,7 @@ export function grcBrowserRouteContracts({ adminURN }) {
     { route: "/questionnaires", pageId: "questionnaires", heading: "Questionnaires" },
     { route: "/vendors", pageId: "vendors", heading: "Vendors" },
     { route: "/connectors", pageId: "connectors", heading: "Integrations" },
-    { route: `/impact?root_urn=${encodeURIComponent(adminURN)}`, pageId: "impact-map", heading: "Affected assets" },
+    { route: `/explore?root_urn=${encodeURIComponent(adminURN)}`, pageId: "graph-explorer", heading: "Graph" },
     { route: "/reports", pageId: "reports", heading: "Reports" },
     { route: "/reports/audit-packages", pageId: "audit-packages", heading: "Audit workspace" },
   ];

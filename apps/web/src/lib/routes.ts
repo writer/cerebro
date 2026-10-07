@@ -117,18 +117,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["vendors", "third party", "vendor risk", "vendor discoveries", "contracts", "security review", "questionnaire", "assurance", "owner"],
   },
   {
-    label: "Affected Assets",
-    href: "/impact",
-    description: "Assets and relationships touched by a finding or entity.",
-    section: "Operator",
-    keywords: ["graph", "entity", "impact", "affected entities"],
-  },
-  {
     label: "Graph",
     href: "/explore",
     description: "Trace relationships around an asset, finding, owner, or source.",
     section: "Operator",
-    keywords: ["graph", "relationships", "expand", "neighbors", "pivot", "entity"],
+    keywords: ["graph", "relationships", "expand", "neighbors", "pivot", "entity", "impact", "affected assets", "blast radius"],
   },
   {
     label: "Reports",

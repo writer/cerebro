@@ -55,7 +55,7 @@ describe("information areas", () => {
     const byID = Object.fromEntries(informationAreas.map((area) => [area.id, area]));
 
     expect(byID.risks.primaryRoutes.map((route) => route.href)).toEqual(
-      expect.arrayContaining(["/risk-inbox", "/impact"]),
+      expect.arrayContaining(["/risk-inbox", "/explore"]),
     );
     expect(byID.controls.primaryRoutes.map((route) => route.href)).toEqual(
       expect.arrayContaining(["/controls", "/frameworks", "/evidence", "/reports"]),
