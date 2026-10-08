@@ -59,9 +59,9 @@ const routeParameterSamples = Object.freeze({
   sourceID: "okta",
 });
 const expectedRouteRedirects = new Map([
-  ["/connectors/source-cdk", { pathname: "/connectors/activation", preserveScope: true }],
+  ["/connectors/cdk", { pathname: "/connectors/activation", preserveScope: true }],
   ["/developer/codegen", { pathname: "/developer", preserveScope: false }],
-  ["/mission-control", { pathname: "/connectors", preserveScope: false }],
+  ["/mission", { pathname: "/connectors", preserveScope: false }],
   ["/vision", { pathname: "/", preserveScope: false }],
 ]);
 

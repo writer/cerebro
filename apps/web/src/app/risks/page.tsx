@@ -243,7 +243,7 @@ export default function RiskInboxPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        contractId="risk-inbox"
+        contractId="risks"
         title="Risks"
         description="Open risk across cloud and SaaS posture, grouped by what is failing and who owns it."
         action={

@@ -72,7 +72,7 @@ describe("isSidebarLinkActive", () => {
 
     expect(rules?.label).toBe("Rules");
     expect(rules?.href).toBe("/rules");
-    expect(rules?.links.map((link) => link.href)).toEqual(["/developer/risk-scoring"]);
+    expect(rules?.links.map((link) => link.href)).toEqual(["/developer/scoring"]);
   });
 
   it("gathers every governance record under Compliance", () => {
@@ -87,15 +87,15 @@ describe("isSidebarLinkActive", () => {
       "/questionnaires",
       "/vendors",
       "/reports",
-      "/reports/audit-packages",
+      "/reports/packages",
     ]);
   });
 
   it("leads with daily work rather than governance records", () => {
     expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
       "/",
-      "/risk-inbox",
-      "/verified-findings",
+      "/risks",
+      "/verified",
     ]);
     expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
   });
@@ -103,7 +103,7 @@ describe("isSidebarLinkActive", () => {
   it("never shows a report child without its parent", () => {
     const hrefs = sidebarNavLinks.map((link) => link.href);
 
-    expect(hrefs).toContain("/reports/audit-packages");
+    expect(hrefs).toContain("/reports/packages");
     expect(hrefs).toContain("/reports");
   });
 
@@ -124,9 +124,9 @@ describe("admin sub-tree", () => {
   it("expands admin into the settings an administrator changes", () => {
     expect(adminGroup?.href).toBe("/admin");
     expect(adminGroup?.links.map((link) => link.href)).toEqual([
-      "/admin/access-control",
-      "/credential-stores",
-      "/developer/audit-log",
+      "/admin/access",
+      "/credentials",
+      "/developer/audit",
       "/developer",
     ]);
   });
@@ -139,26 +139,26 @@ describe("admin sub-tree", () => {
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {
-    const duplicated = navigationEntries.filter((entry) => entry.href === "/credential-stores");
+    const duplicated = navigationEntries.filter((entry) => entry.href === "/credentials");
     expect(duplicated).toHaveLength(1);
     expect(adminGroup?.links).toContain(duplicated[0]);
   });
 
   it("keeps credential stores out of Inventory now that Admin owns it", () => {
     const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
-    expect(inventory?.links.map((link) => link.href)).not.toContain("/credential-stores");
+    expect(inventory?.links.map((link) => link.href)).not.toContain("/credentials");
   });
 
   it("does not render a grouped page twice in the utility list", () => {
     const utilityHrefs = sidebarUtilityLinks.map((link) => link.href);
     expect(utilityHrefs).not.toContain("/admin");
-    expect(utilityHrefs).not.toContain("/admin/access-control");
+    expect(utilityHrefs).not.toContain("/admin/access");
     expect(utilityHrefs).not.toContain("/developer");
   });
 
   it("keeps the parent inactive when a child page owns the route", () => {
-    expect(isSidebarLinkActive("/admin/access-control", "/admin")).toBe(false);
-    expect(isSidebarLinkActive("/admin/access-control", "/admin/access-control")).toBe(true);
+    expect(isSidebarLinkActive("/admin/access", "/admin")).toBe(false);
+    expect(isSidebarLinkActive("/admin/access", "/admin/access")).toBe(true);
     expect(isSidebarLinkActive("/admin", "/admin")).toBe(true);
   });
 });

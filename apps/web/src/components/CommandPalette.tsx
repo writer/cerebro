@@ -31,9 +31,9 @@ const searchCommands = (query: string, askGraph: (question: string) => void): Co
   if (!trimmed) return [];
   const encoded = encodeURIComponent(trimmed);
   const frameworkMatch = findSupportedGRCFramework(trimmed);
-  const riskInboxHref = frameworkMatch
-    ? `/risk-inbox?framework=${encodeURIComponent(frameworkMatch.name)}`
-    : `/risk-inbox?q=${encoded}`;
+  const risksHref = frameworkMatch
+    ? `/risks?framework=${encodeURIComponent(frameworkMatch.name)}`
+    : `/risks?q=${encoded}`;
   const inventoryHref = frameworkMatch
     ? `/inventory?framework=${encodeURIComponent(frameworkMatch.name)}`
     : `/inventory?q=${encoded}`;
@@ -50,7 +50,7 @@ const searchCommands = (query: string, askGraph: (question: string) => void): Co
     : `Filter controls by "${trimmed}"`;
   return [
     { id: "ask", label: `Ask: "${trimmed}"`, href: `/?ask_q=${encoded}`, description: "Ask about risk, ownership, evidence, or affected assets.", section: "Operator", keywords: ["ask", "question", "owner", "evidence"], onRun: () => askGraph(trimmed) },
-    { id: "search-risk-inbox", label: `Search risks for "${trimmed}"`, href: riskInboxHref, description: "Filter findings by title, framework, owner, entity, runtime, source, rule, or status.", section: "Operator", keywords: ["search", "findings", "risk", "framework"] },
+    { id: "search-risks", label: `Search risks for "${trimmed}"`, href: risksHref, description: "Filter findings by title, framework, owner, entity, runtime, source, rule, or status.", section: "Operator", keywords: ["search", "findings", "risk", "framework"] },
     { id: "open-framework", label: frameworkMatch ? `Open ${frameworkMatch.name} framework tracking` : `Open framework catalog for "${trimmed}"`, href: frameworkHref, description: "Open maturity, gaps, planning, controls, findings, and exports.", section: "Operator", keywords: ["framework", "catalog", "maturity", "soc2"] },
     { id: "open-finding", label: `Open finding "${trimmed}"`, href: `/findings/${encoded}`, description: "Jump to a finding detail page by ID.", section: "Operator", keywords: ["finding", "detail"] },
     { id: "open-graph", label: `Open graph connections for "${trimmed}"`, href: `/explore?root_urn=${encoded}`, description: "Use as entity URN or graph root.", section: "Operator", keywords: ["graph", "connections", "impact", "affected"] },

@@ -127,7 +127,7 @@ describe("product UI contract", () => {
     const bannerPages = [
       "src/app/evidence/page.tsx",
       "src/app/controls/page.tsx",
-      "src/app/risk-inbox/page.tsx",
+      "src/app/risks/page.tsx",
     ];
     const runtimePages = [
       "src/app/connectors/page.tsx",

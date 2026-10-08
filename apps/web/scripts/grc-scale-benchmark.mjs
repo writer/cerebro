@@ -83,7 +83,7 @@ const allRouteSpecs = [
     ],
   },
   {
-    route: "/risk-inbox",
+    route: "/risks",
     label: "Risk Inbox",
     readySelector: "table.data-table",
     filterSelector: 'input[placeholder="Filter loaded findings"]',

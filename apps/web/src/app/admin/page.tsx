@@ -7,20 +7,20 @@ const adminSections = [
   {
     description:
       "Who may sign in, how much of that identity Cerebro has verified, and which console actions each role may take.",
-    href: "/admin/access-control",
+    href: "/admin/access",
     icon: ShieldCheck,
     label: "Access Control",
   },
   {
     description:
       "Where the credentials for connected sources are held, either sealed in Cerebro or referenced from your own secret manager.",
-    href: "/credential-stores",
+    href: "/credentials",
     icon: KeyRound,
     label: "Credential Stores",
   },
   {
     description: "What changed in this console, who changed it, and when.",
-    href: "/developer/audit-log",
+    href: "/developer/audit",
     icon: ScrollText,
     label: "Audit Events",
   },

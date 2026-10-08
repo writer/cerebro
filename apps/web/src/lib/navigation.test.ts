@@ -35,24 +35,24 @@ describe("navigation entries", () => {
   it("includes expected core operator pages", () => {
     const hrefs = operatorNavLinks.map((e) => e.href);
     expect(hrefs).toContain("/");
-    expect(hrefs).toContain("/risk-inbox");
-    expect(hrefs).toContain("/verified-findings");
+    expect(hrefs).toContain("/risks");
+    expect(hrefs).toContain("/verified");
     expect(hrefs).toContain("/grc");
     expect(hrefs).toContain("/controls");
     expect(hrefs).toContain("/connectors");
-    expect(hrefs).toContain("/credential-stores");
+    expect(hrefs).toContain("/credentials");
   });
 
   it("uses operator labels for risks, actions, and compliance", () => {
     // The sidebar label has to match the page heading and the pinned
     // information area, which are both "Risks".
-    expect(operatorNavLinks.find((entry) => entry.href === "/risk-inbox")).toMatchObject({
+    expect(operatorNavLinks.find((entry) => entry.href === "/risks")).toMatchObject({
       label: "Risks",
     });
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",
     });
-    expect(operatorNavLinks.find((entry) => entry.href === "/verified-findings")).toMatchObject({
+    expect(operatorNavLinks.find((entry) => entry.href === "/verified")).toMatchObject({
       label: "Verified Findings",
     });
   });

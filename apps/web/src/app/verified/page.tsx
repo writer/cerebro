@@ -254,7 +254,7 @@ function ActionRow({
         <div className="mt-1 text-[11px] text-[var(--text-muted)]">{humanizeKind(action.state)}</div>
       </td>
       <td className="px-3 py-3 text-right">
-        <Link href={`/verified-findings/${encodeURIComponent(action.proposal.operation_id)}`} className="secondary-button inline-flex px-3 py-1.5 text-[12px]">
+        <Link href={`/verified/${encodeURIComponent(action.proposal.operation_id)}`} className="secondary-button inline-flex px-3 py-1.5 text-[12px]">
           Open
         </Link>
       </td>

@@ -62,7 +62,7 @@ describe("user preferences", () => {
     const value = userPreferencesShareValue(preferences);
     expect(userPreferencesFromShareValue(value)).toEqual(preferences);
 
-    const url = userPreferencesShareURL("https://cerebro.example.com/risk-inbox?severity=high#row", preferences);
+    const url = userPreferencesShareURL("https://cerebro.example.com/risks?severity=high#row", preferences);
     expect(url).toContain("cerebro_home=");
     expect(url).not.toContain("?home=");
     const shared = sharedUserPreferencesFromURL(url);

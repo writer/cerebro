@@ -243,7 +243,7 @@ export const buildReadinessChecks = ({
     checks.push({
       action: "Refresh sources",
       detail: `${countLabel(summary.coverage_blind_spots, "coverage gap")}, ${countLabel(summary.stale_connectors, "stale source")}`,
-      href: "/reports/audit-packages#source-freshness",
+      href: "/reports/packages#source-freshness",
       label: "Source gaps",
       status: "needs_attention",
       tone: "warning",
@@ -255,7 +255,7 @@ export const buildReadinessChecks = ({
     checks.push({
       action: "Resolve controls",
       detail: `${countLabel(summary.failing_controls, "failing control")}, ${countLabel(summary.manual_review_controls, "manual review")}`,
-      href: "/reports/audit-packages#control-owner-queue",
+      href: "/reports/packages#control-owner-queue",
       label: "Failing controls",
       status: "needs_attention",
       tone: "warning",
@@ -267,7 +267,7 @@ export const buildReadinessChecks = ({
     checks.push({
       action: "Collect evidence",
       detail: `${summary.missing_evidence_items.toLocaleString()} missing, ${summary.stale_evidence_items.toLocaleString()} stale`,
-      href: "/reports/audit-packages#evidence-review",
+      href: "/reports/packages#evidence-review",
       label: "Evidence gaps",
       status: "needs_attention",
       tone: "warning",
@@ -279,7 +279,7 @@ export const buildReadinessChecks = ({
     checks.push({
       action: "Open packet",
       detail: "No failing controls, missing evidence, stale evidence, or source gaps.",
-      href: "/reports/audit-packages",
+      href: "/reports/packages",
       label: "Packet ready",
       status: "ready",
       tone: "success",
@@ -317,7 +317,7 @@ function ReadinessChecksPanel({ checks }: { checks: ReadinessCheck[] }) {
 
 function IssueQueuePanel({ items }: { items: IssueQueueItem[] }) {
   return (
-    <Panel title="Open control issues" action={<Link href="/risk-inbox" className="secondary-button px-3 py-1.5 text-[12px]">View issue queue</Link>}>
+    <Panel title="Open control issues" action={<Link href="/risks" className="secondary-button px-3 py-1.5 text-[12px]">View issue queue</Link>}>
       {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[color:var(--border-strong)] px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">
           No control, evidence, or source issues are blocking the packet.

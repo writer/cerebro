@@ -18,7 +18,7 @@ afterEach(() => {
   restore("CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS", originalMappings);
 });
 
-const get = async () => GET(new NextRequest("http://localhost/api/admin/access-control"));
+const get = async () => GET(new NextRequest("http://localhost/api/admin/access"));
 
 describe("admin access control fixture mode", () => {
   it("answers without an identity so the console is usable with no backend", async () => {

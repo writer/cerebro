@@ -75,7 +75,7 @@ const SUMMARY_RULES: SummaryRule[] = [
     count: (summary) => summary.unassigned,
     title: (count) => `${count} unassigned ${pluralize(count, "finding")}`,
     detail: "Open findings without an owner.",
-    href: "/risk-inbox?status=open",
+    href: "/risks?status=open",
   },
   {
     id: "failing-controls",

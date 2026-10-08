@@ -101,7 +101,7 @@ export default function SharedAuditPackagePage() {
         description="Approved evidence, packet state, source records, and scope exclusions for review."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Link href="/reports/audit-packages" className={buttonClass}>
+            <Link href="/reports/packages" className={buttonClass}>
               <ArrowLeft className="h-3.5 w-3.5" />
               Packet review
             </Link>

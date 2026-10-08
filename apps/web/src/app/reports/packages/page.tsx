@@ -524,7 +524,7 @@ export default function AuditPackagesPage() {
         <Panel title="Investigation">
           <div className="grid gap-3 sm:grid-cols-2">
             <InvestigationLink
-              href={`/risk-inbox${framework ? `?framework=${encodeURIComponent(framework)}` : ""}`}
+              href={`/risks${framework ? `?framework=${encodeURIComponent(framework)}` : ""}`}
               title="Open risks"
               detail="Findings by owner, source, framework, severity, and SLA."
             />
@@ -534,7 +534,7 @@ export default function AuditPackagesPage() {
               detail="Start from an entity and expand assets, findings, owners, and sources."
             />
             <InvestigationLink
-              href={`/reports/audit-packages?ask_q=${encodeURIComponent(`Which controls need evidence for ${framework || selectedProfileID}?`)}`}
+              href={`/reports/packages?ask_q=${encodeURIComponent(`Which controls need evidence for ${framework || selectedProfileID}?`)}`}
               title="Ask about evidence"
               detail="Ask for missing evidence, stale evidence, owner gaps, or affected assets."
             />

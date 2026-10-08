@@ -1034,11 +1034,11 @@ async function validateBrowser() {
 }
 
 export function browserDataContract(route) {
-  return route === "/risk-inbox"
+  return route === "/risks"
     ? {
         apiPath: "/api/cerebro/grc/findings",
         findingID: "e2e-finding-critical",
-        navigationPath: `/risk-inbox?tenant_id=${encodeURIComponent(tenantID)}`,
+        navigationPath: `/risks?tenant_id=${encodeURIComponent(tenantID)}`,
         tenantID,
         visibleText: "Privileged identity missing verification",
       }

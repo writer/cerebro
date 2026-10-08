@@ -193,10 +193,10 @@ describe("real-service E2E isolation", () => {
   });
 
   it("requires visible seeded data and a successful API response in Chromium", () => {
-    expect(browserDataContract("/risk-inbox")).toEqual({
+    expect(browserDataContract("/risks")).toEqual({
       apiPath: "/api/cerebro/grc/findings",
       findingID: "e2e-finding-critical",
-      navigationPath: "/risk-inbox?tenant_id=e2e-local",
+      navigationPath: "/risks?tenant_id=e2e-local",
       tenantID: "e2e-local",
       visibleText: "Privileged identity missing verification",
     });

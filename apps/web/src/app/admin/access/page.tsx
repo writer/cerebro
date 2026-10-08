@@ -96,7 +96,7 @@ function ClaimList({ label, values }: { label: string; values: string[] | undefi
 export default function AdminAccessControlPage() {
   const query = useQuery<AccessControl, Error>({
     queryFn: async ({ signal }) => {
-      const response = await fetch("/api/admin/access-control", { cache: "no-store", signal });
+      const response = await fetch("/api/admin/access", { cache: "no-store", signal });
       if (!response.ok) {
         throw new Error(
           response.status === 403

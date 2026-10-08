@@ -108,13 +108,13 @@ export default function TrendsPage() {
     severity,
     framework: debouncedFramework,
   }), [debouncedFramework, debouncedRuntimeID, debouncedSourceID, debouncedTenantID, severity]);
-  const riskInboxPath = useCallback((params: Record<string, string | number | undefined>) => grcPath("/risk-inbox", { ...filterParams, ...params }), [filterParams]);
+  const risksPath = useCallback((params: Record<string, string | number | undefined>) => grcPath("/risks", { ...filterParams, ...params }), [filterParams]);
   const bucketDrilldownPath = useCallback((date: string, kind: "opened" | "closed") => {
     const before = trendBucketEndDate(date, bucket);
     return kind === "opened"
-      ? riskInboxPath({ status: "all", opened_after: date, opened_before: before })
-      : riskInboxPath({ status: "all", closed_after: date, closed_before: before });
-  }, [bucket, riskInboxPath]);
+      ? risksPath({ status: "all", opened_after: date, opened_before: before })
+      : risksPath({ status: "all", closed_after: date, closed_before: before });
+  }, [bucket, risksPath]);
   const setBucketTransition = useCallback((nextBucket: IntervalValue) => {
     startTransition(() => setBucket(nextBucket));
   }, []);
@@ -312,7 +312,7 @@ export default function TrendsPage() {
                       <td className="px-3 py-2 font-medium text-slate-900">{bucket.label}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{bucket.count}</td>
                       <td className="px-3 py-2 text-right">
-                        <Link href={riskInboxPath({ status: "open", age_min_days: bucket.min_days || undefined, age_max_days: bucket.max_days && bucket.max_days > 0 ? bucket.max_days : undefined })} className="font-medium text-indigo-600 hover:text-indigo-800">View</Link>
+                        <Link href={risksPath({ status: "open", age_min_days: bucket.min_days || undefined, age_max_days: bucket.max_days && bucket.max_days > 0 ? bucket.max_days : undefined })} className="font-medium text-indigo-600 hover:text-indigo-800">View</Link>
                       </td>
                     </tr>
                   ))}

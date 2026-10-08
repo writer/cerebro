@@ -320,7 +320,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh Data</button>
             <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Connect Source</Link>
-            <Link href="/risk-inbox" className="primary-button px-3 py-2 text-[13px]">Open Risks</Link>
+            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Open Risks</Link>
           </div>
         }
       />
@@ -340,7 +340,7 @@ export default function Home() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <OverviewTile
-              href="/risk-inbox"
+              href="/risks"
               label="Open Findings"
               value={summary.open_findings}
               detail={`${summary.critical_findings} critical, ${summary.high_findings} high`}

@@ -131,7 +131,7 @@ describe("portable web fixture route bug bash", () => {
   it("discovers every app page with safe concrete dynamic route samples", async () => {
     const webRoot = path.resolve(import.meta.dirname, "..");
     const routes = await discoverPageRoutes(webRoot);
-    expect(routes).toContain("/verified-findings/fixture-operation");
+    expect(routes).toContain("/verified/fixture-operation");
     expect(routes).toContain("/connectors/okta/setup");
     expect(routes).toContain("/findings/demo-finding-critical");
     expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");
@@ -232,9 +232,9 @@ describe("portable web fixture route bug bash", () => {
       documentStatus: 200,
       finalURL: "http://127.0.0.1:43123/connectors/activation?tenant_id=tenant-a",
       pageErrors: [],
-      route: "/connectors/source-cdk?tenant_id=tenant-a&workspace_id=workspace-a",
+      route: "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a",
     })).toEqual([
-      "/connectors/source-cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
+      "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
     ]);
   });
 });

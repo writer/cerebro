@@ -12,7 +12,7 @@ const denseRoutes: Record<string, string> = {
   "/frameworks": "Frameworks",
   "/policies": "Policy Documents",
   "/reports": "Reports",
-  "/reports/audit-packages": "Audit Workspace",
+  "/reports/packages": "Audit Workspace",
   "/reports/shared/fixture-snapshot-1": "Shared Snapshot",
 };
 

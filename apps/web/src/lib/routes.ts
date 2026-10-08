@@ -18,14 +18,14 @@ export const operatorNavLinks: NavigationEntry[] = [
   },
   {
     label: "Risks",
-    href: "/risk-inbox",
+    href: "/risks",
     description: "Prioritized findings and control work by owner, due date, and evidence state.",
     section: "Operator",
     keywords: ["issues", "findings", "risk", "sla", "triage", "owner", "framework", ...supportedGRCFrameworkNames],
   },
   {
     label: "Verified Findings",
-    href: "/verified-findings",
+    href: "/verified",
     description: "Findings an agent confirmed against evidence, and the remediation each one produced.",
     section: "Operator",
     keywords: ["verified", "validated", "findings", "evidence", "agent", "remediation", "actions", "approval", "execution", "verification", "rollback"],
@@ -132,7 +132,7 @@ export const operatorNavLinks: NavigationEntry[] = [
   },
   {
     label: "Audit Workspace",
-    href: "/reports/audit-packages",
+    href: "/reports/packages",
     description: "Review packet blockers, evidence, source freshness, reviewer questions, and shared snapshots.",
     section: "Operator",
     keywords: ["audit package", "packet review", "evidence review", "control owners", "snapshot", "scope", "exceptions"],
@@ -146,7 +146,7 @@ export const operatorNavLinks: NavigationEntry[] = [
   },
   {
     label: "Credential Stores",
-    href: "/credential-stores",
+    href: "/credentials",
     description: "Credential store defaults, accepted reference formats, and setup status.",
     section: "Operator",
     keywords: ["credential stores", "credentials", "secret stores", "vault", "secrets", "resolver"],
@@ -170,7 +170,7 @@ const commandOnlyNavLinks: NavigationEntry[] = [
   },
   {
     label: "Risk Scoring",
-    href: "/developer/risk-scoring",
+    href: "/developer/scoring",
     description: "Tune tenant risk thresholds, signal cutoffs, relation weights, and factor weights.",
     section: "Advanced",
     keywords: ["risk", "scoring", "threshold", "cvss", "epss", "weights", "configuration"],
@@ -194,14 +194,14 @@ const commandOnlyNavLinks: NavigationEntry[] = [
 export const adminNavLinks: NavigationEntry[] = [
   {
     label: "Access Control",
-    href: "/admin/access-control",
+    href: "/admin/access",
     description: "Sign-in verification, roles, claim mappings, and the permissions each console action requires.",
     section: "Advanced",
     keywords: ["rbac", "roles", "permissions", "claims", "groups", "entitlements", "authorization", "authentication", "identity", "oidc", "sso", "jwks", "issuer", "login"],
   },
   {
     label: "Audit Events",
-    href: "/developer/audit-log",
+    href: "/developer/audit",
     description: "What changed in this console, who changed it, and when.",
     section: "Advanced",
     keywords: ["audit", "log", "history", "who", "changed", "events", "trail"],
@@ -241,10 +241,10 @@ routeLabels["/evidence"] = "Evidence";
 routeLabels["/findings"] = "Finding detail";
 routeLabels["/identity"] = "Members";
 routeLabels["/connectors/builder"] = "Connector builder";
-routeLabels["/developer/agent-platform"] = "Agent platform";
-routeLabels["/developer/audit-log"] = "Audit Events";
+routeLabels["/developer/agents"] = "Agent platform";
+routeLabels["/developer/audit"] = "Audit Events";
 routeLabels["/developer/evals"] = "Ask evals";
-routeLabels["/developer/security-producers"] = "Security producers";
+routeLabels["/developer/producers"] = "Security producers";
 routeLabels["/controls/builder"] = "Control Builder";
 routeLabels["/reports/shared"] = "Shared Snapshot";
 
