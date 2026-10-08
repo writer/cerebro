@@ -80,6 +80,74 @@ export type ActionPage = {
   next_page_token?: string | null;
 };
 
+/// Generated policy for one executable action kind, served by /v1/action-definitions.
+export type ActionDefinition = {
+  definition_digest: string;
+  destructive: boolean;
+  effect: string;
+  id: string;
+  provider: string;
+  provider_action: string;
+  reversible_by: string;
+  target_kind: string;
+};
+
+export type ActionDefinitionIndex = Record<string, ActionDefinition>;
+
+export const indexActionDefinitions = (definitions: ActionDefinition[] | undefined): ActionDefinitionIndex =>
+  (definitions ?? []).reduce<ActionDefinitionIndex>((index, definition) => {
+    if (definition?.id) index[definition.id] = definition;
+    return index;
+  }, {});
+
+export const ACTION_STAGE_IDS = ["proposed", "awaitingApproval", "inFlight", "verified", "attention"] as const;
+
+export type ActionStageID = typeof ACTION_STAGE_IDS[number];
+
+export const ACTION_STAGE_LABELS: Record<ActionStageID, string> = {
+  proposed: "Proposed",
+  awaitingApproval: "Awaiting Approval",
+  inFlight: "In Flight",
+  verified: "Verified",
+  attention: "Needs Attention",
+};
+
+export const ACTION_STAGE_DETAIL: Record<ActionStageID, string> = {
+  proposed: "Validated, not yet queued for a decision",
+  awaitingApproval: "Blocked on a human decision",
+  inFlight: "Approved and running at the provider",
+  verified: "Effect observed and independently confirmed",
+  attention: "Failed, rolled back, or outcome unknown",
+};
+
+// Every authority state maps to exactly one stage, so a new state cannot be
+// silently dropped from the queue: the compiler requires an entry here.
+const STAGE_BY_ACTION_STATE: Record<ActionState, ActionStageID> = {
+  proposed: "proposed",
+  simulated: "proposed",
+  waiting_for_approval: "awaitingApproval",
+  approved: "inFlight",
+  claimed: "inFlight",
+  executing: "inFlight",
+  dispatched: "inFlight",
+  completed: "verified",
+  reconciled: "verified",
+  verified: "verified",
+  outcome_unknown: "attention",
+  failed: "attention",
+  rolled_back: "attention",
+};
+
+export const actionStage = (state: ActionState | string): ActionStageID =>
+  STAGE_BY_ACTION_STATE[state as ActionState] ?? "attention";
+
+export const actionStageIntent = (stage: ActionStageID) => {
+  if (stage === "attention") return "danger" as const;
+  if (stage === "awaitingApproval") return "warning" as const;
+  if (stage === "verified") return "success" as const;
+  return "neutral" as const;
+};
+
 export type ActionEvent = {
   actor_id: string;
   event_kind: string;
@@ -115,14 +183,11 @@ export const actionStateIntent = (state: ActionState) => {
   return "neutral" as const;
 };
 
-export const summarizeActionPage = (actions: ActionOperation[]) =>
-  actions.reduce(
-    (summary, action) => {
-      if (action.state === "waiting_for_approval") summary.waitingForApproval += 1;
-      if (["claimed", "executing", "dispatched", "outcome_unknown"].includes(action.state)) summary.inExecution += 1;
-      if (action.state === "verified") summary.verified += 1;
-      if (action.state === "failed" || action.state === "rolled_back") summary.failedOrRolledBack += 1;
-      return summary;
-    },
-    { waitingForApproval: 0, inExecution: 0, verified: 0, failedOrRolledBack: 0 },
-  );
+export const summarizeActionStages = (actions: ActionOperation[]) =>
+  actions.reduce((summary, action) => {
+    summary[actionStage(action.state)] += 1;
+    return summary;
+  }, ACTION_STAGE_IDS.reduce((all, stage) => {
+    all[stage] = 0;
+    return all;
+  }, {} as Record<ActionStageID, number>));

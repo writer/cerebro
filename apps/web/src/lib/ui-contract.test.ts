@@ -127,7 +127,7 @@ describe("product UI contract", () => {
     const bannerPages = [
       "src/app/evidence/page.tsx",
       "src/app/controls/page.tsx",
-      "src/app/risk-inbox/page.tsx",
+      "src/app/risks/page.tsx",
     ];
     const runtimePages = [
       "src/app/connectors/page.tsx",
@@ -167,8 +167,14 @@ describe("product UI contract", () => {
     expect(inventorySource).toContain("metricValueForState");
     expect(inventorySource).toContain("metricDetailForState");
     expect(inventorySource).toContain('data-testid="inventory-results"');
-    expect(inventorySource).toContain('data-label="Accountability"');
-    expect(inventorySource).toContain("Select page");
+    // Inventory is a search surface: the query reaches the catalog and the page says what it covers.
+    expect(inventorySource).toContain("q: debouncedQuery");
+    expect(inventorySource).toContain("every attribute collected from the source");
+    expect(inventorySource).toContain("inventoryMetadataMatch");
+    // Review disposition, owner accountability and compliance scope belong to the risk and compliance pages.
+    expect(inventorySource).not.toContain("Needs review");
+    expect(inventorySource).not.toContain('data-label="Accountability"');
+    expect(inventorySource).not.toContain("review_state");
 
     const inventoryDetailSource = readProjectFile("src/app/inventory/[urn]/page.tsx");
     expect(inventoryDetailSource).toContain('role="tablist"');
@@ -216,6 +222,56 @@ describe("product UI contract", () => {
     expect(page).toContain("activeScopeKeyRef.current !== requestScopeKey");
     expect(page).toContain("activeScopeKeyRef.current === requestScopeKey");
     expect(page).toContain("setExpandingURN(null);");
+  });
+
+  it("opens the graph on named viewpoints instead of an empty seed box", () => {
+    const page = readProjectFile("src/app/explore/page.tsx");
+
+    expect(page).toContain("graphViewpointList");
+    expect(page).toContain("graphPathRowsToGraph");
+    expect(page).toContain('aria-pressed={active}');
+    // A path set is only evidence if the page says which revision it was read at and what proved each hop.
+    expect(page).toContain("Read at graph revision");
+    expect(page).toContain("proof edge");
+    expect(page).toContain("No proof edges returned");
+    // The viewpoints must stay server-side reads; the page must not re-derive paths from a neighbourhood crawl.
+    expect(page).not.toContain("attack path heuristic");
+
+    const viewpoints = readProjectFile("src/lib/graph-viewpoints.ts");
+    expect(viewpoints).toContain("cerebro.graph.v1.OrganizationalGraphService");
+    expect(viewpoints).toContain("ListEffectiveAccessPaths");
+    expect(viewpoints).toContain("ListCloudAttackPaths");
+
+    // Connect unary reads arrive as POST and must not be charged write permission.
+    const rbac = readProjectFile("src/lib/rbac.ts");
+    expect(rbac).toContain("ListCloudAttackPaths");
+    expect(rbac).toMatch(/readOnlyPostPaths[\s\S]{0,600}ListPersonAccessPaths/);
+  });
+
+  it("carries the findings join on the graph page rather than a separate affected-assets page", () => {
+    const page = readProjectFile("src/app/explore/page.tsx");
+
+    // The impact read is what joins findings and evidence counts to one entity.
+    expect(page).toContain("grcEntityImpactPath");
+    expect(page).toContain("Findings on This Entity");
+    expect(page).toContain("<FindingTable");
+    // Findings come from the Go impact read and must not wait on the Rust neighbourhood graph.
+    expect(page).toMatch(/\{selectedSeed && \([\s\S]{0,400}Findings on This Entity/);
+    // The backend canonicalizes the requested URN, so the page must name the URN it actually read.
+    expect(page).toContain("Read against the canonical URN");
+
+    // The retired page must not come back as a second destination for the same question.
+    expect(() => readProjectFile("src/app/impact/page.tsx")).toThrow();
+    for (const file of [
+      "src/lib/routes.ts",
+      "src/lib/entity-chip.ts",
+      "src/lib/information-areas.ts",
+      "src/components/Sidebar.tsx",
+      "src/components/CommandPalette.tsx",
+      "src/components/grc/GraphViewer.tsx",
+    ]) {
+      expect(readProjectFile(file), `${file} still links the retired page`).not.toMatch(/["'`]\/impact\b/);
+    }
   });
 
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
@@ -301,15 +357,15 @@ describe("product UI contract", () => {
 
   it("keeps Ask readiness public-safe and visible before a question runs", () => {
     const routeSource = readProjectFile("src/app/api/agent/ask/status/route.ts");
-    const pageSource = readProjectFile("src/app/ask/page.tsx");
-    const inputSource = readProjectFile("src/components/ask/AskInput.tsx");
+    const providerSource = readProjectFile("src/components/agent/CerebroAgentProvider.tsx");
+    const panelSource = readProjectFile("src/components/agent/CerebroAgentPanel.tsx");
 
     expect(routeSource).toContain("askAgentReadiness");
     expect(routeSource).toContain("NextResponse.json");
-    expect(pageSource).toContain("/api/agent/ask/status");
-    expect(inputSource).toContain("useForm");
-    expect(inputSource).toContain("Checking Ask path");
-    expect(inputSource).not.toMatch(/env|token|credential|not configured/i);
+    expect(providerSource).toContain("/api/agent/ask/status");
+    expect(panelSource).toContain("readinessLoading");
+    expect(panelSource).toContain("Ask path unavailable");
+    expect(panelSource).not.toMatch(/env|token|credential|not configured/i);
   });
 
   it("keeps command palette page actions ahead of unavailable live search", () => {
@@ -319,17 +375,30 @@ describe("product UI contract", () => {
     expect(source).toContain("Page actions are ready. Searching live data...");
   });
 
-  it("keeps overview readiness scoped to explicit framework control counts", () => {
+  it("keeps compliance readiness scoped to explicit framework control counts", () => {
+    const complianceSource = readProjectFile("src/app/grc/page.tsx");
+    const frameworkSource = readProjectFile("src/app/frameworks/[frameworkID]/page.tsx");
+
+    expect(complianceSource).toContain("framework.passing_controls");
+    expect(complianceSource).toContain("framework.controls");
+    expect(frameworkSource).toContain("deriveFrameworkReadiness");
+    expect(complianceSource).not.toContain("sampled dashboard values");
+    expect(complianceSource).not.toContain("sampled total");
+  });
+
+  // Compliance reporting is owned by a dedicated tool, so the operator home
+  // must not grow an audit-readiness surface again.
+  it("keeps the security overview on risk rather than audit readiness", () => {
     const overviewSource = readProjectFile("src/app/page.tsx");
 
     expect(overviewSource).toContain("data?.coverage_blind_spots");
     expect(overviewSource).toContain("data?.coverage_summaries");
     expect(overviewSource).toContain('coverage_view: "page"');
     expect(overviewSource).toContain("coverageSummaries.reduce");
-    expect(overviewSource).toContain("isControlAuditReady");
-    expect(overviewSource).toContain("primaryFrameworkRecord");
-    expect(overviewSource).toContain("passing_controls");
-    expect(overviewSource).toContain("controlProgress");
+    expect(overviewSource).toContain("/grc/trends");
+    expect(overviewSource).not.toContain("passing_controls");
+    expect(overviewSource).not.toContain("Export audit packet");
+    expect(overviewSource).not.toContain("audit-packages");
     expect(overviewSource).not.toContain("sampled dashboard values");
     expect(overviewSource).not.toContain("sampled total");
   });

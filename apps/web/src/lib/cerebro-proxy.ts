@@ -17,6 +17,7 @@ const API_BASE =
 const RUST_RUNTIME_HEALTH_PATH = "v1/source-runtimes/health";
 const RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH = "platform/graph/neighborhood";
 const RUST_PRODUCT_GRAPH_PROVENANCE_PATH = "platform/graph/provenance";
+const RUST_ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
 const RUST_SECURITY_LIFECYCLE_PATH = "v1/security/lifecycle";
 const RUST_TENANT_AUTH_CONTEXT = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
@@ -108,18 +109,31 @@ export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): H
   };
 };
 
+// Connect unary methods are served by the platform's fallback service, so only these four are forwarded.
+const RUST_ORGANIZATIONAL_GRAPH_METHODS = new Set([
+  `${RUST_ORGANIZATIONAL_GRAPH_SERVICE}/ListCloudAttackPaths`,
+  `${RUST_ORGANIZATIONAL_GRAPH_SERVICE}/ListCrownJewelPaths`,
+  `${RUST_ORGANIZATIONAL_GRAPH_SERVICE}/ListEffectiveAccessPaths`,
+  `${RUST_ORGANIZATIONAL_GRAPH_SERVICE}/ListPersonAccessPaths`,
+]);
+
+export const isOrganizationalGraphMethodPath = (path: string) =>
+  RUST_ORGANIZATIONAL_GRAPH_METHODS.has(normalizeProxyPath(path));
+
 const isRustPlatformPath = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
   return normalizedPath === RUST_RUNTIME_HEALTH_PATH
     || normalizedPath === RUST_SECURITY_LIFECYCLE_PATH
     || normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH
-    || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH;
+    || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH
+    || isOrganizationalGraphMethodPath(normalizedPath);
 };
 
 const usesOrganizationalGraphTenant = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
   return normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH
     || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH
+    || isOrganizationalGraphMethodPath(normalizedPath)
     || normalizedPath.startsWith("grc/");
 };
 

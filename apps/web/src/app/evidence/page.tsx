@@ -151,7 +151,7 @@ export default function EvidencePage() {
       render: (_value, item) => (
         <>
           {(item.graph_root_urns ?? []).slice(0, 2).map((urn) => (
-            <Link key={urn} href={`/impact?root_urn=${encodeURIComponent(urn)}`} className={`mr-2 ${linkClass}`}>{shortEntity(urn)}</Link>
+            <Link key={urn} href={`/explore?root_urn=${encodeURIComponent(urn)}`} className={`mr-2 ${linkClass}`}>{shortEntity(urn)}</Link>
           ))}
         </>
       ),
@@ -550,7 +550,7 @@ export default function EvidencePage() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(activeEvidence.graph_root_urns ?? []).map((urn) => (
-                      <Link key={urn} href={`/impact?root_urn=${encodeURIComponent(urn)}`} className="rounded-md bg-indigo-50 px-2 py-1 font-mono text-[11px] text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25">
+                      <Link key={urn} href={`/explore?root_urn=${encodeURIComponent(urn)}`} className="rounded-md bg-indigo-50 px-2 py-1 font-mono text-[11px] text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/25">
                         {shortEntity(urn)}
                       </Link>
                     ))}

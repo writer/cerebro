@@ -570,37 +570,139 @@ const graph = {
   ],
 };
 
-const actionFixture = {
+const deviceURN = `urn:cerebro:${tenantID}:endpoint:laptop-4821`;
+
+// Mirrors crates/action-catalog/src/generated.rs. Only these kinds can be proposed.
+const actionDefinitionFixtures = [
+  {
+    id: "identity.okta.suspend_user",
+    provider: "access-approvals",
+    provider_action: "suspend",
+    target_kind: "identity.okta.user",
+    effect: "deny_access",
+    destructive: true,
+    reversible_by: "identity.okta.unsuspend_user",
+    definition_digest: "8786cfc15b5984021508b1ff90e9693e9d305e1b58e33a10760baddefde9871f",
+  },
+  {
+    id: "identity.okta.unsuspend_user",
+    provider: "access-approvals",
+    provider_action: "unsuspend",
+    target_kind: "identity.okta.user",
+    effect: "restore_access",
+    destructive: false,
+    reversible_by: "identity.okta.suspend_user",
+    definition_digest: "492f24f7b5fdf5679777201441ea963a54357d3f658359e2f554130e7797e605",
+  },
+  {
+    id: "endpoint.cerebro.revoke_device",
+    provider: "cerebro-device-auth",
+    provider_action: "revoke",
+    target_kind: "endpoint.cerebro.device",
+    effect: "deny_device_access",
+    destructive: true,
+    reversible_by: "",
+    definition_digest: "bfe050dbcc8e237d27996d459c12185f94ee9f4a857e6286f87455536d6a9bb8",
+  },
+];
+
+const actionOperation = ({
+  effect,
+  findingID,
+  kind,
+  operationID,
+  proposedAt,
+  state,
+  target,
+  verification = "pending",
+}: {
+  effect: string;
+  findingID: string;
+  kind: string;
+  operationID: string;
+  proposedAt: string;
+  state: string;
+  target: string;
+  verification?: string;
+}) => ({
   proposal: {
-    operation_id: "fixture-operation",
+    operation_id: operationID,
     tenant_id: tenantID,
-    finding_id: "demo-finding-critical",
+    finding_id: findingID,
     finding_revision_digest: "fixture-finding-revision",
     finding_validation_receipt_digest: "fixture-validation-receipt",
     graph_revision: 1,
-    action_kind: "require_mfa",
-    action_definition_digest: "fixture-action-definition",
-    target_id: adminURN,
-    expected_effects: [{
-      target_id: adminURN,
-      effect_kind: "mfa_required",
-      expected_state_digest: "fixture-expected-state",
-    }],
-    rollback_ref: "fixture://actions/fixture-operation/rollback",
-    idempotency_key: "fixture-operation",
+    action_kind: kind,
+    action_definition_digest: actionDefinitionFixtures.find((d) => d.id === kind)?.definition_digest ?? "",
+    target_id: target,
+    expected_effects: [{ target_id: target, effect_kind: effect, expected_state_digest: "fixture-expected-state" }],
+    rollback_ref: `fixture://actions/${operationID}/rollback`,
+    idempotency_key: operationID,
     simulation_digest: "fixture-simulation",
     verification_plan_digest: "fixture-verification-plan",
-    proposed_by: "fixture-operator",
-    proposed_at_unix_ms: Date.parse("2026-01-15T11:00:00.000Z"),
-    proposal_expires_at_unix_ms: Date.parse("2026-01-16T11:00:00.000Z"),
-    proposal_digest: "fixture-proposal",
+    proposed_by: "agent:proposer",
+    proposed_at_unix_ms: Date.parse(proposedAt),
+    proposal_expires_at_unix_ms: Date.parse(proposedAt) + 86_400_000,
+    proposal_digest: `fixture-proposal-${operationID}`,
   },
-  state: "waiting_for_approval",
+  state,
   version: 1,
   approval_receipt: null,
-  verification_state: "pending",
+  verification_state: verification,
   verification_receipt: null,
-};
+});
+
+const actionFixture = actionOperation({
+  effect: "deny_access",
+  findingID: "demo-finding-critical",
+  kind: "identity.okta.suspend_user",
+  operationID: "fixture-operation",
+  proposedAt: "2026-01-15T11:00:00.000Z",
+  state: "waiting_for_approval",
+  target: adminURN,
+});
+
+const actionFixtures = [
+  actionFixture,
+  actionOperation({
+    effect: "deny_device_access",
+    findingID: "demo-finding-device",
+    kind: "endpoint.cerebro.revoke_device",
+    operationID: "fixture-operation-device",
+    proposedAt: "2026-01-14T09:30:00.000Z",
+    state: "verified",
+    target: deviceURN,
+    verification: "verified",
+  }),
+  actionOperation({
+    effect: "restore_access",
+    findingID: "demo-finding-offboard",
+    kind: "identity.okta.unsuspend_user",
+    operationID: "fixture-operation-restore",
+    proposedAt: "2026-01-15T08:15:00.000Z",
+    state: "executing",
+    target: adminURN,
+  }),
+  actionOperation({
+    effect: "deny_access",
+    findingID: "demo-finding-stale-admin",
+    kind: "identity.okta.suspend_user",
+    operationID: "fixture-operation-proposed",
+    proposedAt: "2026-01-15T12:45:00.000Z",
+    state: "proposed",
+    target: adminURN,
+  }),
+  actionOperation({
+    effect: "deny_device_access",
+    findingID: "demo-finding-device-stale",
+    kind: "endpoint.cerebro.revoke_device",
+    operationID: "fixture-operation-failed",
+    proposedAt: "2026-01-13T16:20:00.000Z",
+    state: "failed",
+    target: deviceURN,
+    verification: "rejected",
+  }),
+];
 
 const assets = [
   {
@@ -1778,15 +1880,18 @@ const filterFindings = (params?: URLSearchParams) => {
 const filterAssets = (params?: URLSearchParams) => {
   const sourceID = params?.get("source_id")?.trim().toLowerCase();
   const categoryID = params?.get("category_id")?.trim().toLowerCase();
+  const entityType = params?.get("entity_type")?.trim().toLowerCase();
   const surface = params?.get("surface")?.trim().toLowerCase() || "all";
   const query = params?.get("q")?.trim().toLowerCase();
   const scopeState = params?.get("scope_state")?.trim().toLowerCase();
   return limitList(assets.filter((asset) => {
     if (sourceID && asset.source_id?.toLowerCase() !== sourceID) return false;
+    if (entityType && asset.entity_type.toLowerCase() !== entityType) return false;
     if (categoryID && asset.entity_type.toLowerCase() !== categoryID && inventoryCategoryID(asset.entity_type).toLowerCase() !== categoryID) return false;
     if (surface && surface !== "all" && assetSurface(asset).toLowerCase() !== surface) return false;
     if (scopeState && asset.scope_state?.toLowerCase() !== scopeState) return false;
-    if (query && ![asset.label, asset.urn, asset.entity_type, asset.source_id, asset.attributes?.owner].some((value) => contains(value, query))) return false;
+    // The catalog matches the URN, the label and every attribute value, so mirror that here.
+    if (query && ![asset.label, asset.urn, asset.entity_type, asset.source_id, ...Object.values(asset.attributes ?? {})].some((value) => contains(value, query))) return false;
     return true;
   }), params);
 };
@@ -3477,7 +3582,7 @@ const inventoryAssetDetailFixture = (params?: URLSearchParams) => {
     ],
     actions: [
       { title: "Review owner", description: "Confirm the current accountability owner.", priority: "medium", href: "/inventory" },
-      { title: "Inspect graph", description: "Open the impact graph for this fixture asset.", priority: "low", href: `/impact?urn=${encodeURIComponent(asset.urn)}` },
+      { title: "Inspect graph", description: "Open the graph for this fixture asset.", priority: "low", href: `/explore?root_urn=${encodeURIComponent(asset.urn)}` },
     ],
     generated_at: generatedAt,
   };
@@ -4268,6 +4373,145 @@ const lifecycleEnumLabelFixture = (value: string) =>
     .replace(/^SECURITY_LIFECYCLE_STATE_/, "")
     .toLowerCase();
 
+const ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
+const FIXTURE_GRAPH_REVISION = 184;
+
+// CloudAttackPathNode carries a top-level urn; ContextEntity keeps it in properties.entity_urn.
+const attackPathNode = (urn: string, entityKind: string, label: string) => ({ urn, entity_kind: entityKind, label });
+
+const contextEntityFixture = (urn: string, entityKind: string, label: string) => ({
+  entity_id: { value: urn },
+  agent_key: urn,
+  entity_kind: entityKind,
+  authority: { kind: "tenant", tenant_id: tenantID },
+  label,
+  properties: { entity_urn: urn },
+});
+
+const attackEdge = (relation: string, sourceID: string, runtimeID: string) => ({
+  relation,
+  direction: "outbound",
+  source_id: sourceID,
+  source_runtime_id: runtimeID,
+  assertion_runtime_ids: [runtimeID],
+  attributes_json: "{}",
+});
+
+const internetURN = `urn:cerebro:${tenantID}:internet:any`;
+const roleURN = `urn:cerebro:${tenantID}:aws_iam_role:deploy`;
+const permissionURN = `urn:cerebro:${tenantID}:aws_iam_permission:s3-write`;
+const accountURN = `urn:cerebro:${tenantID}:aws_account:prod`;
+const oktaGroupURN = `urn:cerebro:${tenantID}:okta_group:platform`;
+const personURN = `urn:cerebro:${tenantID}:person:ana-ruiz`;
+const databaseURN = `urn:cerebro:${tenantID}:database:customer-records`;
+
+const organizationalGraphPathFixtures: Record<string, () => unknown> = {
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListCloudAttackPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    counts: { paths: 2, exposed_resources: 2, privileged_principals: 1, cloud_accounts: 1 },
+    truncated: false,
+    paths: [
+      {
+        public_principal: attackPathNode(internetURN, "internet.principal", "0.0.0.0/0"),
+        exposed_resource: attackPathNode(bucketURN, "storage_bucket", "audit-bucket"),
+        cloud_account: attackPathNode(accountURN, "aws.account", "prod"),
+        principal: attackPathNode(roleURN, "aws.iam_role", "deploy-role"),
+        permission: attackPathNode(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        ownerships: [{ owner: attackPathNode(adminURN, "identity_user", "platform-admin"), edge: attackEdge("owns", "okta", "rt-okta-1") }],
+        reach_relation: "reachable_from",
+        access_relation: "grants",
+        relation_chain: ["reachable_from", "assumes", "grants"],
+        exposure_edge: attackEdge("reachable_from", "aws-prod", "rt-aws-1"),
+        resource_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-1"),
+        traversal_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        privilege_edge: attackEdge("grants", "aws-prod", "rt-aws-2"),
+        permission_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-2"),
+      },
+      {
+        public_principal: attackPathNode(internetURN, "internet.principal", "0.0.0.0/0"),
+        exposed_resource: attackPathNode(apiURN, "service", "payments-api"),
+        cloud_account: attackPathNode(accountURN, "aws.account", "prod"),
+        principal: attackPathNode(roleURN, "aws.iam_role", "deploy-role"),
+        permission: attackPathNode(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        ownerships: [],
+        reach_relation: "reachable_from",
+        access_relation: "grants",
+        relation_chain: ["reachable_from", "assumes", "grants"],
+        exposure_edge: attackEdge("reachable_from", "aws-prod", "rt-aws-1"),
+        resource_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-1"),
+        traversal_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        privilege_edge: attackEdge("grants", "aws-prod", "rt-aws-2"),
+        permission_account_edge: attackEdge("contained_by", "aws-prod", "rt-aws-2"),
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListEffectiveAccessPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    paths: [
+      {
+        identity: contextEntityFixture(adminURN, "identity_user", "platform-admin"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        mediator: contextEntityFixture(oktaGroupURN, "okta_group", "platform"),
+        access_target: contextEntityFixture(bucketURN, "storage_bucket", "audit-bucket"),
+        entitlement: contextEntityFixture(permissionURN, "aws.iam_permission", "s3:PutObject"),
+        capability: contextEntityFixture(`${permissionURN}:write`, "capability", "write"),
+        assignment_kind: "group",
+        identity_relation_chain: ["member_of", "assumes"],
+        identity_edges: [attackEdge("member_of", "okta", "rt-okta-1"), attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        relation_chain: ["grants", "allows"],
+        edges: [attackEdge("grants", "aws-prod", "rt-aws-2"), attackEdge("allows", "aws-prod", "rt-aws-2")],
+      },
+      {
+        identity: contextEntityFixture(apiURN, "service", "payments-api"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        mediator: null,
+        access_target: contextEntityFixture(databaseURN, "database", "customer-records"),
+        entitlement: contextEntityFixture(`${permissionURN}:read`, "aws.iam_permission", "rds:Connect"),
+        capability: contextEntityFixture(`${permissionURN}:read-cap`, "capability", "read"),
+        assignment_kind: "service_account",
+        identity_relation_chain: ["assumes"],
+        identity_edges: [attackEdge("assumes", "aws-prod", "rt-aws-1")],
+        relation_chain: ["grants", "allows"],
+        edges: [attackEdge("grants", "aws-prod", "rt-aws-2")],
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListPersonAccessPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    paths: [
+      {
+        person: contextEntityFixture(personURN, "person", "Ana Ruiz"),
+        identity: contextEntityFixture(adminURN, "identity_user", "platform-admin"),
+        principal: contextEntityFixture(roleURN, "aws.iam_role", "deploy-role"),
+        access_target: contextEntityFixture(bucketURN, "storage_bucket", "audit-bucket"),
+        relation_chain: ["has_identity", "assumes", "writes_to"],
+      },
+    ],
+  }),
+  [`${ORGANIZATIONAL_GRAPH_SERVICE}/ListCrownJewelPaths`]: () => ({
+    tenant_id: tenantID,
+    graph_revision: FIXTURE_GRAPH_REVISION,
+    truncated: false,
+    seeds: [contextEntityFixture(databaseURN, "database", "customer-records")],
+    paths: [
+      {
+        seed: contextEntityFixture(databaseURN, "database", "customer-records"),
+        nodes: [
+          contextEntityFixture(databaseURN, "database", "customer-records"),
+          contextEntityFixture(apiURN, "service", "payments-api"),
+          contextEntityFixture(repoURN, "repository", "public-demo"),
+        ],
+        relations: ["read_by", "deployed_from"],
+      },
+    ],
+  }),
+};
+
 export const cerebroFixtureResponseFor = ({
   body,
   method,
@@ -4282,6 +4526,13 @@ export const cerebroFixtureResponseFor = ({
   const normalizedPath = normalizePath(path);
 
   if (normalizedMethod !== "GET") {
+    // A bare lookup also matches inherited keys such as "constructor", so only own keys may dispatch.
+    const graphPathFixture = Object.hasOwn(organizationalGraphPathFixtures, normalizedPath)
+      ? organizationalGraphPathFixtures[normalizedPath]
+      : undefined;
+    if (normalizedMethod === "POST" && graphPathFixture) {
+      return jsonFixture(graphPathFixture());
+    }
     if (normalizedMethod === "POST" && normalizedPath === "grc/control-packets") {
       return jsonFixture(controlPacketFixture(searchParams));
     }
@@ -4323,7 +4574,11 @@ export const cerebroFixtureResponseFor = ({
   }
 
   if (normalizedPath === "v1/actions") {
-    return jsonFixture({ actions: [actionFixture], next_page_token: null });
+    return jsonFixture({ actions: actionFixtures, next_page_token: null });
+  }
+
+  if (normalizedPath === "v1/action-definitions") {
+    return jsonFixture(actionDefinitionFixtures);
   }
 
   const actionPathParts = normalizedPath.split("/");
@@ -4338,9 +4593,9 @@ export const cerebroFixtureResponseFor = ({
   }
 
   if (actionPathParts.length === 3 && actionPathParts[0] === "v1" && actionPathParts[1] === "actions") {
-    return safeDecode(actionPathParts[2]) === actionFixture.proposal.operation_id
-      ? jsonFixture(actionFixture)
-      : jsonFixture({ error: "Action not found" }, 404);
+    const requested = safeDecode(actionPathParts[2]);
+    const match = actionFixtures.find((action) => action.proposal.operation_id === requested);
+    return match ? jsonFixture(match) : jsonFixture({ error: "Action not found" }, 404);
   }
 
   if (normalizedPath === "ask-queries") {

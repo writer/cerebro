@@ -3,44 +3,45 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { GET } from "./route";
 
-const originalIdentityProfile = process.env.CEREBRO_IDENTITY_PROFILE;
-const originalTrustedHeaders = process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
+const originalFixtureMode = process.env.CEREBRO_WEB_FIXTURE_MODE;
+const originalApiBase = process.env.CEREBRO_API_BASE;
 
 afterEach(() => {
-  if (originalIdentityProfile === undefined) delete process.env.CEREBRO_IDENTITY_PROFILE;
-  else process.env.CEREBRO_IDENTITY_PROFILE = originalIdentityProfile;
-  if (originalTrustedHeaders === undefined) delete process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
-  else process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = originalTrustedHeaders;
+  if (originalFixtureMode === undefined) delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+  else process.env.CEREBRO_WEB_FIXTURE_MODE = originalFixtureMode;
+  if (originalApiBase === undefined) delete process.env.CEREBRO_API_BASE;
+  else process.env.CEREBRO_API_BASE = originalApiBase;
 });
 
-describe("identity health", () => {
-  it("rejects requests without a trusted identity", async () => {
-    delete process.env.CEREBRO_IDENTITY_PROFILE;
-    delete process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
+const get = async () => GET(new NextRequest("http://localhost/api/identity/health"));
 
-    const response = await GET(new NextRequest("http://localhost/api/identity/health", {
-      headers: { "x-user-email": "spoofed@example.com" },
-    }));
+describe("identity health fixture mode", () => {
+  it("reports a usable console without a signed identity", async () => {
+    process.env.CEREBRO_WEB_FIXTURE_MODE = "1";
 
-    expect(response.status).toBe(401);
+    const response = await get();
     const payload = await response.json();
-    expect(payload).toMatchObject({ code: "identity_missing" });
-    expect(payload).not.toHaveProperty("config");
-  });
-
-  it("returns private diagnostics to a trusted user", async () => {
-    delete process.env.CEREBRO_IDENTITY_PROFILE;
-    process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-user-email";
-
-    const response = await GET(new NextRequest("http://localhost/api/identity/health", {
-      headers: { "x-user-email": "user@example.com" },
-    }));
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toMatchObject({
-      current: { authenticated: true },
-      config: { trustedHeaders: ["x-user-email"] },
-    });
+    expect(payload.status).toBe("ready");
+    expect(payload.current.source).toBe("local-fallback");
+  });
+
+  it("does not claim the viewer is authenticated", async () => {
+    process.env.CEREBRO_WEB_FIXTURE_MODE = "1";
+
+    const payload = await (await get()).json();
+
+    expect(payload.current.authenticated).toBe(false);
+    expect(payload.current.confidence).toBe("fallback");
+  });
+
+  it("keeps the fixture off unless it is asked for", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    process.env.CEREBRO_API_BASE = "https://cerebro.example.invalid";
+
+    const payload = await (await get()).json();
+
+    expect(payload.current?.source).not.toBe("local-fallback");
   });
 });

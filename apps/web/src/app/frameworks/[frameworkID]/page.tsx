@@ -190,7 +190,7 @@ export default function FrameworkDetailPage() {
   if (!isLoadingFramework && !framework) {
     return (
       <div className="space-y-6">
-        <PageHeader contractId="framework-detail" title="Framework not found" description={`No framework matched "${routeSegment}".`} />
+        <PageHeader contractId="framework-detail" title="Framework Not Found" description={`No framework matched "${routeSegment}".`} />
         <Link href="/frameworks" className="text-[13px] font-medium text-[var(--primary)]">Back to frameworks</Link>
       </div>
     );

@@ -78,11 +78,10 @@ export default function AskThread({ turns, activeTurnId, onRetry, onStop }: Prop
   };
 
   const copyShareLink = async (turn: AskTurnState) => {
-    const params = new URLSearchParams({ q: turn.question });
-    if (turn.model) params.set("model", turn.model);
+    const params = new URLSearchParams({ ask_q: turn.question });
     if (turn.tenantId) params.set("tenant_id", turn.tenantId);
     if (turn.scopeUrn) params.set("scope_urn", turn.scopeUrn);
-    const url = `${window.location.origin}/ask?${params.toString()}`;
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     await navigator.clipboard.writeText(url).catch(() => undefined);
   };
 

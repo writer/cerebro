@@ -199,7 +199,7 @@ export default function FindingTable({
                     scopeUrn={finding.entity}
                     title="Ask about this finding"
                     context={{
-                      route: "/risk-inbox",
+                      route: "/risks",
                       routeLabel: "Risks",
                       title: finding.title,
                       findingId: finding.id,

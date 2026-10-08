@@ -44,7 +44,7 @@ describe("information areas", () => {
 
   it("keeps first-read operator routes reachable through at least one area", () => {
     const assignedRoutes = new Set(informationAreas.flatMap(routeHrefsForArea));
-    const coreRoutes = ["/", "/risk-inbox", "/grc", "/controls", "/evidence", "/connectors", "/reports"];
+    const coreRoutes = ["/", "/risks", "/grc", "/controls", "/evidence", "/connectors", "/reports"];
 
     for (const href of coreRoutes) {
       expect(assignedRoutes.has(href), `${href} should belong to at least one information area`).toBe(true);
@@ -55,7 +55,7 @@ describe("information areas", () => {
     const byID = Object.fromEntries(informationAreas.map((area) => [area.id, area]));
 
     expect(byID.risks.primaryRoutes.map((route) => route.href)).toEqual(
-      expect.arrayContaining(["/risk-inbox", "/impact", "/ask"]),
+      expect.arrayContaining(["/risks", "/explore"]),
     );
     expect(byID.controls.primaryRoutes.map((route) => route.href)).toEqual(
       expect.arrayContaining(["/controls", "/frameworks", "/evidence", "/reports"]),

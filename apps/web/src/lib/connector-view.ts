@@ -373,7 +373,7 @@ const connectorResourceTypeLabels: Record<string, string> = {
   app_entitlement: "App entitlements",
   approval: "Approvals",
   asset: "Assets",
-  audit_event: "Audit events",
+  audit_event: "Audit Events",
   cloud_account: "Cloud accounts",
   cloud_resource: "Cloud resources",
   control: "Controls",

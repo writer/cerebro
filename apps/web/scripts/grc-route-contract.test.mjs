@@ -5,7 +5,7 @@ import { grcBrowserRouteContracts } from "./grc-route-contract.mjs";
 
 const pageSourcesByRoute = {
   "/": "src/app/page.tsx",
-  "/risk-inbox": "src/app/risk-inbox/page.tsx",
+  "/risks": "src/app/risks/page.tsx",
   "/controls": "src/app/controls/page.tsx",
   "/policies": "src/app/policies/page.tsx",
   "/frameworks": "src/app/frameworks/page.tsx",
@@ -14,9 +14,9 @@ const pageSourcesByRoute = {
   "/questionnaires": "src/app/questionnaires/page.tsx",
   "/vendors": "src/app/vendors/page.tsx",
   "/connectors": "src/app/connectors/page.tsx",
-  "/impact": "src/app/impact/page.tsx",
+  "/explore": "src/app/explore/page.tsx",
   "/reports": "src/app/reports/page.tsx",
-  "/reports/audit-packages": "src/app/reports/audit-packages/page.tsx",
+  "/reports/packages": "src/app/reports/packages/page.tsx",
 };
 
 describe("GRC browser route contract", () => {
@@ -24,7 +24,7 @@ describe("GRC browser route contract", () => {
     const contracts = grcBrowserRouteContracts({ adminURN: "urn:cerebro:e2e-tenant:identity:admin" });
     expect(contracts.map((contract) => contract.route)).toEqual([
       "/",
-      "/risk-inbox",
+      "/risks",
       "/controls",
       "/policies",
       "/frameworks",
@@ -33,13 +33,13 @@ describe("GRC browser route contract", () => {
       "/questionnaires",
       "/vendors",
       "/connectors",
-      "/impact?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
+      "/explore?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
       "/reports",
-      "/reports/audit-packages",
+      "/reports/packages",
     ]);
     expect(contracts.map((contract) => contract.pageId)).toEqual([
       "overview",
-      "risk-inbox",
+      "risks",
       "controls",
       "policies",
       "frameworks",
@@ -48,7 +48,7 @@ describe("GRC browser route contract", () => {
       "questionnaires",
       "vendors",
       "connectors",
-      "impact-map",
+      "graph-explorer",
       "reports",
       "audit-packages",
     ]);
@@ -66,6 +66,21 @@ describe("GRC browser route contract", () => {
       const sourcePath = pageSourcesByRoute[contract.route.split("?")[0]];
       const source = readFileSync(new URL(`../${sourcePath}`, import.meta.url), "utf8");
       expect(source).toContain(`contractId="${contract.pageId}"`);
+    }
+  });
+
+  // The browser run matches these headings exactly, so a page rename must fail here first.
+  it("matches the PageHeader titles the browser run waits for", () => {
+    const contracts = grcBrowserRouteContracts({ adminURN: "urn:cerebro:e2e-tenant:identity:admin" });
+    for (const contract of contracts) {
+      const sourcePath = pageSourcesByRoute[contract.route.split("?")[0]];
+      const source = readFileSync(new URL(`../${sourcePath}`, import.meta.url), "utf8");
+      // title may sit either side of contractId, so read the enclosing PageHeader tag.
+      const at = source.indexOf(`contractId="${contract.pageId}"`);
+      const open = source.lastIndexOf("<PageHeader", at);
+      const header = source.slice(open, source.indexOf("/>", at));
+      const title = /title=\{?"([^"]+)"/.exec(header)?.[1];
+      expect(title, `${contract.route} renders a different heading than the contract`).toBe(contract.heading);
     }
   });
 });

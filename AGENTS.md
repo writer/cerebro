@@ -1,5 +1,22 @@
 # Cerebro Agent Instructions
 
+## Session Memory
+
+- **Read `CONTEXT.md` at the start of every session** if it exists, to get up to speed on current work, open decisions, and stack state.
+- **Update `CONTEXT.md` at the end of every session** with what was accomplished and what's next.
+- `CONTEXT.md` is scoped to this repo (`writer/cerebro` / cerebro-public) only.
+- The private deployment repo is `WriterInternal/cerebro`: Pulumi stacks, CI/CD, image promotion, operational verification. This repo owns runtime behavior, applications, CLI/API contracts, source catalogs, and release artifacts.
+
+## Cloud & Application Stack Summary
+
+- **Go Runtime**: Go 1.26 (toolchain go1.26.6), ConnectRPC over HTTP, CLI/HTTP/MCP surfaces, DPoP auth (Ed25519), Okta OIDC for web
+- **Rust Platform**: Rust 1.93 (edition 2024), 30+ workspace crates, organizational graph, source runtime, action engine, WASM modules, cargo-deny supply chain
+- **Web Console**: Next.js 15 (Node 22, standalone), ALB OIDC, built-in RBAC, CSP with nonce, server-side API proxy
+- **Durable Stack**: NATS JetStream (append log), Postgres 16.4 (state), Neo4j/Aura (graph)
+- **Docker**: Multi-stage builds (Dockerfile, Dockerfile.runtime, Dockerfile.rust), Alpine 3.24 base, non-root user (10001), healthchecks
+- **Testing**: golangci-lint v2.11.4, sharded Go tests, race detection, govulncheck, cargo-deny, cargo test, vitest (web)
+- **Deployment**: Private repo deploys via Pulumi to ECS Fargate in sec-dev and go-prod AWS accounts
+
 ## Core Commands
 
 - Bootstrap linters: `make lint-bootstrap`

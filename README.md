@@ -188,7 +188,7 @@ make verify
 
 ## Scope
 
-Cerebro is not a SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. It provides the evidence and contract layer those systems, people, and agents can query. The canonical product and architecture boundaries are maintained in [Non-goals](docs/engineering/non-goals.md).
+Cerebro is a cloud, SaaS, and identity security posture product (CSPM, SSPM, ISPM) built on a typed evidence and contract substrate that people, systems, and agents can query. It is not a SIEM, EDR, IDS, LLM host, or data warehouse. The canonical product and architecture boundaries are maintained in [Non-goals](docs/engineering/non-goals.md).
 
 ## License
 

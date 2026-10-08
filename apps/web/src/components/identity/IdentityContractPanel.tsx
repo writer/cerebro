@@ -138,7 +138,7 @@ export default function IdentityContractPanel({ compact = false }: { compact?: b
           </div>
           {!compact && (
             <Link href="/developer" className="mt-3 inline-flex text-[12px] font-medium text-[var(--primary)] hover:text-[var(--primary-hover)]">
-              Back to Developer Tools
+              Back to Developer tools
             </Link>
           )}
         </div>

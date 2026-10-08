@@ -85,7 +85,7 @@ function ResourceURNsPanel({ urns }: { urns?: string[] }) {
         {boundedURNs.rows.map((urn) => (
           <div key={urn} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
             <span className="truncate font-mono text-[12px] text-slate-700">{urn}</span>
-            <Link href={`/impact?root_urn=${encodeURIComponent(urn)}`} className="ml-2 shrink-0 text-[12px] font-medium text-indigo-600 hover:text-indigo-800">
+            <Link href={`/explore?root_urn=${encodeURIComponent(urn)}`} className="ml-2 shrink-0 text-[12px] font-medium text-indigo-600 hover:text-indigo-800">
               Impact
             </Link>
           </div>
@@ -260,10 +260,7 @@ function TimelinePanel({
             <div className="text-[12px] text-slate-500">{event.detail}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {event.type === "finding" && finding.entity && (
-                <>
-                  <Link href={`/impact?root_urn=${encodeURIComponent(finding.entity)}`} className={secondaryButtonClass}>Open evidence graph</Link>
-                  <Link href={`/explore?root_urn=${encodeURIComponent(finding.entity)}`} className={secondaryButtonClass}>Open graph</Link>
-                </>
+                <Link href={`/explore?root_urn=${encodeURIComponent(finding.entity)}`} className={secondaryButtonClass}>Open in graph</Link>
               )}
               {event.type === "evidence" && (
                 <button type="button" onClick={onOpenEvidence} className={secondaryButtonClass}>
@@ -792,7 +789,7 @@ export default function FindingDetailPage() {
                 <div className="rounded-lg border border-slate-200 bg-white p-4">
                   <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">Details</div>
                   <KeyValueRow label="Finding ID" value={finding.id} mono />
-                  <KeyValueRow label="Entity" value={shortEntity(finding.entity)} mono href={finding.entity ? `/impact?root_urn=${encodeURIComponent(finding.entity)}` : undefined} />
+                  <KeyValueRow label="Entity" value={shortEntity(finding.entity)} mono href={finding.entity ? `/explore?root_urn=${encodeURIComponent(finding.entity)}` : undefined} />
                   <KeyValueRow label="Runtime" value={shortEntity(finding.runtime_id)} mono />
                   <KeyValueRow label="Source" value={finding.source_id || "\u2014"} mono />
                   <KeyValueRow label="Rule" value={shortEntity(finding.rule_id)} mono />
@@ -836,7 +833,7 @@ export default function FindingDetailPage() {
                         <td className="px-4 py-3 tabular-nums text-slate-600">{item.claim_ids?.length ?? 0}</td>
                         <td className="px-4 py-3 text-[12px]">
                           {(item.graph_root_urns ?? []).slice(0, 2).map((urn) => (
-                            <Link key={urn} href={`/impact?root_urn=${encodeURIComponent(urn)}`} className="mr-2 text-indigo-600 hover:text-indigo-800">{shortEntity(urn)}</Link>
+                            <Link key={urn} href={`/explore?root_urn=${encodeURIComponent(urn)}`} className="mr-2 text-indigo-600 hover:text-indigo-800">{shortEntity(urn)}</Link>
                           ))}
                           {!item.graph_root_urns?.length && <span className="text-slate-400">&mdash;</span>}
                         </td>

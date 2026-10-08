@@ -1,16 +1,14 @@
+// Matched against routeLabelForPath output, so every value here has to be a
+// label some route actually resolves to.
 export const denseAgentRouteLabels = new Set([
-  "Audit packages",
+  "Audit Workspace",
   "Compliance",
   "Controls",
   "Evidence",
   "Frameworks",
-  "Issues",
-  "Work",
-  "Audit packets",
-  "Audit workspace",
-  "Policies",
+  "Policy Documents",
   "Reports",
-  "Shared snapshot",
+  "Shared Snapshot",
 ]);
 
 export const isDenseAgentRouteLabel = (routeLabel?: string | null) =>

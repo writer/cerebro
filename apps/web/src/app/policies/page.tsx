@@ -972,7 +972,7 @@ export default function PoliciesPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="policies"
-        title="Policies"
+        title="Policy Documents"
         description="Review policy work, approve changes, track attestations, and manage supporting documents."
         action={
           <div className="flex flex-wrap items-center gap-2">

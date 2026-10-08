@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { navigationEntries, normalizeLegacyControlHref, operatorNavLinks, utilityLinks } from "./navigation";
+import { MINOR_TITLE_WORDS, navigationEntries, normalizeLegacyControlHref, operatorNavLinks, utilityLinks } from "./navigation";
 
 describe("navigation entries", () => {
   it("has unique hrefs across all entries", () => {
@@ -13,6 +13,19 @@ describe("navigation entries", () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
+  it("keeps every label in title case", () => {
+    for (const entry of navigationEntries) {
+      for (const [index, word] of entry.label.split(" ").entries()) {
+        if (!/^[A-Za-z]/.test(word)) continue;
+        if (index > 0 && MINOR_TITLE_WORDS.has(word.toLowerCase())) {
+          expect(word, `"${entry.label}" should not capitalise "${word}"`).toBe(word.toLowerCase());
+          continue;
+        }
+        expect(word.slice(0, 1), `"${entry.label}" should capitalise "${word}"`).toBe(word.slice(0, 1).toUpperCase());
+      }
+    }
+  });
+
   it("all entries have non-empty keywords", () => {
     for (const entry of navigationEntries) {
       expect(entry.keywords.length, `${entry.label} should have keywords`).toBeGreaterThan(0);
@@ -22,24 +35,25 @@ describe("navigation entries", () => {
   it("includes expected core operator pages", () => {
     const hrefs = operatorNavLinks.map((e) => e.href);
     expect(hrefs).toContain("/");
-    expect(hrefs).toContain("/risk-inbox");
-    expect(hrefs).toContain("/actions");
+    expect(hrefs).toContain("/risks");
+    expect(hrefs).toContain("/verified");
     expect(hrefs).toContain("/grc");
-    expect(hrefs).toContain("/ask");
     expect(hrefs).toContain("/controls");
     expect(hrefs).toContain("/connectors");
-    expect(hrefs).toContain("/credential-stores");
+    expect(hrefs).toContain("/credentials");
   });
 
-  it("uses operator labels for work, actions, and compliance", () => {
-    expect(operatorNavLinks.find((entry) => entry.href === "/risk-inbox")).toMatchObject({
-      label: "Work",
+  it("uses operator labels for risks, actions, and compliance", () => {
+    // The sidebar label has to match the page heading and the pinned
+    // information area, which are both "Risks".
+    expect(operatorNavLinks.find((entry) => entry.href === "/risks")).toMatchObject({
+      label: "Risks",
     });
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",
     });
-    expect(operatorNavLinks.find((entry) => entry.href === "/actions")).toMatchObject({
-      label: "Actions",
+    expect(operatorNavLinks.find((entry) => entry.href === "/verified")).toMatchObject({
+      label: "Verified Findings",
     });
   });
 

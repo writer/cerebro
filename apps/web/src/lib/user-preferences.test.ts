@@ -22,7 +22,7 @@ describe("user preferences", () => {
       homepage: {
         evidenceAutoLoad: true,
         sections: {
-          reviewNow: false,
+          assetCoverage: false,
         },
       },
       display: {
@@ -32,8 +32,8 @@ describe("user preferences", () => {
     });
 
     expect(preferences.homepage.evidenceAutoLoad).toBe(true);
-    expect(preferences.homepage.sections.reviewNow).toBe(false);
-    expect(preferences.homepage.sections.programHealth).toBe(true);
+    expect(preferences.homepage.sections.assetCoverage).toBe(false);
+    expect(preferences.homepage.sections.signalCoverage).toBe(true);
     expect(preferences.homepage.sections).not.toHaveProperty("destinations");
     expect(preferences.display).toEqual({ density: "compact", theme: "dark" });
   });
@@ -51,7 +51,7 @@ describe("user preferences", () => {
       homepage: {
         evidenceAutoLoad: true,
         sections: {
-          programHealth: false,
+          signalCoverage: false,
         },
       },
       display: {
@@ -62,7 +62,7 @@ describe("user preferences", () => {
     const value = userPreferencesShareValue(preferences);
     expect(userPreferencesFromShareValue(value)).toEqual(preferences);
 
-    const url = userPreferencesShareURL("https://cerebro.example.com/risk-inbox?severity=high#row", preferences);
+    const url = userPreferencesShareURL("https://cerebro.example.com/risks?severity=high#row", preferences);
     expect(url).toContain("cerebro_home=");
     expect(url).not.toContain("?home=");
     const shared = sharedUserPreferencesFromURL(url);

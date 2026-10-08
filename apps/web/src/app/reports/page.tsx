@@ -308,7 +308,7 @@ export default function ReportsPage() {
               onCopy={() => void copyReport()}
               onDownload={downloadReport}
             />
-            <Link href={`/reports/audit-packages?profile=${encodeURIComponent(selectedProfileID)}${framework ? `&framework=${encodeURIComponent(framework)}` : ""}${controlID ? `&control=${encodeURIComponent(controlID)}` : ""}`} className={buttonClass}>
+            <Link href={`/reports/packages?profile=${encodeURIComponent(selectedProfileID)}${framework ? `&framework=${encodeURIComponent(framework)}` : ""}${controlID ? `&control=${encodeURIComponent(controlID)}` : ""}`} className={buttonClass}>
               <ShieldCheck className="h-3.5 w-3.5" />
               Review packets
             </Link>

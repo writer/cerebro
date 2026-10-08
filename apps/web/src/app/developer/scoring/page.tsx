@@ -82,7 +82,7 @@ export default function RiskScoringSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Risk scoring"
+        title="Risk Scoring"
         description="Tune tenant-specific risk thresholds, signal cutoffs, graph relation weights, and factor weights used by the finding risk model."
       />
 

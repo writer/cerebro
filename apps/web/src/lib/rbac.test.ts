@@ -4,7 +4,10 @@ import {
   authorizationRoleLabelsForUser,
   effectiveAuthorizationPermissionsForUser,
   hasExplicitCerebroRoleOrScope,
+  authorizationRoleCatalog,
+  parseRoleClaimMappings,
   permissionForCerebroProxyRequest,
+  rolesFromClaimMappings,
 } from "./rbac";
 import type { CurrentUser } from "./identity";
 
@@ -117,5 +120,98 @@ describe("Cerebro proxy route permissions", () => {
     expect(permissionForCerebroProxyRequest("POST", "grc/dashboards/dashboard-1/clone")).toBe("dashboards:write");
     expect(permissionForCerebroProxyRequest("POST", "platform/runtime-response/actions")).toBe("runtime-response:write");
     expect(permissionForCerebroProxyRequest("PUT", "user/preferences")).toBe("preferences:write");
+  });
+});
+
+describe("claim to role mappings", () => {
+  const groupUser = (groups: string[]): CurrentUser => ({
+    actorId: "subject-2",
+    actorLabel: "person@example.com",
+    confidence: "trusted-proxy",
+    displayName: "Person Example",
+    entitlements: { groups },
+    initials: "PE",
+    provider: "alb-oidc",
+    source: "headers",
+    subject: "subject-2",
+  });
+
+  it("grants no roles when nothing is configured", () => {
+    expect(parseRoleClaimMappings(undefined)).toEqual([]);
+    expect(rolesFromClaimMappings(groupUser(["Security Team"]), [])).toEqual([]);
+  });
+
+  it("maps a group claim onto a role and its permissions", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "Security Team": ["cerebro.viewer"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["Security Team"]), mappings)).toEqual(["cerebro.viewer"]);
+  });
+
+  it("matches group values case insensitively", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "security team": ["cerebro.analyst"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["Security Team"]), mappings)).toEqual(["cerebro.analyst"]);
+  });
+
+  it("grants nothing for an unmatched group", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "CEREBRO Admins": ["cerebro.admin"] } }),
+    );
+    expect(rolesFromClaimMappings(groupUser(["Security Team"]), mappings)).toEqual([]);
+  });
+
+  it("ignores roles that are not real bundles so a typo grants nothing", () => {
+    const mappings = parseRoleClaimMappings(
+      JSON.stringify({ groups: { "Security Team": ["cerebro.superuser"] } }),
+    );
+    expect(mappings).toEqual([]);
+  });
+
+  it("returns no mappings for unparseable configuration", () => {
+    expect(parseRoleClaimMappings("{not json")).toEqual([]);
+    expect(parseRoleClaimMappings("[]")).toEqual([]);
+  });
+
+  it("resolves permissions from a mapped group claim", () => {
+    process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS = JSON.stringify({
+      groups: { "Security Team": ["cerebro.viewer"] },
+    });
+    try {
+      expect(effectiveAuthorizationPermissionsForUser(groupUser(["Security Team"]))).toEqual([
+        "identity:read",
+        "agent:ask",
+        "cerebro:read",
+        "preferences:write",
+      ]);
+    } finally {
+      delete process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS;
+    }
+  });
+
+  it("resolves no permissions from a group claim when mappings are absent", () => {
+    expect(effectiveAuthorizationPermissionsForUser(groupUser(["Security Team"]))).toEqual([]);
+  });
+
+  it("gives the admin role every permission including admin:read", () => {
+    const admin = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.admin");
+    expect(admin?.permissions).toContain("admin:read");
+    const viewer = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.viewer");
+    expect(viewer?.permissions).not.toContain("admin:read");
+  });
+});
+
+describe("role catalog descriptions", () => {
+  it("describes every role so an opaque name is explained in the console", () => {
+    const undescribed = authorizationRoleCatalog().filter((entry) => !entry.description.trim());
+    expect(undescribed.map((entry) => entry.role)).toEqual([]);
+  });
+
+  it("says what the responder role actually does", () => {
+    const responder = authorizationRoleCatalog().find((entry) => entry.role === "cerebro.responder");
+    expect(responder?.description).toContain("runtime response");
+    expect(responder?.permissions).toContain("runtime-response:write");
+    expect(responder?.permissions).not.toContain("findings:write");
   });
 });

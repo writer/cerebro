@@ -10,7 +10,7 @@ The GRC surface is the fastest-growing part of the Cerebro platform. It spans se
 
 - `internal/grccatalog` — bounded report source catalog for custom dashboards
 - `internal/grccontrol` — control evidence packet builder and report rendering
-- `internal/grcfindings` — GRC risk-inbox finding, control, evidence, and summary builders
+- `internal/grcfindings` — GRC risks finding, control, evidence, and summary builders
 - `internal/grcinventory` — inventory posture, scope, accountability, and filtering
 - `internal/grcprogram` — program readiness scoring and work-item generation
 - `internal/grctrends` — time-bucketed finding trend aggregation
@@ -111,7 +111,7 @@ Boundaries:
 ### grcfindings — Risk Inbox Rows
 
 `internal/grcfindings` converts persisted finding and evidence records into
-GRC-facing rows for risk-inbox, dashboard, control-posture, audit-packet, CSV,
+GRC-facing rows for risks, dashboard, control-posture, audit-packet, CSV,
 and inventory-detail surfaces. It owns finding status normalization, SLA state,
 control grouping, evidence row mapping, summary counts, recommended finding
 actions, connector freshness labels, and the serving projection that joins
@@ -360,7 +360,7 @@ The GRC domain maps to these RBAC roles defined in `internal/authz`:
 - `internal/grccontrol/packets.go` — control evidence packet builder
 - `internal/grccontrol/finding_reports.go` — finding report assembly
 - `internal/grccontrol/helpers.go` — shared control helpers
-- `internal/grcfindings/items.go` — risk-inbox finding, evidence, control, summary, and action builders
+- `internal/grcfindings/items.go` — risks finding, evidence, control, summary, and action builders
 - `internal/grcinventory/posture.go` — inventory posture, scope, accountability, filtering
 - `internal/grcinventory/detail.go` — inventory detail tests, vulnerabilities, risk decoration, timelines, and actions
 - `internal/grcprogram/readiness.go` — program readiness scoring and work items

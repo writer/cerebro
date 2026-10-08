@@ -1,16 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { isDenseAgentRouteLabel } from "./dense-routes";
+import { routeLabelForPath } from "@/lib/route-labels";
+
+import { denseAgentRouteLabels, isDenseAgentRouteLabel } from "./dense-routes";
+
+// Every dense label paired with a path that resolves to it.
+const denseRoutes: Record<string, string> = {
+  "/grc": "Compliance",
+  "/controls": "Controls",
+  "/evidence": "Evidence",
+  "/frameworks": "Frameworks",
+  "/policies": "Policy Documents",
+  "/reports": "Reports",
+  "/reports/packages": "Audit Workspace",
+  "/reports/shared/fixture-snapshot-1": "Shared Snapshot",
+};
 
 describe("dense agent route labels", () => {
   it("keeps the launcher compact on dense audit and GRC pages", () => {
-    expect(isDenseAgentRouteLabel("Audit packets")).toBe(true);
-    expect(isDenseAgentRouteLabel("Audit packages")).toBe(true);
-    expect(isDenseAgentRouteLabel("Shared snapshot")).toBe(true);
-    expect(isDenseAgentRouteLabel("Reports")).toBe(true);
-    expect(isDenseAgentRouteLabel("Compliance")).toBe(true);
-    expect(isDenseAgentRouteLabel("Policies")).toBe(true);
-    expect(isDenseAgentRouteLabel("Audit workspace")).toBe(true);
+    for (const [path, label] of Object.entries(denseRoutes)) {
+      expect(routeLabelForPath(path), `${path} should resolve to ${label}`).toBe(label);
+      expect(isDenseAgentRouteLabel(label), `${label} should be dense`).toBe(true);
+    }
+  });
+
+  it("carries no label that a route cannot produce", () => {
+    expect([...denseAgentRouteLabels].sort()).toEqual([...new Set(Object.values(denseRoutes))].sort());
   });
 
   it("uses the full launcher on lighter pages", () => {

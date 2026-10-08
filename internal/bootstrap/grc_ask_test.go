@@ -98,7 +98,7 @@ LIMIT 25`,
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	body := []byte(`{"tenant_id":"example","question":"What is risky?","context":{"route":"/risk-inbox","chips":[{"label":"Severity","value":"High"}]},"surface":"agent","conversation_id":"thread-1"}`)
+	body := []byte(`{"tenant_id":"example","question":"What is risky?","context":{"route":"/risks","chips":[{"label":"Severity","value":"High"}]},"surface":"agent","conversation_id":"thread-1"}`)
 	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST /grc/ask error = %v", err)

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTION_STAGE_IDS,
+  actionStage,
   actionStateIntent,
   actionStateLabel,
   actionTimeLabel,
-  summarizeActionPage,
+  indexActionDefinitions,
+  summarizeActionStages,
   type ActionOperation,
   type ActionState,
 } from "./actions";
@@ -44,7 +47,7 @@ describe("Action UI state", () => {
   });
 
   it("summarizes only the operations in the current bounded page", () => {
-    expect(summarizeActionPage([
+    expect(summarizeActionStages([
       operation("waiting_for_approval"),
       operation("executing"),
       operation("dispatched"),
@@ -53,11 +56,47 @@ describe("Action UI state", () => {
       operation("failed"),
       operation("rolled_back"),
     ])).toEqual({
-      waitingForApproval: 1,
-      inExecution: 3,
+      proposed: 0,
+      awaitingApproval: 1,
+      inFlight: 2,
       verified: 1,
-      failedOrRolledBack: 2,
+      attention: 3,
     });
+  });
+
+  it("places every authority state in exactly one stage", () => {
+    const states: ActionState[] = [
+      "proposed", "simulated", "waiting_for_approval", "approved", "claimed",
+      "executing", "dispatched", "outcome_unknown", "completed", "reconciled",
+      "verified", "failed", "rolled_back",
+    ];
+    for (const state of states) {
+      expect(ACTION_STAGE_IDS, state).toContain(actionStage(state));
+    }
+    expect(actionStage("proposed")).toBe("proposed");
+    expect(actionStage("waiting_for_approval")).toBe("awaitingApproval");
+    expect(actionStage("reconciled")).toBe("verified");
+  });
+
+  it("treats an unknown authority state as needing attention rather than hiding it", () => {
+    expect(actionStage("some_future_state")).toBe("attention");
+  });
+
+  it("indexes the action definition catalog by kind and tolerates an empty read", () => {
+    const index = indexActionDefinitions([
+      {
+        id: "identity.okta.suspend_user",
+        provider: "access-approvals",
+        provider_action: "suspend",
+        target_kind: "identity.okta.user",
+        effect: "deny_access",
+        destructive: true,
+        reversible_by: "identity.okta.unsuspend_user",
+        definition_digest: "a".repeat(64),
+      },
+    ]);
+    expect(index["identity.okta.suspend_user"]?.destructive).toBe(true);
+    expect(indexActionDefinitions(undefined)).toEqual({});
   });
 
   it("does not render invalid authority timestamps as real dates", () => {

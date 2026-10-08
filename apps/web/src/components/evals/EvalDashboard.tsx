@@ -14,10 +14,9 @@ const statusClass = (status: string) =>
 
 function replayHref(run: AskEvalRun) {
   const params = new URLSearchParams();
-  params.set("q", run.question);
-  if (run.model) params.set("model", run.model);
+  params.set("ask_q", run.question);
   if (run.scopeUrn) params.set("scope_urn", run.scopeUrn);
-  return `/ask?${params.toString()}`;
+  return `/developer/evals?${params.toString()}`;
 }
 
 function JudgeRows({ run }: { run: AskEvalRun }) {

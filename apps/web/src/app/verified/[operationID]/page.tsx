@@ -72,7 +72,7 @@ export default function ActionDetailPage() {
         title={proposal.action_kind.replaceAll("_", " ")}
         description={`Action ${proposal.operation_id} is bound to finding revision ${proposal.finding_revision_digest.slice(0, 12)} and graph revision ${proposal.graph_revision}.`}
         contractId="rust-action-detail"
-        action={<Link href="/actions" className="secondary-button px-3 py-2 text-[12px]">Back to Actions</Link>}
+        action={<Link href="/verified" className="secondary-button px-3 py-2 text-[12px]">Back to Verified Findings</Link>}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

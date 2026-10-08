@@ -117,19 +117,19 @@ function TrendWidget({ dashboard, widget }: { dashboard: CustomDashboard; widget
     severity: stringValue(dashboard.filters.severity),
     framework: stringValue(dashboard.filters.framework),
   };
-  const riskInboxPath = (params: Record<string, string | number | undefined>) => {
+  const risksPath = (params: Record<string, string | number | undefined>) => {
     const queryParams = new URLSearchParams();
     Object.entries({ ...filterParams, ...params }).forEach(([key, value]) => {
       if (value !== undefined && String(value).trim() !== "") queryParams.set(key, String(value));
     });
     const queryString = queryParams.toString();
-    return queryString ? `/risk-inbox?${queryString}` : "/risk-inbox";
+    return queryString ? `/risks?${queryString}` : "/risks";
   };
   const bucketDrilldownPath = (date: string, kind: "opened" | "closed") => {
     const before = trendBucketEndDate(date, interval);
     return kind === "opened"
-      ? riskInboxPath({ status: "all", opened_after: date, opened_before: before })
-      : riskInboxPath({ status: "all", closed_after: date, closed_before: before });
+      ? risksPath({ status: "all", opened_after: date, opened_before: before })
+      : risksPath({ status: "all", closed_after: date, closed_before: before });
   };
 
   if (query.loading) {
@@ -184,7 +184,7 @@ function TrendWidget({ dashboard, widget }: { dashboard: CustomDashboard; widget
                     <td className="px-3 py-2 font-medium text-slate-900">{bucket.label}</td>
                     <td className="px-3 py-2 text-right text-slate-700">{bucket.count}</td>
                     <td className="px-3 py-2 text-right">
-                      <Link href={riskInboxPath({ status: "open", age_min_days: bucket.min_days || undefined, age_max_days: bucket.max_days && bucket.max_days > 0 ? bucket.max_days : undefined })} className="font-medium text-indigo-600 hover:text-indigo-800">View</Link>
+                      <Link href={risksPath({ status: "open", age_min_days: bucket.min_days || undefined, age_max_days: bucket.max_days && bucket.max_days > 0 ? bucket.max_days : undefined })} className="font-medium text-indigo-600 hover:text-indigo-800">View</Link>
                     </td>
                   </tr>
                 ))}

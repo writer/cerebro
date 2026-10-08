@@ -987,7 +987,7 @@ function VendorTabBar({ activeTab, onChange }: { activeTab: VendorTab; onChange:
 
 function PriorityIssuesPanel({ findings }: { findings: NonNullable<GRCVendorDetailResponse["findings"]> }) {
   return (
-    <Panel title="Priority issues" action={<Link href="/risk-inbox" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">View all risks <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
+    <Panel title="Priority issues" action={<Link href="/risks" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">View all risks <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
       {findings.length === 0 ? (
         <div className="rounded-md border border-dashed border-[color:var(--border-strong)] p-4 text-[13px] text-[var(--text-muted)]">No open risks on this vendor.</div>
       ) : (

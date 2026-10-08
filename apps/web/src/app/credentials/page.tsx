@@ -254,7 +254,7 @@ export default function CredentialStoresPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="credential-stores"
-        title="Credential stores"
+        title="Credential Stores"
         description="Review store readiness, runtime bindings, credential records, and backend setup issues."
         action={
           <div className="flex flex-wrap gap-2">

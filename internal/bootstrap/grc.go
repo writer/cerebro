@@ -371,7 +371,7 @@ func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload)
 }
 
-// grcFindingItemsFromRequest gathers risk-inbox finding items for a request,
+// grcFindingItemsFromRequest gathers risk finding items for a request,
 // shared by the JSON list handler and the CSV export. A non-zero limitOverride
 // replaces the request's scope limit (the export pulls the full dataset).
 func (a *App) grcFindingItemsFromRequest(r *http.Request, limitOverride uint32) (grcFindingItemsPage, error) {

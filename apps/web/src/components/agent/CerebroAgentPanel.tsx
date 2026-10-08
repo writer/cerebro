@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { type KeyboardEvent, useMemo } from "react";
 import {
@@ -10,7 +9,6 @@ import {
   Database,
   ExternalLink,
   LoaderCircle,
-  Maximize2,
   MessageSquare,
   RefreshCw,
   Search,
@@ -133,6 +131,8 @@ export default function CerebroAgentPanel() {
     images,
     openAgent,
     pageContext,
+    readiness,
+    readinessLoading,
     retryTurn,
     setDraft,
     setAgentMode,
@@ -210,17 +210,13 @@ export default function CerebroAgentPanel() {
                 <p className="mt-1 truncate text-[12px] text-slate-500">
                   {currentStatus ? formatEvent(currentStatus) : `Working from ${pageContext.routeLabel ?? "this screen"}`}
                 </p>
+                <p className="mt-0.5 truncate text-[11px] text-slate-400" title={readinessLoading ? undefined : readiness?.detail}>
+                  {readinessLoading ? "Checking which path will handle the next question." : readiness?.label ?? "Ask path unavailable"}
+                </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
-              <Link
-                href="/ask"
-                className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-                title="Open full Ask"
-              >
-                <Maximize2 className={iconClass} />
-              </Link>
               <button
                 type="button"
                 onClick={() => setOpen(false)}

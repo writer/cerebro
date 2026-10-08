@@ -1147,7 +1147,7 @@ export async function runAuthenticatedRustE2E(options = {}) {
       { timeout: Math.min(30_000, remaining(deadlineAt, "Action browser request")) },
     );
     const actionNavigation = await page.goto(
-      `http://127.0.0.1:${webPort}/actions/${encodeURIComponent(fixture.operation_id)}`,
+      `http://127.0.0.1:${webPort}/verified/${encodeURIComponent(fixture.operation_id)}`,
       {
         timeout: Math.min(30_000, remaining(deadlineAt, "Action navigation")),
         waitUntil: "domcontentloaded",

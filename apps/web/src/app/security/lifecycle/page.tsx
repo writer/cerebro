@@ -119,7 +119,7 @@ function LifecycleDrawer({
               <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/inventory/${encodeURIComponent(observation.subject_ref.id)}`}>
                 Open inventory record
               </Link>
-              <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/impact?root_urn=${encodeURIComponent(observation.subject_ref.id)}`}>
+              <Link className="secondary-button px-3 py-1.5 text-[12px]" href={`/explore?root_urn=${encodeURIComponent(observation.subject_ref.id)}`}>
                 View impact
               </Link>
             </div>
@@ -307,7 +307,7 @@ export default function SecurityLifecyclePage() {
   return (
     <div>
       <PageHeader
-        title="Credential and certificate lifecycle"
+        title="Credential and Certificate Lifecycle"
         description="Review stable resource slots, current material revisions, policy state, evidence, findings, and external action routing. Only a later complete observation can verify that a finding condition is gone."
         contractId="security-lifecycle"
         action={(
