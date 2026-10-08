@@ -36,11 +36,11 @@ fn rust_runtime_image_has_no_go_executable_path() {
     );
     for required in [
         "cerebro-platform --bin cerebro-platform",
-        "ADD --checksum=sha256:e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3",
+        "ADD --checksum=sha256:fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c",
         "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
         "apk add --no-cache ca-certificates openssl",
         "/usr/local/share/ca-certificates/aws-rds-root-%03d.crt",
-        "if (certificate != 108) exit 1",
+        "if (certificate != 111) exit 1",
         "test \"${subject#subject=}\" = \"${issuer#issuer=}\" || exit 1",
         "openssl verify -CAfile \"${certificate}\" \"${certificate}\" || exit 1",
         "CN=Amazon RDS \"*\" Root CA RSA2048 G1",
