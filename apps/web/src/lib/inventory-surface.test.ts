@@ -42,7 +42,7 @@ describe("inventory surface defaults", () => {
   });
 
   it("keeps inventory pages on the shared surface helpers", () => {
-    const listSource = readProjectFile("src/app/inventory/page.tsx");
+    const listSource = readProjectFile("src/components/inventory/InventoryWorkspace.tsx");
     const detailSource = readProjectFile("src/app/inventory/[urn]/page.tsx");
 
     expect(listSource).toContain("inventoryRequestSurface(debouncedSurfaceFilter)");

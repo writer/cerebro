@@ -44,6 +44,8 @@ type InventoryCategory struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
 	Surface     string   `json:"surface,omitempty"`
+	Group       string   `json:"group,omitempty"`
+	GroupLabel  string   `json:"group_label,omitempty"`
 	EntityTypes []string `json:"entity_types"`
 	Count       int      `json:"count"`
 }
@@ -152,6 +154,7 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 	categories := make([]InventoryCategory, 0, len(grouped))
 	for _, category := range grouped {
 		sort.Strings(category.EntityTypes)
+		category.Group, category.GroupLabel = inventoryGroupForEntityTypes(category.EntityTypes)
 		categories = append(categories, *category)
 	}
 	sort.Slice(categories, func(i, j int) bool {
@@ -167,13 +170,21 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 	if s == nil || s.catalog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	entityTypes := inventoryEntityTypesForFilter(request.CategoryID, request.EntityType)
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
 	filter := inventoryCatalogFilter(tenantID, request.ApplicationWorkspaceID, request.SourceID, request.Surface)
 	filter.Query = strings.TrimSpace(request.Query)
+	entityTypes, grouped, err := s.inventoryFilterKinds(ctx, request, filter)
+	if err != nil {
+		return nil, err
+	}
+	// A group that matches no live kind must return nothing rather than fall
+	// through to an unfiltered listing.
+	if grouped && len(entityTypes) == 0 {
+		return []InventoryAsset{}, nil
+	}
 	if len(entityTypes) > 0 {
 		filter.IncludeKinds = entityTypes
 		filter.IncludeKindPrefixes = nil
@@ -411,6 +422,60 @@ func inventoryEntityTypesForFilter(categoryID string, entityType string) []strin
 	return result
 }
 
+// Group ids resolve against the kinds actually present, because the entity
+// types belonging to a group are computed at projection time and cannot be
+// listed up front.
+func (s *Service) inventoryFilterKinds(ctx context.Context, request InventoryAssetRequest, filter ports.EntityCatalogFilter) ([]string, bool, error) {
+	if entityType := strings.TrimSpace(request.EntityType); entityType != "" {
+		return []string{entityType}, false, nil
+	}
+	categoryID := strings.TrimSpace(request.CategoryID)
+	if categoryID == "" {
+		return nil, false, nil
+	}
+	if !IsInventoryGroupID(categoryID) {
+		return inventoryEntityTypesForFilter(categoryID, ""), false, nil
+	}
+	enumeration := filter
+	enumeration.Query = ""
+	enumeration.QueryAttributes = false
+	page, err := s.catalog.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: enumeration, Limit: maxInventoryLimit})
+	if err != nil {
+		return nil, true, err
+	}
+	if page == nil {
+		return nil, true, ErrRuntimeUnavailable
+	}
+	groupID := strings.ToLower(categoryID)
+	var kinds []string
+	for _, value := range page.Counts {
+		if id, _, ok := InventoryGroupForEntityType(value.EntityKind); ok && id == groupID {
+			kinds = append(kinds, value.EntityKind)
+		}
+	}
+	sort.Strings(kinds)
+	return kinds, true, nil
+}
+
+// A category reports a group only when every entity type inside it agrees.
+func inventoryGroupForEntityTypes(entityTypes []string) (string, string) {
+	var groupID, groupLabel string
+	for _, entityType := range entityTypes {
+		id, label, ok := InventoryGroupForEntityType(entityType)
+		if !ok {
+			return "", ""
+		}
+		if groupID == "" {
+			groupID, groupLabel = id, label
+			continue
+		}
+		if groupID != id {
+			return "", ""
+		}
+	}
+	return groupID, groupLabel
+}
+
 type inventoryCategoryLabel struct {
 	id    string
 	label string
@@ -435,10 +500,10 @@ func inventoryCategoryLookup() map[string]inventoryCategoryLabel {
 		"kubernetes.cluster":      {"kubernetes-clusters", "Kubernetes clusters"},
 		"github.code.repository":  {"git-repositories", "Git repositories"},
 		"github.org":              {"github-organizations", "GitHub organizations"},
-		"github.org.member":       {"github-members", "GitHub members"},
+		"github.user":             {"github-members", "GitHub members"},
 		"aws.s3.bucket":           {"block-storage", "Block storage"},
 		"aws.ebs.volume":          {"block-storage", "Block storage"},
-		"aws.elb.load_balancer":   {"load-balancers", "Load balancers"},
+		"aws.elbv2.load.balancer": {"load-balancers", "Load balancers"},
 		"aws.rds.instance":        {"databases", "Databases"},
 		"aws.dynamodb.table":      {"databases", "Databases"},
 		"grc.integration":         {"integrations", "Integrations"},
@@ -446,18 +511,18 @@ func inventoryCategoryLookup() map[string]inventoryCategoryLabel {
 		"grc.target":              {"inventory-targets", "Inventory targets"},
 		"grc.user":                {"people", "People"},
 		"sentinelone.agent":       {"computers", "Computers"},
-		"trusted_endpoint.device": {"computers", "Computers"},
+		"trusted_endpoint.agent":  {"computers", "Computers"},
 		"kolide.device":           {"computers", "Computers"},
 		"kandji.device":           {"computers", "Computers"},
-		"cloudflare.dns.record":   {"domains", "Domains"},
+		"cloudflare.dns_record":   {"domains", "Domains"},
 		"cloudflare.zone":         {"domains", "Domains"},
 		"gcp.service_account":     {"service-accounts", "Service accounts"},
-		"aws.iam.role":            {"access", "Access"},
-		"aws.iam.user":            {"access", "Access"},
+		"aws.role":                {"access", "Access"},
+		"aws.user":                {"access", "Access"},
 		"okta.user":               {"people", "People"},
 		"okta.group":              {"access", "Access"},
-		"googleworkspace.user":    {"people", "People"},
-		"googleworkspace.group":   {"access", "Access"},
+		"google_workspace.user":   {"people", "People"},
+		"google_workspace.group":  {"access", "Access"},
 	}
 }
 

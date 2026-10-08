@@ -61,9 +61,16 @@ describe("isSidebarLinkActive", () => {
     expect(inventoryGroup?.label).toBe("Inventory");
     expect(inventoryGroup?.href).toBe("/inventory");
     expect(hrefs).toEqual([
-      "/explore",
-      "/identity",
+      "/inventory",
+      "/inventory/identities",
+      "/inventory/cloud",
+      "/inventory/saas",
+      "/inventory/code",
+      "/inventory/devices",
+      "/inventory/secrets",
       "/security/lifecycle",
+      "/identity",
+      "/explore",
     ]);
   });
 

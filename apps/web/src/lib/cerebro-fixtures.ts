@@ -8,6 +8,7 @@ import type {
   GRCVendorCreateRequest,
   GRCVendorDiscovery,
 } from "@/lib/grc";
+import { inventoryGroupFor, inventoryGroupForEntityType } from "@/lib/inventory-groups";
 
 type FixtureResponse = {
   body: string;
@@ -28,6 +29,8 @@ const adminURN = `urn:cerebro:${tenantID}:identity:platform-admin`;
 const apiURN = `urn:cerebro:${tenantID}:service:payments-api`;
 const repoURN = `urn:cerebro:${tenantID}:repository:public-demo`;
 const bucketURN = `urn:cerebro:${tenantID}:storage:audit-bucket`;
+const saasAppURN = `urn:cerebro:${tenantID}:application:demo-analytics`;
+const secretURN = `urn:cerebro:${tenantID}:secret:deploy-token`;
 const installedAppURN = `urn:cerebro:${tenantID}:sentinelone_installed_app:agent-1:browser`;
 const emailAliasURN = `urn:cerebro:${tenantID}:identifier:email:platform-admin@example.com`;
 const coreSsoVendorURN = `urn:cerebro:${tenantID}:vendor:core-sso`;
@@ -768,6 +771,36 @@ const assets = [
     review_disposition: { state: "out_of_scope", label: "Scoped out", detail: "Documented as support-only in fixture mode." },
     accountability: { state: "candidate", label: "Owner candidate", candidates: [{ principal: "platform@example.com", confidence: "medium", source: "demo-fixture" }] },
     attributes: { owner: "Platform", provider: "AWS", region: "us-east-1", account_id: "demo-account", resource_type: "Storage bucket" },
+  },
+  {
+    urn: saasAppURN,
+    entity_type: "okta.application",
+    surface: "asset",
+    label: "Demo Analytics",
+    source_id: "okta",
+    runtime_id: "demo-okta-runtime",
+    risk_score: 58,
+    risk_level: "medium",
+    risk_reasons: ["Broad OAuth scopes"],
+    scope_state: "in_scope",
+    review_disposition: { state: "needs_review", label: "Needs review", detail: "Third-party application access requires reviewer confirmation." },
+    accountability: { state: "known", label: "Owner known", principal: "security@example.com" },
+    attributes: { owner: "Security", provider: "Okta", resource_type: "SaaS application", sign_on_mode: "SAML_2_0" },
+  },
+  {
+    urn: secretURN,
+    entity_type: "secret",
+    surface: "asset",
+    label: "deploy-token",
+    source_id: "github",
+    runtime_id: "demo-github-runtime",
+    risk_score: 83,
+    risk_level: "high",
+    risk_reasons: ["Credential past rotation window"],
+    scope_state: "in_scope",
+    review_disposition: { state: "needs_review", label: "Needs review", detail: "Credential age exceeds the rotation window." },
+    accountability: { state: "required_missing", label: "Owner required" },
+    attributes: { owner: "AppSec", provider: "GitHub", org: "demo-org", resource_type: "Secret", last_rotated_at: "2025-01-14" },
   },
   {
     urn: installedAppURN,
@@ -1846,10 +1879,11 @@ const inventorySummary = (items = assets) => ({
 });
 
 const inventoryCategories = (items: typeof assets) => {
-  const categories = new Map<string, { id: string; label: string; surface?: string; entity_types: string[]; count: number }>();
+  const categories = new Map<string, { id: string; label: string; surface?: string; group?: string; group_label?: string; entity_types: string[]; count: number }>();
   for (const asset of items) {
     const id = inventoryCategoryID(asset.entity_type);
-    const category = categories.get(id) ?? { id, label: inventoryCategoryLabel(asset.entity_type), surface: assetSurface(asset), entity_types: [asset.entity_type], count: 0 };
+    const group = inventoryGroupForEntityType(asset.entity_type);
+    const category = categories.get(id) ?? { id, label: inventoryCategoryLabel(asset.entity_type), surface: assetSurface(asset), group, group_label: inventoryGroupFor(group)?.label, entity_types: [asset.entity_type], count: 0 };
     category.count += 1;
     categories.set(id, category);
   }
@@ -1887,7 +1921,10 @@ const filterAssets = (params?: URLSearchParams) => {
   return limitList(assets.filter((asset) => {
     if (sourceID && asset.source_id?.toLowerCase() !== sourceID) return false;
     if (entityType && asset.entity_type.toLowerCase() !== entityType) return false;
-    if (categoryID && asset.entity_type.toLowerCase() !== categoryID && inventoryCategoryID(asset.entity_type).toLowerCase() !== categoryID) return false;
+    if (categoryID
+      && asset.entity_type.toLowerCase() !== categoryID
+      && inventoryCategoryID(asset.entity_type).toLowerCase() !== categoryID
+      && inventoryGroupForEntityType(asset.entity_type) !== categoryID) return false;
     if (surface && surface !== "all" && assetSurface(asset).toLowerCase() !== surface) return false;
     if (scopeState && asset.scope_state?.toLowerCase() !== scopeState) return false;
     // The catalog matches the URN, the label and every attribute value, so mirror that here.

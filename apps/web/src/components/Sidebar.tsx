@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useSidebar } from "@/components/providers";
+import { INVENTORY_GROUPS } from "@/lib/inventory-groups";
 import { navigationEntries, operatorNavLinks, utilityLinks, type NavigationEntry } from "@/lib/navigation";
 
 const icons: Record<string, ReactNode> = {
@@ -20,6 +21,12 @@ const icons: Record<string, ReactNode> = {
   "/evidence": <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />,
   "/questionnaires": <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 3h6m-8.25 6h10.5A2.25 2.25 0 0 0 19.5 18.75V5.25A2.25 2.25 0 0 0 17.25 3H6.75A2.25 2.25 0 0 0 4.5 5.25v13.5A2.25 2.25 0 0 0 6.75 21ZM8.25 7.5h.008v.008H8.25V7.5Zm2.25 0h5.25" />,
   "/inventory": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5M7.5 3v18m9-18v18" />,
+  "/inventory/identities": <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.4 9.4 0 0 0 2.625.372 9.3 9.3 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.3 12.3 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0m8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0" />,
+  "/inventory/cloud": <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15" />,
+  "/inventory/saas": <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5m0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25m9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25" />,
+  "/inventory/code": <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />,
+  "/inventory/devices": <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25" />,
+  "/inventory/secrets": <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25" />,
   "/rules": <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />,
   "/developer/scoring": <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />,
   "/vendors": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21V8.25A2.25 2.25 0 0 1 6 6h4.5a2.25 2.25 0 0 1 2.25 2.25V21m-9 0h9m-9 0H2.25m10.5 0h9m-9 0V5.25A2.25 2.25 0 0 1 15 3h3a2.25 2.25 0 0 1 2.25 2.25V21m-12-10.5h1.5m-1.5 3h1.5m4.5-4.5h1.5m-1.5 3h1.5m-1.5 3h1.5" />,
@@ -77,11 +84,15 @@ export const sidebarNavGroups: SidebarNavGroup[] = [
     label: "Inventory",
     iconHref: "/inventory",
     links: [
-      ...linksFor(["/explore"]),
+      // The group header already reads Inventory, so the child that searches
+      // everything is labelled for what it returns.
+      ...linksFor(["/inventory"]).map((link) => ({ ...link, label: "Assets" })),
+      ...linksFor(INVENTORY_GROUPS.map((group) => group.href)),
+      ...linksFor(["/security/lifecycle"]),
       // Members is a directory ingested from connected sources, so it belongs
       // with the other observed inventory rather than with console settings.
       ...navEntriesFor(["/identity"]),
-      ...linksFor(["/security/lifecycle"]),
+      ...linksFor(["/explore"]),
     ],
   },
   {

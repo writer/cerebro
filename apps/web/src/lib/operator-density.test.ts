@@ -7,7 +7,7 @@ const readProjectFile = (...parts: string[]) => readFileSync(join(process.cwd(),
 
 describe("operator density", () => {
   it("keeps inventory work ahead of secondary analytics", () => {
-    const inventorySource = readProjectFile("src/app/inventory/page.tsx");
+    const inventorySource = readProjectFile("src/components/inventory/InventoryWorkspace.tsx");
 
     expect(inventorySource).toContain("aria-expanded={filtersOpen}");
     expect(inventorySource).toContain("inventoryNarrowingFilterCount");

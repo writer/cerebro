@@ -1692,6 +1692,8 @@ export type GRCInventoryCategory = {
   id: string;
   label: string;
   surface?: GRCInventorySurface;
+  group?: string;
+  group_label?: string;
   entity_types: string[];
   count: number;
 };
