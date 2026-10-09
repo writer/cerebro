@@ -7,13 +7,13 @@ func TestInventoryGroupForEntityType(t *testing.T) {
 		entityType string
 		group      string
 	}{
-		{"okta.user", InventoryGroupIdentities},
-		{"aws.role", InventoryGroupIdentities},
-		{"aws.user", InventoryGroupIdentities},
-		{"google_workspace.group", InventoryGroupIdentities},
-		{"kubernetes.rbac_binding", InventoryGroupIdentities},
-		{"kubernetes.service_account", InventoryGroupIdentities},
-		{"cerebro.principal", InventoryGroupIdentities},
+		{"okta.user", InventoryGroupIAM},
+		{"aws.role", InventoryGroupIAM},
+		{"aws.user", InventoryGroupIAM},
+		{"google_workspace.group", InventoryGroupIAM},
+		{"kubernetes.rbac_binding", InventoryGroupIAM},
+		{"kubernetes.service_account", InventoryGroupIAM},
+		{"cerebro.principal", InventoryGroupIAM},
 		{"aws.ec2.instance", InventoryGroupCloud},
 		{"aws.s3.bucket", InventoryGroupCloud},
 		{"gcp.compute.instance", InventoryGroupCloud},
@@ -54,13 +54,13 @@ func TestInventoryGroupRuleOrderResolvesOverlaps(t *testing.T) {
 		group      string
 		losingRule string
 	}{
-		{"github.user", InventoryGroupIdentities, InventoryGroupCode},
-		{"aws.sso.permission.set", InventoryGroupIdentities, InventoryGroupCloud},
-		{"gcp.service_account", InventoryGroupIdentities, InventoryGroupCloud},
+		{"github.user", InventoryGroupIAM, InventoryGroupCode},
+		{"aws.sso.permission.set", InventoryGroupIAM, InventoryGroupCloud},
+		{"gcp.service_account", InventoryGroupIAM, InventoryGroupCloud},
 		{"aws.ecr.container.image", InventoryGroupCode, InventoryGroupCloud},
-		{"okta.user", InventoryGroupIdentities, InventoryGroupSaaS},
+		{"okta.user", InventoryGroupIAM, InventoryGroupSaaS},
 		{"aws.secret", InventoryGroupSecrets, InventoryGroupCloud},
-		{"kolide.device", InventoryGroupDevices, InventoryGroupIdentities},
+		{"kolide.device", InventoryGroupDevices, InventoryGroupIAM},
 	}
 	for _, testCase := range cases {
 		got, _, ok := InventoryGroupForEntityType(testCase.entityType)
@@ -74,8 +74,8 @@ func TestInventoryGroupRuleOrderResolvesOverlaps(t *testing.T) {
 // product and carry no provider prefix, so they must group on the suffix.
 func TestInventoryGroupHandlesRuntimeTypes(t *testing.T) {
 	cases := map[string]string{
-		"runtime.user":        InventoryGroupIdentities,
-		"runtime.group":       InventoryGroupIdentities,
+		"runtime.user":        InventoryGroupIAM,
+		"runtime.group":       InventoryGroupIAM,
 		"runtime.repository":  InventoryGroupCode,
 		"runtime.secret":      InventoryGroupSecrets,
 		"runtime.device":      InventoryGroupDevices,
@@ -93,11 +93,11 @@ func TestInventoryGroupHandlesRuntimeTypes(t *testing.T) {
 // with an underscore where others use a dot, for the same concept.
 func TestInventoryGroupMatchesUnderscoreSeparatedTypes(t *testing.T) {
 	cases := map[string]string{
-		"identity_user":                     InventoryGroupIdentities,
-		"identity_group":                    InventoryGroupIdentities,
-		"identity_application":              InventoryGroupIdentities,
-		"aws.iam_role":                      InventoryGroupIdentities,
-		"gcp.service_account":               InventoryGroupIdentities,
+		"identity_user":                     InventoryGroupIAM,
+		"identity_group":                    InventoryGroupIAM,
+		"identity_application":              InventoryGroupIAM,
+		"aws.iam_role":                      InventoryGroupIAM,
+		"gcp.service_account":               InventoryGroupIAM,
 		"storage_bucket":                    InventoryGroupCloud,
 		"cloud_resource":                    InventoryGroupCloud,
 		"endpoint_device":                   InventoryGroupDevices,
@@ -120,8 +120,8 @@ func TestInventoryGroupLeavesUnmatchedTypesUngrouped(t *testing.T) {
 }
 
 func TestInventoryGroupForEntityTypesRequiresAgreement(t *testing.T) {
-	if id, _ := inventoryGroupForEntityTypes([]string{"okta.user", "google_workspace.user"}); id != InventoryGroupIdentities {
-		t.Fatalf("expected agreeing types to report identities, got %q", id)
+	if id, _ := inventoryGroupForEntityTypes([]string{"okta.user", "google_workspace.user"}); id != InventoryGroupIAM {
+		t.Fatalf("expected agreeing types to report iam, got %q", id)
 	}
 	if id, _ := inventoryGroupForEntityTypes([]string{"okta.user", "aws.ec2.instance"}); id != "" {
 		t.Fatalf("expected disagreeing types to report no group, got %q", id)

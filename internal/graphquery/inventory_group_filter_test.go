@@ -33,14 +33,14 @@ func TestInventoryGroupFilterResolvesLiveEntityKinds(t *testing.T) {
 	store := inventoryGroupCatalog("okta.user", "aws.role", "aws.ec2.instance", "github.code.repository")
 	service := NewWithCapabilities(nil, store, nil)
 
-	if _, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: "identities", Limit: 10}); err != nil {
-		t.Fatalf("ListInventoryAssets(identities) error = %v", err)
+	if _, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: "iam", Limit: 10}); err != nil {
+		t.Fatalf("ListInventoryAssets(iam) error = %v", err)
 	}
 	if len(store.entityRequests) != 1 {
 		t.Fatalf("expected one entity listing, got %d", len(store.entityRequests))
 	}
 	if got, want := store.entityRequests[0].Filter.IncludeKinds, []string{"aws.role", "okta.user"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("identities resolved to %v, want %v", got, want)
+		t.Fatalf("iam resolved to %v, want %v", got, want)
 	}
 }
 
@@ -78,7 +78,7 @@ func TestInventoryEntityTypeTakesPrecedenceOverGroup(t *testing.T) {
 	store := inventoryGroupCatalog("okta.user", "aws.role")
 	service := NewWithCapabilities(nil, store, nil)
 
-	if _, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: "identities", EntityType: "aws.role", Limit: 10}); err != nil {
+	if _, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: "iam", EntityType: "aws.role", Limit: 10}); err != nil {
 		t.Fatalf("ListInventoryAssets error = %v", err)
 	}
 	if got, want := store.entityRequests[0].Filter.IncludeKinds, []string{"aws.role"}; !reflect.DeepEqual(got, want) {
@@ -98,8 +98,8 @@ func TestInventoryCategoriesReportTheirGroup(t *testing.T) {
 	for _, category := range categories {
 		groups[category.ID] = category.Group
 	}
-	if groups["people"] != InventoryGroupIdentities {
-		t.Fatalf("expected the people class to report identities, got %q", groups["people"])
+	if groups["people"] != InventoryGroupIAM {
+		t.Fatalf("expected the people class to report iam, got %q", groups["people"])
 	}
 	if groups["compute-instances"] != InventoryGroupCloud {
 		t.Fatalf("expected the compute class to report cloud, got %q", groups["compute-instances"])

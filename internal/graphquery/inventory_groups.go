@@ -3,12 +3,12 @@ package graphquery
 import "strings"
 
 const (
-	InventoryGroupSecrets    = "secrets"
-	InventoryGroupDevices    = "devices"
-	InventoryGroupIdentities = "identities"
-	InventoryGroupCode       = "code"
-	InventoryGroupCloud      = "cloud"
-	InventoryGroupSaaS       = "saas"
+	InventoryGroupSecrets = "secrets"
+	InventoryGroupDevices = "devices"
+	InventoryGroupIAM     = "iam"
+	InventoryGroupCode    = "code"
+	InventoryGroupCloud   = "cloud"
+	InventoryGroupSaaS    = "saas"
 )
 
 type inventoryGroupRule struct {
@@ -42,8 +42,8 @@ func inventoryGroupRules() []inventoryGroupRule {
 			suffixes: []string{".device", ".endpoint"},
 		},
 		{
-			id:       InventoryGroupIdentities,
-			label:    "Identities",
+			id:       InventoryGroupIAM,
+			label:    "IAM",
 			exact:    []string{"user", "person", "group", "identity_application", "cerebro.principal", "privileged.capability"},
 			prefixes: []string{"aws.sso.", "kubernetes.rbac_"},
 			suffixes: []string{".user", ".person", ".group", ".role", ".service_account", ".service_principal", ".principal"},

@@ -72,13 +72,13 @@ describe("inventory groups", () => {
   });
 
   it("classifies entity types the way the service does", () => {
-    expect(inventoryGroupForEntityType("okta.user")).toBe("identities");
-    expect(inventoryGroupForEntityType("github.user")).toBe("identities");
+    expect(inventoryGroupForEntityType("okta.user")).toBe("iam");
+    expect(inventoryGroupForEntityType("github.user")).toBe("iam");
     expect(inventoryGroupForEntityType("github.code.repository")).toBe("code");
     expect(inventoryGroupForEntityType("aws.ec2.instance")).toBe("cloud");
     expect(inventoryGroupForEntityType("runtime.secret")).toBe("secrets");
     // Several projectors join the parts with an underscore for the same concept.
-    expect(inventoryGroupForEntityType("identity_user")).toBe("identities");
+    expect(inventoryGroupForEntityType("identity_user")).toBe("iam");
     expect(inventoryGroupForEntityType("storage_bucket")).toBe("cloud");
     expect(inventoryGroupForEntityType("endpoint_device")).toBe("devices");
     expect(inventoryGroupForEntityType("policy")).toBeUndefined();
@@ -86,7 +86,7 @@ describe("inventory groups", () => {
   });
 
   it("resolves known ids and rejects unknown ones", () => {
-    expect(inventoryGroupFor("identities")?.label).toBe("Identities");
+    expect(inventoryGroupFor("iam")?.label).toBe("IAM");
     expect(inventoryGroupFor("compute-instances")).toBeUndefined();
     expect(inventoryGroupFor(undefined)).toBeUndefined();
     expect(isInventoryGroupID("secrets")).toBe(true);

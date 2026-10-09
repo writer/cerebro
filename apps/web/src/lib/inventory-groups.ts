@@ -1,7 +1,7 @@
 // Inventory groups are the console's top-level inventory sub-menus. The
 // membership rules live in the Go service; this module only mirrors the ids and
 // the copy, and inventory-groups.test.ts fails if the two drift apart.
-export type InventoryGroupID = "identities" | "cloud" | "saas" | "code" | "devices" | "secrets";
+export type InventoryGroupID = "iam" | "cloud" | "saas" | "code" | "devices" | "secrets";
 
 export type InventoryGroup = {
   description: string;
@@ -14,9 +14,9 @@ export type InventoryGroup = {
 
 export const INVENTORY_GROUPS: InventoryGroup[] = [
   {
-    id: "identities",
-    label: "Identities",
-    href: "/inventory/identities",
+    id: "iam",
+    label: "IAM",
+    href: "/inventory/iam",
     keywords: ["identities", "iam", "users", "people", "accounts", "service accounts", "groups", "roles", "permissions", "principals", "okta", "entra", "rbac"],
     summary: "People, service accounts, groups, and roles",
     description: "Every principal Cerebro has collected, with the groups and roles they hold, across identity providers, clouds, and clusters.",
@@ -82,7 +82,7 @@ export const INVENTORY_GROUP_RULES: InventoryGroupRule[] = [
     suffixes: [".device", ".endpoint"],
   },
   {
-    id: "identities",
+    id: "iam",
     exact: ["user", "person", "group", "identity_application", "cerebro.principal", "privileged.capability"],
     prefixes: ["aws.sso.", "kubernetes.rbac_"],
     suffixes: [".user", ".person", ".group", ".role", ".service_account", ".service_principal", ".principal"],

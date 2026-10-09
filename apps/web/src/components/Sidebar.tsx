@@ -21,7 +21,7 @@ const icons: Record<string, ReactNode> = {
   "/evidence": <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />,
   "/questionnaires": <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 3h6m-8.25 6h10.5A2.25 2.25 0 0 0 19.5 18.75V5.25A2.25 2.25 0 0 0 17.25 3H6.75A2.25 2.25 0 0 0 4.5 5.25v13.5A2.25 2.25 0 0 0 6.75 21ZM8.25 7.5h.008v.008H8.25V7.5Zm2.25 0h5.25" />,
   "/inventory": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5M7.5 3v18m9-18v18" />,
-  "/inventory/identities": <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.4 9.4 0 0 0 2.625.372 9.3 9.3 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.3 12.3 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0m8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0" />,
+  "/inventory/iam": <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.4 9.4 0 0 0 2.625.372 9.3 9.3 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.3 12.3 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0m8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0" />,
   "/inventory/cloud": <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15" />,
   "/inventory/saas": <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5m0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25m9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25" />,
   "/inventory/code": <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />,
@@ -68,16 +68,21 @@ const navEntriesFor = (hrefs: string[]) =>
     return link ? [link] : [];
   });
 
-export const sidebarPrimaryLinks = linksFor([
-  "/",
-  "/risks",
-  "/verified",
-]);
+export const sidebarPrimaryLinks = linksFor(["/"]);
 // Renders between the grouped sections and Admin: source configuration is
 // neither daily work nor a console setting.
 export const sidebarSupportLinks = linksFor(["/connectors"]);
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
+  {
+    href: "/risks",
+    id: "risks",
+    label: "Risks",
+    iconHref: "/risks",
+    // Both children are finding surfaces with their own remediation flow, so
+    // they sit under the queue they feed rather than beside the inventory.
+    links: linksFor(["/verified", "/security/lifecycle"]),
+  },
   {
     href: "/inventory",
     id: "inventory",
@@ -88,10 +93,6 @@ export const sidebarNavGroups: SidebarNavGroup[] = [
       // everything is labelled for what it returns.
       ...linksFor(["/inventory"]).map((link) => ({ ...link, label: "Assets" })),
       ...linksFor(INVENTORY_GROUPS.map((group) => group.href)),
-      ...linksFor(["/security/lifecycle"]),
-      // Members is a directory ingested from connected sources, so it belongs
-      // with the other observed inventory rather than with console settings.
-      ...navEntriesFor(["/identity"]),
       ...linksFor(["/explore"]),
     ],
   },
@@ -128,7 +129,11 @@ export const sidebarUtilityGroups: SidebarNavGroup[] = [
     id: "admin",
     iconHref: "/admin",
     label: "Admin",
-    links: navEntriesFor(["/admin/access", "/credentials", "/developer/audit", "/developer"]),
+    // Members lists the accounts and keys that can authenticate to Cerebro,
+    // read from auth config and the console identity store rather than from
+    // the graph, so it answers an administrative question and not an
+    // inventory one. Ingested principals live under Inventory > IAM.
+    links: navEntriesFor(["/admin/access", "/identity", "/credentials", "/developer/audit", "/developer"]),
   },
 ];
 
