@@ -61,10 +61,25 @@ describe("isSidebarLinkActive", () => {
     expect(inventoryGroup?.label).toBe("Inventory");
     expect(inventoryGroup?.href).toBe("/inventory");
     expect(hrefs).toEqual([
+      "/inventory",
+      "/inventory/iam",
+      "/inventory/cloud",
+      "/inventory/saas",
+      "/inventory/code",
+      "/inventory/devices",
+      "/inventory/secrets",
       "/explore",
-      "/identity",
-      "/security/lifecycle",
     ]);
+  });
+
+  it("keeps finding surfaces under Risks rather than in the asset register", () => {
+    const risks = sidebarNavGroups.find((group) => group.id === "risks");
+    const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
+
+    expect(risks?.label).toBe("Risks");
+    expect(risks?.href).toBe("/risks");
+    expect(risks?.links.map((link) => link.href)).toEqual(["/verified", "/security/lifecycle"]);
+    expect(inventory?.links.map((link) => link.href)).not.toContain("/security/lifecycle");
   });
 
   it("gives rule content a home of its own", () => {
@@ -92,11 +107,10 @@ describe("isSidebarLinkActive", () => {
   });
 
   it("leads with daily work rather than governance records", () => {
-    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
-      "/",
-      "/risks",
-      "/verified",
-    ]);
+    // Risks owns a sub-tree now, so it renders as a group below Home instead
+    // of as a flat link beside it.
+    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual(["/"]);
+    expect(sidebarNavGroups[0]?.id).toBe("risks");
     expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
   });
 
@@ -125,17 +139,22 @@ describe("admin sub-tree", () => {
     expect(adminGroup?.href).toBe("/admin");
     expect(adminGroup?.links.map((link) => link.href)).toEqual([
       "/admin/access",
+      "/identity",
       "/credentials",
       "/developer/audit",
       "/developer",
     ]);
   });
 
-  it("keeps ingested directory data out of admin settings", () => {
+  // Members reads auth config and the console identity store, not the graph, so
+  // it describes who can reach Cerebro. Ingested principals are inventory and
+  // belong to the IAM group instead.
+  it("keeps console accounts in admin and ingested principals in inventory", () => {
     const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
 
-    expect(adminGroup?.links.map((link) => link.href)).not.toContain("/identity");
-    expect(inventory?.links.map((link) => link.href)).toContain("/identity");
+    expect(adminGroup?.links.map((link) => link.href)).toContain("/identity");
+    expect(inventory?.links.map((link) => link.href)).not.toContain("/identity");
+    expect(inventory?.links.map((link) => link.href)).toContain("/inventory/iam");
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {
