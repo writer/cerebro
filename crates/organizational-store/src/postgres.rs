@@ -194,6 +194,8 @@ CREATE TABLE IF NOT EXISTS organizational_legacy_projection_receipts (
     REFERENCES organizational_source_event_receipts (tenant_id, event_id)
     DEFERRABLE INITIALLY DEFERRED
 );
+ALTER TABLE organizational_legacy_projection_receipts
+  ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 1 CHECK (revision >= 1);
 CREATE TABLE IF NOT EXISTS organizational_source_collection_receipts (
   tenant_id TEXT NOT NULL,
   collection_id TEXT NOT NULL,
@@ -1004,6 +1006,27 @@ pub struct StoredSourceRuntime {
     next_cursor: Option<Value>,
     last_synced_at: Option<String>,
     cursor: Option<String>,
+}
+
+const PER_RUN_PROVENANCE_ATTRIBUTE: &str = "source_collection_id";
+
+/// Compares two legacy deltas ignoring the per-run collection provenance that
+/// projectors copy into entity and link attributes, matching how
+/// `record_digest` treats the same attribute on source events.
+fn legacy_replay_equivalent(stored: &Value, incoming: &Value) -> bool {
+    fn strip(value: &Value) -> Value {
+        match value {
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .filter(|(key, _)| key.as_str() != PER_RUN_PROVENANCE_ATTRIBUTE)
+                    .map(|(key, value)| (key.clone(), strip(value)))
+                    .collect(),
+            ),
+            Value::Array(items) => Value::Array(items.iter().map(strip).collect()),
+            other => other.clone(),
+        }
+    }
+    strip(stored) == strip(incoming)
 }
 
 fn sequence_i64(sequence: u64) -> Result<i64, StoreError> {
@@ -2076,32 +2099,59 @@ WHERE id = $1
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         set_tenant(&transaction, tenant_id).await?;
-        let row = transaction
+        let stored = transaction
             .query_opt(
-                "INSERT INTO organizational_legacy_projection_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, observed_at_unix_ms, entity_count, link_count, entity_retraction_count, link_retraction_count, cleanup_request_count, delta_digest, delta_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (tenant_id, event_id) DO UPDATE SET delta_digest = EXCLUDED.delta_digest WHERE organizational_legacy_projection_receipts.delta_digest = EXCLUDED.delta_digest AND organizational_legacy_projection_receipts.delta_json = EXCLUDED.delta_json RETURNING delta_digest",
-                &[
-                    &tenant_id,
-                    &event_id,
-                    &source_runtime_id,
-                    &source_id,
-                    &family_id,
-                    &observed_at_unix_ms,
-                    &entity_count,
-                    &link_count,
-                    &entity_retraction_count,
-                    &link_retraction_count,
-                    &cleanup_request_count,
-                    &delta_digest,
-                    &delta_json,
-                ],
+                "SELECT delta_json FROM organizational_legacy_projection_receipts WHERE tenant_id = $1 AND event_id = $2 FOR UPDATE",
+                &[&tenant_id, &event_id],
             )
             .await?;
-        if row.is_none() {
-            return Err(StoreError::Conflict(format!(
-                "legacy projection for source event {event_id} conflicts with the stored record"
-            )));
+        let params: [&(dyn ToSql + Sync); 13] = [
+            &tenant_id,
+            &event_id,
+            &source_runtime_id,
+            &source_id,
+            &family_id,
+            &observed_at_unix_ms,
+            &entity_count,
+            &link_count,
+            &entity_retraction_count,
+            &link_retraction_count,
+            &cleanup_request_count,
+            &delta_digest,
+            &delta_json,
+        ];
+        match stored {
+            None => {
+                transaction
+                    .execute(
+                        "INSERT INTO organizational_legacy_projection_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, observed_at_unix_ms, entity_count, link_count, entity_retraction_count, link_retraction_count, cleanup_request_count, delta_digest, delta_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+                        &params,
+                    )
+                    .await?;
+            }
+            // Same projection modulo per-run provenance: an idempotent replay.
+            Some(row) if legacy_replay_equivalent(&row.get::<_, Value>(0), delta_json) => {}
+            // The event re-projected differently (provider state or projector
+            // changed under a stable event ID). Keep the latest projection as a
+            // new revision rather than wedging every later sync on a conflict.
+            Some(_) => {
+                transaction
+                    .execute(
+                        "UPDATE organizational_legacy_projection_receipts SET source_runtime_id = $3, source_id = $4, family_id = $5, observed_at_unix_ms = $6, entity_count = $7, link_count = $8, entity_retraction_count = $9, link_retraction_count = $10, cleanup_request_count = $11, delta_digest = $12, delta_json = $13, revision = revision + 1 WHERE tenant_id = $1 AND event_id = $2",
+                        &params,
+                    )
+                    .await?;
+            }
         }
-        transaction.commit().await?;
+        transaction.commit().await.map_err(|error| {
+            if error.code() == Some(&SqlState::FOREIGN_KEY_VIOLATION) {
+                StoreError::Conflict(format!(
+                    "legacy projection for source event {event_id} has no committed source event receipt"
+                ))
+            } else {
+                StoreError::Postgres(error)
+            }
+        })?;
         Ok(LegacyProjectionReceipt {
             tenant_id: tenant_id.to_owned(),
             event_id: event_id.to_owned(),
@@ -4469,6 +4519,37 @@ mod tests {
     use tokio_postgres::NoTls;
 
     use super::*;
+
+    #[test]
+    fn legacy_replay_ignores_only_per_run_collection_provenance() {
+        let delta = |collection: &str, label: &str| {
+            serde_json::json!({
+                "entities": [{
+                    "urn": "urn:cerebro:t:aws_iam_role:r1",
+                    "label": label,
+                    "attributes": {"source_collection_id": collection, "role_name": "r1"}
+                }],
+                "links": [{"attributes": {"source_collection_id": collection}}]
+            })
+        };
+        assert!(legacy_replay_equivalent(
+            &delta("run-a", "Role"),
+            &delta("run-b", "Role")
+        ));
+        assert!(!legacy_replay_equivalent(
+            &delta("run-a", "Role"),
+            &delta("run-a", "Renamed Role")
+        ));
+        let mut without_role = delta("run-b", "Role");
+        without_role["entities"][0]["attributes"]
+            .as_object_mut()
+            .unwrap()
+            .remove("role_name");
+        assert!(!legacy_replay_equivalent(
+            &delta("run-a", "Role"),
+            &without_role
+        ));
+    }
 
     #[test]
     fn ask_query_list_limit_mirrors_go_bounds() {

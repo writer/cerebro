@@ -84,6 +84,11 @@ jobs:
           postgres_wake_delivery_survives_store_restart_and_reconciles_retry_once
           -- --ignored --nocapture
 
+      - name: Prove legacy projection receipts replay and revise
+        run: >-
+          cargo +1.93.1 test --locked -p cerebro-organizational-store
+          --test legacy_projection_receipts_postgres -- --ignored --nocapture
+
   neo4j:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration')
     runs-on: ubuntu-latest
