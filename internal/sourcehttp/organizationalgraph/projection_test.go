@@ -227,6 +227,76 @@ func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
 	}
 }
 
+func TestAppendLogProjectorReportsLegacyReceiptConflictCause(t *testing.T) {
+	const conflictMessage = "legacy projection for source event event-1 conflicts with the stored record"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(projectionAuthorityLegacy))
+		case "/v1/projections/legacy-deltas":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"code":    "projection_receipt_conflict",
+				"message": conflictMessage,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	legacy := &sourceProjectorWithDeltaStub{delta: ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:tenant-a:asset:one",
+			TenantID:   "tenant-a",
+			SourceID:   "box",
+			RuntimeID:  "box-runtime",
+			EntityType: "box.asset",
+			Label:      "One",
+		}},
+	}}
+	_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
+	if !errors.Is(err, ErrProjectionReceiptConflict) {
+		t.Fatalf("Project() error = %v, want ErrProjectionReceiptConflict", err)
+	}
+	var responseErr *ProjectionResponseError
+	if !errors.As(err, &responseErr) ||
+		responseErr.StatusCode != http.StatusConflict ||
+		responseErr.Code != "projection_receipt_conflict" ||
+		responseErr.Message != conflictMessage {
+		t.Fatalf("Project() error = %#v, want status, code, and message", responseErr)
+	}
+}
+
+func TestProjectionResponseErrorBoundsDetailAndKeepsPlainStatus(t *testing.T) {
+	long := strings.Repeat("x", 4*maxErrorDetailRunes)
+	body, _ := json.Marshal(map[string]string{"code": "projection_store_unavailable", "message": long})
+	err := projectionResponseError(&http.Response{
+		Status:     "503 Service Unavailable",
+		StatusCode: http.StatusServiceUnavailable,
+		Body:       io.NopCloser(strings.NewReader(string(body))),
+	})
+	var responseErr *ProjectionResponseError
+	if errors.Is(err, ErrProjectionReceiptConflict) || !errors.As(err, &responseErr) ||
+		responseErr.Code != "projection_store_unavailable" ||
+		len([]rune(responseErr.Message)) != maxErrorDetailRunes+1 {
+		t.Fatalf("projectionResponseError() = %#v", responseErr)
+	}
+	err = projectionResponseError(&http.Response{
+		Status:     "502 Bad Gateway",
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader("<html>proxy</html>")),
+	})
+	if !errors.As(err, &responseErr) || responseErr.StatusCode != http.StatusBadGateway ||
+		responseErr.Code != "" || responseErr.Message != "" {
+		t.Fatalf("projectionResponseError() = %#v, want status only for non-JSON bodies", responseErr)
+	}
+}
+
 func TestAppendLogProjectorRecordsCollectionManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/projections/collections" {

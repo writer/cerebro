@@ -2365,7 +2365,7 @@ async fn record_legacy_projection(
         .record_legacy_projection(&tenant_id, &request)
         .await
         .map(Json)
-        .map_err(store_error)
+        .map_err(receipt_write_error)
 }
 
 async fn record_source_collection(
@@ -2385,7 +2385,7 @@ async fn record_source_collection(
         .record_source_collection(&tenant_id, &request)
         .await
         .map(Json)
-        .map_err(store_error)
+        .map_err(receipt_write_error)
 }
 
 async fn get_source_collection(
@@ -4480,6 +4480,21 @@ fn store_error(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
     service_unavailable("projection_store_unavailable", error.to_string())
 }
 
+// A receipt write that contradicts the stored receipt is permanent for that
+// input; reporting it as 503 made callers treat a data conflict as an outage.
+fn receipt_write_error(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        StoreError::Conflict(message) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "projection_receipt_conflict",
+                message,
+            }),
+        ),
+        other => store_error(other),
+    }
+}
+
 fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
         ActionStoreError::Conflict(message) => (
@@ -6269,6 +6284,24 @@ mod tests {
         assert!(validate_source_collection(&request).is_ok());
         request.observed_family_ids = vec!["users".to_owned(), "content_assets".to_owned()];
         assert!(validate_source_collection(&request).is_err());
+    }
+
+    #[test]
+    fn receipt_write_conflicts_are_not_reported_as_outages() {
+        let (status, Json(body)) = receipt_write_error(StoreError::Conflict(
+            "legacy projection for source event e1 conflicts with the stored record".to_owned(),
+        ));
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.code, "projection_receipt_conflict");
+        assert!(body.message.contains("conflicts with the stored record"));
+
+        let (status, Json(body)) =
+            receipt_write_error(StoreError::LifecycleProjectionUnavailable {
+                graph_revision: 2,
+                projection_revision: None,
+            });
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body.code, "projection_store_unavailable");
     }
 
     #[test]

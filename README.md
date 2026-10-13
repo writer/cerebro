@@ -134,7 +134,7 @@ Exact pull and push operation owners, catalog inventory binding, and disabled Ru
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
-The Go compatibility runtime uses the `go1.26.6` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
+The Go compatibility runtime uses the `go1.26.9` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
 
 ## Documentation
 
