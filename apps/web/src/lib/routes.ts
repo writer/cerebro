@@ -1,4 +1,5 @@
 import { supportedGRCFrameworkNames } from "@/lib/grc-frameworks";
+import { INVENTORY_GROUPS } from "@/lib/inventory-groups";
 
 export type NavigationEntry = {
   label: string;
@@ -31,7 +32,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["verified", "validated", "findings", "evidence", "agent", "remediation", "actions", "approval", "execution", "verification", "rollback"],
   },
   {
-    label: "Credentials",
+    label: "Credential Health",
     href: "/security/lifecycle",
     description: "Credential and certificate expiry, ownership, findings, and approved rotation routes.",
     section: "Operator",
@@ -109,6 +110,15 @@ export const operatorNavLinks: NavigationEntry[] = [
     section: "Operator",
     keywords: ["assets", "inventory", "resources", "scope", "tests", "vulnerabilities", "framework", ...supportedGRCFrameworkNames],
   },
+  // The inventory groups are preset searches over the same catalog, so their
+  // labels and copy come from the one module the service ids are checked against.
+  ...INVENTORY_GROUPS.map((group) => ({
+    label: group.label,
+    href: group.href,
+    description: group.description,
+    section: "Operator" as const,
+    keywords: group.keywords,
+  })),
   {
     label: "Vendors",
     href: "/vendors",

@@ -162,7 +162,7 @@ describe("product UI contract", () => {
       expect(readProjectFile(page)).toContain("DataStateBanner");
     }
 
-    const inventorySource = readProjectFile("src/app/inventory/page.tsx");
+    const inventorySource = readProjectFile("src/components/inventory/InventoryWorkspace.tsx");
     expect(inventorySource).toContain("AppliedFilterChips");
     expect(inventorySource).toContain("metricValueForState");
     expect(inventorySource).toContain("metricDetailForState");
