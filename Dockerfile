@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage - use buildx cross-compilation (no QEMU needed)
-ARG GO_VERSION=1.26.6
+ARG GO_VERSION=1.26.9
 ARG RUST_VERSION=1.93.1
 # Runtime base, overridable so the shipped image can be retargeted at a hardened
 # base without editing this file. Matches Dockerfile.runtime and Dockerfile.rust.
