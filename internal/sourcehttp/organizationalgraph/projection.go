@@ -28,7 +28,42 @@ var (
 	ErrSourceCollectionProvenanceMismatch = errors.New("source collection receipt provenance mismatch")
 	ErrProjectionAuthorityUnavailable     = errors.New("rust projection authority client is required")
 	ErrProjectionAuthorityScopeMismatch   = errors.New("rust projection authority response scope does not match the request")
+	ErrProjectionReceiptConflict          = errors.New("rust projection receipt conflicts with the stored record")
 )
+
+const (
+	maxErrorBodyBytes   = 4 << 10
+	maxErrorDetailRunes = 512
+)
+
+// projectionResponseError keeps the Rust error code and message, which name
+// the cause (for example a receipt conflict) that the status line alone hides.
+func projectionResponseError(response *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+	var decoded struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	detail := ""
+	if json.Unmarshal(body, &decoded) == nil && strings.TrimSpace(decoded.Code) != "" {
+		detail = strings.TrimSpace(decoded.Code)
+		if message := strings.TrimSpace(decoded.Message); message != "" {
+			detail += ": " + message
+		}
+	}
+	if runes := []rune(detail); len(runes) > maxErrorDetailRunes {
+		detail = string(runes[:maxErrorDetailRunes]) + "…"
+	}
+	err := fmt.Errorf("rust projection returned %s", response.Status)
+	if detail != "" {
+		err = fmt.Errorf("rust projection returned %s (%s)", response.Status, detail)
+	}
+	if response.StatusCode == http.StatusConflict {
+		return errors.Join(ErrProjectionReceiptConflict, err)
+	}
+	return err
+}
 
 // ProjectionClient talks only to the Rust projection authority boundary.
 type ProjectionClient struct {
@@ -281,8 +316,7 @@ func (c *ProjectionClient) GetSourceCollection(ctx context.Context, tenantID, ru
 		return manifest, ErrSourceCollectionNotFound
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return manifest, fmt.Errorf("rust projection returned %s", response.Status)
+		return manifest, projectionResponseError(response)
 	}
 	var decoded sourceCollectionManifestResponse
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))
@@ -371,8 +405,7 @@ func (c *ProjectionClient) doJSON(request *http.Request, target any) (err error)
 		err = errors.Join(err, response.Body.Close())
 	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return fmt.Errorf("rust projection returned %s", response.Status)
+		return projectionResponseError(response)
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))
 	decoder.DisallowUnknownFields()

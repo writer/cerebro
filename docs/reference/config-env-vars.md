@@ -107,6 +107,7 @@ the task exits 1 — but they need opposite fixes:
 | --- | --- | --- |
 | `rust projection returned 503 Service Unavailable` | Origin set, but the service runs `serve-neo4j-readonly`, which leaves the projection runtime unset | Move the service to `serve-neo4j` or `serve-neo4j-consumer` |
 | `rust projection authority client is required` | Origin unset | Set `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` |
+| `rust projection returned 409 Conflict (projection_receipt_conflict: …)` | A receipt already exists for that event ID with a different delta; the service is healthy | Not an outage; retrying repeats the conflict |
 
 Unsetting the origin to escape the 503 does not help; it just swaps one failure
 for the other. The service has to be able to answer.
