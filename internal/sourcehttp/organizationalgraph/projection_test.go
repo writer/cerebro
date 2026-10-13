@@ -263,10 +263,12 @@ func TestAppendLogProjectorReportsLegacyReceiptConflictCause(t *testing.T) {
 	if !errors.Is(err, ErrProjectionReceiptConflict) {
 		t.Fatalf("Project() error = %v, want ErrProjectionReceiptConflict", err)
 	}
-	if !strings.Contains(err.Error(), "409 Conflict") ||
-		!strings.Contains(err.Error(), "projection_receipt_conflict") ||
-		!strings.Contains(err.Error(), conflictMessage) {
-		t.Fatalf("Project() error = %q, want status, code, and message", err)
+	var responseErr *ProjectionResponseError
+	if !errors.As(err, &responseErr) ||
+		responseErr.StatusCode != http.StatusConflict ||
+		responseErr.Code != "projection_receipt_conflict" ||
+		responseErr.Message != conflictMessage {
+		t.Fatalf("Project() error = %#v, want status, code, and message", responseErr)
 	}
 }
 
@@ -278,16 +280,20 @@ func TestProjectionResponseErrorBoundsDetailAndKeepsPlainStatus(t *testing.T) {
 		StatusCode: http.StatusServiceUnavailable,
 		Body:       io.NopCloser(strings.NewReader(string(body))),
 	})
-	if errors.Is(err, ErrProjectionReceiptConflict) || len(err.Error()) > maxErrorDetailRunes+128 {
-		t.Fatalf("projectionResponseError() = %q", err)
+	var responseErr *ProjectionResponseError
+	if errors.Is(err, ErrProjectionReceiptConflict) || !errors.As(err, &responseErr) ||
+		responseErr.Code != "projection_store_unavailable" ||
+		len([]rune(responseErr.Message)) != maxErrorDetailRunes+1 {
+		t.Fatalf("projectionResponseError() = %#v", responseErr)
 	}
 	err = projectionResponseError(&http.Response{
 		Status:     "502 Bad Gateway",
 		StatusCode: http.StatusBadGateway,
 		Body:       io.NopCloser(strings.NewReader("<html>proxy</html>")),
 	})
-	if err.Error() != "rust projection returned 502 Bad Gateway" {
-		t.Fatalf("projectionResponseError() = %q, want status only for non-JSON bodies", err)
+	if !errors.As(err, &responseErr) || responseErr.StatusCode != http.StatusBadGateway ||
+		responseErr.Code != "" || responseErr.Message != "" {
+		t.Fatalf("projectionResponseError() = %#v, want status only for non-JSON bodies", responseErr)
 	}
 }
 

@@ -36,33 +36,50 @@ const (
 	maxErrorDetailRunes = 512
 )
 
-// projectionResponseError keeps the Rust error code and message, which name
+// ProjectionResponseError keeps the Rust error code and message, which name
 // the cause (for example a receipt conflict) that the status line alone hides.
+type ProjectionResponseError struct {
+	Status     string
+	StatusCode int
+	Code       string
+	Message    string
+}
+
+func (e *ProjectionResponseError) Error() string {
+	if e.Code == "" {
+		return "rust projection returned " + e.Status
+	}
+	if e.Message == "" {
+		return fmt.Sprintf("rust projection returned %s (%s)", e.Status, e.Code)
+	}
+	return fmt.Sprintf("rust projection returned %s (%s: %s)", e.Status, e.Code, e.Message)
+}
+
+func (e *ProjectionResponseError) Is(target error) bool {
+	return target == ErrProjectionReceiptConflict && e.StatusCode == http.StatusConflict
+}
+
 func projectionResponseError(response *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+	result := &ProjectionResponseError{Status: response.Status, StatusCode: response.StatusCode}
 	var decoded struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	}
-	detail := ""
 	if json.Unmarshal(body, &decoded) == nil && strings.TrimSpace(decoded.Code) != "" {
-		detail = strings.TrimSpace(decoded.Code)
-		if message := strings.TrimSpace(decoded.Message); message != "" {
-			detail += ": " + message
-		}
+		result.Code = boundedDetail(decoded.Code)
+		result.Message = boundedDetail(decoded.Message)
 	}
-	if runes := []rune(detail); len(runes) > maxErrorDetailRunes {
-		detail = string(runes[:maxErrorDetailRunes]) + "…"
+	return result
+}
+
+func boundedDetail(value string) string {
+	value = strings.TrimSpace(value)
+	if runes := []rune(value); len(runes) > maxErrorDetailRunes {
+		return string(runes[:maxErrorDetailRunes]) + "…"
 	}
-	err := fmt.Errorf("rust projection returned %s", response.Status)
-	if detail != "" {
-		err = fmt.Errorf("rust projection returned %s (%s)", response.Status, detail)
-	}
-	if response.StatusCode == http.StatusConflict {
-		return errors.Join(ErrProjectionReceiptConflict, err)
-	}
-	return err
+	return value
 }
 
 // ProjectionClient talks only to the Rust projection authority boundary.
