@@ -91,6 +91,11 @@ lease expiry, attempt count, and last bounded replay error category without
 exposing the claim token. A second operator cannot replay or discard the record
 until the active claim completes or expires.
 
+Records with operation `source_projection` are already in the append log; their
+projection was rejected for that record alone during source sync. `replay`
+re-projects them through the configured source projector and never publishes
+them again.
+
 Replay and discard commit the status transition and actor/action/reason audit
 row in one Postgres transaction.
 

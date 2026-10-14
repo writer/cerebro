@@ -329,6 +329,23 @@ type ProjectionAssertionMigrator interface {
 	MigrateProjectedLinkAssertions(context.Context, ProjectionAssertionMigrationRequest) (ProjectionAssertionMigrationResult, error)
 }
 
+// ErrSourceProjectionRecordRejected marks a projection failure scoped to one
+// source record: the projector refused exactly that record, and other records
+// in the same page are unaffected. Transport failures, server errors, and
+// cancellation must never match it.
+var ErrSourceProjectionRecordRejected = errors.New("source projection rejected the record")
+
+// AppendLogDeadLetterOperationSourceProjection marks dead letters for events
+// that are already in the append log but whose projection was rejected. They
+// are repaired by re-projecting, never by appending the event again.
+const AppendLogDeadLetterOperationSourceProjection = "source_projection"
+
+// SourceProjectionErrorCoder exposes the projector's bounded error code for a
+// rejected record so recovery can categorize it without parsing messages.
+type SourceProjectionErrorCoder interface {
+	ProjectionErrorCode() string
+}
+
 // SourceProjector materializes source events into current-state and graph stores.
 type SourceProjector interface {
 	Project(context.Context, *cerebrov1.EventEnvelope) (ProjectionResult, error)

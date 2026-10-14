@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	appendlogrecovery "github.com/writer/cerebro/internal/appendlog/recovery"
 	"github.com/writer/cerebro/internal/bootstrap"
 	appconfig "github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
@@ -105,45 +105,75 @@ func runAppendLogDeadLetterReplay(ctx context.Context, cfg appconfig.Config, arg
 	if store == nil {
 		return errors.New("append log dead letter store is not configured")
 	}
-	if deps.AppendLog == nil {
-		return errors.New("append log is not configured")
-	}
-	owner, token, err := newAppendLogDeadLetterReplayClaim()
+	record, err := replayAppendLogDeadLetter(ctx, store, deps.AppendLog, appendLogSourceProjector(deps), id, actor, reason)
 	if err != nil {
-		return err
-	}
-	record, err := store.ClaimAppendLogDeadLetterReplay(ctx, id, owner, token, 2*time.Minute)
-	if err != nil {
-		if errors.Is(err, ports.ErrAppendLogDeadLetterReplayClaimed) {
-			return fmt.Errorf("append log dead letter %q replay is already claimed", id)
-		}
-		return err
-	}
-	if record.Event == nil {
-		_ = store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "missing_event")
-		return fmt.Errorf("append log dead letter %q has no replay event", id)
-	}
-	if err := appendWithDeadLetterReplayLease(ctx, deps.AppendLog, store, id, token, record.Event); err != nil {
-		if releaseErr := store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "append_failed"); releaseErr != nil {
-			return fmt.Errorf("replay append log dead letter %q: %w", id, errors.Join(err, fmt.Errorf("release claim: %w", releaseErr)))
-		}
-		return fmt.Errorf("replay append log dead letter %q: %w", id, err)
-	}
-	if err := store.CompleteAppendLogDeadLetterReplay(ctx, id, token, actor, reason); err != nil {
-		if errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
-			return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
-		}
 		return err
 	}
 	return printJSON(appendLogDeadLetterActionResponse(record, ports.AppendLogDeadLetterStatusReplayed))
 }
 
-func appendWithDeadLetterReplayLease(ctx context.Context, appendLog ports.AppendLog, store ports.AppendLogDeadLetterStore, id string, token string, event *cerebrov1.EventEnvelope) error {
-	return appendWithDeadLetterReplayLeaseInterval(ctx, appendLog, store, id, token, event, 30*time.Second)
+// replayAppendLogDeadLetter republishes exhausted appends. Source projection
+// dead letters are already in the append log, so they are re-projected instead
+// of appended again.
+func replayAppendLogDeadLetter(ctx context.Context, store ports.AppendLogDeadLetterStore, appendLog ports.AppendLog, projector ports.SourceProjector, id string, actor string, reason string) (ports.AppendLogDeadLetter, error) {
+	pending, err := store.GetAppendLogDeadLetter(ctx, id)
+	if err != nil {
+		return ports.AppendLogDeadLetter{}, err
+	}
+	sourceProjection := strings.TrimSpace(pending.Operation) == ports.AppendLogDeadLetterOperationSourceProjection
+	switch {
+	case sourceProjection && projector == nil:
+		return ports.AppendLogDeadLetter{}, errors.New("source projector is not configured")
+	case !sourceProjection && appendLog == nil:
+		return ports.AppendLogDeadLetter{}, errors.New("append log is not configured")
+	}
+	owner, token, err := newAppendLogDeadLetterReplayClaim()
+	if err != nil {
+		return ports.AppendLogDeadLetter{}, err
+	}
+	record, err := store.ClaimAppendLogDeadLetterReplay(ctx, id, owner, token, 2*time.Minute)
+	if err != nil {
+		if errors.Is(err, ports.ErrAppendLogDeadLetterReplayClaimed) {
+			return ports.AppendLogDeadLetter{}, fmt.Errorf("append log dead letter %q replay is already claimed", id)
+		}
+		return ports.AppendLogDeadLetter{}, err
+	}
+	if record.Event == nil {
+		_ = store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "missing_event")
+		return ports.AppendLogDeadLetter{}, fmt.Errorf("append log dead letter %q has no replay event", id)
+	}
+	if strings.TrimSpace(record.Operation) != strings.TrimSpace(pending.Operation) {
+		_ = store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, "operation_changed")
+		return ports.AppendLogDeadLetter{}, fmt.Errorf("append log dead letter %q changed operation while claiming replay", id)
+	}
+	failureCategory := "append_failed"
+	replay := func(replayCtx context.Context) error {
+		return appendLog.Append(replayCtx, record.Event)
+	}
+	if sourceProjection {
+		failureCategory = "projection_failed"
+		replay = func(replayCtx context.Context) error {
+			_, err := projector.Project(replayCtx, record.Event)
+			return err
+		}
+	}
+	if err := runWithDeadLetterReplayLease(ctx, store, id, token, 30*time.Second, replay); err != nil {
+		if sourceProjection && errors.Is(err, ports.ErrSourceProjectionRecordRejected) {
+			failureCategory = appendlogrecovery.SourceProjectionErrorCategory(err)
+		}
+		if releaseErr := store.ReleaseAppendLogDeadLetterReplay(ctx, id, token, failureCategory); releaseErr != nil {
+			return ports.AppendLogDeadLetter{}, fmt.Errorf("replay append log dead letter %q: %w", id, errors.Join(err, fmt.Errorf("release claim: %w", releaseErr)))
+		}
+		return ports.AppendLogDeadLetter{}, fmt.Errorf("replay append log dead letter %q: %w", id, err)
+	}
+	if err := store.CompleteAppendLogDeadLetterReplay(ctx, id, token, actor, reason); err != nil && !errors.Is(err, ports.ErrAppendLogDeadLetterAlreadyReplayed) {
+		return ports.AppendLogDeadLetter{}, err
+	}
+	return record, nil
 }
 
-func appendWithDeadLetterReplayLeaseInterval(ctx context.Context, appendLog ports.AppendLog, store ports.AppendLogDeadLetterStore, id string, token string, event *cerebrov1.EventEnvelope, renewInterval time.Duration) error {
-	appendCtx, cancel := context.WithCancel(ctx)
+func runWithDeadLetterReplayLease(ctx context.Context, store ports.AppendLogDeadLetterStore, id string, token string, renewInterval time.Duration, replay func(context.Context) error) error {
+	replayCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	renewed := make(chan error, 1)
 	go func() {
@@ -151,11 +181,11 @@ func appendWithDeadLetterReplayLeaseInterval(ctx context.Context, appendLog port
 		defer ticker.Stop()
 		for {
 			select {
-			case <-appendCtx.Done():
+			case <-replayCtx.Done():
 				renewed <- nil
 				return
 			case <-ticker.C:
-				if err := store.RenewAppendLogDeadLetterReplay(appendCtx, id, token, 2*time.Minute); err != nil {
+				if err := store.RenewAppendLogDeadLetterReplay(replayCtx, id, token, 2*time.Minute); err != nil {
 					renewed <- err
 					cancel()
 					return
@@ -163,16 +193,16 @@ func appendWithDeadLetterReplayLeaseInterval(ctx context.Context, appendLog port
 			}
 		}
 	}()
-	appendErr := appendLog.Append(appendCtx, event)
+	replayErr := replay(replayCtx)
 	cancel()
 	renewErr := <-renewed
-	if appendErr == nil {
+	if replayErr == nil {
 		return nil
 	}
 	if renewErr != nil {
-		return errors.Join(appendErr, fmt.Errorf("renew replay claim: %w", renewErr))
+		return errors.Join(replayErr, fmt.Errorf("renew replay claim: %w", renewErr))
 	}
-	return appendErr
+	return replayErr
 }
 
 func newAppendLogDeadLetterReplayClaim() (string, string, error) {

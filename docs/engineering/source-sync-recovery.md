@@ -28,6 +28,27 @@ of accepted event append and projection.
 - If projection fails after append, the sync fails before runtime progress is
   persisted. Repair should replay or re-project the appended event; Neo4j must
   not be treated as the source of truth.
+- The exception is a record-scoped projection rejection: the projector refused
+  exactly that record (`ports.ErrSourceProjectionRecordRejected`, for example a
+  Rust projection 400, 409, or 422). When an append-log dead-letter store is
+  configured, the sync records the event as a pending dead letter with operation
+  `source_projection`, continues with the next event, and commits the page.
+  Without a dead-letter store, or if recording the dead letter fails, the sync
+  fails as above. Server errors, transport errors, and cancellation are never
+  record-scoped.
+- A page fails with `ErrProjectionRejectionRateExceeded` instead of continuing
+  when its record-scoped rejections exceed both 10 records and 25% of the page's
+  accepted events, so a projector contract break cannot advance progress past a
+  whole source. Records already dead-lettered stay pending; their IDs are stable
+  for the same runtime, event, and payload, so a retried sync does not duplicate
+  them.
+- A sync with dead-lettered records reports
+  `records_projection_dead_lettered` and records its collection as incomplete
+  with reason `projection_dead_lettered`.
+- `cerebro append-log dead-letters replay` re-projects `source_projection`
+  records through the configured source projector instead of appending them
+  again, because the event is already in the append log. `list` and `discard`
+  work for them like any other dead letter.
 - If runtime progress persistence fails after append and projection, the next
   sync may reread the same page. Append and projection paths must therefore be
   idempotent by stable event identity.

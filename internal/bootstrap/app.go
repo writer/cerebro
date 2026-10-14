@@ -2029,6 +2029,14 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 	return runtimeStore
 }
 
+func appendLogDeadLetterStore(store ports.StateStore) ports.AppendLogDeadLetterStore {
+	deadLetters, ok := store.(ports.AppendLogDeadLetterStore)
+	if !ok || isNilInterface(deadLetters) {
+		return nil
+	}
+	return deadLetters
+}
+
 // sourceRuntimeLeaseStore returns the StateStore's lease coordinator when
 // the underlying implementation supports it. The API's Sync handler uses
 // this to serialize cursor advances across replicas. SyncWithLease rejects a

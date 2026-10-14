@@ -530,7 +530,7 @@ func runSourceRuntime(args []string) error {
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		appendLogSourceProjector(deps),
-	), cfg.SourceRuntime.SourceWorkerPath)
+	), cfg.SourceRuntime.SourceWorkerPath).WithProjectionDeadLetterStore(appendLogDeadLetterStore(deps.StateStore))
 	admitter, err := eventadmission.NewNativeAdmitter(
 		ctx,
 		cfg.SourceRuntime.EventAdmissionWorkerPath,

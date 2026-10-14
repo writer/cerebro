@@ -21,6 +21,7 @@ const (
 	CollectionIncompleteShortCircuitResourceScopeFiltered = "short_circuit_resource_scope_filtered"
 	CollectionIncompleteShortCircuitUnknown               = "short_circuit_unknown"
 	CollectionIncompleteEventLimitReached                 = "event_limit_reached"
+	CollectionIncompleteProjectionDeadLettered            = "projection_dead_lettered"
 )
 
 // CollectionIncompletenessReasons returns deterministic reason codes when a
@@ -54,6 +55,10 @@ func CollectionIncompletenessReasons(runtime *cerebrov1.SourceRuntime) []string 
 
 	if runtime.GetNextCursor() != nil {
 		reasons = append(reasons, CollectionIncompleteNextCursorPresent)
+	}
+
+	if value := strings.TrimSpace(config[runtimeRecordsProjectionDeadLetteredConfigKey]); value != "" && value != "0" {
+		reasons = append(reasons, CollectionIncompleteProjectionDeadLettered)
 	}
 
 	switch reason := strings.TrimSpace(config[runtimeShortCircuitReasonConfigKey]); reason {
