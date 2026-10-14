@@ -351,8 +351,8 @@ func heldRuntimeStore(t *testing.T, recorded, current *cerebrov1.SourceRuntime) 
 }
 
 func TestRunOrchestratorIterationConfigChangeLiftsBackoff(t *testing.T) {
-	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:OLD"}}
-	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:NEW"}}
+	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"connection": "env:OLD"}}
+	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"connection": "env:NEW"}}
 	store := heldRuntimeStore(t, recorded, current)
 	scheduler := newOrchestratorSyncScheduler(store)
 	if check := scheduler.check(context.Background(), current, false); check.backoff || check.bypassReason != orchestratorSyncBackoffBypassConfigChanged {
@@ -370,10 +370,10 @@ func TestRunOrchestratorIterationConfigChangeLiftsBackoff(t *testing.T) {
 }
 
 func TestRunOrchestratorIterationRuntimeOwnedConfigChangeKeepsBackoff(t *testing.T) {
-	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:OLD"}}
+	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"connection": "env:OLD"}}
 	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{
-		"token":                    "env:OLD",
-		"__cerebro_runtime_status": "failed",
+		"connection":                              "env:OLD",
+		"__cerebro_runtime_status":                "failed",
 		"__cerebro_runtime_last_failure_category": "auth_error",
 	}}
 	store := heldRuntimeStore(t, recorded, current)
