@@ -60,6 +60,7 @@ nav:
       - Decision Packet Convergence: engineering/decision-packet-convergence.md
       - Finding-to-Verified-Fix Reference: engineering/finding-to-verified-fix-reference.md
       - Source Sync Recovery: engineering/source-sync-recovery.md
+      - Posture Data Platform Architecture: engineering/posture-data-platform-architecture.md
       - Source CDK Extraction: engineering/source-cdk-extraction.md
       - Security Regression Harness: engineering/security-regression-harness.md
       - Vulnerability DB Architecture: engineering/vulnerability-db-architecture.md
