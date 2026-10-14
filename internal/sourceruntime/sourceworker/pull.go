@@ -618,19 +618,19 @@ func ProviderResume(cursor *cerebrov1.SourceCursor, sourceID, familyID string) (
 	envelope, encoded := sourcecdk.DecodeCursorEnvelope(opaque)
 	if !encoded {
 		if strings.HasPrefix(opaque, "{") {
-			return "", 0, fmt.Errorf("%w: malformed durable cursor envelope", ErrWorkerContract)
+			return "", 0, fmt.Errorf("%w: malformed durable cursor envelope", ErrWorkerCursorInvalid)
 		}
 		return opaque, 0, nil
 	}
 	if envelope.Version != 1 || !envelope.ResumableCheckpoint || envelope.Mode != rustCheckpointCursorMode || envelope.Source != strings.TrimSpace(sourceID) || envelope.Family != strings.TrimSpace(familyID) {
-		return "", 0, fmt.Errorf("%w: durable cursor source or family mismatch", ErrWorkerContract)
+		return "", 0, fmt.Errorf("%w: durable cursor source or family mismatch", ErrWorkerCursorInvalid)
 	}
 	if envelope.Token != "" && len(envelope.BoundaryIDs) != 0 {
-		return "", 0, fmt.Errorf("%w: durable cursor mixes continuation and terminal boundary", ErrWorkerContract)
+		return "", 0, fmt.Errorf("%w: durable cursor mixes continuation and terminal boundary", ErrWorkerCursorInvalid)
 	}
 	watermark := sourcecdk.CursorWatermark(envelope)
 	if envelope.Watermark != "" && watermark.IsZero() {
-		return "", 0, fmt.Errorf("%w: durable cursor watermark is malformed", ErrWorkerContract)
+		return "", 0, fmt.Errorf("%w: durable cursor watermark is malformed", ErrWorkerCursorInvalid)
 	}
 	return envelope.Token, watermark.UnixMilli(), nil
 }

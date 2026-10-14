@@ -46,3 +46,24 @@ marking the page committed.
 Until that exists, changes to source sync must preserve the append, project,
 then progress ordering and keep `source_runtime.page_committed` as the last
 successful page signal.
+
+## Retry And Backoff
+
+The orchestrator classifies each failed scheduled sync by typed error identity
+(`sourceruntime.ClassifySyncFailure`) and stores the next allowed attempt in the
+Postgres `source_runtime_sync_schedules` table. The table is scheduling
+metadata only; it is never projected or replayed. A runtime whose next attempt
+is in the future is skipped before lease acquisition with `sync=skipped` and
+reason `backoff`. A successful sync deletes the row.
+
+| Class | Policy |
+| --- | --- |
+| `unauthorized`, `permission_denied`, `invalid_config`, `decode_failed`, `cursor_invalid` | Hold 6h without growth; an operator change is required. |
+| `rate_limited` | Wait the larger of the provider retry-after (capped at 15m) and 5m, plus up to 20% jitter. |
+| `provider_unavailable`, `projection_unavailable`, `internal` | Full-jitter exponential backoff from 2m, doubling per consecutive failure, capped at 1h. At 8 consecutive failures the circuit opens and the runtime holds at 1h. |
+| `budget_exhausted`, `cancelled` | No backoff. Cancelled syncs do not change the stored schedule. |
+
+Runs that name runtimes explicitly (`runtime_id=` or `runtime_ids=`) bypass
+backoff but still record the outcome. If the schedule read fails, the sync runs
+as if no backoff were stored; schedule write failures are reported as runtime
+errors.

@@ -63,6 +63,7 @@ type connectorTablesReady struct {
 type platformTablesReady struct {
 	auditEvents          bool
 	verifiedAccessAction bool
+	sourceSyncSchedule   bool
 }
 
 type grcTablesReady struct {

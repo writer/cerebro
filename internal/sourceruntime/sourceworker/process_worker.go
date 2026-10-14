@@ -184,7 +184,9 @@ func classifyWorkerFailure(stderr string) error {
 		return ErrWorkerLeaseLost
 	case "source_worker.stale_authority":
 		return ErrWorkerStaleAuthority
-	case "source_worker.protobuf", "source_worker.invalid_plan", "source_worker.invalid_execution_context", "source_worker.invalid_cursor", "source_worker.missing_execution_identity", "source_worker.tenant_mismatch", "source_worker.stale_generation", "source_worker.invalid_digest", "source_worker.duplicate_conflict", "source_worker.event_contract_rejected":
+	case "source_worker.invalid_cursor":
+		return ErrWorkerCursorInvalid
+	case "source_worker.protobuf", "source_worker.invalid_plan", "source_worker.invalid_execution_context", "source_worker.missing_execution_identity", "source_worker.tenant_mismatch", "source_worker.stale_generation", "source_worker.invalid_digest", "source_worker.duplicate_conflict", "source_worker.event_contract_rejected":
 		return ErrWorkerContract
 	case "source_worker.internal_runtime":
 		return ErrWorkerInternal

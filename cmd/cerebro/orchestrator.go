@@ -95,6 +95,7 @@ type orchestratorRuntimeResult struct {
 	GraphRuleRowsRead     uint32              `json:"graph_rule_rows_read,omitempty"`
 	Error                 string              `json:"error,omitempty"`
 	Health                sourcehealth.Record `json:"-"`
+	orchestratorSyncBackoffResult
 }
 
 type orchestratorJobMetadataContextKey struct{}
@@ -604,6 +605,9 @@ func runOrchestratorIteration(
 	))
 	var runErr error
 	var acquiredCount uint32
+	scheduler := newOrchestratorSyncScheduler(leaser)
+	explicitRuntimeRun := orchestratorExplicitRuntimeRun(options.Filter)
+	spanAttributes = withTelemetryField(spanAttributes, "sync_schedule_store", scheduler.storeState())
 	// Graph rules are tenant-scoped: each one queries the whole tenant graph,
 	// not just the triggering runtime's slice. Running them once per runtime
 	// re-evaluates the identical tenant-wide rule for every runtime in the
@@ -637,6 +641,7 @@ func runOrchestratorIteration(
 			telemetryField("effective_page_limit", options.PageLimit),
 			telemetryField("effective_sync_event_limit", options.SyncEventLimit),
 			telemetryField("effective_event_limit", options.EventLimit),
+			telemetryField("sync_schedule_store", scheduler.storeState()),
 		)
 		runtimeResult := &orchestratorRuntimeResult{
 			RuntimeID: strings.TrimSpace(runtime.GetId()),
@@ -645,6 +650,32 @@ func runOrchestratorIteration(
 			Health:    sourcehealth.RecordFromRuntime(runtime, time.Now().UTC()),
 		}
 		emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.started", "running", iteration, runtime, runtimeResult, runtimeSpanAttrs)
+		scheduleCheck := scheduler.check(runtimeCtx, runtime.GetId(), explicitRuntimeRun)
+		if scheduleCheck.err != nil {
+			// Scheduling metadata is advisory: a failed read runs the sync rather
+			// than silently skipping work.
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_schedule_error_kind", telemetry.ErrorKind(scheduleCheck.err))
+			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync_schedule_read", scheduleCheck.err)
+		}
+		if scheduleCheck.bypassed {
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_backoff_bypassed", true)
+		}
+		if scheduleCheck.backoff {
+			runtimeResult.Sync = "skipped"
+			runtimeResult.orchestratorSyncBackoffResult = scheduleCheck.result()
+			result.Runtimes = append(result.Runtimes, runtimeResult)
+			runtimeStatus = "skipped"
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", "backoff")
+			runtimeSpanAttrs = orchestratorSyncBackoffAttrs(runtimeSpanAttrs, runtimeResult.orchestratorSyncBackoffResult)
+			telemetry.IncrementMain(runtimeCtx, "orchestrator.runtime.backoff_skipped.count", 1)
+			if scheduleCheck.schedule.CircuitOpen {
+				telemetry.IncrementMain(runtimeCtx, "orchestrator.runtime.circuit_open.count", 1)
+			}
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
+			emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.skipped", runtimeStatus, iteration, runtime, runtimeResult, runtimeSpanAttrs)
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
+			continue
+		}
 		acquired, err := acquireOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner)
 		if err != nil {
 			runtimeResult.Sync = "failed"
@@ -708,6 +739,18 @@ func runOrchestratorIteration(
 				telemetryField("error_kind", telemetry.ErrorKind(err)),
 			))
 			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync", err)
+			backoff, scheduleErr := scheduler.recordFailure(ctx, runtime, scheduleCheck, err)
+			runtimeResult.orchestratorSyncBackoffResult = backoff
+			runtimeSpanAttrs = orchestratorSyncBackoffAttrs(runtimeSpanAttrs, backoff)
+			if backoff.CircuitOpen {
+				telemetry.IncrementMain(runtimeCtx, "orchestrator.runtime.circuit_open.count", 1)
+			}
+			if scheduleErr != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync_schedule", scheduleErr)
+				runErr = joinOrchestratorRunError(runErr, scheduleErr)
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_schedule_error_kind", telemetry.ErrorKind(scheduleErr))
+				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync_schedule", scheduleErr)
+			}
 			cancelRuntime(nil)
 			if renewalErr := stopLeaseRenewal(); renewalErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", renewalErr)
@@ -749,6 +792,12 @@ func runOrchestratorIteration(
 				telemetryField("short_circuit_reason", runtimeResult.ShortCircuitReason),
 				telemetryField("reconciliation_reason", runtimeResult.ReconciliationReason),
 			))
+			if scheduleErr := scheduler.recordSuccess(ctx, runtime.GetId(), scheduleCheck); scheduleErr != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync_schedule", scheduleErr)
+				runErr = joinOrchestratorRunError(runErr, scheduleErr)
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_schedule_error_kind", telemetry.ErrorKind(scheduleErr))
+				captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync_schedule", scheduleErr)
+			}
 		}
 
 		if downstreamSkipReason := orchestratorDownstreamSkipReason(syncResult); downstreamSkipReason != "" {
