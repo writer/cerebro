@@ -645,7 +645,7 @@ jobs:
 
   scan-images:
     runs-on: ubuntu-latest
-    needs: [resolve, manifest, web-manifest]
+    needs: [resolve, manifest, web-manifest, rust-platform]
     permissions:
       contents: read
       packages: read
@@ -662,9 +662,10 @@ jobs:
         env:
           RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
           WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
+          RUST_PLATFORM_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-rust@${{ needs.rust-platform.outputs.digest }}
         run: |
           set -euo pipefail
-          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}" "${RUST_PLATFORM_IMAGE}"; do
             platforms="$(
               docker buildx imagetools inspect --raw "${image}" \
                 | jq -c '[.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture)"] | sort'
@@ -676,12 +677,13 @@ jobs:
         env:
           RUNTIME_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
           WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-web@${{ needs.web-manifest.outputs.digest }}
+          RUST_PLATFORM_IMAGE: ghcr.io/${{ github.repository_owner }}/cerebro-rust@${{ needs.rust-platform.outputs.digest }}
           TRIVY_IMAGE: aquasec/trivy:0.66.0@sha256:086971aaf400beebd94e8300fd8ea623774419597169156cec56eec5b00dfb1e
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}"; do
+          for image in "${RUNTIME_IMAGE}" "${WEB_IMAGE}" "${RUST_PLATFORM_IMAGE}"; do
             for platform in linux/amd64 linux/arm64; do
               docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "${TRIVY_IMAGE}" image \
                 --platform "${platform}" --scanners vuln \
