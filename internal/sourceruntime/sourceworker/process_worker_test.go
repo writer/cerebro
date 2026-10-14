@@ -26,7 +26,7 @@ func TestProcessWorkerPreservesClosedRustFailureClasses(t *testing.T) {
 		"unexpected_provider_status":      ErrProviderUnexpectedStatus,
 		"invalid_plan":                    ErrWorkerContract,
 		"invalid_execution_context":       ErrWorkerContract,
-		"invalid_cursor":                  ErrWorkerContract,
+		"invalid_cursor":                  ErrWorkerCursorInvalid,
 		"response_too_large":              ErrProviderResponseTooLarge,
 		"result_too_large":                ErrWorkerResultTooLarge,
 		"missing_execution_identity":      ErrWorkerContract,

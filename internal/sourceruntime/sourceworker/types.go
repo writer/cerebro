@@ -5,6 +5,7 @@ package sourceworker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -43,6 +44,11 @@ var (
 	ErrWorkerContract            = errors.New("source worker contract validation failed; regenerate the compiled plan and worker protocol")
 	ErrWorkerUnsupported         = errors.New("source family is not Rust-authoritative")
 	ErrWorkerInternal            = errors.New("source worker failed internally; inspect the bounded worker error class")
+
+	// ErrWorkerCursorInvalid wraps ErrWorkerContract so existing contract
+	// checks still match while retry policy can tell an incompatible
+	// continuation apart from other contract failures.
+	ErrWorkerCursorInvalid = fmt.Errorf("%w: source cursor is incompatible; restart collection or migrate the continuation", ErrWorkerContract)
 )
 
 // Worker plans and decodes one bounded request without receiving credentials
