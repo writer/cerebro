@@ -650,15 +650,16 @@ func runOrchestratorIteration(
 			Health:    sourcehealth.RecordFromRuntime(runtime, time.Now().UTC()),
 		}
 		emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.started", "running", iteration, runtime, runtimeResult, runtimeSpanAttrs)
-		scheduleCheck := scheduler.check(runtimeCtx, runtime.GetId(), explicitRuntimeRun)
+		scheduleCheck := scheduler.check(runtimeCtx, runtime, explicitRuntimeRun)
 		if scheduleCheck.err != nil {
 			// Scheduling metadata is advisory: a failed read runs the sync rather
 			// than silently skipping work.
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_schedule_error_kind", telemetry.ErrorKind(scheduleCheck.err))
 			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync_schedule_read", scheduleCheck.err)
 		}
-		if scheduleCheck.bypassed {
+		if scheduleCheck.bypassReason != "" {
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_backoff_bypassed", true)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_backoff_bypass_reason", scheduleCheck.bypassReason)
 		}
 		if scheduleCheck.backoff {
 			runtimeResult.Sync = "skipped"

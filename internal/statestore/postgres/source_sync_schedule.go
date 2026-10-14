@@ -20,10 +20,13 @@ var ensureSourceRuntimeSyncScheduleStatements = []string{`CREATE TABLE IF NOT EX
   last_failure_class TEXT NOT NULL DEFAULT '',
   next_attempt_at TIMESTAMPTZ NOT NULL,
   circuit_open BOOLEAN NOT NULL DEFAULT FALSE,
+  config_digest TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL
-)`}
+)`,
+	`ALTER TABLE source_runtime_sync_schedules ADD COLUMN IF NOT EXISTS config_digest TEXT NOT NULL DEFAULT ''`,
+}
 
-const sourceRuntimeSyncScheduleColumns = `runtime_id, tenant_id, consecutive_failures, last_failure_class, next_attempt_at, circuit_open, updated_at`
+const sourceRuntimeSyncScheduleColumns = `runtime_id, tenant_id, consecutive_failures, last_failure_class, next_attempt_at, circuit_open, config_digest, updated_at`
 
 const getSourceRuntimeSyncScheduleSQL = `SELECT ` + sourceRuntimeSyncScheduleColumns + `
 FROM source_runtime_sync_schedules
@@ -33,13 +36,14 @@ WHERE runtime_id = $1`
 // statement that stores the schedule so concurrent writers cannot lose a
 // failure. $5 is the circuit threshold; zero never opens the circuit.
 const recordSourceRuntimeSyncFailureSQL = `INSERT INTO source_runtime_sync_schedules (` + sourceRuntimeSyncScheduleColumns + `)
-VALUES ($1, $2, 1, $3, $4, $5::INTEGER > 0 AND 1 >= $5::INTEGER, $6)
+VALUES ($1, $2, 1, $3, $4, $5::INTEGER > 0 AND 1 >= $5::INTEGER, $7, $6)
 ON CONFLICT (runtime_id) DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
   consecutive_failures = LEAST(source_runtime_sync_schedules.consecutive_failures, 2147483646) + 1,
   last_failure_class = EXCLUDED.last_failure_class,
   next_attempt_at = EXCLUDED.next_attempt_at,
   circuit_open = $5::INTEGER > 0 AND LEAST(source_runtime_sync_schedules.consecutive_failures, 2147483646) + 1 >= $5::INTEGER,
+  config_digest = EXCLUDED.config_digest,
   updated_at = EXCLUDED.updated_at
 RETURNING ` + sourceRuntimeSyncScheduleColumns
 
@@ -88,6 +92,7 @@ func (s *Store) RecordSourceRuntimeSyncFailure(ctx context.Context, failure port
 		failure.NextAttemptAt.UTC(),
 		threshold,
 		failure.ObservedAt.UTC(),
+		strings.TrimSpace(failure.ConfigDigest),
 	))
 	if err != nil {
 		return ports.SourceRuntimeSyncSchedule{}, fmt.Errorf("record source runtime sync failure %q: %w", runtimeID, err)
@@ -133,6 +138,7 @@ func scanSourceRuntimeSyncSchedule(scanner sourceRuntimeSyncScheduleScanner) (po
 		&schedule.LastFailureClass,
 		&schedule.NextAttemptAt,
 		&schedule.CircuitOpen,
+		&schedule.ConfigDigest,
 		&schedule.UpdatedAt,
 	); err != nil {
 		return ports.SourceRuntimeSyncSchedule{}, err

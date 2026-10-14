@@ -21,6 +21,8 @@ func TestSourceRuntimeSyncScheduleSchemaShape(t *testing.T) {
 		"last_failure_class TEXT NOT NULL DEFAULT ''",
 		"next_attempt_at TIMESTAMPTZ NOT NULL",
 		"circuit_open BOOLEAN NOT NULL DEFAULT FALSE",
+		"config_digest TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE source_runtime_sync_schedules ADD COLUMN IF NOT EXISTS config_digest TEXT NOT NULL DEFAULT ''",
 		"updated_at TIMESTAMPTZ NOT NULL",
 	} {
 		if !strings.Contains(joined, fragment) {
@@ -34,6 +36,7 @@ func TestSourceRuntimeSyncScheduleFailureIncrementsAtomically(t *testing.T) {
 		"ON CONFLICT (runtime_id) DO UPDATE SET",
 		"consecutive_failures = LEAST(source_runtime_sync_schedules.consecutive_failures, 2147483646) + 1",
 		"circuit_open = $5::INTEGER > 0 AND LEAST(source_runtime_sync_schedules.consecutive_failures, 2147483646) + 1 >= $5::INTEGER",
+		"config_digest = EXCLUDED.config_digest",
 		"RETURNING runtime_id, tenant_id, consecutive_failures",
 	} {
 		if !strings.Contains(recordSourceRuntimeSyncFailureSQL, fragment) {
@@ -85,6 +88,7 @@ func TestSourceRuntimeSyncSchedulePostgresIntegration(t *testing.T) {
 			FailureClass:     "provider_unavailable",
 			NextAttemptAt:    now.Add(time.Duration(attempt) * time.Minute),
 			CircuitOpenAfter: 3,
+			ConfigDigest:     "digest-a",
 			ObservedAt:       now,
 		})
 		if err != nil {
@@ -98,7 +102,7 @@ func TestSourceRuntimeSyncSchedulePostgresIntegration(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("GetSourceRuntimeSyncSchedule() found %v err %v", found, err)
 	}
-	if got.TenantID != "tenant-a" || got.LastFailureClass != "provider_unavailable" || !got.NextAttemptAt.Equal(now.Add(3*time.Minute)) || !got.CircuitOpen {
+	if got.TenantID != "tenant-a" || got.LastFailureClass != "provider_unavailable" || !got.NextAttemptAt.Equal(now.Add(3*time.Minute)) || !got.CircuitOpen || got.ConfigDigest != "digest-a" {
 		t.Fatalf("stored schedule = %#v", got)
 	}
 	reclassified, err := store.RecordSourceRuntimeSyncFailure(ctx, ports.SourceRuntimeSyncFailure{
@@ -106,12 +110,13 @@ func TestSourceRuntimeSyncSchedulePostgresIntegration(t *testing.T) {
 		TenantID:      "tenant-a",
 		FailureClass:  "unauthorized",
 		NextAttemptAt: now.Add(6 * time.Hour),
+		ConfigDigest:  "digest-b",
 		ObservedAt:    now,
 	})
 	if err != nil {
 		t.Fatalf("RecordSourceRuntimeSyncFailure(unauthorized) error = %v", err)
 	}
-	if reclassified.ConsecutiveFailures != 4 || reclassified.CircuitOpen || reclassified.LastFailureClass != "unauthorized" {
+	if reclassified.ConsecutiveFailures != 4 || reclassified.CircuitOpen || reclassified.LastFailureClass != "unauthorized" || reclassified.ConfigDigest != "digest-b" {
 		t.Fatalf("reclassified schedule = %#v, want count 4, circuit closed", reclassified)
 	}
 	if err := store.RecordSourceRuntimeSyncSuccess(ctx, runtimeID); err != nil {

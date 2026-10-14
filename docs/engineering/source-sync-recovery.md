@@ -64,6 +64,9 @@ reason `backoff`. A successful sync deletes the row.
 | `budget_exhausted`, `cancelled` | No backoff. Cancelled syncs do not change the stored schedule. |
 
 Runs that name runtimes explicitly (`runtime_id=` or `runtime_ids=`) bypass
-backoff but still record the outcome. If the schedule read fails, the sync runs
+backoff but still record the outcome. A hold also lifts immediately when the
+runtime's source ID or operator-owned config (every key outside the
+runtime-owned `__cerebro_` prefix) differs from the digest stored with the last
+failure. If the schedule read fails, the sync runs
 as if no backoff were stored; schedule write failures are reported as runtime
 errors.

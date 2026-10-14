@@ -96,6 +96,9 @@ func TestRunOrchestratorIterationRecordsClassifiedSyncFailure(t *testing.T) {
 	if failure.RuntimeID != "runtime-1" || failure.TenantID != "writer" || failure.FailureClass != string(sourceruntime.SyncFailureInternal) {
 		t.Fatalf("recorded failure = %#v, want internal failure for runtime-1", failure)
 	}
+	if failure.ConfigDigest == "" || failure.ConfigDigest != sourceruntime.SyncConfigDigest(store.runtime) {
+		t.Fatalf("recorded config digest = %q, want current runtime digest", failure.ConfigDigest)
+	}
 	if failure.CircuitOpenAfter != sourceruntime.SyncCircuitOpenThreshold {
 		t.Fatalf("circuit threshold = %d, want %d", failure.CircuitOpenAfter, sourceruntime.SyncCircuitOpenThreshold)
 	}
@@ -331,5 +334,63 @@ func TestRunOrchestratorIterationDoesNotRecordCancelledSync(t *testing.T) {
 	}
 	if result.FailureClass != "cancelled" || len(store.failures) != 0 {
 		t.Fatalf("result = %#v failures = %d, want cancelled class and no write", result, len(store.failures))
+	}
+}
+
+func heldRuntimeStore(t *testing.T, recorded, current *cerebrov1.SourceRuntime) *scheduleRuntimeStore {
+	t.Helper()
+	store := newScheduleRuntimeStore(&orchestratorRuntimeStore{runtime: current, acquired: true})
+	store.schedules[current.GetId()] = ports.SourceRuntimeSyncSchedule{
+		RuntimeID:           current.GetId(),
+		ConsecutiveFailures: 1,
+		LastFailureClass:    "unauthorized",
+		NextAttemptAt:       time.Now().UTC().Add(sourceruntime.SyncOperatorActionHold),
+		ConfigDigest:        sourceruntime.SyncConfigDigest(recorded),
+	}
+	return store
+}
+
+func TestRunOrchestratorIterationConfigChangeLiftsBackoff(t *testing.T) {
+	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:OLD"}}
+	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:NEW"}}
+	store := heldRuntimeStore(t, recorded, current)
+	scheduler := newOrchestratorSyncScheduler(store)
+	if check := scheduler.check(context.Background(), current, false); check.backoff || check.bypassReason != orchestratorSyncBackoffBypassConfigChanged {
+		t.Fatalf("check = %#v, want config_changed bypass", check)
+	}
+	if _, err := runScheduleIteration(t, store, orchestratorOptions{}); err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want sync failure")
+	}
+	if store.leaseID != "runtime-1" {
+		t.Fatalf("leased runtime = %q, want changed runtime to sync", store.leaseID)
+	}
+	if len(store.failures) != 1 || store.failures[0].ConfigDigest != sourceruntime.SyncConfigDigest(current) {
+		t.Fatalf("failures = %#v, want new outcome recorded with current digest", store.failures)
+	}
+}
+
+func TestRunOrchestratorIterationRuntimeOwnedConfigChangeKeepsBackoff(t *testing.T) {
+	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"token": "env:OLD"}}
+	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{
+		"token":                    "env:OLD",
+		"__cerebro_runtime_status": "failed",
+		"__cerebro_runtime_last_failure_category": "auth_error",
+	}}
+	store := heldRuntimeStore(t, recorded, current)
+	result, err := runScheduleIteration(t, store, orchestratorOptions{})
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if store.leaseID != "" || result.Runtimes[0].Sync != "skipped" {
+		t.Fatalf("lease = %q result = %#v, want backoff skip", store.leaseID, result.Runtimes[0])
+	}
+}
+
+func TestOrchestratorSyncScheduleExplicitRunBypassReason(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"}
+	store := heldRuntimeStore(t, runtime, runtime)
+	check := newOrchestratorSyncScheduler(store).check(context.Background(), runtime, true)
+	if check.backoff || check.bypassReason != orchestratorSyncBackoffBypassExplicitRun {
+		t.Fatalf("check = %#v, want explicit_run bypass", check)
 	}
 }

@@ -15,7 +15,10 @@ type SourceRuntimeSyncSchedule struct {
 	LastFailureClass    string
 	NextAttemptAt       time.Time
 	CircuitOpen         bool
-	UpdatedAt           time.Time
+	// ConfigDigest identifies the operator-owned runtime config that produced
+	// the last failure, so a config change can lift the hold.
+	ConfigDigest string
+	UpdatedAt    time.Time
 }
 
 // SourceRuntimeSyncFailure describes one failed scheduled sync attempt.
@@ -27,6 +30,7 @@ type SourceRuntimeSyncFailure struct {
 	// CircuitOpenAfter is the consecutive-failure count at which the stored
 	// schedule reports an open circuit. Zero disables the circuit flag.
 	CircuitOpenAfter uint32
+	ConfigDigest     string
 	ObservedAt       time.Time
 }
 

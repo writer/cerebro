@@ -16,6 +16,9 @@ const (
 	orchestratorSyncScheduleStorePresent = "present"
 	orchestratorSyncScheduleStoreAbsent  = "absent"
 	orchestratorSyncScheduleWriteTimeout = 5 * time.Second
+
+	orchestratorSyncBackoffBypassExplicitRun   = "explicit_run"
+	orchestratorSyncBackoffBypassConfigChanged = "config_changed"
 )
 
 // orchestratorSyncBackoffResult is embedded in orchestratorRuntimeResult so
@@ -34,11 +37,12 @@ type orchestratorSyncScheduler struct {
 }
 
 type orchestratorSyncScheduleCheck struct {
-	schedule ports.SourceRuntimeSyncSchedule
-	found    bool
-	err      error
-	backoff  bool
-	bypassed bool
+	schedule     ports.SourceRuntimeSyncSchedule
+	found        bool
+	err          error
+	backoff      bool
+	bypassReason string
+	configDigest string
 }
 
 func newOrchestratorSyncScheduler(leaser ports.SourceRuntimeLeaseStore) orchestratorSyncScheduler {
@@ -70,21 +74,28 @@ func orchestratorExplicitRuntimeRun(filter ports.SourceRuntimeFilter) bool {
 	return false
 }
 
-func (s orchestratorSyncScheduler) check(ctx context.Context, runtimeID string, explicit bool) orchestratorSyncScheduleCheck {
+func (s orchestratorSyncScheduler) check(ctx context.Context, runtime *cerebrov1.SourceRuntime, explicit bool) orchestratorSyncScheduleCheck {
 	if s.store == nil {
 		return orchestratorSyncScheduleCheck{}
 	}
-	schedule, found, err := s.store.GetSourceRuntimeSyncSchedule(ctx, runtimeID)
+	digest := sourceruntime.SyncConfigDigest(runtime)
+	schedule, found, err := s.store.GetSourceRuntimeSyncSchedule(ctx, runtime.GetId())
 	if err != nil {
-		return orchestratorSyncScheduleCheck{err: err}
+		return orchestratorSyncScheduleCheck{err: err, configDigest: digest}
 	}
-	due := !found || !s.now().Before(schedule.NextAttemptAt)
-	return orchestratorSyncScheduleCheck{
-		schedule: schedule,
-		found:    found,
-		backoff:  !due && !explicit,
-		bypassed: !due && explicit,
+	check := orchestratorSyncScheduleCheck{schedule: schedule, found: found, configDigest: digest}
+	if !found || !s.now().Before(schedule.NextAttemptAt) {
+		return check
 	}
+	switch {
+	case explicit:
+		check.bypassReason = orchestratorSyncBackoffBypassExplicitRun
+	case schedule.ConfigDigest != "" && schedule.ConfigDigest != digest:
+		check.bypassReason = orchestratorSyncBackoffBypassConfigChanged
+	default:
+		check.backoff = true
+	}
+	return check
 }
 
 func (c orchestratorSyncScheduleCheck) result() orchestratorSyncBackoffResult {
@@ -123,6 +134,7 @@ func (s orchestratorSyncScheduler) recordFailure(ctx context.Context, runtime *c
 		FailureClass:     string(failure.Class),
 		NextAttemptAt:    decision.NextAttemptAt,
 		CircuitOpenAfter: sourceruntime.SyncCircuitOpenAfter(failure.Class),
+		ConfigDigest:     sourceruntime.SyncConfigDigest(runtime),
 		ObservedAt:       now,
 	})
 	if err != nil {
