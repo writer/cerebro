@@ -96,6 +96,7 @@ type orchestratorRuntimeResult struct {
 	Error                 string              `json:"error,omitempty"`
 	Health                sourcehealth.Record `json:"-"`
 	orchestratorSyncBackoffResult
+	syncMetrics orchestratorSourceSyncMetricState
 }
 
 type orchestratorJobMetadataContextKey struct{}
@@ -664,6 +665,7 @@ func runOrchestratorIteration(
 		if scheduleCheck.backoff {
 			runtimeResult.Sync = "skipped"
 			runtimeResult.orchestratorSyncBackoffResult = scheduleCheck.result()
+			runtimeResult.syncMetrics = orchestratorSourceSyncMetricState{skipReason: orchestratorSyncSkipBackoff, scheduleObserved: true}
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runtimeStatus = "skipped"
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", "backoff")
@@ -681,6 +683,7 @@ func runOrchestratorIteration(
 		if err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "lease", err)
+			runtimeResult.syncMetrics.failureClass = orchestratorSyncFailureLeaseError
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runErr = err
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_stage", "lease")
@@ -693,9 +696,10 @@ func runOrchestratorIteration(
 		}
 		if !acquired {
 			runtimeResult.Sync = "skipped"
+			runtimeResult.syncMetrics.skipReason = orchestratorSyncSkipLeaseNotAcquired
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runtimeStatus = "skipped"
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", "lease_not_acquired")
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", orchestratorSyncSkipLeaseNotAcquired)
 			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
 			emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.skipped", runtimeStatus, iteration, runtime, runtimeResult, runtimeSpanAttrs)
 			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
@@ -706,6 +710,7 @@ func runOrchestratorIteration(
 		if err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "lease_fence", err)
+			runtimeResult.syncMetrics.failureClass = orchestratorSyncFailureLeaseError
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runErr = err
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_stage", "lease_fence")
@@ -742,6 +747,7 @@ func runOrchestratorIteration(
 			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "sync", err)
 			backoff, scheduleErr := scheduler.recordFailure(ctx, runtime, scheduleCheck, err)
 			runtimeResult.orchestratorSyncBackoffResult = backoff
+			runtimeResult.syncMetrics.scheduleObserved = scheduler.store != nil && scheduleErr == nil && backoff.FailureClass != string(sourceruntime.SyncFailureCancelled)
 			runtimeSpanAttrs = orchestratorSyncBackoffAttrs(runtimeSpanAttrs, backoff)
 			if backoff.CircuitOpen {
 				telemetry.IncrementMain(runtimeCtx, "orchestrator.runtime.circuit_open.count", 1)
@@ -793,7 +799,9 @@ func runOrchestratorIteration(
 				telemetryField("short_circuit_reason", runtimeResult.ShortCircuitReason),
 				telemetryField("reconciliation_reason", runtimeResult.ReconciliationReason),
 			))
-			if scheduleErr := scheduler.recordSuccess(ctx, runtime.GetId(), scheduleCheck); scheduleErr != nil {
+			scheduleErr := scheduler.recordSuccess(ctx, runtime.GetId(), scheduleCheck)
+			runtimeResult.syncMetrics.scheduleObserved = scheduler.store != nil && scheduleErr == nil
+			if scheduleErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync_schedule", scheduleErr)
 				runErr = joinOrchestratorRunError(runErr, scheduleErr)
 				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "sync_schedule_error_kind", telemetry.ErrorKind(scheduleErr))
@@ -1061,6 +1069,7 @@ func annotateOrchestratorRuntimeMain(ctx context.Context, result *orchestratorRu
 		telemetry.IncrementMain(ctx, "orchestrator.runtime.backfill_eligible.count", 1)
 	}
 	annotateOrchestratorHealthGateMain(ctx, healthRecord, healthState, healthGate)
+	recordOrchestratorSourceSyncMetrics(ctx, result, healthRecord)
 	mainAttrs := attrs.With(telemetry.Attrs(
 		telemetryField("runtime_id", result.RuntimeID),
 		telemetryField("source_runtime_id", result.RuntimeID),

@@ -290,6 +290,12 @@ func metricAttributeSets(metric metricdata.Metrics) []attribute.Set {
 			sets = append(sets, point.Attributes)
 		}
 		return sets
+	case metricdata.Histogram[int64]:
+		sets := make([]attribute.Set, 0, len(data.DataPoints))
+		for _, point := range data.DataPoints {
+			sets = append(sets, point.Attributes)
+		}
+		return sets
 	default:
 		return nil
 	}
