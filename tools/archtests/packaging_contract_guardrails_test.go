@@ -112,6 +112,13 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		`docker buildx imagetools create -t "${image_base}:latest"`,
 		"cerebro-product-release.json",
 		"WEB_CANDIDATE_IMAGE",
+		"RUST_PLATFORM_CANDIDATE_IMAGE",
+		`docker buildx imagetools create -t "${rust_platform_image_base}:${RELEASE_TAG}"`,
+		`docker buildx imagetools create -t "${rust_platform_image_base}:latest"`,
+		`cosign sign --yes "${rust_platform_image_base}@${RUST_PLATFORM_DIGEST}"`,
+		"subject-name: ghcr.io/${{ github.repository_owner }}/cerebro-rust",
+		`--rust-platform-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:${RELEASE_TAG}"`,
+		"-o -name 'rust-only-e2e-receipt.json'",
 		"cosign verify-blob candidate/cerebro-product-release.json",
 		"  notify-release-consumer:",
 		"RELEASE_CONSUMER_TOKEN",
@@ -159,6 +166,11 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		`actions/runs/${CANDIDATE_RUN_ID}/artifacts?per_page=100`,
 		`^cerebro-candidate-[0-9a-f]{40}$`,
 		`sha="${artifact_name#cerebro-candidate-}"`,
+		"jq -r .rust_platform_image_digest candidate/candidate-receipt.json",
+		"jq -r .rust_only_e2e_receipt_sha256 candidate/candidate-receipt.json",
+		`test "$(jq -r .image_digest candidate/rust-only-e2e-receipt.json)" = "${rust_platform_digest}"`,
+		`--type "https://writer.com/cerebro/rust-only-e2e/v1"`,
+		"/.github/workflows/rust-only-candidate.yml@refs/heads/main$",
 	} {
 		if !strings.Contains(verifyCandidate, marker) {
 			t.Fatalf("verify-candidate job missing required marker %q", marker)
@@ -209,6 +221,12 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		`.code == "graph_unavailable"`,
 		"Attach the Rust E2E receipt to the candidate digest",
 		"rust_e2e_receipt_sha256",
+		"uses: ./.github/workflows/rust-only-candidate.yml",
+		"candidate_sha: ${{ needs.resolve.outputs.sha }}",
+		`--rust-platform-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:${IMAGE_TAG}"`,
+		"rust_platform_image_digest:$rust_platform_digest",
+		"rust_only_e2e_receipt_sha256:$rust_only_e2e_receipt_sha256",
+		"name: rust-only-e2e-${{ needs.resolve.outputs.sha }}",
 		`test "${platforms}" = '["linux/amd64","linux/arm64"]'`,
 		"aquasec/trivy:0.66.0@sha256:",
 		"--severity CRITICAL --ignore-unfixed --exit-code 1",
@@ -242,8 +260,8 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		t.Fatal("candidate workflow must define the receipt job")
 	}
 	receipt := candidate[receiptIndex:]
-	if !strings.Contains(receipt, "needs: [resolve, ci-gate, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]") {
-		t.Fatal("candidate receipt must wait for CI, both image scans, and the exact-image Rust proof")
+	if !strings.Contains(receipt, "needs: [resolve, ci-gate, binaries, manifest, rust-organizational-e2e, web-manifest, rust-platform, scan-images, product-release]") {
+		t.Fatal("candidate receipt must wait for CI, both image scans, the exact-image Rust proof, and the Rust platform image")
 	}
 	if !strings.Contains(candidate, "group: candidate-build-main") ||
 		!strings.Contains(candidate, "cancel-in-progress: false") {
@@ -303,6 +321,38 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	}
 	if !strings.Contains(makefileText, `go build -trimpath -ldflags="-s -w" -o .dist/cerebro`) {
 		t.Fatal("docker-smoke must strip the runtime binary before loading the image")
+	}
+}
+
+func TestRustOnlyCandidateIsBuiltOncePerCandidate(t *testing.T) {
+	root := repoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "rust-only-candidate.yml"))
+	if err != nil {
+		t.Fatalf("read Rust-only candidate workflow: %v", err)
+	}
+	workflow := string(body)
+	triggersEnd := strings.Index(workflow, "\npermissions:")
+	if triggersEnd == -1 {
+		t.Fatal("Rust-only candidate workflow must declare top-level permissions after its triggers")
+	}
+	triggers := workflow[:triggersEnd]
+	// A push trigger would build a second image for the same commit and move
+	// the candidate tag away from the digest Candidate Build records.
+	if strings.Contains(triggers, "\n  push:") {
+		t.Fatal("Rust-only candidate must only run through Candidate Build or manual dispatch")
+	}
+	for _, marker := range []string{
+		"  workflow_call:",
+		"  workflow_dispatch:",
+		"value: ${{ jobs.manifest.outputs.digest }}",
+		"value: ${{ jobs.resolve.outputs.image_tag }}",
+	} {
+		if !strings.Contains(triggers, marker) {
+			t.Fatalf("Rust-only candidate triggers missing %q", marker)
+		}
+	}
+	if strings.Contains(workflow, "group: rust-only-candidate\n") {
+		t.Fatal("Rust-only candidate must not share one concurrency group between called runs and manual dispatches")
 	}
 }
 

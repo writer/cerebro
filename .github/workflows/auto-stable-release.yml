@@ -127,7 +127,9 @@ jobs:
             echo "Dispatched Rust Graph Replacement for ${CANDIDATE_SHA}"
           fi
 
-          for workflow in ci.yml rust-graph-replacement.yml rust-only-candidate.yml; do
+          # The Rust-only candidate proof runs inside the admitted Candidate Build
+          # run, so its success is already established above.
+          for workflow in ci.yml rust-graph-replacement.yml; do
             deadline=$((SECONDS + PROOF_DEADLINE_SECONDS))
             while (( SECONDS < deadline )); do
               run="$({

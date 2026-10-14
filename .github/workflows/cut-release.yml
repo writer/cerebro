@@ -529,6 +529,21 @@ jobs:
           path: .dist/rust-e2e/rust-organizational-e2e-receipt.json
           if-no-files-found: error
 
+  rust-platform:
+    needs: resolve
+    # A called workflow's token can only narrow these, so this is the union of
+    # what its build, sign, attest, E2E, and receipt jobs request.
+    permissions:
+      actions: read
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/rust-only-candidate.yml
+    with:
+      candidate_sha: ${{ needs.resolve.outputs.sha }}
+
   web-image:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -722,7 +737,7 @@ jobs:
 
   product-release:
     runs-on: ubuntu-latest
-    needs: [resolve, manifest, web-manifest, portable-artifacts]
+    needs: [resolve, manifest, web-manifest, rust-platform, portable-artifacts]
     permissions:
       actions: read
       contents: read
@@ -741,8 +756,14 @@ jobs:
           IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
           RUNTIME_DIGEST: ${{ needs.manifest.outputs.digest }}
           WEB_DIGEST: ${{ needs.web-manifest.outputs.digest }}
+          RUST_PLATFORM_SHA: ${{ needs.rust-platform.outputs.sha }}
+          RUST_PLATFORM_TAG: ${{ needs.rust-platform.outputs.image_tag }}
+          RUST_PLATFORM_DIGEST: ${{ needs.rust-platform.outputs.digest }}
         run: |
           set -euo pipefail
+          test "${RUST_PLATFORM_SHA}" = "${CANDIDATE_SHA}"
+          test "${RUST_PLATFORM_TAG}" = "${IMAGE_TAG}"
+          [[ "${RUST_PLATFORM_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
           slack_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-slack-companion-*.tgz' -print -quit)"
           sdk_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-sdk-*.tgz' -print -quit)"
           test -n "${slack_archive}"
@@ -751,6 +772,8 @@ jobs:
             --channel candidate --version "${IMAGE_TAG}" --commit "${CANDIDATE_SHA}" \
             --runtime-image "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}" --runtime-digest "${RUNTIME_DIGEST}" \
             --web-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${IMAGE_TAG}" --web-digest "${WEB_DIGEST}" \
+            --rust-platform-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:${IMAGE_TAG}" \
+            --rust-platform-digest "${RUST_PLATFORM_DIGEST}" \
             --slack-archive "${slack_archive}" --slack-version "$(jq -r .version apps/slack-companion/package.json)" \
             --sdk-archive "${sdk_archive}" --sdk-version "$(jq -r .version sdk/typescript/package.json)" \
             --openapi .dist/product/cerebro-openapi.yaml \
@@ -774,7 +797,7 @@ jobs:
 
   receipt:
     runs-on: ubuntu-latest
-    needs: [resolve, ci-gate, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]
+    needs: [resolve, ci-gate, binaries, manifest, rust-organizational-e2e, web-manifest, rust-platform, scan-images, product-release]
     permissions:
       actions: read
       contents: read
@@ -787,30 +810,47 @@ jobs:
           pattern: candidate-*-${{ needs.resolve.outputs.sha }}
           path: candidate
           merge-multiple: true
+      - name: Download the Rust-only E2E receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rust-only-e2e-${{ needs.resolve.outputs.sha }}
+          path: candidate
       - name: Write candidate receipt
         env:
           CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
           IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
           IMAGE_DIGEST: ${{ needs.manifest.outputs.digest }}
           WEB_IMAGE_DIGEST: ${{ needs.web-manifest.outputs.digest }}
+          RUST_PLATFORM_DIGEST: ${{ needs.rust-platform.outputs.digest }}
         run: |
           set -euo pipefail
           python3 scripts/release/product_release.py validate candidate/cerebro-product-release.json --bundle-root candidate
           test "$(jq -r .schema_version candidate/cerebro-product-release.json)" = "cerebro.product-release/v1"
+          rust_platform_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:${IMAGE_TAG}"
+          test "$(jq -r .components.rust_platform.image candidate/cerebro-product-release.json)" = "${rust_platform_image}"
+          test "$(jq -r .components.rust_platform.digest candidate/cerebro-product-release.json)" = "${RUST_PLATFORM_DIGEST}"
           test "$(jq -r .schema_version candidate/rust-organizational-e2e-receipt.json)" = \
             "cerebro.rust-organizational-e2e/v1"
           test "$(jq -r .status candidate/rust-organizational-e2e-receipt.json)" = "passed"
           test "$(jq -r .commit candidate/rust-organizational-e2e-receipt.json)" = "${CANDIDATE_SHA}"
           test "$(jq -r .image_digest candidate/rust-organizational-e2e-receipt.json)" = "${IMAGE_DIGEST}"
+          test "$(jq -r .schema_version candidate/rust-only-e2e-receipt.json)" = "cerebro.rust-only-e2e/v1"
+          test "$(jq -r .commit candidate/rust-only-e2e-receipt.json)" = "${CANDIDATE_SHA}"
+          test "$(jq -r .image_digest candidate/rust-only-e2e-receipt.json)" = "${RUST_PLATFORM_DIGEST}"
           product_manifest_sha256="$(sha256sum candidate/cerebro-product-release.json | awk '{print $1}')"
           rust_e2e_receipt_sha256="$(sha256sum candidate/rust-organizational-e2e-receipt.json | awk '{print $1}')"
+          rust_only_e2e_receipt_sha256="$(sha256sum candidate/rust-only-e2e-receipt.json | awk '{print $1}')"
           jq -n --arg schema_version "cerebro.release-candidate/v1" --arg commit "${CANDIDATE_SHA}" \
             --arg image "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}" --arg digest "${IMAGE_DIGEST}" \
             --arg web_image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${IMAGE_TAG}" \
-            --arg web_digest "${WEB_IMAGE_DIGEST}" --arg product_manifest_sha256 "${product_manifest_sha256}" \
+            --arg web_digest "${WEB_IMAGE_DIGEST}" \
+            --arg rust_platform_image "${rust_platform_image}" \
+            --arg rust_platform_digest "${RUST_PLATFORM_DIGEST}" \
+            --arg product_manifest_sha256 "${product_manifest_sha256}" \
             --arg rust_e2e_receipt_sha256 "${rust_e2e_receipt_sha256}" \
+            --arg rust_only_e2e_receipt_sha256 "${rust_only_e2e_receipt_sha256}" \
             --arg run_id "${GITHUB_RUN_ID}" --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
-            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,web_image:$web_image,web_image_digest:$web_digest,product_manifest_sha256:$product_manifest_sha256,rust_e2e_receipt_sha256:$rust_e2e_receipt_sha256,run_id:$run_id,run_attempt:$run_attempt}' \
+            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,web_image:$web_image,web_image_digest:$web_digest,rust_platform_image:$rust_platform_image,rust_platform_image_digest:$rust_platform_digest,product_manifest_sha256:$product_manifest_sha256,rust_e2e_receipt_sha256:$rust_e2e_receipt_sha256,rust_only_e2e_receipt_sha256:$rust_only_e2e_receipt_sha256,run_id:$run_id,run_attempt:$run_attempt}' \
             > candidate/candidate-receipt.json
           checksum_file="$(mktemp)"
           (cd candidate && find . -type f ! -name bundle-checksums.txt -print0 | sort -z | xargs -0 sha256sum) > "${checksum_file}"

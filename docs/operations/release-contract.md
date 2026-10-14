@@ -20,9 +20,9 @@ candidate-<40-character-commit>
 ghcr.io/writer/cerebro@sha256:<digest>
 ```
 
-The Candidate Build workflow resolves the commit, starts its binary and image builds while the commit's CI run finishes, and requires CI success before it writes the candidate receipt. Candidate runs queue behind the active attestation so every exact image can finish or fail with a terminal receipt. BuildKit and Cargo caches are shared only across matching architecture and dependency inputs. The workflow builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, verifies the exact image platform set, scans both images, attaches provenance, signs the images and product manifest, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or consumer events.
+The Candidate Build workflow resolves the commit, starts its binary and image builds while the commit's CI run finishes, and requires CI success before it writes the candidate receipt. Candidate runs queue behind the active attestation so every exact image can finish or fail with a terminal receipt. BuildKit and Cargo caches are shared only across matching architecture and dependency inputs. The workflow builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, verifies the exact image platform set, scans both images, attaches provenance, signs the images and product manifest, and stores a `cerebro.release-candidate/v1` receipt. It also calls the reusable Rust-only Candidate workflow (`rust-only-candidate.yml`) exactly once per commit, which builds, signs, and end-to-end tests the native Rust platform image `ghcr.io/writer/cerebro-rust:candidate-<commit>`. The candidate receipt records that image's digest and the SHA-256 of its `rust-only-e2e-receipt.json`, and the receipt is bundled with the candidate. The Rust-only workflow has no push trigger of its own, so the candidate tag is published by exactly one run. A manual dispatch rebuilds the tag with a new digest, which makes any existing candidate receipt for that commit unpromotable. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or consumer events.
 
-For the exact current `main` commit, a successful Candidate Build starts automatic stable qualification. The automatic workflow waits for the exact-head CI, Rust replacement, and Rust-only candidate proofs; runs Ephemeral Cerebro against the published images; verifies that `main` has not advanced; reserves the next patch tag; renders complete evidence-bound notes; and dispatches the serialized Stable Release workflow. Superseded candidates do not publish. Operators can still dispatch Stable Release manually with a candidate run ID, stable tag, completed release notes, and successful smoke receipt URL. In both paths, the stable workflow verifies the candidate bundle checksums, commit, run ID, image digest, image signature, and smoke evidence before it assigns stable tags.
+For the exact current `main` commit, a successful Candidate Build starts automatic stable qualification. The automatic workflow waits for the exact-head CI and Rust replacement proofs (the Rust-only candidate proof is part of the Candidate Build run); runs Ephemeral Cerebro against the published images; verifies that `main` has not advanced; reserves the next patch tag; renders complete evidence-bound notes; and dispatches the serialized Stable Release workflow. Superseded candidates do not publish. Operators can still dispatch Stable Release manually with a candidate run ID, stable tag, completed release notes, and successful smoke receipt URL. In both paths, the stable workflow verifies the candidate bundle checksums, commit, run ID, image digests, image signatures, the Rust-only E2E attestation, and smoke evidence before it assigns stable tags to the runtime, web, and Rust platform images.
 
 The smoke receipt gate accepts a same-repository Ephemeral Cerebro Actions run and machine-verifies its terminal result, workflow identity, main-branch dispatch event, candidate-bound artifact, and published Rust candidate image. External HTTPS receipts are disabled by default. Repository operators may enable specific public receipt origins with the comma-separated `SMOKE_RECEIPT_ALLOWED_ORIGINS` Actions variable. Each value must be an origin only (`https://host` or `https://host:port`), with no path, query, or fragment. That mode is recorded as `operator_attested_external` because receipt existence, success, candidate binding, digest binding, and immutability are not machine-proven. The evidence mode is shown in the workflow summary, required in the release notes, and attached to the GitHub release as `smoke-evidence.json`.
 
@@ -51,6 +51,7 @@ A release can include:
 - CLI archives for Linux and macOS on amd64 and arm64,
 - multi-arch runtime image,
 - multi-arch web image,
+- multi-arch native Rust platform image,
 - portable Slack companion and TypeScript SDK archives,
 - image provenance and signatures,
 - a signed `cerebro-product-release.json` manifest that binds every component to one commit,
@@ -67,6 +68,14 @@ Web image:
 ```text
 ghcr.io/writer/cerebro-web:<tag>
 ```
+
+Native Rust platform image:
+
+```text
+ghcr.io/writer/cerebro-rust:<tag>
+```
+
+The product manifest lists this image as the `rust_platform` component with its digest. Deployments should pin that digest from the signed manifest. The component is optional in the `cerebro.product-release/v1` schema because releases published before it was added do not include it. Every release produced by the current workflows includes it.
 
 Run:
 
@@ -286,7 +295,7 @@ Suggested flow:
 
 1. Select an immutable release tag.
 2. Download and verify `cerebro-product-release.json`.
-3. Pull the runtime and web image digests named by the manifest.
+3. Pull the runtime, web, and (when present) `rust_platform` image digests named by the manifest.
 4. Download the Slack companion, SDK, and public contracts named by the manifest and verify their SHA-256 values.
 5. Render a runtime deploy contract using the verified release tag and configuration owned by your deployment system.
 6. Sign and verify that contract if your deployment process requires it.
@@ -296,13 +305,13 @@ Suggested flow:
 
 ## Stable release procedure
 
-1. Select a green Candidate Build run for a commit on `main`. Candidate Build succeeding is not sufficient on its own: the smoke workflow additionally requires `ci.yml`, `rust-graph-replacement.yml`, and `rust-only-candidate.yml` to have concluded `success` for that exact head SHA. Those run in parallel and finish at different times, so confirm all three before continuing.
+1. Select a green Candidate Build run for a commit on `main`. Candidate Build succeeding is not sufficient on its own: the smoke workflow additionally requires `ci.yml` and `rust-graph-replacement.yml` to have concluded `success` for that exact head SHA. Those run in parallel with Candidate Build and finish at different times, so confirm all three before continuing. The Rust-only candidate proof runs inside Candidate Build and needs no separate check.
 2. Deploy `ghcr.io/writer/cerebro@sha256:<candidate-digest>` to the canary environment.
 3. Run readiness, graph, source, and version checks and save the smoke receipt at a durable URL. The usual source is a `workflow_dispatch` of `Ephemeral Cerebro` with `image_source=published`, whose run URL becomes the smoke receipt. Pass `candidate_sha` as the **full 40-character SHA**; an abbreviated SHA fails checkout with `A branch or tag with the name '<sha>' could not be found`.
 4. Complete every section in the release notes template. Name migration order, downgrade limits, configuration changes, and the rollback digest.
 5. Start the Stable Release workflow with the candidate run ID, `vMAJOR.MINOR.PATCH` tag, completed notes, and smoke receipt URL.
 6. Approve the `stable-release` environment after checking the candidate receipt, smoke receipt, and release notes.
-7. Confirm the GitHub release, both semantic-version image tags, both `latest` tags, portable archives, and signed product manifest all use the candidate commit and recorded digests. If a release consumer is configured, confirm it accepted the six-field consumer event.
+7. Confirm the GitHub release, the runtime, web, and Rust platform semantic-version image tags and `latest` tags, portable archives, and signed product manifest all use the candidate commit and recorded digests. If a release consumer is configured, confirm it accepted the six-field consumer event.
 
 Stable release windows are scheduled by the release operator. A schedule controls when the operator starts and approves the workflow; it does not create an unattended tag.
 

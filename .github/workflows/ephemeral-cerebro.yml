@@ -186,7 +186,9 @@ jobs:
           set -euo pipefail
           workflows=(ci.yml rust-graph-replacement.yml)
           if [[ "${IMAGE_SOURCE}" == published ]]; then
-            workflows+=(rust-only-candidate.yml)
+            # Candidate Build publishes both candidate images, including the
+            # Rust-only image it builds through rust-only-candidate.yml.
+            workflows+=(cut-release.yml)
           fi
           for workflow in "${workflows[@]}"; do
             conclusion="$(

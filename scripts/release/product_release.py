@@ -22,6 +22,11 @@ VERSION_RE = re.compile(r"^(candidate-[0-9a-f]{40}|v[0-9]+\.[0-9]+\.[0-9]+)$")
 IMAGE_RE = re.compile(
     r"^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 )
+RUST_PLATFORM_IMAGE_RE = re.compile(r"^ghcr\.io/[a-z0-9._-]+/cerebro-rust:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+REQUIRED_COMPONENTS = frozenset({"runtime", "web", "slack_companion", "typescript_sdk"})
+# Releases published before the native Rust platform image joined the bundle
+# omit rust_platform, so it stays optional for validation of historical manifests.
+OPTIONAL_COMPONENTS = frozenset({"rust_platform"})
 PACKAGE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 MAX_NPM_ARCHIVE_MEMBERS = 10_000
@@ -90,7 +95,11 @@ def archive_record(
 
 def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     bundle_root = args.bundle_root.resolve()
-    return {
+    rust_platform_image = getattr(args, "rust_platform_image", None)
+    rust_platform_digest = getattr(args, "rust_platform_digest", None)
+    if (rust_platform_image is None) != (rust_platform_digest is None):
+        raise ManifestError("--rust-platform-image and --rust-platform-digest must be provided together")
+    manifest = {
         "schema_version": SCHEMA_VERSION,
         "channel": args.channel,
         "version": args.version,
@@ -124,6 +133,13 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "agent_service_lifecycle": file_record(args.lifecycle_schema, bundle_root),
         },
     }
+    if rust_platform_image is not None:
+        manifest["components"]["rust_platform"] = {
+            "kind": "oci-image",
+            "image": rust_platform_image,
+            "digest": rust_platform_digest,
+        }
+    return manifest
 
 
 def require(condition: bool, message: str) -> None:
@@ -260,10 +276,13 @@ def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
     components = manifest.get("components")
     require(isinstance(components, dict), "components must be an object")
     require(
-        set(components) == {"runtime", "web", "slack_companion", "typescript_sdk"},
+        REQUIRED_COMPONENTS <= set(components) <= REQUIRED_COMPONENTS | OPTIONAL_COMPONENTS,
         "components has unexpected or missing fields",
     )
-    for name in ("runtime", "web"):
+    image_components = ["runtime", "web"]
+    if "rust_platform" in components:
+        image_components.append("rust_platform")
+    for name in image_components:
         image = components[name]
         require(isinstance(image, dict), f"components.{name} must be an object")
         require(set(image) == {"kind", "image", "digest"}, f"components.{name} has unexpected or missing fields")
@@ -271,6 +290,11 @@ def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
         require(IMAGE_RE.fullmatch(image.get("image", "")) is not None, f"components.{name}.image is invalid")
         require(DIGEST_RE.fullmatch(image.get("digest", "")) is not None, f"components.{name}.digest is invalid")
         require(image["image"].endswith(f":{version}"), f"components.{name}.image must use the manifest version")
+    if "rust_platform" in components:
+        require(
+            RUST_PLATFORM_IMAGE_RE.fullmatch(components["rust_platform"]["image"]) is not None,
+            "components.rust_platform.image must be a cerebro-rust image",
+        )
 
     validate_file_record(components["slack_companion"], "components.slack_companion", bundle_root, archive=True)
     validate_file_record(components["typescript_sdk"], "components.typescript_sdk", bundle_root, archive=True)
@@ -387,6 +411,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     build.add_argument("--runtime-digest", required=True)
     build.add_argument("--web-image", required=True)
     build.add_argument("--web-digest", required=True)
+    build.add_argument("--rust-platform-image")
+    build.add_argument("--rust-platform-digest")
     build.add_argument("--slack-archive", type=Path, required=True)
     build.add_argument("--slack-version", required=True)
     build.add_argument("--sdk-archive", type=Path, required=True)

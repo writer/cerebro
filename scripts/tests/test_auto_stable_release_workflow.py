@@ -43,7 +43,10 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
 
         self.assertIn("is superseded by main", workflow)
         self.assertIn("Main advanced to", workflow)
-        self.assertIn("rust-only-candidate.yml", workflow)
+        # The Rust-only candidate runs inside Candidate Build and has no push
+        # run of its own to poll by head SHA.
+        self.assertIn("for workflow in ci.yml rust-graph-replacement.yml; do", workflow)
+        self.assertNotIn("rust-only-candidate.yml; do", workflow)
         self.assertIn("signed-pr-rust-graph-${CANDIDATE_SHA}", workflow)
         self.assertIn("scripts/release/validate_release_notes.sh", workflow)
         self.assertIn("-f require_current_main=true", workflow)
