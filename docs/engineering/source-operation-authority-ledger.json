@@ -15,7 +15,7 @@
         "role": "durable_compatibility_read",
         "path": "internal/sourceruntime/service.go",
         "symbol": "readCompatibilitySourcePull",
-        "digest_sha256": "b04961096c7e44481cab80ed47fc25de277f163e6007c4898d44453283dbc9f2"
+        "digest_sha256": "4c0b4cd6af1ac3ea84b70219b2328621a1465c85049ccbb3dfa63633b212f5d8"
       },
       {
         "role": "durable_credential_resolution",
@@ -57,25 +57,25 @@
         "role": "durable_put_entrypoint",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.Put",
-        "digest_sha256": "01f1cf611b042f3116b844c4db0b533dd390b53d77f8cd018c0243dfe7635f34"
+        "digest_sha256": "4437e2da861d1c23e3811a76bc7c9b572376938362b80732e5d5e8bea402d3e7"
       },
       {
         "role": "durable_put_runtimes_entrypoint",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.PutRuntimes",
-        "digest_sha256": "44c6c30dd2e2629c4f0cc482c5b0ebe87aca80559a7f7336527e4471dcfc76c3"
+        "digest_sha256": "c9ce7ccefb51d25614776a9f4c40a0984ead3a8ef3636faec31032b0b68dd9ab"
       },
       {
         "role": "durable_runtime_creation",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.preparePutRuntime",
-        "digest_sha256": "12f59c590b28397ba8f529d16a15c910ac8241eecfa3c200f1c594adf2cd6bf4"
+        "digest_sha256": "7a4ebcd2a59202f97cf20bfbe9297b42b896d1aeca2b630c07aea796cdc49e69"
       },
       {
         "role": "durable_sync_entrypoint",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.Sync",
-        "digest_sha256": "94bd4119b741b438222846de902ed53f4392d51f80b350a334b3e40421259bd2"
+        "digest_sha256": "a98480fe8324b91791aeb99e647f88981faad6de329d8cd44136a2b787a2b32c"
       },
       {
         "role": "durable_sync_with_lease_entrypoint",

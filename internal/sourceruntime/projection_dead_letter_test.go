@@ -119,17 +119,17 @@ func (f projectionDeadLetterFixture) requireNoProgress(t *testing.T) {
 	}
 }
 
-func rejectedEvents(code string, ids ...string) map[string]error {
+func rejectedEvents(ids ...string) map[string]error {
 	failures := make(map[string]error, len(ids))
 	for _, id := range ids {
-		failures[id] = fmt.Errorf("rust projection returned 422: %w", recordRejectedProjectionError{code: code})
+		failures[id] = fmt.Errorf("rust projection returned 422: %w", recordRejectedProjectionError{code: "invalid_legacy_projection"})
 	}
 	return failures
 }
 
 func TestSyncDeadLettersRecordScopedProjectionRejection(t *testing.T) {
 	deadLetters := &projectionDeadLetterStore{}
-	fixture := newProjectionDeadLetterFixture(t, 3, rejectedEvents("invalid_legacy_projection", "event-2"), deadLetters)
+	fixture := newProjectionDeadLetterFixture(t, 3, rejectedEvents("event-2"), deadLetters)
 
 	response, err := fixture.sync()
 	if err != nil {
@@ -196,12 +196,12 @@ func TestSyncProjectionFailuresThatAreNotDeadLettered(t *testing.T) {
 		},
 		{
 			name:     "no dead-letter store",
-			failures: rejectedEvents("invalid_legacy_projection", "event-2"),
+			failures: rejectedEvents("event-2"),
 			wantErrs: []error{ports.ErrSourceProjectionRecordRejected},
 		},
 		{
 			name:        "dead-letter store write failure",
-			failures:    rejectedEvents("invalid_legacy_projection", "event-2"),
+			failures:    rejectedEvents("event-2"),
 			deadLetters: &projectionDeadLetterStore{err: storeFailure},
 			wantErrs:    []error{ports.ErrSourceProjectionRecordRejected, ports.ErrAppendLogDeadLetterBacklogHardLimit},
 		},
@@ -253,7 +253,7 @@ func TestSyncProjectionDeadLetterPageBound(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			deadLetters := &projectionDeadLetterStore{}
-			fixture := newProjectionDeadLetterFixture(t, test.events, rejectedEvents("invalid_legacy_projection", ids(test.rejected)...), deadLetters)
+			fixture := newProjectionDeadLetterFixture(t, test.events, rejectedEvents(ids(test.rejected)...), deadLetters)
 
 			_, err := fixture.sync()
 			if test.wantErr {
@@ -273,7 +273,7 @@ func TestSyncProjectionDeadLetterPageBound(t *testing.T) {
 
 func TestSyncProjectionDeadLetterIDIsStableAcrossRetries(t *testing.T) {
 	deadLetters := &projectionDeadLetterStore{}
-	fixture := newProjectionDeadLetterFixture(t, 2, rejectedEvents("invalid_legacy_projection", "event-1"), deadLetters)
+	fixture := newProjectionDeadLetterFixture(t, 2, rejectedEvents("event-1"), deadLetters)
 
 	if _, err := fixture.sync(); err != nil {
 		t.Fatalf("first Sync() error = %v", err)
