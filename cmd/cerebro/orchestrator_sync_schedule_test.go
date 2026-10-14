@@ -372,8 +372,8 @@ func TestRunOrchestratorIterationConfigChangeLiftsBackoff(t *testing.T) {
 func TestRunOrchestratorIterationRuntimeOwnedConfigChangeKeepsBackoff(t *testing.T) {
 	recorded := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{"connection": "env:OLD"}}
 	current := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source", Config: map[string]string{
-		"token":                    "env:OLD",
-		"__cerebro_runtime_status": "failed",
+		"connection":                              "env:OLD",
+		"__cerebro_runtime_status":                "failed",
 		"__cerebro_runtime_last_failure_category": "auth_error",
 	}}
 	store := heldRuntimeStore(t, recorded, current)
