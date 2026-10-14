@@ -132,7 +132,7 @@ safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
 | `cerebro.http.server.request.duration` | `s` | `http.request.method`, `http.route`, `http.response.status_code` | API latency distribution |
 | `cerebro.source_runtime.sync.runs` | `{run}` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync success/failure rate |
 | `cerebro.source_runtime.sync.duration` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync duration distribution |
-| `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, appended events, and projected entities/links |
+| `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, records dead-lettered after a record-scoped projection rejection, appended events, and projected entities/links |
 | `cerebro.source_runtime.watermark.lag` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Observed source freshness lag when a checkpoint watermark exists |
 | `cerebro.source_runtime.sync.short_circuits` | `{sync}` | `source_id`, `status`, `error_kind`, `contract_configured`, `short_circuit_reason`, `reconciliation_reason` | Source syncs that intentionally skipped full work after an unchanged or advanced checkpoint |
 | `cerebro.source_projection.runs` | `{projection}` | `source_id`, `event_kind`, `status` | Projection success/failure rate |
@@ -174,6 +174,33 @@ active publish cap and
 `sec.findings.v1.*` publish queueing. The checked-in alert templates in
 [`docs/operations/observability/headroom-alerts.promql`](observability/headroom-alerts.promql)
 include the dedicated `sec.findings.v1.recorded` + `no_response` page.
+
+### Source sync metrics
+
+The orchestrator records one `cerebro.source.sync.runs` data point for every
+runtime it considers in an iteration, including runtimes it skips. The
+`cerebro.source_runtime.*` metrics above are recorded inside the sync call, so
+they never see a runtime that was skipped for backoff or held by another
+orchestrator. Use these metrics to alert on sources that stopped syncing, not
+only sources whose syncs fail. Record counts, pages, and sync duration are
+already per-sync deltas in `cerebro.source_runtime.records` and
+`cerebro.source_runtime.sync.duration`; the orchestrator does not record them
+again.
+
+| Metric | Type | Unit | Attributes | Meaning |
+| --- | --- | --- | --- | --- |
+| `cerebro.source.sync.runs` | Counter | `{run}` | `source_id`, `outcome`, `failure_class`, `skip_reason` | Orchestrator sync decisions. `outcome` is `completed`, `failed`, or `skipped`. `failure_class` is the sync failure class (for example `unauthorized` or `rate_limited`), `lease_error` when the runtime lease could not be taken or fenced, or `none`. Backoff skips carry the stored class of the last failure. `skip_reason` is `backoff`, `lease_not_acquired`, or `none`. |
+| `cerebro.source.freshness.lag` | Histogram | `s` | `source_id`, `lag.kind` | Lag observed when the orchestrator finishes with a runtime. `lag.kind` is `sync` (since the runtime's recorded `last_synced_at`), `watermark` (since the checkpoint watermark), or `graph` (since the graph ingest run in the same iteration, so only after a sync that reached graph ingest). A kind is recorded only when its value is known; unknown lag is never recorded as `0`. Use the histogram max to find the most stale runtime of a source. |
+| `cerebro.source.sync.consecutive_failures` | Histogram | `{failure}` | `source_id` | Consecutive failed syncs from the stored sync schedule. Recorded only when the schedule store is configured and its value is known: `0` after a successful sync, the stored count after a failure or during a backoff skip. |
+| `cerebro.source.sync.circuit_open` | Counter | `{run}` | `source_id` | Orchestrator decisions that observed an open sync circuit, either because the runtime was skipped with its circuit open or because a failure opened it. |
+
+These metrics follow the same cardinality rule as the rest of this section:
+runtime and tenant IDs stay in the `orchestrator.runtime` wide event
+(`runtime_id`, `failure_class`, `consecutive_failures`, `circuit_open`,
+`next_attempt_at`). Lag and failure counts are histograms rather than gauges so
+that several runtimes of one source aggregate instead of overwriting each
+other. Attribute values are trimmed, lowercased, restricted to
+`[a-z0-9._-]`, and capped at 96 characters.
 
 ## Error Contract
 

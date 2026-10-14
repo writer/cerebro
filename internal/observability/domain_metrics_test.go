@@ -23,6 +23,7 @@ func TestRecordSourceRuntimeSyncMetricsAreLowCardinality(t *testing.T) {
 		RecordsScanned:       10,
 		RecordsAccepted:      9,
 		RecordsRejected:      1,
+		RecordsDeadLettered:  1,
 		EventsAppended:       9,
 		EntitiesProjected:    7,
 		LinksProjected:       4,
@@ -48,6 +49,7 @@ func TestRecordSourceRuntimeSyncMetricsAreLowCardinality(t *testing.T) {
 	assertNoForbiddenMetricAttributes(t, metrics["cerebro.source_runtime.records"])
 	assertNoForbiddenMetricAttributes(t, metrics["cerebro.source_runtime.sync.short_circuits"])
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.records"], "record.kind", "accepted")
+	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.records"], "record.kind", "dead_lettered")
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.records"], "source_id", "github")
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.sync.short_circuits"], "short_circuit_reason", "not_modified")
 	assertMetricHasAttribute(t, metrics["cerebro.source_runtime.sync.short_circuits"], "reconciliation_reason", "max_consecutive_skips")
@@ -285,6 +287,12 @@ func metricAttributeSets(metric metricdata.Metrics) []attribute.Set {
 		}
 		return sets
 	case metricdata.Histogram[float64]:
+		sets := make([]attribute.Set, 0, len(data.DataPoints))
+		for _, point := range data.DataPoints {
+			sets = append(sets, point.Attributes)
+		}
+		return sets
+	case metricdata.Histogram[int64]:
 		sets := make([]attribute.Set, 0, len(data.DataPoints))
 		for _, point := range data.DataPoints {
 			sets = append(sets, point.Attributes)

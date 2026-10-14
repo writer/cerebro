@@ -231,6 +231,7 @@ type SourceRuntimeSyncMetrics struct {
 	RecordsScanned       uint32
 	RecordsAccepted      uint32
 	RecordsRejected      uint32
+	RecordsDeadLettered  uint32
 	EventsAppended       uint32
 	EntitiesProjected    uint32
 	LinksProjected       uint32
@@ -376,6 +377,7 @@ func RecordSourceRuntimeSync(ctx context.Context, metrics SourceRuntimeSyncMetri
 	recordSourceRuntimeRecordCount(ctx, attrs, "scanned", int64(metrics.RecordsScanned))
 	recordSourceRuntimeRecordCount(ctx, attrs, "accepted", int64(metrics.RecordsAccepted))
 	recordSourceRuntimeRecordCount(ctx, attrs, "rejected", int64(metrics.RecordsRejected))
+	recordSourceRuntimeRecordCount(ctx, attrs, "dead_lettered", int64(metrics.RecordsDeadLettered))
 	recordSourceRuntimeRecordCount(ctx, attrs, "appended", int64(metrics.EventsAppended))
 	recordSourceRuntimeRecordCount(ctx, attrs, "entity_projected", int64(metrics.EntitiesProjected))
 	recordSourceRuntimeRecordCount(ctx, attrs, "link_projected", int64(metrics.LinksProjected))
