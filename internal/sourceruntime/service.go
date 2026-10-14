@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	appendlogrecovery "github.com/writer/cerebro/internal/appendlog/recovery"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
@@ -63,12 +64,24 @@ const (
 	runtimeLastSyncCompletedAtConfigKey   = "__cerebro_runtime_last_sync_completed_at"
 	runtimeShortCircuitReasonConfigKey    = "__cerebro_runtime_short_circuit_reason"
 	runtimeReconciliationReasonConfigKey  = "__cerebro_runtime_reconciliation_reason"
+
+	runtimeRecordsProjectionDeadLetteredConfigKey = "__cerebro_runtime_records_projection_dead_lettered"
+
+	// A projector contract break (for example a changed request schema) rejects
+	// every record with a record-scoped status. A page fails instead of
+	// dead-lettering once rejections exceed both bounds, so a systemic break
+	// cannot masquerade as many per-record failures while progress advances.
+	maxProjectionDeadLettersPerPage       = 10
+	maxProjectionDeadLetterPagePercentage = 25
 )
 
 var (
 	// ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
 	ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
 	ErrInvalidRequest     = errors.New("invalid source runtime request")
+	// ErrProjectionRejectionRateExceeded fails a page whose record-scoped
+	// projection rejections exceed the per-page dead-letter bound.
+	ErrProjectionRejectionRateExceeded = errors.New("source projection rejection rate exceeded")
 )
 
 // Service persists and executes source runtimes against the append log.
@@ -81,6 +94,18 @@ type Service struct {
 	resolver        sourceconfig.Resolver
 	eventAdmitter   eventadmission.Admitter
 	sourceWorker    sourceworker.Worker
+	deadLetters     ports.AppendLogDeadLetterStore
+}
+
+// WithProjectionDeadLetterStore lets sync isolate record-scoped projection
+// rejections as pending recovery records. Without it, any projection failure
+// fails the sync before progress.
+func (s *Service) WithProjectionDeadLetterStore(store ports.AppendLogDeadLetterStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.deadLetters = store
+	return s
 }
 
 // WithSourceExecutionWorkerPath enables the standalone credential-free worker
@@ -330,6 +355,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		recordsRejected        uint32
 		entitiesProjected      uint32
 		linksProjected         uint32
+		projectionDeadLettered uint32
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
 		eventLimitReached      bool
@@ -630,11 +656,24 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		ledgerDuration += time.Since(phaseStarted)
 		phaseStarted = time.Now()
+		pageProjectionDeadLettered := 0
 		if s.projector != nil {
 			for _, syncedEvent := range acceptedEvents {
 				result, err := s.projector.Project(ctx, syncedEvent)
 				if err != nil {
-					return nil, fmt.Errorf("project source event %q: %w", syncedEvent.GetId(), err)
+					if !errors.Is(err, ports.ErrSourceProjectionRecordRejected) || s.deadLetters == nil {
+						return nil, fmt.Errorf("project source event %q: %w", syncedEvent.GetId(), err)
+					}
+					if projectionDeadLettersExceedPageBound(pageProjectionDeadLettered+1, len(acceptedEvents)) {
+						return nil, fmt.Errorf("%w: page %d had %d dead-lettered of %d accepted records before another rejection: project source event %q: %w",
+							ErrProjectionRejectionRateExceeded, pageNumber, pageProjectionDeadLettered, len(acceptedEvents), syncedEvent.GetId(), err)
+					}
+					if deadLetterErr := s.recordProjectionDeadLetter(ctx, runtime, syncedEvent, err); deadLetterErr != nil {
+						return nil, fmt.Errorf("project source event %q: %w", syncedEvent.GetId(), errors.Join(err, deadLetterErr))
+					}
+					pageProjectionDeadLettered++
+					projectionDeadLettered++
+					continue
 				}
 				entitiesProjected += result.EntitiesProjected
 				linksProjected += result.LinksProjected
@@ -655,16 +694,17 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		ledgerDuration += time.Since(phaseStarted)
 		candidateRuntime.LastSyncedAt = timestamppb.Now()
 		updateRuntimeSyncStatus(candidateRuntime, runtimeSyncStatus{
-			Status:               "completed",
-			RecordsScanned:       recordsScanned,
-			RecordsAccepted:      eventsAppended,
-			RecordsRejected:      recordsRejected,
-			EntitiesProjected:    entitiesProjected,
-			LinksProjected:       linksProjected,
-			CompletedAt:          candidateRuntime.GetLastSyncedAt().AsTime().UTC(),
-			ContractConfigured:   len(eventContracts) > 0,
-			ShortCircuitReason:   shortCircuitReason,
-			ReconciliationReason: reconciliationReason,
+			Status:                        "completed",
+			RecordsScanned:                recordsScanned,
+			RecordsAccepted:               eventsAppended,
+			RecordsRejected:               recordsRejected,
+			RecordsProjectionDeadLettered: projectionDeadLettered,
+			EntitiesProjected:             entitiesProjected,
+			LinksProjected:                linksProjected,
+			CompletedAt:                   candidateRuntime.GetLastSyncedAt().AsTime().UTC(),
+			ContractConfigured:            len(eventContracts) > 0,
+			ShortCircuitReason:            shortCircuitReason,
+			ReconciliationReason:          reconciliationReason,
 		})
 		phaseStarted = time.Now()
 		if ledgerEnabled {
@@ -700,6 +740,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "records_accepted", Value: eventsAppended},
 			telemetry.Field{Key: "records_rejected", Value: recordsRejected},
 			telemetry.Field{Key: "records_quarantined", Value: recordsRejected},
+			telemetry.Field{Key: "records_projection_dead_lettered", Value: projectionDeadLettered},
 			telemetry.Field{Key: "events_appended", Value: eventsAppended},
 			telemetry.Field{Key: "entities_projected", Value: entitiesProjected},
 			telemetry.Field{Key: "links_projected", Value: linksProjected},
@@ -747,6 +788,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_accepted", Value: eventsAppended})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_rejected", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_quarantined", Value: recordsRejected})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_projection_dead_lettered", Value: projectionDeadLettered})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit", Value: req.GetEventLimit()})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit_reached", Value: eventLimitReached})
@@ -818,6 +860,31 @@ func sourceRuntimeErrorWithCancellationCause(ctx context.Context, err error) err
 		return cause
 	}
 	return errors.Join(cause, err)
+}
+
+func projectionDeadLettersExceedPageBound(deadLettered int, accepted int) bool {
+	return deadLettered > maxProjectionDeadLettersPerPage &&
+		deadLettered*100 > accepted*maxProjectionDeadLetterPagePercentage
+}
+
+func (s *Service) recordProjectionDeadLetter(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, projectionErr error) error {
+	record, err := appendlogrecovery.SourceProjectionDeadLetter(event, projectionErr)
+	if err != nil {
+		return fmt.Errorf("build source projection dead letter: %w", err)
+	}
+	if err := s.deadLetters.RecordAppendLogDeadLetter(ctx, record); err != nil {
+		return fmt.Errorf("record source projection dead letter %q: %w", record.ID, err)
+	}
+	telemetry.Event(ctx, "source_runtime.projection_dead_lettered", telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+		telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+		telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+		telemetry.Field{Key: "event.kind", Value: record.EventKind},
+		telemetry.Field{Key: "append_log.dead_letter.id", Value: record.ID},
+		telemetry.Field{Key: "error_category", Value: record.ErrorCategory},
+	))
+	telemetry.IncrementMain(ctx, "source_runtime.projection_dead_letter.count", 1)
+	return nil
 }
 
 func sourceRuntimeTelemetryStatus(err error) string {
@@ -905,16 +972,17 @@ func sourceRuntimeFailureCategory(err error) string {
 }
 
 type runtimeSyncStatus struct {
-	Status               string
-	RecordsScanned       uint32
-	RecordsAccepted      uint32
-	RecordsRejected      uint32
-	EntitiesProjected    uint32
-	LinksProjected       uint32
-	CompletedAt          time.Time
-	ContractConfigured   bool
-	ShortCircuitReason   string
-	ReconciliationReason string
+	Status                        string
+	RecordsScanned                uint32
+	RecordsAccepted               uint32
+	RecordsRejected               uint32
+	RecordsProjectionDeadLettered uint32
+	EntitiesProjected             uint32
+	LinksProjected                uint32
+	CompletedAt                   time.Time
+	ContractConfigured            bool
+	ShortCircuitReason            string
+	ReconciliationReason          string
 }
 
 func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyncStatus) {
@@ -930,6 +998,13 @@ func updateRuntimeSyncStatus(runtime *cerebrov1.SourceRuntime, status runtimeSyn
 	setRuntimeConfig(runtime.Config, runtimeRecordsRejectedConfigKey, fmt.Sprint(status.RecordsRejected))
 	setRuntimeConfig(runtime.Config, runtimeEntitiesProjectedConfigKey, fmt.Sprint(status.EntitiesProjected))
 	setRuntimeConfig(runtime.Config, runtimeLinksProjectedConfigKey, fmt.Sprint(status.LinksProjected))
+	// Written only when nonzero so runtime status maps keep their existing shape
+	// for syncs without dead letters.
+	if status.RecordsProjectionDeadLettered > 0 {
+		setRuntimeConfig(runtime.Config, runtimeRecordsProjectionDeadLetteredConfigKey, fmt.Sprint(status.RecordsProjectionDeadLettered))
+	} else {
+		delete(runtime.Config, runtimeRecordsProjectionDeadLetteredConfigKey)
+	}
 	if !status.CompletedAt.IsZero() {
 		setRuntimeConfig(runtime.Config, runtimeLastSyncCompletedAtConfigKey, status.CompletedAt.UTC().Format(time.RFC3339Nano))
 	}

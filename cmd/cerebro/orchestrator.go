@@ -475,7 +475,8 @@ func newOrchestratorRuntimeService(
 		store,
 		appendLog,
 		newOrchestratorSyncProjector(stateStore, projectors...),
-	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences).
+		WithProjectionDeadLetterStore(appendLogDeadLetterStore(stateStore))
 	if sourceWorkerPath != "" {
 		service.WithSourceExecutionWorkerPath(sourceWorkerPath)
 	}
