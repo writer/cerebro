@@ -43,6 +43,10 @@ type ProjectionResponseError struct {
 	StatusCode int
 	Code       string
 	Message    string
+	// RecordWrite is set only for per-event receipt writes. Authority and
+	// collection calls answer for a whole family, so their 4xx responses must
+	// fail the sync instead of being dead-lettered as one bad record.
+	RecordWrite bool
 }
 
 func (e *ProjectionResponseError) Error() string {
@@ -60,6 +64,9 @@ func (e *ProjectionResponseError) Is(target error) bool {
 	case ErrProjectionReceiptConflict:
 		return e.StatusCode == http.StatusConflict
 	case ports.ErrSourceProjectionRecordRejected:
+		if !e.RecordWrite {
+			return false
+		}
 		switch e.StatusCode {
 		case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
 			return true
@@ -260,6 +267,10 @@ func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *ce
 	}
 	var response legacyProjectionResponse
 	if err := c.doJSON(request, &response); err != nil {
+		var responseErr *ProjectionResponseError
+		if errors.As(err, &responseErr) {
+			responseErr.RecordWrite = true
+		}
 		return err
 	}
 	if !response.Recorded || strings.TrimSpace(response.DeltaDigest) == "" {

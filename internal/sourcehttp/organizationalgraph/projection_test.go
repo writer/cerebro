@@ -263,6 +263,9 @@ func TestAppendLogProjectorReportsLegacyReceiptConflictCause(t *testing.T) {
 	if !errors.Is(err, ErrProjectionReceiptConflict) {
 		t.Fatalf("Project() error = %v, want ErrProjectionReceiptConflict", err)
 	}
+	if !errors.Is(err, ports.ErrSourceProjectionRecordRejected) {
+		t.Fatalf("Project() error = %v, want a record-scoped rejection", err)
+	}
 	var responseErr *ProjectionResponseError
 	if !errors.As(err, &responseErr) ||
 		responseErr.StatusCode != http.StatusConflict ||
@@ -316,9 +319,10 @@ func TestProjectionResponseErrorClassifiesRecordScopedRejections(t *testing.T) {
 	for _, test := range tests {
 		t.Run(http.StatusText(test.status), func(t *testing.T) {
 			err := fmt.Errorf("project source event %q: %w", "event-1", &ProjectionResponseError{
-				Status:     http.StatusText(test.status),
-				StatusCode: test.status,
-				Code:       "invalid_legacy_projection",
+				Status:      http.StatusText(test.status),
+				StatusCode:  test.status,
+				Code:        "invalid_legacy_projection",
+				RecordWrite: true,
 			})
 			if got := errors.Is(err, ports.ErrSourceProjectionRecordRejected); got != test.recordRejected {
 				t.Fatalf("errors.Is(ErrSourceProjectionRecordRejected) = %v, want %v", got, test.recordRejected)
@@ -329,6 +333,36 @@ func TestProjectionResponseErrorClassifiesRecordScopedRejections(t *testing.T) {
 			var coder ports.SourceProjectionErrorCoder
 			if !errors.As(err, &coder) || coder.ProjectionErrorCode() != "invalid_legacy_projection" {
 				t.Fatalf("errors.As(SourceProjectionErrorCoder) did not expose the Rust code")
+			}
+		})
+	}
+}
+
+func TestAppendLogProjectorAuthorityRejectionIsNotRecordScoped(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/projections/authority" {
+					t.Errorf("unexpected request to %s after the authority lookup failed", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(status)
+				_ = json.NewEncoder(w).Encode(map[string]string{"code": "invalid_projection_scope"})
+			}))
+			defer server.Close()
+			client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+			if err != nil {
+				t.Fatalf("NewProjectionClient() error = %v", err)
+			}
+			_, err = NewAppendLogProjector(&sourceProjectorWithDeltaStub{}, client).Project(context.Background(), projectionEvent())
+			var responseErr *ProjectionResponseError
+			if !errors.As(err, &responseErr) || responseErr.StatusCode != status {
+				t.Fatalf("Project() error = %v, want the authority response error", err)
+			}
+			if errors.Is(err, ports.ErrSourceProjectionRecordRejected) {
+				t.Fatalf("Project() error = %v, want a family-scoped failure that fails the sync", err)
 			}
 		})
 	}
