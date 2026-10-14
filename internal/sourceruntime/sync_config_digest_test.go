@@ -32,11 +32,11 @@ func TestSyncConfigDigestIsStableAcrossMapOrdering(t *testing.T) {
 
 func TestSyncConfigDigestIgnoresRuntimeOwnedKeysOnly(t *testing.T) {
 	t.Parallel()
-	base := &cerebrov1.SourceRuntime{SourceId: "github", Config: map[string]string{"token": "env:A", "org": "writer"}}
+	base := &cerebrov1.SourceRuntime{SourceId: "github", Config: map[string]string{"connection": "env:A", "org": "writer"}}
 	digest := SyncConfigDigest(base)
 
 	runtimeOwned := &cerebrov1.SourceRuntime{SourceId: "github", Config: map[string]string{
-		"token":                             "env:A",
+		"connection":                        "env:A",
 		"org":                               "writer",
 		runtimeStatusConfigKey:              "failed",
 		runtimeLastFailureCategoryConfigKey: "auth_error",
@@ -47,10 +47,10 @@ func TestSyncConfigDigestIgnoresRuntimeOwnedKeysOnly(t *testing.T) {
 	}
 
 	for name, changed := range map[string]*cerebrov1.SourceRuntime{
-		"credential reference": {SourceId: "github", Config: map[string]string{"token": "env:B", "org": "writer"}},
-		"added key":            {SourceId: "github", Config: map[string]string{"token": "env:A", "org": "writer", "repo": "cerebro"}},
-		"source id":            {SourceId: "gitlab", Config: map[string]string{"token": "env:A", "org": "writer"}},
-		"shifted boundary":     {SourceId: "github", Config: map[string]string{"token": "env:Aorg", "": "writer"}},
+		"credential reference": {SourceId: "github", Config: map[string]string{"connection": "env:B", "org": "writer"}},
+		"added key":            {SourceId: "github", Config: map[string]string{"connection": "env:A", "org": "writer", "repo": "cerebro"}},
+		"source id":            {SourceId: "gitlab", Config: map[string]string{"connection": "env:A", "org": "writer"}},
+		"shifted boundary":     {SourceId: "github", Config: map[string]string{"connection": "env:Aorg", "": "writer"}},
 	} {
 		if got := SyncConfigDigest(changed); got == digest {
 			t.Fatalf("%s did not change digest", name)
