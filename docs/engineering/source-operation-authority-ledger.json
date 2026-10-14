@@ -75,7 +75,7 @@
         "role": "durable_sync_entrypoint",
         "path": "internal/sourceruntime/service.go",
         "symbol": "Service.Sync",
-        "digest_sha256": "a98480fe8324b91791aeb99e647f88981faad6de329d8cd44136a2b787a2b32c"
+        "digest_sha256": "b9438e4197589c8691028fd15f33938bc9b8c37fa01c1f1eb06e65ac29b40a22"
       },
       {
         "role": "durable_sync_with_lease_entrypoint",

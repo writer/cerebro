@@ -415,6 +415,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			RecordsScanned:       recordsScanned,
 			RecordsAccepted:      eventsAppended,
 			RecordsRejected:      recordsRejected,
+			RecordsDeadLettered:  projectionDeadLettered,
 			EventsAppended:       eventsAppended,
 			EntitiesProjected:    entitiesProjected,
 			LinksProjected:       linksProjected,

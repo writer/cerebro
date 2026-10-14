@@ -132,7 +132,7 @@ safe to aggregate in CloudWatch, Prometheus, or a vendor backend.
 | `cerebro.http.server.request.duration` | `s` | `http.request.method`, `http.route`, `http.response.status_code` | API latency distribution |
 | `cerebro.source_runtime.sync.runs` | `{run}` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync success/failure rate |
 | `cerebro.source_runtime.sync.duration` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Source sync duration distribution |
-| `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, appended events, and projected entities/links |
+| `cerebro.source_runtime.records` | `{record}` | `source_id`, `status`, `error_kind`, `contract_configured`, `record.kind` | Pages, scanned records, accepted/rejected events, records dead-lettered after a record-scoped projection rejection, appended events, and projected entities/links |
 | `cerebro.source_runtime.watermark.lag` | `s` | `source_id`, `status`, `error_kind`, `contract_configured` | Observed source freshness lag when a checkpoint watermark exists |
 | `cerebro.source_runtime.sync.short_circuits` | `{sync}` | `source_id`, `status`, `error_kind`, `contract_configured`, `short_circuit_reason`, `reconciliation_reason` | Source syncs that intentionally skipped full work after an unchanged or advanced checkpoint |
 | `cerebro.source_projection.runs` | `{projection}` | `source_id`, `event_kind`, `status` | Projection success/failure rate |
