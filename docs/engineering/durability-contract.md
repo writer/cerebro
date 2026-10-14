@@ -28,6 +28,9 @@ path until a claim event stream lands.
   accepted events have been appended and projected through the configured
   projector.
 - Source runtime page recovery must follow [`SOURCE_SYNC_RECOVERY.md`](source-sync-recovery.md) until a transactional sync ledger or outbox exists.
+- Source runtime sync may advance past an appended event whose projection was rejected for that record alone only after
+  recording it as a pending `source_projection` dead letter in Postgres, within the per-page rejection bound; repair
+  re-projects the appended event.
 - Workflow projection must happen after the corresponding workflow event append.
 - Hosted knowledge decision, action, and outcome writes use `durable_required` mode. A missing append log fails the
   request before projection. `legacy_projection_only` is an explicit local-development compatibility mode and reports

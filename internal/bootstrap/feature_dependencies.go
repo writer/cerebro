@@ -60,6 +60,7 @@ type runtimeFeatureDeps struct {
 	Projector          ports.SourceProjector
 	RuntimeConfigStore ports.StateStore
 	Definitions        ports.ConnectorDefinitionStore
+	DeadLetters        ports.AppendLogDeadLetterStore
 }
 
 func newRuntimeFeatureDeps(deps Dependencies, sources *sourcecdk.Registry) runtimeFeatureDeps {
@@ -70,6 +71,7 @@ func newRuntimeFeatureDeps(deps Dependencies, sources *sourcecdk.Registry) runti
 		Projector:          appendLogSourceProjector(deps),
 		RuntimeConfigStore: deps.StateStore,
 		Definitions:        connectorDefinitionStore(deps.StateStore),
+		DeadLetters:        appendLogDeadLetterStore(deps.StateStore),
 	}
 }
 
@@ -81,7 +83,7 @@ func newRuntimeFeatureService(cfg config.Config, deps runtimeFeatureDeps) *sourc
 		deps.Projector,
 	).WithConnectorDefinitionStore(deps.Definitions).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
 		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.RuntimeConfigStore, sourceID, values)
-	}).WithSourceExecutionWorkerPath(cfg.SourceRuntime.SourceWorkerPath)
+	}).WithSourceExecutionWorkerPath(cfg.SourceRuntime.SourceWorkerPath).WithProjectionDeadLetterStore(deps.DeadLetters)
 }
 
 type claimFeatureDeps struct {

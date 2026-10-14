@@ -297,6 +297,56 @@ func TestProjectionResponseErrorBoundsDetailAndKeepsPlainStatus(t *testing.T) {
 	}
 }
 
+func TestProjectionResponseErrorClassifiesRecordScopedRejections(t *testing.T) {
+	tests := []struct {
+		status          int
+		recordRejected  bool
+		receiptConflict bool
+	}{
+		{status: http.StatusBadRequest, recordRejected: true},
+		{status: http.StatusConflict, recordRejected: true, receiptConflict: true},
+		{status: http.StatusUnprocessableEntity, recordRejected: true},
+		{status: http.StatusUnauthorized},
+		{status: http.StatusNotFound},
+		{status: http.StatusTooManyRequests},
+		{status: http.StatusInternalServerError},
+		{status: http.StatusBadGateway},
+		{status: http.StatusServiceUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(http.StatusText(test.status), func(t *testing.T) {
+			err := fmt.Errorf("project source event %q: %w", "event-1", &ProjectionResponseError{
+				Status:     http.StatusText(test.status),
+				StatusCode: test.status,
+				Code:       "invalid_legacy_projection",
+			})
+			if got := errors.Is(err, ports.ErrSourceProjectionRecordRejected); got != test.recordRejected {
+				t.Fatalf("errors.Is(ErrSourceProjectionRecordRejected) = %v, want %v", got, test.recordRejected)
+			}
+			if got := errors.Is(err, ErrProjectionReceiptConflict); got != test.receiptConflict {
+				t.Fatalf("errors.Is(ErrProjectionReceiptConflict) = %v, want %v", got, test.receiptConflict)
+			}
+			var coder ports.SourceProjectionErrorCoder
+			if !errors.As(err, &coder) || coder.ProjectionErrorCode() != "invalid_legacy_projection" {
+				t.Fatalf("errors.As(SourceProjectionErrorCoder) did not expose the Rust code")
+			}
+		})
+	}
+}
+
+func TestAppendLogProjectorTransportFailureIsNotRecordScoped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	server.Close()
+	_, err = NewAppendLogProjector(nil, client).Project(context.Background(), projectionEvent())
+	if err == nil || errors.Is(err, ports.ErrSourceProjectionRecordRejected) {
+		t.Fatalf("Project() error = %v, want a non-record-scoped transport failure", err)
+	}
+}
+
 func TestAppendLogProjectorRecordsCollectionManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/projections/collections" {

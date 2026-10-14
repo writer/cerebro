@@ -56,7 +56,21 @@ func (e *ProjectionResponseError) Error() string {
 }
 
 func (e *ProjectionResponseError) Is(target error) bool {
-	return target == ErrProjectionReceiptConflict && e.StatusCode == http.StatusConflict
+	switch target {
+	case ErrProjectionReceiptConflict:
+		return e.StatusCode == http.StatusConflict
+	case ports.ErrSourceProjectionRecordRejected:
+		switch e.StatusCode {
+		case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
+			return true
+		}
+	}
+	return false
+}
+
+// ProjectionErrorCode returns the Rust error code, which is already bounded.
+func (e *ProjectionResponseError) ProjectionErrorCode() string {
+	return e.Code
 }
 
 func projectionResponseError(response *http.Response) error {

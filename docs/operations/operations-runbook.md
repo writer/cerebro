@@ -135,6 +135,12 @@ expiry reported by `list` before retrying. Failed publication releases the
 claim and records the bounded `append_failed` category. A process that exits
 while holding a claim leaves the record recoverable after lease expiry.
 
+Records with operation `source_projection` are source events that are already in
+the append log but whose projection was rejected for that record alone. Replay
+re-projects them through the configured source projector instead of publishing
+them again; a failed re-projection releases the claim with the projector's
+bounded error code for a rejected record, or `projection_failed` otherwise. See [`source-sync-recovery.md`](../engineering/source-sync-recovery.md).
+
 Discard a record only after confirming the event should not be replayed:
 
 ```bash
