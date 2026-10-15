@@ -1,5 +1,6 @@
 "use client";
 
+import { Activity, CircleCheck, ShieldAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { GRCFinding, GRCListMeta } from "@/lib/grc";
@@ -20,7 +21,7 @@ import {
 export function Badge({ value, tone = "status" }: { value: string; tone?: "severity" | "status" }) {
   const className = badgeClassFor(value, tone);
   return (
-    <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${className}`}>
       {humanize(value)}
     </span>
   );
@@ -35,8 +36,8 @@ export function RiskBadge({ score, level }: { score?: number; level?: string }) 
   const normalizedLevel = (level || riskLevelFromScore(numericScore)).toLowerCase();
   const className = riskBadgeClassFor(normalizedLevel);
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${className}`}>
-      <span>{numericScore > 0 ? numericScore : "\u2014"}</span>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${className}`}>
+      <span className="tabular-nums font-bold">{numericScore > 0 ? numericScore : "\u2014"}</span>
       <span>{humanize(normalizedLevel)}</span>
     </span>
   );
@@ -77,25 +78,39 @@ export function RiskBreakdown({ finding }: { finding: GRCFinding }) {
   );
 }
 
+export type MetricIntent = "neutral" | "danger" | "warning" | "success";
+
+const metricIntentIcons: Record<MetricIntent, LucideIcon> = {
+  danger: ShieldAlert,
+  warning: TriangleAlert,
+  success: CircleCheck,
+  neutral: Activity,
+};
+
+export function MetricBubble({ intent = "neutral", icon }: { intent?: MetricIntent; icon?: LucideIcon }) {
+  const Icon = icon ?? metricIntentIcons[intent];
+  return (
+    <span className={`icon-bubble tone-${intent}`} aria-hidden="true">
+      <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+    </span>
+  );
+}
+
 export function MetricCard({
   label,
   value,
   detail,
+  icon,
   intent = "neutral",
   state = "ready",
 }: {
   label: string;
   value: ReactNode;
   detail?: ReactNode;
-  intent?: "neutral" | "danger" | "warning" | "success";
+  icon?: LucideIcon;
+  intent?: MetricIntent;
   state?: RuntimeState;
 }) {
-  const accents: Record<string, string> = {
-    danger: "border-l-red-500",
-    warning: "border-l-amber-500",
-    success: "border-l-emerald-500",
-    neutral: "border-l-[color:var(--border-strong)]",
-  };
   const stateIntent: Record<RuntimeState, "neutral" | "danger" | "warning" | "success"> = {
     empty: "neutral",
     error: "danger",
@@ -109,11 +124,17 @@ export function MetricCard({
   const deferred = ["loading", "unavailable", "permission-denied", "error"].includes(state);
   const displayedValue = deferred ? metricValueForState({ state, value: "" }) : value;
   const displayedDetail = metricDetailForState({ state, detail: typeof detail === "string" ? detail : undefined });
+  const tone = stateIntent[state];
   return (
-    <div className={`surface-panel border-l-[3px] ${accents[stateIntent[state]]} p-4`}>
-      <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
-      <div className="mt-2 break-words text-2xl font-semibold text-[var(--text-primary)]">{displayedValue}</div>
-      {(displayedDetail || detail) && <div className="mt-1.5 text-[13px] text-[var(--text-muted)]">{displayedDetail || detail}</div>}
+    <div className={`surface-panel metric-tile tone-${tone} p-5`}>
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="eyebrow pt-1">{label}</div>
+        <MetricBubble intent={tone} icon={icon} />
+      </div>
+      <div className="metric-value relative mt-3 break-words">{displayedValue}</div>
+      {(displayedDetail || detail) && (
+        <div className="relative mt-2 text-[13px] leading-5 text-[var(--text-secondary)]">{displayedDetail || detail}</div>
+      )}
     </div>
   );
 }
@@ -177,21 +198,21 @@ export function ProgressCard({
   href?: string;
 }) {
   const content = (
-    <div className="surface-panel p-4 transition hover:border-[color:var(--ring)]">
+    <div className="surface-panel is-interactive p-5">
       <div className="flex items-center justify-between">
         <div className="text-[13px] font-semibold text-[var(--text-primary)]">{title}</div>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-[var(--text-muted)]">
           <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
         </svg>
       </div>
-      <div className="mt-4 text-3xl font-semibold tracking-tight text-[var(--text-primary)]">{Math.round(percent)}%</div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+      <div className="metric-value mt-4">{Math.round(percent)}%</div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
         <div
-          className="h-full rounded-full bg-[var(--primary)] transition-all duration-500"
-          style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${Math.max(0, Math.min(100, percent))}%`, background: "var(--primary-gradient)" }}
         />
       </div>
-      <div className="mt-2 flex items-center justify-between text-[12px] text-[var(--text-muted)]">
+      <div className="mt-2.5 flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
         <span>{detail}</span>
         {total && <span>{total}</span>}
       </div>
@@ -203,7 +224,7 @@ export function ProgressCard({
 
 export function AttentionBanner({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
       <div className="flex items-center gap-2.5">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5 text-amber-600">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
@@ -251,10 +272,10 @@ export function PageHeader({
   contractId?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4 pb-6" data-grc-page={contractId}>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h1>
-        <p className="mt-1 max-w-3xl text-[13px] leading-5 text-[var(--text-muted)]">{description}</p>
+    <div className="flex flex-wrap items-end justify-between gap-4 pb-7 pt-1" data-grc-page={contractId}>
+      <div className="min-w-0">
+        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">{title}</h1>
+        <p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-secondary)]">{description}</p>
       </div>
       {action}
     </div>
@@ -263,17 +284,22 @@ export function PageHeader({
 
 export function Panel({
   title,
+  description,
   children,
   action,
 }: {
   title: string;
+  description?: ReactNode;
   children: ReactNode;
   action?: ReactNode;
 }) {
   return (
     <section className="surface-panel">
-      <div className="flex items-center justify-between border-b border-[color:var(--border)] px-5 py-3.5">
-        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">{title}</h2>
+      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--border)] px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{title}</h2>
+          {description && <p className="mt-1 text-[13px] leading-5 text-[var(--text-muted)]">{description}</p>}
+        </div>
         {action}
       </div>
       <div className="p-5">{children}</div>
