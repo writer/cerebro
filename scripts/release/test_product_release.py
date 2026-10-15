@@ -11,6 +11,8 @@ from pathlib import Path
 from scripts.release.product_release import (
     EVENT_SCHEMA_VERSION,
     MAX_NPM_PACKAGE_JSON_BYTES,
+    OPTIONAL_COMPONENTS,
+    REQUIRED_COMPONENTS,
     ManifestError,
     build_manifest,
     build_release_event,
@@ -129,6 +131,81 @@ class ProductReleaseTest(unittest.TestCase):
         first = json.dumps(manifest, indent=2, sort_keys=True)
         second = json.dumps(build_manifest(self.args()), indent=2, sort_keys=True)
         self.assertEqual(first, second)
+
+    def rust_platform_args(self) -> argparse.Namespace:
+        args = self.args()
+        args.rust_platform_image = f"ghcr.io/writer/cerebro-rust:candidate-{COMMIT}"
+        args.rust_platform_digest = "sha256:" + "d" * 64
+        return args
+
+    def test_build_includes_rust_platform_image_when_provided(self) -> None:
+        manifest = build_manifest(self.rust_platform_args())
+        validate_manifest(manifest, self.root)
+        self.assertEqual(
+            manifest["components"]["rust_platform"],
+            {
+                "kind": "oci-image",
+                "image": f"ghcr.io/writer/cerebro-rust:candidate-{COMMIT}",
+                "digest": "sha256:" + "d" * 64,
+            },
+        )
+
+    def test_build_omits_rust_platform_image_when_absent(self) -> None:
+        manifest = build_manifest(self.args())
+        self.assertNotIn("rust_platform", manifest["components"])
+        validate_manifest(manifest, self.root)
+
+    def test_build_requires_rust_platform_image_and_digest_together(self) -> None:
+        for field in ("rust_platform_image", "rust_platform_digest"):
+            args = self.rust_platform_args()
+            setattr(args, field, None)
+            with self.subTest(missing=field):
+                with self.assertRaisesRegex(ManifestError, "must be provided together"):
+                    build_manifest(args)
+
+    def test_rejects_rust_platform_image_for_another_version(self) -> None:
+        args = self.rust_platform_args()
+        args.rust_platform_image = "ghcr.io/writer/cerebro-rust:candidate-" + "c" * 40
+        with self.assertRaisesRegex(ManifestError, "rust_platform.image must use the manifest version"):
+            validate_manifest(build_manifest(args))
+
+    def test_rejects_rust_platform_image_from_another_repository(self) -> None:
+        args = self.rust_platform_args()
+        args.rust_platform_image = f"ghcr.io/writer/cerebro:candidate-{COMMIT}"
+        with self.assertRaisesRegex(ManifestError, "rust_platform.image must be a cerebro-rust image"):
+            validate_manifest(build_manifest(args))
+
+    def test_rejects_invalid_rust_platform_digest(self) -> None:
+        args = self.rust_platform_args()
+        args.rust_platform_digest = "sha256:" + "d" * 63
+        with self.assertRaisesRegex(ManifestError, "rust_platform.digest is invalid"):
+            validate_manifest(build_manifest(args))
+
+    def test_rejects_rust_platform_with_extra_fields(self) -> None:
+        manifest = build_manifest(self.rust_platform_args())
+        manifest["components"]["rust_platform"]["platform"] = "linux/amd64"
+        with self.assertRaisesRegex(ManifestError, "rust_platform has unexpected or missing fields"):
+            validate_manifest(manifest)
+
+    def test_schema_keeps_rust_platform_optional_and_matches_validator(self) -> None:
+        schema_path = Path(__file__).resolve().parents[2] / "schemas" / "product-release.schema.json"
+        components = json.loads(schema_path.read_text(encoding="utf-8"))["properties"]["components"]
+        self.assertEqual(components["properties"]["rust_platform"], {"$ref": "#/$defs/image"})
+        self.assertEqual(set(components["required"]), REQUIRED_COMPONENTS)
+        self.assertEqual(set(components["properties"]), REQUIRED_COMPONENTS | OPTIONAL_COMPONENTS)
+        self.assertFalse(components["additionalProperties"])
+
+    def test_rejects_unknown_component(self) -> None:
+        manifest = build_manifest(self.args())
+        manifest["components"]["worker"] = dict(manifest["components"]["runtime"])
+        with self.assertRaisesRegex(ManifestError, "components has unexpected or missing fields"):
+            validate_manifest(manifest)
+
+    def test_rejects_missing_required_component(self) -> None:
+        manifest = build_manifest(self.rust_platform_args())
+        del manifest["components"]["web"]
+        with self.assertRaisesRegex(ManifestError, "components has unexpected or missing fields"):
+            validate_manifest(manifest)
 
     def test_rejects_archive_digest_mismatch(self) -> None:
         manifest = build_manifest(self.args())

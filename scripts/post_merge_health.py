@@ -22,14 +22,13 @@ SUCCESSFUL_CONCLUSIONS = {"success", "skipped", "neutral"}
 # Workflows that intentionally serialize behind one active run per branch. A
 # run of one of these cancelled behind a newer main commit was superseded, not
 # broken; the newer commit's run carries the evidence.
-SERIALIZED_WORKFLOW_NAMES = frozenset({"Candidate Build", "Rust-only Candidate"})
+SERIALIZED_WORKFLOW_NAMES = frozenset({"Candidate Build"})
 REQUIRED_WORKFLOW_NAMES = frozenset(
     {
         "Candidate Build",
         "CI",
         "CodeQL",
         "Leak Check",
-        "Rust-only Candidate",
         "Secret Scan",
         "Semgrep",
     }

@@ -53,8 +53,8 @@ against the running stack. This stack creates its own Postgres, Neo4j,
 JetStream, and Docker volumes. Stop
 it with `docker compose -f docker-compose.yml -f docker-compose.rust.yml down --volumes`.
 The `Ephemeral Cerebro` GitHub workflow runs the same topology on an ARM64
-runner for a main commit with successful standard and Rust-only candidate
-builds. It verifies image attestations, Go-to-Rust graph reads, dependency
+runner for a main commit with a successful Candidate Build, which publishes
+both the standard and Rust-only candidate images. It verifies image attestations, Go-to-Rust graph reads, dependency
 failure, recovery, and complete volume removal. It does not connect to a shared
 development graph.
 

@@ -151,18 +151,18 @@ jobs:
 
     def test_summarize_keeps_a_cancelled_candidate_failing_without_a_newer_run(self):
         cancelled = {
-            "workflow_name": "Rust-only Candidate",
+            "workflow_name": "Candidate Build",
             "head_sha": "abc",
             "status": "completed",
             "conclusion": "cancelled",
             "created_at": "2026-09-01T10:00:00Z",
         }
-        older = {"workflow_name": "Rust-only Candidate", "head_sha": "older", "status": "completed", "conclusion": "success", "created_at": "2026-09-01T09:00:00Z"}
-        same_head = {"workflow_name": "Rust-only Candidate", "head_sha": "abc", "status": "completed", "conclusion": "cancelled", "created_at": "2026-09-01T10:30:00Z"}
+        older = {"workflow_name": "Candidate Build", "head_sha": "older", "status": "completed", "conclusion": "success", "created_at": "2026-09-01T09:00:00Z"}
+        same_head = {"workflow_name": "Candidate Build", "head_sha": "abc", "status": "completed", "conclusion": "cancelled", "created_at": "2026-09-01T10:30:00Z"}
         context = pm.summarize(
             branch="main",
             head_sha="abc",
-            runs=[*[run for run in successful_required_runs() if run["workflow_name"] != "Rust-only Candidate"], cancelled],
+            runs=[*[run for run in successful_required_runs() if run["workflow_name"] != "Candidate Build"], cancelled],
             branch_runs=[cancelled, older, same_head],
         )
         self.assertFalse(context["healthy"])

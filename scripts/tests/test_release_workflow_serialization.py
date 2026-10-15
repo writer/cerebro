@@ -134,6 +134,21 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
 
         self.assertIn("artifact-metadata: write", manifest)
 
+    def test_candidate_build_grants_every_permission_the_rust_only_jobs_request(self) -> None:
+        candidate = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        caller = candidate.split("\n  rust-platform:\n", 1)[1].split("\n  web-image:\n", 1)[0]
+        granted = set(re.findall(r"^      ([a-z-]+): (read|write)$", caller, re.MULTILINE))
+        self.assertIn("uses: ./.github/workflows/rust-only-candidate.yml", caller)
+
+        called = RUST_ONLY_CANDIDATE_WORKFLOW.read_text(encoding="utf-8")
+        requested = set(re.findall(r"^      ([a-z-]+): (read|write)$", called, re.MULTILINE))
+        self.assertTrue(requested)
+        for scope, level in requested:
+            self.assertTrue(
+                (scope, "write") in granted or (scope, level) in granted,
+                f"rust-platform caller job does not grant {scope}: {level}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,6 +53,8 @@ jobs:
       digest: ${{ steps.receipt.outputs.digest }}
       web_image: ${{ steps.receipt.outputs.web_image }}
       web_digest: ${{ steps.receipt.outputs.web_digest }}
+      rust_platform_image: ${{ steps.receipt.outputs.rust_platform_image }}
+      rust_platform_digest: ${{ steps.receipt.outputs.rust_platform_digest }}
       product_manifest_sha256: ${{ steps.receipt.outputs.product_manifest_sha256 }}
       smoke_evidence_mode: ${{ steps.smoke.outputs.mode }}
     steps:
@@ -132,10 +134,24 @@ jobs:
           web_digest="$(jq -r .web_image_digest candidate/candidate-receipt.json)"
           product_manifest_sha256="$(jq -r .product_manifest_sha256 candidate/candidate-receipt.json)"
           rust_e2e_receipt_sha256="$(jq -r .rust_e2e_receipt_sha256 candidate/candidate-receipt.json)"
+          rust_platform_image="$(jq -r .rust_platform_image candidate/candidate-receipt.json)"
+          rust_platform_digest="$(jq -r .rust_platform_image_digest candidate/candidate-receipt.json)"
+          rust_only_e2e_receipt_sha256="$(jq -r .rust_only_e2e_receipt_sha256 candidate/candidate-receipt.json)"
           [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "${web_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${rust_platform_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "${product_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]]
           [[ "${rust_e2e_receipt_sha256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${rust_only_e2e_receipt_sha256}" =~ ^[0-9a-f]{64}$ ]]
+          test "${rust_platform_image}" = "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${EXPECTED_SHA}"
+          test "$(jq -r .components.rust_platform.image candidate/cerebro-product-release.json)" = "${rust_platform_image}"
+          test "$(jq -r .components.rust_platform.digest candidate/cerebro-product-release.json)" = \
+            "${rust_platform_digest}"
+          test "$(sha256sum candidate/rust-only-e2e-receipt.json | awk '{print $1}')" = \
+            "${rust_only_e2e_receipt_sha256}"
+          test "$(jq -r .schema_version candidate/rust-only-e2e-receipt.json)" = "cerebro.rust-only-e2e/v1"
+          test "$(jq -r .commit candidate/rust-only-e2e-receipt.json)" = "${EXPECTED_SHA}"
+          test "$(jq -r .image_digest candidate/rust-only-e2e-receipt.json)" = "${rust_platform_digest}"
           test "$(sha256sum candidate/cerebro-product-release.json | awk '{print $1}')" = "${product_manifest_sha256}"
           test "$(sha256sum candidate/rust-organizational-e2e-receipt.json | awk '{print $1}')" = \
             "${rust_e2e_receipt_sha256}"
@@ -149,6 +165,8 @@ jobs:
             echo "digest=${digest}"
             echo "web_image=${web_image}"
             echo "web_digest=${web_digest}"
+            echo "rust_platform_image=${rust_platform_image}"
+            echo "rust_platform_digest=${rust_platform_digest}"
             echo "product_manifest_sha256=${product_manifest_sha256}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -172,6 +190,8 @@ jobs:
           CANDIDATE_RUNTIME_DIGEST: ${{ steps.receipt.outputs.digest }}
           CANDIDATE_IMAGE: ${{ steps.receipt.outputs.image }}
           CANDIDATE_DIGEST: ${{ steps.receipt.outputs.digest }}
+          RUST_PLATFORM_IMAGE: ${{ steps.receipt.outputs.rust_platform_image }}
+          RUST_PLATFORM_DIGEST: ${{ steps.receipt.outputs.rust_platform_digest }}
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
@@ -198,6 +218,16 @@ jobs:
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$" \
             "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}" >/dev/null
+          rust_platform_ref="${RUST_PLATFORM_IMAGE%:*}@${RUST_PLATFORM_DIGEST}"
+          cosign verify \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/rust-only-candidate.yml@refs/heads/main$" \
+            "${rust_platform_ref}" >/dev/null
+          cosign verify-attestation \
+            --type "https://writer.com/cerebro/rust-only-e2e/v1" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/rust-only-candidate.yml@refs/heads/main$" \
+            "${rust_platform_ref}" >/dev/null
           make release-smoke docs-drift-check readme-check oss-audit
 
       - name: Upload verified smoke evidence
@@ -225,6 +255,7 @@ jobs:
     outputs:
       digest: ${{ needs.verify-candidate.outputs.digest }}
       web_digest: ${{ needs.verify-candidate.outputs.web_digest }}
+      rust_platform_digest: ${{ needs.verify-candidate.outputs.rust_platform_digest }}
       product_manifest_sha256: ${{ steps.product.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -258,6 +289,8 @@ jobs:
           IMAGE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
           WEB_CANDIDATE_IMAGE: ${{ needs.verify-candidate.outputs.web_image }}
           WEB_IMAGE_DIGEST: ${{ needs.verify-candidate.outputs.web_digest }}
+          RUST_PLATFORM_CANDIDATE_IMAGE: ${{ needs.verify-candidate.outputs.rust_platform_image }}
+          RUST_PLATFORM_DIGEST: ${{ needs.verify-candidate.outputs.rust_platform_digest }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REQUIRE_CURRENT_MAIN: ${{ inputs.require_current_main }}
           CANDIDATE_SHA: ${{ needs.verify-candidate.outputs.sha }}
@@ -273,22 +306,36 @@ jobs:
           fi
           image_base="ghcr.io/${GITHUB_REPOSITORY}"
           web_image_base="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web"
+          rust_platform_image_base="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust"
+          test "${RUST_PLATFORM_CANDIDATE_IMAGE%:*}" = "${rust_platform_image_base}"
           cosign verify "${image_base}@${IMAGE_DIGEST}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$"
           cosign verify "${web_image_base}@${WEB_IMAGE_DIGEST}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$"
+          cosign verify "${rust_platform_image_base}@${RUST_PLATFORM_DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/rust-only-candidate.yml@refs/heads/main$"
           resolved="$(docker buildx imagetools inspect "${CANDIDATE_IMAGE}" --format '{{.Manifest.Digest}}')"
           test "${resolved}" = "${IMAGE_DIGEST}"
           web_resolved="$(docker buildx imagetools inspect "${WEB_CANDIDATE_IMAGE}" --format '{{.Manifest.Digest}}')"
           test "${web_resolved}" = "${WEB_IMAGE_DIGEST}"
+          rust_platform_resolved="$(
+            docker buildx imagetools inspect "${RUST_PLATFORM_CANDIDATE_IMAGE}" --format '{{.Manifest.Digest}}'
+          )"
+          test "${rust_platform_resolved}" = "${RUST_PLATFORM_DIGEST}"
           docker buildx imagetools create -t "${image_base}:${RELEASE_TAG}" "${image_base}@${IMAGE_DIGEST}"
           docker buildx imagetools create -t "${image_base}:latest" "${image_base}@${IMAGE_DIGEST}"
           docker buildx imagetools create -t "${web_image_base}:${RELEASE_TAG}" "${web_image_base}@${WEB_IMAGE_DIGEST}"
           docker buildx imagetools create -t "${web_image_base}:latest" "${web_image_base}@${WEB_IMAGE_DIGEST}"
+          docker buildx imagetools create -t "${rust_platform_image_base}:${RELEASE_TAG}" \
+            "${rust_platform_image_base}@${RUST_PLATFORM_DIGEST}"
+          docker buildx imagetools create -t "${rust_platform_image_base}:latest" \
+            "${rust_platform_image_base}@${RUST_PLATFORM_DIGEST}"
           cosign sign --yes "${image_base}@${IMAGE_DIGEST}"
           cosign sign --yes "${web_image_base}@${WEB_IMAGE_DIGEST}"
+          cosign sign --yes "${rust_platform_image_base}@${RUST_PLATFORM_DIGEST}"
       - name: Attest promoted image provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -301,6 +348,12 @@ jobs:
           subject-name: ghcr.io/${{ github.repository_owner }}/cerebro-web
           subject-digest: ${{ needs.verify-candidate.outputs.web_digest }}
           push-to-registry: true
+      - name: Attest promoted Rust platform image provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/cerebro-rust
+          subject-digest: ${{ needs.verify-candidate.outputs.rust_platform_digest }}
+          push-to-registry: true
       - name: Render and sign stable product release
         id: product
         shell: bash
@@ -308,6 +361,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.verify-candidate.outputs.sha }}
           RUNTIME_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
           WEB_DIGEST: ${{ needs.verify-candidate.outputs.web_digest }}
+          RUST_PLATFORM_DIGEST: ${{ needs.verify-candidate.outputs.rust_platform_digest }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
@@ -319,6 +373,8 @@ jobs:
             --channel stable --version "${RELEASE_TAG}" --commit "${CANDIDATE_SHA}" \
             --runtime-image "ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}" --runtime-digest "${RUNTIME_DIGEST}" \
             --web-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${RELEASE_TAG}" --web-digest "${WEB_DIGEST}" \
+            --rust-platform-image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:${RELEASE_TAG}" \
+            --rust-platform-digest "${RUST_PLATFORM_DIGEST}" \
             --slack-archive "${slack_archive}" --slack-version "$(jq -r .version apps/slack-companion/package.json)" \
             --sdk-archive "${sdk_archive}" --sdk-version "$(jq -r .version sdk/typescript/package.json)" \
             --openapi candidate/cerebro-openapi.yaml \
@@ -342,6 +398,7 @@ jobs:
           mapfile -t files < <(find candidate -type f \( -name '*.tar.gz' -o -name 'checksums.txt' \
             -o -name 'candidate-receipt.json' -o -name 'go-module-inventory.ndjson' \
             -o -name 'rust-organizational-e2e-receipt.json' \
+            -o -name 'rust-only-e2e-receipt.json' \
             -o -name 'smoke-evidence.json' \
             -o -name 'smoke-receipt.json*' \
             -o -name '*.tgz' -o -name 'cerebro-product-release.json*' \

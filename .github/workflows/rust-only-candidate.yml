@@ -1,8 +1,30 @@
 name: Rust-only Candidate
 
+# Candidate Build calls this workflow for every main commit so each commit
+# publishes exactly one cerebro-rust:candidate-<sha> digest, and that digest is
+# the one recorded in the signed product release. There is deliberately no push
+# trigger: a second build of the same commit would move the candidate tag to a
+# different digest than the one the release receipt pins.
+#
+# Images signed here carry this file as the Fulcio identity whether it runs
+# directly or is called, because the certificate SAN is the job_workflow_ref.
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Commit on main to build as the Rust-only candidate
+        required: false
+        type: string
+    outputs:
+      sha:
+        description: Resolved candidate commit
+        value: ${{ jobs.resolve.outputs.sha }}
+      image_tag:
+        description: Candidate tag of the published cerebro-rust image
+        value: ${{ jobs.resolve.outputs.image_tag }}
+      digest:
+        description: Signed manifest digest of the published cerebro-rust image
+        value: ${{ jobs.manifest.outputs.digest }}
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -14,7 +36,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: rust-only-candidate
+  # The github context of a called workflow is the caller's, so github.workflow
+  # only names this file for direct dispatches. Called runs get a per-run group:
+  # the caller already serializes candidates, and sharing one group with manual
+  # dispatches would let a queued dispatch cancel a pending Candidate Build call.
+  group: ${{ github.workflow == 'Rust-only Candidate' && 'rust-only-candidate' || format('rust-only-candidate-call-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
