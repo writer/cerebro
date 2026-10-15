@@ -973,7 +973,7 @@ export default function PoliciesPage() {
       <PageHeader
         contractId="policies"
         title="Policy Documents"
-        description="Review policy work, approve changes, track attestations, and manage supporting documents."
+        description="Approvals, attestations, and supporting documents."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setShowUpload((current) => !current)} aria-expanded={showUpload} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700">
@@ -1334,7 +1334,7 @@ export default function PoliciesPage() {
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
             <WorklistTable
               title="Policy register"
-              description="Policy records with owner, version, approval, attestation, review, and mapping counts."
+              description="Owner, version, approval, and attestation."
               rows={filteredPolicies}
               columns={policyColumns}
               emptyMessage="No policies match the current filters."
@@ -1376,7 +1376,7 @@ export default function PoliciesPage() {
               <div className="grid gap-4 xl:grid-cols-2">
             <WorklistTable
               title="Document register"
-              description="Policy documents with owner, class, state, review date, policies, and mapped controls."
+              description="Documents, owners, and mapped controls."
               rows={filteredDocuments}
               columns={documentColumns}
               emptyMessage="No policy documents match the current filters."
@@ -1391,7 +1391,7 @@ export default function PoliciesPage() {
             />
             <WorklistTable
               title="Risk register"
-              description="Risk scenarios with owner, residual risk, treatment, review date, and source document."
+              description="Scenarios, treatment, and residual risk."
               rows={filteredRiskRegister}
               columns={riskColumns}
               emptyMessage="No risk register records match the current filters."
@@ -1408,7 +1408,7 @@ export default function PoliciesPage() {
               <div className="grid gap-4 xl:grid-cols-2">
             <WorklistTable
               title="Template library"
-              description="Published templates with owner, framework, and mapped control references."
+              description="Published templates and control references."
               rows={data.templates ?? []}
               columns={templateColumns}
               emptyMessage="No policy templates are available."
@@ -1423,7 +1423,7 @@ export default function PoliciesPage() {
 
                 <WorklistTable
                   title="Policy mappings"
-                  description="Evidence, controls, and targets linked through policy, version, template, and exception records."
+                  description="Evidence and controls linked by policy."
                   rows={data.mappings ?? []}
                   columns={mappingColumns}
                   emptyMessage="No policy mappings are available."
@@ -1444,7 +1444,7 @@ export default function PoliciesPage() {
               <div className="grid gap-4 xl:grid-cols-2">
                 <WorklistTable
                   title="Reminders and escalations"
-                  description="Attestation and review notices with recipients, channels, and escalation owners."
+                  description="Notices, recipients, and escalations."
                   rows={data.reminders ?? []}
                   columns={reminderColumns}
                   emptyMessage="No reminders are available."
@@ -1461,7 +1461,7 @@ export default function PoliciesPage() {
               <div className="grid gap-4 xl:grid-cols-2">
             <WorklistTable
               title="Reminder plan"
-              description="Scheduled notices and escalation dates for pending reviews and attestations."
+              description="Upcoming reviews and attestations."
               rows={data.reminder_plan ?? []}
               columns={reminderPlanColumns}
               emptyMessage="No reminder plan is available."
@@ -1490,7 +1490,7 @@ export default function PoliciesPage() {
             />
             <WorklistTable
               title="Version diffs"
-              description="Draft, published, and approved version changes with review status."
+              description="Version changes and review status."
               rows={data.version_diffs ?? []}
               columns={versionDiffColumns}
               emptyMessage="No version diffs are available."
@@ -1506,7 +1506,7 @@ export default function PoliciesPage() {
 
               <WorklistTable
             title="Lifecycle events"
-            description="Policy actions recorded from templates, drafts, approvals, attestations, reviews, exceptions, and reminders."
+            description="Recorded policy actions."
             rows={data.events ?? []}
             columns={eventColumns}
             emptyMessage="No lifecycle events are available."

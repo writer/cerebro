@@ -266,7 +266,7 @@ export default function ControlsPage() {
       <PageHeader
         contractId="controls"
         title="Controls"
-        description="Each control's status, backed by the posture findings and evidence mapped to it."
+        description="Control status, backed by findings and evidence."
         action={
           <div className="flex items-center gap-2">
             <Link href="/controls/builder" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900">

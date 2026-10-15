@@ -814,7 +814,7 @@ function SourceReadinessContent() {
     <div className="space-y-6">
       <PageHeader
         title="Runtime Source Activation"
-        description="Promote a source definition, preview the data it emits, and connect it at runtime without a GitHub handoff."
+        description="Preview a source's data, then connect it at runtime."
         action={
           <div className="flex flex-wrap gap-2">
             <Link

@@ -308,7 +308,7 @@ export default function SecurityLifecyclePage() {
     <div>
       <PageHeader
         title="Credential and Certificate Lifecycle"
-        description="Keys, tokens, and certificates tracked by slot, with the current revision, rotation policy, and open findings. A finding closes only after a fresh, complete observation."
+        description="Rotation state and open findings for keys, tokens, and certificates."
         contractId="security-lifecycle"
         action={(
           <button type="button" className="secondary-button px-3 py-2 text-[12px]" onClick={refreshLifecycle} disabled={query.loading}>

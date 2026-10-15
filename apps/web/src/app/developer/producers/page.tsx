@@ -48,7 +48,7 @@ export default function SecurityProducersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Security Producers"
-        description="Which source runtimes produce security evidence, and the graph queries that read it."
+        description="Sources producing security evidence."
       />
 
       <Panel title="Runtime Health Snapshot">

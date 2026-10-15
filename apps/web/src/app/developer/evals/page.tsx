@@ -6,7 +6,7 @@ export default function DeveloperEvalsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Ask Evals"
-        description="Local-only Ask quality regression runs and rubric results."
+        description="Ask quality regressions. Local only."
       />
 
       <Panel title="Local Commands">

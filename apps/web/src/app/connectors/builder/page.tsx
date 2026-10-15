@@ -436,7 +436,7 @@ function ConnectorBuilderContent() {
     <div className="space-y-6">
       <PageHeader
         title="Connector Builder"
-        description="Dynamic connector definitions, validation gates, credential-store boundaries, and staged promotion."
+        description="Define, validate, and promote custom connectors."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/connectors" className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">

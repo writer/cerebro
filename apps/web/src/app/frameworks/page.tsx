@@ -95,7 +95,7 @@ export default function FrameworksPage() {
       <PageHeader
         contractId="frameworks"
         title="Frameworks"
-        description="The frameworks you report against, the control gaps your findings expose, and audit packets ready to share."
+        description="Frameworks you report against, and their open gaps."
         action={soc2 ? (
           <Link href={`/frameworks/${frameworkRouteSegment(soc2)}`} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
             Open SOC 2

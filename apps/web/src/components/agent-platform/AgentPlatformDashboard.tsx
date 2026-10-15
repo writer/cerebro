@@ -218,7 +218,7 @@ export function AgentPlatformDashboard() {
     <div className="space-y-6">
       <PageHeader
         title="Agent Platform"
-        description="Review agent runtime coverage, connector auth boundaries, capability gates, eval status, trace events, and required evidence fields."
+        description="Agent runtimes, capability gates, evals, and traces."
       />
 
       <Panel title="Agent Contract Status">

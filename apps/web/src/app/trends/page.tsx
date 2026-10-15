@@ -147,7 +147,7 @@ export default function TrendsPage() {
       <PageHeader
         contractId="grc-trends"
         title="Trends"
-        description="Is posture improving? New findings against resolved ones, and the open backlog over time."
+        description="New vs. resolved findings and the open backlog."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">

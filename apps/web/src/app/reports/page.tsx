@@ -297,7 +297,7 @@ export default function ReportsPage() {
       <PageHeader
         contractId="reports"
         title="Reports"
-        description="Build control evidence packets or review current finding evidence, scope exclusions, and source records."
+        description="Evidence packets for controls and findings."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PacketActions

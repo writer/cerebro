@@ -69,7 +69,7 @@ export default function CustomDashboardsPage() {
       <PageHeader
         contractId="grc-custom-dashboards"
         title="Custom Dashboards"
-        description="Save trend views with reusable filters and widgets, and share them with your team."
+        description="Saved, shareable trend views."
         action={
           <Link href="/trends" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600">
             Back to trends

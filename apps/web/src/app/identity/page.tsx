@@ -374,7 +374,7 @@ export default function IdentityPage() {
       <PageHeader
         contractId="identity-directory"
         title="Members"
-        description="Who can sign in to this console, from auth configuration and login history."
+        description="Who can sign in to this console."
         action={
           <button type="button" onClick={reload} className="primary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
             <RefreshCw className="h-4 w-4" />

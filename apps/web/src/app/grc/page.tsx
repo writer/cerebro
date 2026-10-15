@@ -477,7 +477,7 @@ export default function GRCPage() {
   const readinessSource = readinessQuery.data ? humanize(summary.status) : "current counts";
   const pageDescription = dashboard.data
     ? `${countLabel(packetBlockers, "blocker")} ${packetBlockerVerb} packet export. ${countLabel(summary.failing_controls, "failing control")}, ${countLabel(evidenceIssues, "evidence issue")}, ${countLabel(sourceIssues, "source issue")}.`
-    : "How open posture findings map to your controls, plus evidence gaps and source freshness.";
+    : "Control gaps from open posture findings.";
 
   const reload = () => {
     if (invalidWorkspaceScope) return;

@@ -245,7 +245,7 @@ export default function RiskInboxPage() {
       <PageHeader
         contractId="risks"
         title="Risks"
-        description="Current risky conditions across cloud, SaaS, and identity, ranked by composed risk, with an owner and a fix for each."
+        description="Ranked by composed risk, each with an owner and a fix."
         action={
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void exportFindings()} disabled={exportState === "working"} title={usesClientFilteredExport ? `Exports up to ${RISK_INBOX_FILTERED_EXPORT_LIMIT} rows matching the owner/search filters.` : undefined} className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">

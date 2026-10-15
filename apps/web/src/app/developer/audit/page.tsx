@@ -6,7 +6,7 @@ export default function DeveloperAuditLogPage() {
     <div className="space-y-6">
       <PageHeader
         title="Audit Events"
-        description="Review who changed what, which resource was affected, and whether the action succeeded."
+        description="Who changed what, and whether it worked."
       />
       <AuditLogWorkbench />
     </div>

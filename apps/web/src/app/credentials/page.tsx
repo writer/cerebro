@@ -255,7 +255,7 @@ export default function CredentialStoresPage() {
       <PageHeader
         contractId="credential-stores"
         title="Credential Stores"
-        description="Review store readiness, runtime bindings, credential records, and backend setup issues."
+        description="Where connector secrets live, and whether each store is ready."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href={`/connectors${debouncedTenantID ? `?tenant_id=${encodeURIComponent(debouncedTenantID)}&tab=available` : "?tab=available"}`} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">

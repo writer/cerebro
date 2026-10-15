@@ -141,7 +141,7 @@ export default function AdminAccessControlPage() {
     <div className="space-y-6">
       <PageHeader
         title="Access Control"
-        description="How Cerebro establishes who you are, how much of that claim it has verified, and what that identity is allowed to do."
+        description="How you're identified, verified, and authorized."
       />
 
       <Panel title="Sign-in">

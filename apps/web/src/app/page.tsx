@@ -174,13 +174,13 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
   const summary = trends?.summary;
   const net = summary?.net ?? 0;
   const stats = [
-    { label: "New", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "Risky states detected" },
-    { label: "Resolved", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Fixed or no longer present" },
+    { label: "New", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "Detected" },
+    { label: "Resolved", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Fixed or gone" },
     {
       label: "Net Change",
       value: net > 0 ? `+${net}` : net,
       tone: net > 0 ? ("danger" as const) : ("success" as const),
-      hint: net > 0 ? "Risk is outpacing fixes" : net < 0 ? "Fixes are outpacing risk" : "Holding steady",
+      hint: net > 0 ? "Outpacing fixes" : net < 0 ? "Burning down" : "Steady",
     },
   ];
   return (
@@ -189,7 +189,7 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
         <SectionHeader
           icon={TrendingUp}
           title="Risk Trend"
-          description={`Are fixes keeping pace with new risk? Daily, last ${HOME_TREND_DAYS} days.`}
+          description={`New vs. resolved findings, last ${HOME_TREND_DAYS} days.`}
         />
         <div className="flex flex-wrap items-center gap-3">
           {stats.map((stat) => (
@@ -242,7 +242,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
       <SectionHeader
         icon={Boxes}
         title="Asset Coverage"
-        description="How much of your attack surface is mapped, owned, and exposed."
+        description="Mapped, owned, and exposed assets."
       />
       {assets ? (
         <div className="mt-4 space-y-1">
@@ -259,7 +259,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
             icon={Globe}
             label="Publicly Reachable"
             value={assets.public_assets}
-            detail="Reachable from the internet. Attack paths start here."
+            detail="Internet-facing. Attack paths start here."
             tone={assets.public_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
@@ -267,7 +267,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
             icon={Flame}
             label="High Risk Assets"
             value={assets.high_risk_assets}
-            detail="Highest composed risk across their findings and graph context."
+            detail="Highest composed risk score."
             tone={assets.high_risk_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
@@ -303,7 +303,7 @@ export function SignalCoveragePanel({
       <SectionHeader
         icon={Radar}
         title="Source Health"
-        description="Posture is only as current as the evidence behind it."
+        description="Freshness of the data behind each finding."
       />
       <div className="mt-4 space-y-1">
         <CoverageRow
@@ -329,7 +329,7 @@ export function SignalCoveragePanel({
           icon={ShieldCheck}
           label="Rule Coverage"
           value="Review"
-          detail="Which posture rules can evaluate the data you collect."
+          detail="Rules that can evaluate collected data."
           tone="neutral"
         />
       </div>
@@ -396,7 +396,7 @@ export default function Home() {
       <PageHeader
         contractId="overview"
         title="Security Posture"
-        description="What can reach your production systems, through which path, and who owns the fix."
+        description="Exposure, attack paths, and owners."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh</button>
@@ -423,7 +423,7 @@ export default function Home() {
             <OverviewTile
               href="/risks"
               icon={ShieldAlert}
-              hint="Current risky states, each tied to an affected asset and a fix."
+              hint="Risky states with an affected asset and a fix."
               label="Open Findings"
               value={summary.open_findings}
               detail={`${summary.critical_findings} critical, ${summary.high_findings} high`}
@@ -432,7 +432,7 @@ export default function Home() {
             <OverviewTile
               href="/inventory"
               icon={Boxes}
-              hint="Cloud, SaaS, identity, and code assets mapped into one graph."
+              hint="Cloud, SaaS, identity, and code in one graph."
               label="Assets Tracked"
               value={assets ? assets.total_assets : "—"}
               detail={assets ? `${countLabel(assets.org_groups, "org group")} in scope` : "Loading asset inventory."}
@@ -441,7 +441,7 @@ export default function Home() {
             <OverviewTile
               href="/connectors"
               icon={PlugZap}
-              hint="Clouds, SaaS, and scanners feeding evidence. Stale data, stale posture."
+              hint="Stale sources mean stale findings."
               label="Sources Connected"
               value={summary.connectors}
               detail={countLabel(summary.stale_connectors, "stale source")}
@@ -450,7 +450,7 @@ export default function Home() {
             <OverviewTile
               href="/inventory"
               icon={UserCheck}
-              hint="Fixes route to owners, and unowned assets are where they stall. Target 90%+."
+              hint="Unowned assets stall fixes. Target 90%+."
               label="Owner Coverage"
               value={assets ? `${assets.assigned_coverage_pct}%` : "—"}
               detail={assets ? countLabel(assets.unassigned_assets, "asset") + " unowned" : "Loading asset inventory."}

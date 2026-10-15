@@ -49,7 +49,7 @@ export default function RulesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Rules"
-        description="The posture rules that turn collected evidence into findings, and the data each one evaluates."
+        description="Rules that turn evidence into findings."
         contractId="finding-rules"
       />
 
@@ -69,7 +69,7 @@ export default function RulesPage() {
               label="Awaiting an external verdict"
               value={externalCount}
               intent={externalCount > 0 ? "warning" : "neutral"}
-              detail="Fires only when another system deposits a pass or fail result."
+              detail="Waits on an external pass or fail result."
             />
           </div>
 

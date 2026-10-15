@@ -166,7 +166,7 @@ export const informationAreas: InformationArea[] = [
     ],
     secondaryRoutes: [
       { href: "/connectors/activation", label: "Source Activation", detail: "Source collection scope, access, and trust posture." },
-      { href: "/credentials", label: "Credential Stores", detail: "Credential store defaults, accepted reference formats, and setup status." },
+      { href: "/credentials", label: "Credential Stores", detail: "Secret store setup and status." },
       { href: "/developer", label: "Developer Tools", detail: "API status, OpenAPI resources, and diagnostics." },
     ],
   },

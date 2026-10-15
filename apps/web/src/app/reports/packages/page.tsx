@@ -280,7 +280,7 @@ export default function AuditPackagesPage() {
       <PageHeader
         contractId="audit-packages"
         title="Audit Workspace"
-        description="Resolve control, evidence, review, and source blockers before sharing an audit packet."
+        description="Clear blockers before sharing a packet."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link href="/reports" className={buttonClass}>Packet builder</Link>
@@ -526,22 +526,22 @@ export default function AuditPackagesPage() {
             <InvestigationLink
               href={`/risks${framework ? `?framework=${encodeURIComponent(framework)}` : ""}`}
               title="Open risks"
-              detail="Findings by owner, source, framework, severity, and SLA."
+              detail="Findings by owner, source, and SLA."
             />
             <InvestigationLink
               href="/explore"
               title="Trace relationships"
-              detail="Start from an entity and expand assets, findings, owners, and sources."
+              detail="Expand from any entity."
             />
             <InvestigationLink
               href={`/reports/packages?ask_q=${encodeURIComponent(`Which controls need evidence for ${framework || selectedProfileID}?`)}`}
               title="Ask about evidence"
-              detail="Ask for missing evidence, stale evidence, owner gaps, or affected assets."
+              detail="Ask about gaps and owners."
             />
             <InvestigationLink
               href="/trends/dashboards"
               title="Save dashboard"
-              detail="Persist reusable filters and trend widgets for repeated review."
+              detail="Saved filters and widgets."
             />
           </div>
         </Panel>

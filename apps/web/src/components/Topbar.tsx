@@ -471,7 +471,7 @@ export default function Topbar() {
                 <span className="min-w-0">
                   <span className="block text-[13px] font-semibold text-[var(--text-primary)]">Members</span>
                   <span className="mt-1 block text-[12px] leading-5 text-[var(--text-muted)]">
-                    Organizations, users, auth providers, roles, and login history.
+                    Who can sign in, and their roles.
                   </span>
                 </span>
               </Link>

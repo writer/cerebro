@@ -10,11 +10,11 @@ import { tagSlug } from "@/lib/openapi";
 import { useOpenApi } from "@/lib/openapi-store";
 
 const developerLinks = [
-  { label: "Agent Platform", href: "/developer/agents", description: "Runtime, eval, capability, execution, replay, connector, and knowledge provenance principles." },
-  { label: "Audit Events", href: "/developer/audit", description: "Search normalized actions by actor, resource, service, outcome, or trace." },
-  { label: "Identity Contract", href: "/developer/identity", description: "Current user source, avatar initials, actor value, and write-stamp fields." },
-  { label: "Security Producers", href: "/developer/producers", description: "Source runtime coverage, graph context tools, and security producer queries." },
-  { label: "Risk Scoring", href: "/developer/scoring", description: "Tune tenant risk thresholds, signal cutoffs, relation weights, and factor weights." },
+  { label: "Agent Platform", href: "/developer/agents", description: "Provenance principles for runtimes and evals." },
+  { label: "Audit Events", href: "/developer/audit", description: "Search actions by actor, resource, or outcome." },
+  { label: "Identity Contract", href: "/developer/identity", description: "Current user and write-stamp fields." },
+  { label: "Security Producers", href: "/developer/producers", description: "Sources producing security evidence." },
+  { label: "Risk Scoring", href: "/developer/scoring", description: "How findings are ranked." },
   { label: "Ask Evals", href: "/developer/evals", description: "Local Ask quality evals and rubric outcomes." },
 ];
 
@@ -32,7 +32,7 @@ export default function DeveloperPage() {
     <div className="space-y-6">
       <PageHeader
         title="Developer Tools"
-        description="Diagnostics, evaluation utilities, and OpenAPI resources."
+        description="Diagnostics, evals, and API reference."
       />
 
       <StatusPanel />

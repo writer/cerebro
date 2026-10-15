@@ -133,7 +133,7 @@ export default function ReportSchedulesPage() {
       <PageHeader
         contractId="report-schedules"
         title="Report Schedules"
-        description="Run reports automatically on a fixed interval and review recent scheduled runs."
+        description="Recurring reports and recent runs."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link href="/reports" className={buttonClass}>
