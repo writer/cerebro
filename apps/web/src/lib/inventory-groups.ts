@@ -19,7 +19,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/iam",
     keywords: ["identities", "iam", "users", "people", "accounts", "service accounts", "groups", "roles", "permissions", "principals", "okta", "entra", "rbac"],
     summary: "People, service accounts, groups, and roles",
-    description: "Every principal Cerebro has collected, with the groups and roles they hold, across identity providers, clouds, and clusters.",
+    description: "Human and machine principals across identity providers, clouds, and clusters, with the groups, roles, and grants that decide what they can reach.",
   },
   {
     id: "cloud",
@@ -27,7 +27,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/cloud",
     keywords: ["cloud", "aws", "gcp", "azure", "accounts", "compute", "instances", "clusters", "kubernetes", "storage", "buckets", "databases", "networking"],
     summary: "Accounts, compute, clusters, and storage",
-    description: "Cloud accounts and the resources inside them, including compute, clusters, storage, and networking.",
+    description: "Cloud accounts and the compute, clusters, storage, and networking inside them, with the guardrails that bound exposure.",
   },
   {
     id: "saas",
@@ -35,7 +35,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/saas",
     keywords: ["saas", "applications", "apps", "integrations", "vendors", "third party", "oauth apps", "tenants"],
     summary: "Applications, integrations, and vendors",
-    description: "Connected business applications, the integrations installed into them, and the vendors behind them.",
+    description: "SaaS apps, the third-party integrations and grants installed into them, and the vendors behind them.",
   },
   {
     id: "code",
@@ -43,7 +43,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/code",
     keywords: ["code", "repositories", "repos", "github", "registries", "containers", "images", "runners", "pipelines", "build"],
     summary: "Repositories, registries, and runners",
-    description: "Source repositories, container registries, build runners, and the images they produce.",
+    description: "Repositories, registries, build runners, and the images they produce, so running code traces back to source.",
   },
   {
     id: "devices",
@@ -51,7 +51,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/devices",
     keywords: ["devices", "endpoints", "laptops", "workstations", "mdm", "agents", "edr", "kandji", "kolide", "jamf"],
     summary: "Managed endpoints and their agents",
-    description: "Endpoints reported by device management and endpoint protection, with the agents covering them.",
+    description: "Endpoints from device management and endpoint protection, and whether an agent is actually covering each one.",
   },
   {
     id: "secrets",
@@ -59,7 +59,7 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     href: "/inventory/secrets",
     keywords: ["secrets", "credentials", "keys", "api keys", "tokens", "certificates", "expiry", "rotation"],
     summary: "Credentials, keys, and certificates",
-    description: "Stored credentials, keys, and certificates collected from connected sources.",
+    description: "Credentials, keys, and certificates found across connected sources. Exposed secrets surface as findings.",
   },
 ];
 

@@ -798,10 +798,10 @@ export default function ConnectorsPage() {
   };
   const viewCopy: Record<LibraryTab, { title: string; detail: string }> = {
     all: { title: "All sources", detail: "Every source, connected or not." },
-    attention: { title: "Sources needing attention", detail: "Fix failing, stale, or incomplete runtime signals first." },
-    available: { title: "Available sources", detail: "Sources that are ready to connect." },
+    attention: { title: "Sources needing attention", detail: "Failing or stale sources leave blind spots in posture. Fix these first." },
+    available: { title: "Available sources", detail: "Supported clouds, SaaS apps, and scanners you have not connected yet." },
     backlog: { title: "Sources requiring access", detail: "Sources that need access or additional setup before they can be connected." },
-    connected: { title: "Connected sources", detail: "Monitor active sources and open their runtime details." },
+    connected: { title: "Connected sources", detail: "Sources currently feeding evidence into the graph. Open one to see what it collects and when it last synced." },
   };
   const currentView = viewCopy[libraryTab];
 
@@ -810,7 +810,7 @@ export default function ConnectorsPage() {
       <PageHeader
         contractId="connectors"
         title="Integrations"
-        description="Connect a source, confirm what it collects, and review current health."
+        description="Connect clouds, SaaS apps, identity providers, and scanners. Sources supply evidence; Cerebro's rules decide what becomes a finding."
         action={
           <div className="flex flex-wrap gap-2">
             <button

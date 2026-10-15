@@ -249,7 +249,7 @@ export default function EvidencePage() {
       <PageHeader
         contractId="evidence"
         title="Evidence"
-        description={shouldLoadPackaged ? "Collect, review, and approve the proof required by your controls." : "Inspect raw proof linked to findings, runs, rules, and affected assets."}
+        description={shouldLoadPackaged ? "Collect, review, and approve the proof required by your controls." : "The raw observations behind each finding: source records, rule runs, and affected assets."}
         action={
           <button type="button" onClick={refreshCurrentView} className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--primary)] bg-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />

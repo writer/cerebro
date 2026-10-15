@@ -49,7 +49,7 @@ export default function RulesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Rules"
-        description="Every finding rule the runtime has registered, and the event streams each one listens to."
+        description="The posture rules that turn collected evidence into findings, and the data each one evaluates."
         contractId="finding-rules"
       />
 

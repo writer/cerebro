@@ -245,7 +245,7 @@ export default function RiskInboxPage() {
       <PageHeader
         contractId="risks"
         title="Risks"
-        description="Open risk across cloud and SaaS posture, grouped by what is failing and who owns it."
+        description="Current risky conditions across cloud, SaaS, and identity, ranked by composed risk, with an owner and a fix for each."
         action={
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void exportFindings()} disabled={exportState === "working"} title={usesClientFilteredExport ? `Exports up to ${RISK_INBOX_FILTERED_EXPORT_LIMIT} rows matching the owner/search filters.` : undefined} className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
@@ -401,7 +401,7 @@ export default function RiskInboxPage() {
           )}
           {/* Posture domain and group counts are derived client side, so they can only describe the page that was loaded. */}
           <div className="mb-3 rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] text-[var(--text-muted)]">
-            Posture domains come from each finding&apos;s rule, and counts describe the {loadedFindings.length.toLocaleString()} findings loaded here. Cloud account, region, and resource type are not returned by this endpoint.
+            Domain counts cover the {loadedFindings.length.toLocaleString()} findings loaded on this page, grouped by the rule that raised each one.
           </div>
           {activeView === "list" ? (
             <FindingTable

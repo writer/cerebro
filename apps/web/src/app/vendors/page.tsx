@@ -1984,7 +1984,7 @@ export default function VendorsPage() {
       <PageHeader
         contractId="vendors"
         title="Vendors"
-        description="Vendor status, review ownership, and evidence readiness."
+        description="Third parties behind your SaaS apps and integrations, with review owners and evidence readiness."
         action={
           <div className="flex flex-wrap gap-2">
             <button

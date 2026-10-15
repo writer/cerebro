@@ -57,7 +57,7 @@ export default function CustomDashboardDetailPage() {
       <PageHeader
         contractId="grc-custom-dashboard-detail"
         title={dashboard.name}
-        description={dashboard.description || "Saved GRC dashboard."}
+        description={dashboard.description || "Saved trend dashboard."}
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/trends/dashboards" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600">

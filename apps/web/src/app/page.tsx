@@ -112,9 +112,9 @@ function OverviewTile({
 }
 
 const HOME_ASK_PROMPTS = [
-  "Which assets have no owner?",
-  "What changed this week?",
-  "Which identities have admin access?",
+  "What can reach production from the internet?",
+  "Which identities can escalate to admin?",
+  "Which exposed assets have no owner?",
 ];
 
 function CoverageRow({
@@ -174,13 +174,13 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
   const summary = trends?.summary;
   const net = summary?.net ?? 0;
   const stats = [
-    { label: "Opened", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "New findings raised" },
-    { label: "Closed", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Findings resolved" },
+    { label: "New", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "Risky states detected" },
+    { label: "Resolved", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Fixed or no longer present" },
     {
-      label: "Net",
+      label: "Net change",
       value: net > 0 ? `+${net}` : net,
       tone: net > 0 ? ("danger" as const) : ("success" as const),
-      hint: net > 0 ? "Backlog is growing" : "Backlog is flat or shrinking",
+      hint: net > 0 ? "Risk is outpacing fixes" : net < 0 ? "Fixes are outpacing risk" : "Holding steady",
     },
   ];
   return (
@@ -188,8 +188,8 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <SectionHeader
           icon={TrendingUp}
-          title="What Changed"
-          description={`Findings opened against findings closed, last ${HOME_TREND_DAYS} days.`}
+          title="Risk Trend"
+          description={`Are fixes keeping pace with new risk? Daily, last ${HOME_TREND_DAYS} days.`}
         />
         <div className="flex flex-wrap items-center gap-3">
           {stats.map((stat) => (
@@ -200,14 +200,14 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
             </div>
           ))}
           <Link href="/trends" className="secondary-button px-3.5 py-2 text-[12px]">
-            Open Trends
+            View Trends
             <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
           </Link>
         </div>
       </div>
       {points.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-[color:var(--border-strong)] px-4 py-6 text-center text-[13px] text-[var(--text-muted)]">
-          No finding activity recorded in this window.
+          No new or resolved findings in this window.
         </div>
       ) : (
         <>
@@ -226,8 +226,8 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
             ))}
           </div>
           <div className="mt-3 flex items-center gap-4 text-[12px] text-[var(--text-muted)]">
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />Opened per day</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />Closed per day</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />New findings</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />Resolved</span>
           </div>
         </>
       )}
@@ -242,7 +242,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
       <SectionHeader
         icon={Boxes}
         title="Asset Coverage"
-        description="What Cerebro is tracking, and what is unaccounted for."
+        description="How much of your attack surface is mapped, owned, and exposed."
       />
       {assets ? (
         <div className="mt-4 space-y-1">
@@ -259,7 +259,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
             icon={Globe}
             label="Publicly Reachable"
             value={assets.public_assets}
-            detail="Exposed outside the organization boundary."
+            detail="Reachable from the internet. Attack paths start here."
             tone={assets.public_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
@@ -267,7 +267,7 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
             icon={Flame}
             label="High Risk Assets"
             value={assets.high_risk_assets}
-            detail="Carrying the heaviest composed risk."
+            detail="Highest composed risk across their findings and graph context."
             tone={assets.high_risk_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
@@ -302,8 +302,8 @@ export function SignalCoveragePanel({
     <section className="surface-panel p-6">
       <SectionHeader
         icon={Radar}
-        title="Signal Coverage"
-        description="Where the data comes from, and whether it is current."
+        title="Source Health"
+        description="Posture is only as current as the evidence behind it."
       />
       <div className="mt-4 space-y-1">
         <CoverageRow
@@ -317,7 +317,7 @@ export function SignalCoveragePanel({
         <CoverageRow
           href="/connectors"
           icon={ScanSearch}
-          label="Collection Gaps"
+          label="Blind Spots"
           value={coveragePending ? "—" : coverageBlindSpotCount}
           detail={coveragePending
             ? "Loading source coverage."
@@ -327,9 +327,9 @@ export function SignalCoveragePanel({
         <CoverageRow
           href="/rules"
           icon={ShieldCheck}
-          label="Detection Coverage"
+          label="Rule Coverage"
           value="Review"
-          detail="Which rules can fire on the events being collected."
+          detail="Which posture rules can evaluate the data you collect."
           tone="neutral"
         />
       </div>
@@ -395,13 +395,13 @@ export default function Home() {
     <div className={compactHome ? "space-y-4" : "space-y-5"}>
       <PageHeader
         contractId="overview"
-        title="Security Overview"
-        description="Findings, assets, and source health across every connected cloud and SaaS account."
+        title="Security Posture"
+        description="What can reach your production systems, through which path, and who owns the fix."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh Data</button>
-            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Connect Source</Link>
-            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Open Risks</Link>
+            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh</button>
+            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Add Source</Link>
+            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Review Findings</Link>
           </div>
         }
       />
@@ -423,7 +423,7 @@ export default function Home() {
             <OverviewTile
               href="/risks"
               icon={ShieldAlert}
-              hint="Durable risk states that still need an owner to act."
+              hint="Current risky states, each tied to an affected asset and a fix."
               label="Open Findings"
               value={summary.open_findings}
               detail={`${summary.critical_findings} critical, ${summary.high_findings} high`}
@@ -432,7 +432,7 @@ export default function Home() {
             <OverviewTile
               href="/inventory"
               icon={Boxes}
-              hint="Cloud, SaaS, and identity assets in the knowledge graph."
+              hint="Cloud, SaaS, identity, and code assets mapped into one graph."
               label="Assets Tracked"
               value={assets ? assets.total_assets : "—"}
               detail={assets ? `${countLabel(assets.org_groups, "org group")} in scope` : "Loading asset inventory."}
@@ -441,7 +441,7 @@ export default function Home() {
             <OverviewTile
               href="/connectors"
               icon={PlugZap}
-              hint="Integrations feeding evidence. Stale sources weaken findings."
+              hint="Clouds, SaaS, and scanners feeding evidence. Stale data, stale posture."
               label="Sources Connected"
               value={summary.connectors}
               detail={countLabel(summary.stale_connectors, "stale source")}
@@ -450,7 +450,7 @@ export default function Home() {
             <OverviewTile
               href="/inventory"
               icon={UserCheck}
-              hint="Share of assets with an accountable owner. Aim for 90% or more."
+              hint="Fixes route to owners, and unowned assets are where they stall. Target 90%+."
               label="Owner Coverage"
               value={assets ? `${assets.assigned_coverage_pct}%` : "—"}
               detail={assets ? countLabel(assets.unassigned_assets, "asset") + " unowned" : "Loading asset inventory."}

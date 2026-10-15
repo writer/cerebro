@@ -254,7 +254,7 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
     <div className="space-y-5">
       <PageHeader
         title={selectedCategory?.label || groupDefinition?.label || "Inventory"}
-        description={groupDefinition?.description ?? "Search every asset, resource, and record Cerebro has collected, by name, identifier, or metadata."}
+        description={groupDefinition?.description ?? "Every asset, identity, and resource resolved into the graph. Search by name, identifier, or any attribute."}
         action={<button type="button" onClick={() => { void categoriesQuery.reload(); void assetsQuery.reload(); }} className="primary-button px-3 py-1.5 text-[13px]">Refresh</button>}
       />
 

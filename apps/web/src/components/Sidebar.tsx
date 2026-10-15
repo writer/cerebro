@@ -298,7 +298,7 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="ml-2.5 leading-tight max-md:hidden">
             <span className="block text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">Cerebro</span>
-            <span className="block text-[11px] font-medium text-[var(--sidebar-muted)]">Security knowledge graph</span>
+            <span className="block text-[11px] font-medium text-[var(--sidebar-muted)]">Attack surface &amp; posture</span>
           </div>
         )}
       </div>
