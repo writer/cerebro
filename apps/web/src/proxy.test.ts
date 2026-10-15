@@ -21,7 +21,7 @@ describe("proxy content security policy", () => {
     for (const url of ["/", "/findings", "/findings/f-1", "/developer/audit", "/missing-route"]) {
       expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(true);
     }
-    for (const url of ["/_next/static/chunks/app.js", "/_next/image?url=x", "/favicon.ico"]) {
+    for (const url of ["/_next/static/chunks/app.js", "/_next/image?url=x", "/favicon.ico", "/icon.svg", "/apple-icon.png"]) {
       expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(false);
     }
   });

@@ -35,7 +35,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Cerebro",
-  description: "Findings, controls, evidence, and connector health.",
+  applicationName: "Cerebro",
+  description: "Security posture and attack surface: what can reach production, through which path, and who owns the fix.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

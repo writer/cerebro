@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="cerebro-bg" x1="6" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6D5BFF"/>
+      <stop offset="0.55" stop-color="#5B3FF0"/>
+      <stop offset="1" stop-color="#3B1FB8"/>
+    </linearGradient>
+    <radialGradient id="cerebro-hi" cx="20" cy="10" r="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cerebro-core" cx="32" cy="32" r="5.2" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B8FFF1"/>
+      <stop offset="1" stop-color="#2EE6C5"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#cerebro-bg)"/>
+  <rect width="64" height="64" rx="15" fill="url(#cerebro-hi)"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="14.25" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <path d="M43.3 20.7A16 16 0 1 0 43.3 43.3" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+  <path d="M43.3 20.7L32 32" stroke="#FFFFFF" stroke-opacity="0.85" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="43.3" cy="20.7" r="4.2" fill="#FFFFFF"/>
+  <circle cx="43.3" cy="43.3" r="4.2" fill="#FFFFFF"/>
+  <circle cx="32" cy="32" r="5.2" fill="url(#cerebro-core)"/>
+</svg>

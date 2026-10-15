@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
+import CerebroMark from "@/components/brand/CerebroMark";
 import { useSidebar } from "@/components/providers";
 import { INVENTORY_GROUPS } from "@/lib/inventory-groups";
 import { navigationEntries, operatorNavLinks, utilityLinks, type NavigationEntry } from "@/lib/navigation";
@@ -289,12 +290,10 @@ export default function Sidebar() {
   return (
     <aside className={`glass-bar z-30 flex h-screen flex-col border-r border-[color:var(--border)] bg-[var(--sidebar-bg)] transition-all duration-200 ${collapsed ? "w-[68px]" : "w-[248px] max-md:w-[68px]"}`}>
       <div className={`flex h-16 items-center ${collapsed ? "justify-center px-2" : "px-5 max-md:justify-center max-md:px-2"}`}>
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[13px] font-bold text-white shadow-[0_6px_16px_-6px_rgba(79,70,229,0.7)]"
-          style={{ background: "var(--primary-gradient)" }}
-        >
-          C
-        </div>
+        <CerebroMark
+          title="Cerebro"
+          className="h-9 w-9 shrink-0 drop-shadow-[0_6px_12px_rgba(79,70,229,0.45)]"
+        />
         {!collapsed && (
           <div className="ml-2.5 leading-tight max-md:hidden">
             <span className="block text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">Cerebro</span>
