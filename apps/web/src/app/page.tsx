@@ -66,7 +66,7 @@ export const homeGRCPaths = (scope: GRCScope) => {
 type CoverageTone = "danger" | "warning" | "success" | "neutral";
 
 const toneLabel: Record<CoverageTone, string> = {
-  danger: "Act now",
+  danger: "Act Now",
   warning: "Review",
   success: "Healthy",
   neutral: "Info",
@@ -177,7 +177,7 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
     { label: "New", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "Risky states detected" },
     { label: "Resolved", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Fixed or no longer present" },
     {
-      label: "Net change",
+      label: "Net Change",
       value: net > 0 ? `+${net}` : net,
       tone: net > 0 ? ("danger" as const) : ("success" as const),
       hint: net > 0 ? "Risk is outpacing fixes" : net < 0 ? "Fixes are outpacing risk" : "Holding steady",
@@ -226,7 +226,7 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
             ))}
           </div>
           <div className="mt-3 flex items-center gap-4 text-[12px] text-[var(--text-muted)]">
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />New findings</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />New Findings</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />Resolved</span>
           </div>
         </>

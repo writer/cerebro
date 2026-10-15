@@ -292,7 +292,7 @@ export const buildReadinessChecks = ({
 
 function ReadinessChecksPanel({ checks }: { checks: ReadinessCheck[] }) {
   return (
-    <Panel title="Packet blockers">
+    <Panel title="Packet Blockers">
       <div className="divide-y divide-[color:var(--border)]">
         {checks.map((step) => (
           <Link key={step.label} href={step.href} className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] sm:grid-cols-[minmax(0,1fr)_92px_132px]">
@@ -317,7 +317,7 @@ function ReadinessChecksPanel({ checks }: { checks: ReadinessCheck[] }) {
 
 function IssueQueuePanel({ items }: { items: IssueQueueItem[] }) {
   return (
-    <Panel title="Open control issues" action={<Link href="/risks" className="secondary-button px-3 py-1.5 text-[12px]">View issue queue</Link>}>
+    <Panel title="Open Control Issues" action={<Link href="/risks" className="secondary-button px-3 py-1.5 text-[12px]">View issue queue</Link>}>
       {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[color:var(--border-strong)] px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">
           No control, evidence, or source issues are blocking the packet.
@@ -369,7 +369,7 @@ function AuditPacketPanel({
   const blockers = proofBundle?.readiness.blockers ?? summary.readiness_blockers ?? [];
 
   return (
-    <Panel title="Control evidence packet">
+    <Panel title="Control Evidence Packet">
       {proofBundle ? (
         <div className="space-y-4">
           <div>
@@ -427,7 +427,7 @@ function FrameworkPosturePanel({ frameworks }: { frameworks: GRCProgramFramework
   if (sorted.length === 0) return null;
 
   return (
-    <Panel title="Frameworks needing attention" action={<Link href="/frameworks" className="secondary-button px-3 py-1.5 text-[12px]">Open frameworks</Link>}>
+    <Panel title="Frameworks Needing Attention" action={<Link href="/frameworks" className="secondary-button px-3 py-1.5 text-[12px]">Open frameworks</Link>}>
       <div className="divide-y divide-[color:var(--border)]">
         {sorted.map((framework) => (
           <Link

@@ -111,7 +111,7 @@ export default function FrameworksPage() {
       </div>
 
       <Panel
-        title="Compliance programs"
+        title="Compliance Programs"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <select value={lifecycle} onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)} className={inputClass}>

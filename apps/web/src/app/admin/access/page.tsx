@@ -194,7 +194,7 @@ export default function AdminAccessControlPage() {
             <MetricCard label="Claim mappings" value={String(data.roleClaimMappings.length)} />
           </div>
 
-          <Panel title="Your access">
+          <Panel title="Your Access">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-4 text-[12px] text-[var(--text-muted)]">
                 <span>
@@ -220,7 +220,7 @@ export default function AdminAccessControlPage() {
             </div>
           </Panel>
 
-          <Panel title="Claim to role mappings">
+          <Panel title="Claim to Role Mappings">
             <p className="mb-3 text-[12px] leading-5 text-[var(--text-muted)]">
               Access is granted to claims, never to individual people. A group named here gives every member of that
               group the listed roles, so you add and remove access in your identity provider rather than in Cerebro.

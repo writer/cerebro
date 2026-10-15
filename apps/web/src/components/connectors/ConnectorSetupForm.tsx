@@ -1593,7 +1593,7 @@ export default function ConnectorSetupForm({
       <div className="border-b border-[color:var(--border)] px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Add connection</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Add Connection</h2>
             <p className="mt-1 max-w-2xl text-[13px] leading-5 text-[var(--text-muted)]">
               Choose the authentication path, select where credentials live, validate access, then save the runtime.
             </p>
@@ -1629,14 +1629,14 @@ export default function ConnectorSetupForm({
           {preflight && <PreflightCockpit preflight={preflight} method={selectedMethod} store={selectedStore} scopeCount={scopeCount} />}
           <SetupGuidancePanel method={selectedMethod} />
 
-          <SetupStep index={1} title="Choose authentication method" icon={<KeyRound className="h-4 w-4" />}>
+          <SetupStep index={1} title="Choose Authentication Method" icon={<KeyRound className="h-4 w-4" />}>
             <p className="mb-3 text-[12px] leading-5 text-[var(--text-muted)]">
               Available methods are advertised by the backend for this source. Unsupported methods are collapsed below.
             </p>
             <MethodTabs methods={methods} selectedID={effectiveSelectedMethodID ?? "encrypted_submission"} onSelect={changeMethod} />
           </SetupStep>
 
-          <SetupStep index={2} title="Name connection" icon={<TerminalSquare className="h-4 w-4" />}>
+          <SetupStep index={2} title="Name Connection" icon={<TerminalSquare className="h-4 w-4" />}>
             <div className="grid gap-3 md:grid-cols-2">
               <label className={labelClass}>
                 Tenant
@@ -1649,7 +1649,7 @@ export default function ConnectorSetupForm({
             </div>
           </SetupStep>
 
-          <SetupStep index={3} title="Choose credential store" icon={<LockKeyhole className="h-4 w-4" />}>
+          <SetupStep index={3} title="Choose Credential Store" icon={<LockKeyhole className="h-4 w-4" />}>
             {selectedMethod && (
               <>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1689,7 +1689,7 @@ export default function ConnectorSetupForm({
 		)}
 	</SetupStep>
 
-          <SetupStep index={4} title="Configure source" icon={<TerminalSquare className="h-4 w-4" />}>
+          <SetupStep index={4} title="Configure Source" icon={<TerminalSquare className="h-4 w-4" />}>
             {selectedMethod?.commands && selectedMethod.commands.length > 0 && (
               <div className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-4">
                 <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-[var(--text-primary)]">
@@ -1749,7 +1749,7 @@ export default function ConnectorSetupForm({
             )}
           </SetupStep>
 
-          <SetupStep index={5} title="Choose collected resources" icon={<SlidersHorizontal className="h-4 w-4" />}>
+          <SetupStep index={5} title="Choose Collected Resources" icon={<SlidersHorizontal className="h-4 w-4" />}>
             <div className="space-y-4">
               <ProductGroupSelector
                 groups={selectedMethod?.product_groups ?? []}

@@ -340,7 +340,7 @@ export function DataStateBanner({
 
   const lastLoaded = runtimeStateTimestamp(lastSuccessfulAt);
   const stateCopy: Record<RuntimeState, { label: string; description: string }> = {
-    empty: { label: "No data", description: "No matching records were found." },
+    empty: { label: "No Data", description: "No matching records were found." },
     error: { label: `Unable to load ${subject.toLowerCase()}`, description: detail || productErrorCopy(error, "This view could not load.") },
     loading: { label: `Loading ${subject.toLowerCase()}`, description: detail || "Fetching the latest records for this view." },
     partial: { label: `${subject} partially loaded`, description: detail || "Some records loaded, but one or more backing checks did not complete." },

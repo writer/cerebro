@@ -1045,7 +1045,7 @@ export default function PoliciesPage() {
       </div>
 
       {showUpload && <Panel
-        title="Upload policy document"
+        title="Upload Policy Document"
         action={<Upload className="h-4 w-4 text-slate-400" aria-hidden="true" />}
       >
         <form ref={policyUploadFormRef} onSubmit={submitPolicyUpload} className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,0.8fr)_minmax(0,0.75fr)_auto]">
@@ -1163,7 +1163,7 @@ export default function PoliciesPage() {
           <section className="border-y border-slate-200 py-4" aria-labelledby="policy-status-heading" data-policy-status-summary>
             <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
               <div className="xl:w-52 xl:shrink-0">
-                <h2 id="policy-status-heading" className="text-[13px] font-semibold text-slate-900">Policy status</h2>
+                <h2 id="policy-status-heading" className="text-[13px] font-semibold text-slate-900">Policy Status</h2>
                 <p className="mt-1 text-[12px] leading-5 text-slate-500">Start with open work, then use the register for full records.</p>
               </div>
               <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-5">
@@ -1560,7 +1560,7 @@ function GapRollupsPanel({
   ];
   return (
     <Panel
-      title="Gap rollups"
+      title="Gap Rollups"
       action={<span className="text-[12px] text-slate-500">{countLabel(rules.length, "rule")}</span>}
     >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1601,7 +1601,7 @@ function PolicyDetail({
 }) {
   if (!policy) {
     return (
-      <Panel title="Policy detail">
+      <Panel title="Policy Detail">
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-[13px] text-slate-500">
           No policy selected.
         </div>
@@ -1619,7 +1619,7 @@ function PolicyDetail({
 
   return (
     <Panel
-      title="Policy detail"
+      title="Policy Detail"
       action={
         <div className="flex items-center gap-2 text-[12px] text-slate-500">
           <GitCompare className="h-3.5 w-3.5" aria-hidden="true" />

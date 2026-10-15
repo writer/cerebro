@@ -147,7 +147,7 @@ export default function ReportSchedulesPage() {
         }
       />
 
-      <Panel title="Schedule a report">
+      <Panel title="Schedule a Report">
         <div className="grid gap-3 md:grid-cols-3">
           <label className={labelClass}>
             Report
@@ -229,7 +229,7 @@ export default function ReportSchedulesPage() {
       {listError && <ErrorBlock error={listError} onRetry={reload} />}
       {schedulesQuery.loading && schedules.length === 0 && <LoadingBlock label="Loading schedules..." />}
 
-      <Panel title="Active schedules">
+      <Panel title="Active Schedules">
         {schedules.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <CalendarClock className="h-6 w-6 text-[var(--text-muted)]" />
@@ -289,7 +289,7 @@ export default function ReportSchedulesPage() {
         )}
       </Panel>
 
-      <Panel title="Recent runs">
+      <Panel title="Recent Runs">
         {runs.length === 0 ? (
           <div className="py-8 text-center text-[13px] text-[var(--text-muted)]">No report runs recorded yet.</div>
         ) : (

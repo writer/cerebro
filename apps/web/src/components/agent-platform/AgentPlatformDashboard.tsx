@@ -221,7 +221,7 @@ export function AgentPlatformDashboard() {
         description="Review agent runtime coverage, connector auth boundaries, capability gates, eval status, trace events, and required evidence fields."
       />
 
-      <Panel title="Agent contract status">
+      <Panel title="Agent Contract Status">
         {state.error && (
           <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-800">
             Live contract did not load. Showing the stored contract.
@@ -236,7 +236,7 @@ export function AgentPlatformDashboard() {
         </div>
       </Panel>
 
-      <Panel title="Connector and OAuth controls">
+      <Panel title="Connector and OAuth Controls">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
             <div className="text-[13px] font-semibold text-slate-900">{connectorCapability?.name ?? "Connector boundary"}</div>
@@ -255,12 +255,12 @@ export function AgentPlatformDashboard() {
         </div>
       </Panel>
 
-      <Panel title="Agent capabilities">
+      <Panel title="Agent Capabilities">
         <CapabilityTable capabilities={contract.capabilities} contract={contract} />
       </Panel>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Panel title="Runtime events">
+        <Panel title="Runtime Events">
           <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
             {loadedCopy(visibleEvents.length, contract.runtimeEvents.length, "runtime events")}
           </div>
@@ -271,7 +271,7 @@ export function AgentPlatformDashboard() {
           </div>
         </Panel>
 
-        <Panel title="Required evidence fields">
+        <Panel title="Required Evidence Fields">
           <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
             {loadedCopy(visibleRequirements.length, contract.provenanceRequirements.length, "requirements")}
           </div>
@@ -299,7 +299,7 @@ export function AgentPlatformDashboard() {
         </Panel>
       </div>
 
-      <Panel title="Required checks">
+      <Panel title="Required Checks">
         <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
           {loadedCopy(visibleInvariants.length, contract.invariants.length, "checks")}
         </div>

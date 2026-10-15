@@ -330,7 +330,7 @@ export default function EvidencePage() {
             <div>
               <div className="flex items-center gap-2">
                 <PackageCheck className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence work</h2>
+                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence Work</h2>
               </div>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 Proof requests and reviews that block control readiness or packet export.
@@ -471,7 +471,7 @@ export default function EvidencePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence register</h2>
+                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence Register</h2>
                   </div>
                   <p className="mt-1 text-[12px] text-[var(--text-muted)]">Search proof items by finding, run, rule, claim, event, or graph root.</p>
                 </div>
@@ -513,7 +513,7 @@ export default function EvidencePage() {
               <div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Evidence detail</h2>
+                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Evidence Detail</h2>
                 </div>
                 <p className="mt-1 text-[12px] text-[var(--text-muted)]">Proof links and graph anchors for the selected item.</p>
               </div>

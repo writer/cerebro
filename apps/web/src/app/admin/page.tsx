@@ -52,7 +52,7 @@ export default function AdminPage() {
         </div>
       </Panel>
 
-      <Panel title="Cerebro has no user list of its own">
+      <Panel title="Cerebro Has No User List of Its Own">
         <div className="space-y-2 text-[13px] leading-6 text-[var(--text-muted)]">
           <p>
             Accounts are not created here. Your identity provider decides who reaches the console, and the group claims

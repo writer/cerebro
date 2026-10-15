@@ -503,7 +503,7 @@ function DiscoverySourceSummary({
             <SearchCheck className="h-4 w-4" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Source coverage</h2>
+            <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Source Coverage</h2>
             <p className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">
               {loading ? "Loading source candidates." : `${countLabel(sourceCount, "source")} checked. ${countLabel(pending, "candidate")} need review, ${linked} linked, ${countLabel(signals, "source signal")}, ${sourcesWithIssues} sources need attention. Last sync ${latestSync}.`}
             </p>
@@ -603,7 +603,7 @@ function CreateVendorModal({
       <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-vendor-title" className="surface-raised mx-auto w-full max-w-2xl overflow-hidden rounded-lg border border-[color:var(--border)] shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] px-5 py-4">
           <div>
-            <h2 id="add-vendor-title" className="text-[15px] font-semibold text-[var(--text-primary)]">Add vendor</h2>
+            <h2 id="add-vendor-title" className="text-[15px] font-semibold text-[var(--text-primary)]">Add Vendor</h2>
             <p className="mt-1 text-[12px] text-[var(--text-muted)]">Create a vendor record for review and owner tracking.</p>
           </div>
           <button type="button" onClick={onClose} className="secondary-button inline-flex h-8 w-8 items-center justify-center p-0" aria-label="Close add vendor">
@@ -940,7 +940,7 @@ function DiscoveryEmptyState({
 }) {
   return (
     <div className="px-5 py-10 text-center">
-      <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">No candidates need review</h3>
+      <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">No Candidates Need Review</h3>
       <p className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-[var(--text-muted)]">
         {countLabel(sourceCount, "source")} checked. Last sync {latestSync}.
       </p>
@@ -1076,7 +1076,7 @@ function DiscoveryQueue({
     <section className="surface-panel overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] px-5 py-3">
         <div>
-          <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Discovery queue</h2>
+          <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Discovery Queue</h2>
           <p className="mt-1 text-[12px] text-[var(--text-muted)]">
             {countLabel(discoveries.length, "candidate")} in this view. {countLabel(signalCount, "source signal")}.
           </p>
@@ -2093,7 +2093,7 @@ export default function VendorsPage() {
       {activeSection === "uploads" && (
       <div ref={uploadPanelRef}>
         <Panel
-          title="Upload vendor document"
+          title="Upload Vendor Document"
           action={<Upload className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />}
         >
         <form ref={vendorUploadFormRef} onSubmit={submitVendorUpload} className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,1fr)_auto]">

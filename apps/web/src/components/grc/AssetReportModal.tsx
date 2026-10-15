@@ -36,7 +36,7 @@ export default function AssetReportModal({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-[15px] font-semibold text-slate-900">Report inventory issue</h2>
+          <h2 className="text-[15px] font-semibold text-slate-900">Report Inventory Issue</h2>
           <p className="mt-1 text-[12px] text-slate-500">
             Capture a data quality or curation reason for {asset.label || shortEntity(asset.urn)}.
           </p>

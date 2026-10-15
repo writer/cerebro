@@ -129,7 +129,7 @@ export default function SharedAuditPackagePage() {
         <MetricCard label="Evidence" value={evidenceRows.length || summary.evidenceItems} detail={`${summary.exclusions} exclusions`} state={loading && !loaded ? "loading" : "ready"} />
       </div>
 
-      <Panel title="Snapshot summary">
+      <Panel title="Snapshot Summary">
         <div className="grid gap-4 md:grid-cols-3">
           <SummaryBox label="Profile" value={controlPacketQuery.data?.profile.name || controlPacketQuery.data?.profile.id || "Control packet"} />
           <SummaryBox label="Redaction" value={metadata?.redaction?.default_mode === "internal" ? "Internal" : "Review copy"} />
@@ -145,7 +145,7 @@ export default function SharedAuditPackagePage() {
         )}
       </Panel>
 
-      <Panel title="Approved evidence">
+      <Panel title="Approved Evidence">
         <DataTable
           rows={evidenceRows}
           columns={evidenceColumns}
@@ -158,7 +158,7 @@ export default function SharedAuditPackagePage() {
         />
       </Panel>
 
-      <Panel title="Scope exclusions">
+      <Panel title="Scope Exclusions">
         {exceptionRows.length > 0 ? (
           <DataTable
             rows={exceptionRows}

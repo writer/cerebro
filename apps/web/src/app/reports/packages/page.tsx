@@ -293,7 +293,7 @@ export default function AuditPackagesPage() {
         }
       />
 
-      <Panel title="Packet filters">
+      <Panel title="Packet Filters">
         <div className="grid gap-3 md:grid-cols-4">
           <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All tenants" className={inputClass} /></label>
           <label className={labelClass}>
@@ -332,7 +332,7 @@ export default function AuditPackagesPage() {
       </div>
 
       <section id="packet-status-ledger">
-        <Panel title="Packet status ledger">
+        <Panel title="Packet Status Ledger">
           <DataTable
             key={`status-ledger:${packetScopeKey}`}
             rows={statusLedgerRows}
@@ -352,7 +352,7 @@ export default function AuditPackagesPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section id="packet-checklist">
           <Panel
-            title="Packet checklist"
+            title="Packet Checklist"
             action={
               <div className="flex flex-wrap gap-2">
                 <Link href={`/reports?report_type=control&profile=${encodeURIComponent(selectedProfileID)}${framework ? `&framework=${encodeURIComponent(framework)}` : ""}${controlID ? `&control=${encodeURIComponent(controlID)}` : ""}`} className={buttonClass}>
@@ -441,7 +441,7 @@ export default function AuditPackagesPage() {
       </div>
 
       <section id="reviewer-questions">
-        <Panel title="Reviewer questions">
+        <Panel title="Reviewer Questions">
           <DataTable
             rows={auditorQuestionRows}
             columns={auditorQuestionColumns}
@@ -456,7 +456,7 @@ export default function AuditPackagesPage() {
       </section>
 
       <section id="evidence-review">
-        <Panel title="Evidence review">
+        <Panel title="Evidence Review">
           <DataTable
             rows={evidenceRows}
             columns={evidenceColumns}
@@ -473,7 +473,7 @@ export default function AuditPackagesPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section id="control-status">
-          <Panel title="Control status">
+          <Panel title="Control Status">
             <DataTable
               rows={ownerRows}
               columns={controlColumns}
@@ -490,7 +490,7 @@ export default function AuditPackagesPage() {
         </section>
 
         <section id="control-owner-queue">
-          <Panel title="Control owner queue">
+          <Panel title="Control Owner Queue">
             <DataTable
               rows={actionableOwnerRows}
               columns={controlColumns}
@@ -507,7 +507,7 @@ export default function AuditPackagesPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Panel title="Team queue">
+        <Panel title="Team Queue">
           <DataTable
             rows={teamRows}
             columns={teamColumns}
@@ -548,7 +548,7 @@ export default function AuditPackagesPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Panel title="Framework coverage">
+        <Panel title="Framework Coverage">
           <DataTable
             rows={frameworkRows}
             columns={frameworkColumns}
@@ -564,7 +564,7 @@ export default function AuditPackagesPage() {
         </Panel>
 
         <section id="source-freshness">
-          <Panel title="Source freshness">
+          <Panel title="Source Freshness">
             <DataTable
               rows={sourceRows}
               columns={sourceColumns}
@@ -581,7 +581,7 @@ export default function AuditPackagesPage() {
         </section>
       </div>
 
-      <Panel title="Scope exclusions">
+      <Panel title="Scope Exclusions">
         {exceptionRows.length > 0 ? (
           <DataTable
             rows={exceptionRows}

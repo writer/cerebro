@@ -131,7 +131,7 @@ export default function CustomDashboardBuilder({
   };
 
   return (
-    <Panel title="Report builder">
+    <Panel title="Report Builder">
       <div className="space-y-5">
         {catalog.error && (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[12px] text-amber-700">
@@ -140,7 +140,7 @@ export default function CustomDashboardBuilder({
         )}
 
         <section>
-          <h3 className="text-[12px] font-semibold text-slate-700">Dashboard filters</h3>
+          <h3 className="text-[12px] font-semibold text-slate-700">Dashboard Filters</h3>
           <p className="mt-0.5 text-[11px] text-slate-500">Applied to every report widget that declares the parameter.</p>
           <div className="mt-2 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             {FILTER_FIELDS.map((field) => (

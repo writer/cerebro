@@ -104,7 +104,7 @@ describe("Action detail page", () => {
 
     expect(container.textContent).toContain("restart service");
     expect(container.textContent).toContain("finding-1");
-    expect(container.textContent).toContain("Authority history");
+    expect(container.textContent).toContain("Authority History");
     expect(container.textContent).toContain("History unavailable");
     expect(container.textContent).toContain("The Action record is available. Retry loading its committed history.");
     expect(container.textContent).not.toContain("Confirm the operation ID and signed tenant identity");

@@ -130,7 +130,7 @@ function DashboardSettings({
   };
 
   return (
-    <Panel title="Dashboard settings">
+    <Panel title="Dashboard Settings">
       <div className="grid gap-3 md:grid-cols-4">
         <label className={labelClass}>Name<input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
         <label className={`${labelClass} md:col-span-2`}>Description<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" className={inputClass} /></label>

@@ -598,7 +598,7 @@ function FindingReviewDrawer({
           </section>
 
           <section className="border-t border-[color:var(--border)] pt-4">
-            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Source context</h3>
+            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Source Context</h3>
             <dl className="mt-3 grid gap-3 text-[12px] sm:grid-cols-2">
               <div>
                 <dt className="text-[var(--text-muted)]">Source</dt>
@@ -621,7 +621,7 @@ function FindingReviewDrawer({
 
           <section className="border-t border-[color:var(--border)] pt-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped controls</h3>
+              <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped Controls</h3>
               <span className="text-[11px] text-[var(--text-muted)]">{controls.length.toLocaleString()} total</span>
             </div>
             {controls.length > 0 ? (
