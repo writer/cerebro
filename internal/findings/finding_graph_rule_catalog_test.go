@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -101,4 +102,70 @@ func TestRustFindingGraphRuleCatalogMatchesGoSemantics(t *testing.T) {
 	if !reflect.DeepEqual(entries, want) {
 		t.Fatal("Rust finding graph rule catalog drifted from registered Go rule semantics")
 	}
+}
+
+// Neo4j only rejects a malformed rule when the runtime executes it, so catch
+// mismatched delimiters (for example an EXISTS { ... ) subquery) here.
+func TestFindingGraphRuleQueriesHaveBalancedDelimiters(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "..", "crates", "organizational-store", "src", "finding_graph_rule_catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog map[string]struct {
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(payload, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	for id, rule := range catalog {
+		if err := cypherDelimiterError(rule.Query); err != "" {
+			t.Errorf("graph rule %s: %s", id, err)
+		}
+	}
+}
+
+func TestCypherDelimiterErrorFindsMismatchedSubquery(t *testing.T) {
+	for query, want := range map[string]bool{
+		"MATCH (n) WHERE NOT EXISTS { MATCH (n)-[:R]->(m) } RETURN n": false,
+		"MATCH (n) WHERE NOT EXISTS { MATCH (n)-[:R]->(m) ) RETURN n": true,
+		"MATCH (n {name: '}'}) RETURN [x IN n.xs | x]":                false,
+		"MATCH (n) RETURN n.a + \"(\" AS label":                       false,
+		"MATCH (n RETURN n":                                           true,
+	} {
+		if got := cypherDelimiterError(query) != ""; got != want {
+			t.Errorf("cypherDelimiterError(%q) reported=%t, want %t", query, got, want)
+		}
+	}
+}
+
+func cypherDelimiterError(query string) string {
+	closers := map[rune]rune{')': '(', ']': '[', '}': '{'}
+	var stack []rune
+	var quote rune
+	for offset, char := range query {
+		if quote != 0 {
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch char {
+		case '\'', '"', '`':
+			quote = char
+		case '(', '[', '{':
+			stack = append(stack, char)
+		case ')', ']', '}':
+			if len(stack) == 0 || stack[len(stack)-1] != closers[char] {
+				return "unexpected " + string(char) + " at offset " + strconv.Itoa(offset)
+			}
+			stack = stack[:len(stack)-1]
+		}
+	}
+	if quote != 0 {
+		return "unterminated string literal"
+	}
+	if len(stack) > 0 {
+		return "unclosed " + string(stack[len(stack)-1])
+	}
+	return ""
 }

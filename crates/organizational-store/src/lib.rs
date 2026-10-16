@@ -91,6 +91,10 @@ pub enum StoreError {
     Serialization(serde_json::Error),
     /// Stored or supplied values violated an organizational-store invariant.
     Conflict(String),
+    /// A write referenced a source event whose append-log receipt the
+    /// JetStream consumer has not recorded yet. Producers write to the append
+    /// log before the consumer reads it back, so this clears on its own.
+    SourceEventReceiptPending(String),
     /// The lifecycle read projection is not current at the ledger revision.
     LifecycleProjectionUnavailable {
         /// Authoritative graph revision the read would need to represent.
@@ -116,7 +120,9 @@ impl fmt::Display for StoreError {
             Self::Postgres(error) => write!(formatter, "organizational ledger failed: {error}"),
             Self::Neo4j(error) => write!(formatter, "organizational projection failed: {error}"),
             Self::Serialization(error) => write!(formatter, "serialize graph commit: {error}"),
-            Self::Conflict(message) => formatter.write_str(message),
+            Self::Conflict(message) | Self::SourceEventReceiptPending(message) => {
+                formatter.write_str(message)
+            }
             Self::LifecycleProjectionUnavailable {
                 graph_revision,
                 projection_revision,
@@ -150,6 +156,7 @@ impl StoreError {
             self,
             Self::Postgres(_)
                 | Self::Neo4j(_)
+                | Self::SourceEventReceiptPending(_)
                 | Self::LifecycleProjectionUnavailable { .. }
                 | Self::ProjectionPending { .. }
         )
@@ -302,6 +309,10 @@ mod tests {
             serde_json::from_str::<serde_json::Value>("{").expect_err("invalid JSON");
         assert!(!StoreError::Serialization(serialization).is_retryable());
         assert!(!StoreError::Conflict("identity conflict".to_owned()).is_retryable());
+        assert!(
+            StoreError::SourceEventReceiptPending("consumer has not caught up".to_owned())
+                .is_retryable()
+        );
         assert!(
             StoreError::ProjectionPending {
                 receipt: GraphWriteReceipt {
