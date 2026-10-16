@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -224,6 +225,58 @@ func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
 	result, err := NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
 	if err != nil || result.EntitiesProjected != 1 || legacy.calls != 1 || deltaRequests != 1 {
 		t.Fatalf("Project() = %#v, %v legacy_calls=%d delta_requests=%d", result, err, legacy.calls, deltaRequests)
+	}
+}
+
+func TestLegacyDeltaUsesTheEmittingSourceForCrossProviderKinds(t *testing.T) {
+	var request legacyProjectionRequest
+	var authorityQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			authorityQuery = r.URL.Query()
+			response := projectionAuthorityResponse(projectionAuthorityLegacy)
+			response.SourceID = "asset"
+			response.FamilyID = "data_sensitivity"
+			_ = json.NewEncoder(w).Encode(response)
+		case "/v1/projections/legacy-deltas":
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode legacy delta: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(legacyProjectionResponse{Recorded: true, DeltaDigest: strings.Repeat("a", 64)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	event := projectionEvent()
+	event.SourceId = "aws"
+	event.Kind = "asset.data_sensitivity"
+	event.SchemaRef = "asset/data_sensitivity/v1"
+	legacy := &sourceProjectorWithDeltaStub{delta: ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:tenant-a:aws_s3_bucket:one",
+			TenantID:   "tenant-a",
+			SourceID:   "aws",
+			RuntimeID:  "box-runtime",
+			EntityType: "aws.s3.bucket",
+		}},
+	}}
+	if _, err := NewAppendLogProjector(legacy, client).Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if authorityQuery.Get("source_id") != "asset" || authorityQuery.Get("family_id") != "data_sensitivity" {
+		t.Fatalf("authority query = %v, want the kind taxonomy", authorityQuery)
+	}
+	if request.SourceID != "aws" || request.FamilyID != "data_sensitivity" {
+		t.Fatalf("legacy delta source/family = %q/%q, want aws/data_sensitivity", request.SourceID, request.FamilyID)
+	}
+	if request.Delta.Entities[0].SourceID != request.SourceID {
+		t.Fatalf("entity source %q does not match request source %q", request.Delta.Entities[0].SourceID, request.SourceID)
 	}
 }
 

@@ -258,6 +258,13 @@ func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *ce
 		return err
 	}
 	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	// Cross-provider kinds such as asset.data_sensitivity carry a taxonomy
+	// prefix that differs from the emitting source. Projected records are
+	// stamped with the emitting source, and the Rust receipt rejects a delta
+	// whose records do not match the request source.
+	if emittingSource := strings.TrimSpace(event.GetSourceId()); emittingSource != "" {
+		sourceID = emittingSource
+	}
 	requestBody, err := json.Marshal(legacyProjectionRequest{
 		TenantID:           strings.TrimSpace(event.GetTenantId()),
 		SourceRuntimeID:    runtimeID,
