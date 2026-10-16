@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -13,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/workflowevents"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
@@ -311,6 +313,67 @@ func TestVulnViewActionableExternalFindingServicePreservesCollapsedEvidence(t *t
 	}
 	if !containsString(stored.RiskReasons, "multiple_events") {
 		t.Fatalf("RiskReasons = %#v, want multiple_events", stored.RiskReasons)
+	}
+}
+
+func TestEvaluationProjectsEachCollapsedFindingOnceFromItsFinalState(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
+	events := []*cerebrov1.EventEnvelope{
+		vulnViewActionableExternalFindingEventAt("vulnview-vuln-1", "https://admin.writer.com/login", "open", "high", identityTrajectoryBaseTime),
+		vulnViewActionableExternalFindingEventAt("vulnview-vuln-2", "https://admin.writer.com/admin", "open", "high", identityTrajectoryBaseTime.Add(time.Minute)),
+	}
+	for _, multiRule := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multi_rule=%t", multiRule), func(t *testing.T) {
+			appendLog := &recordingAppendLog{}
+			graph := &stubGraphStore{}
+			store := &stubFindingStore{}
+			service := New(
+				&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
+				&stubReplayer{events: events},
+				store,
+				store,
+				store,
+				store,
+			).WithGraphStore(graph).WithAppendLog(appendLog)
+
+			if multiRule {
+				if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+					RuntimeID: runtime.GetId(),
+					RuleIDs:   []string{vulnViewActionableExternalFindingRuleID},
+				}); err != nil {
+					t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+				}
+			} else if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+				RuntimeID: runtime.GetId(),
+				RuleID:    vulnViewActionableExternalFindingRuleID,
+			}); err != nil {
+				t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+			}
+
+			if len(store.findings) != 1 {
+				t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+			}
+			var stored *ports.FindingRecord
+			for _, finding := range store.findings {
+				stored = finding
+			}
+			recorded := 0
+			for _, event := range appendLog.events {
+				if event.GetKind() == securityevents.FindingRecorded {
+					recorded++
+				}
+			}
+			if recorded != 1 {
+				t.Fatalf("finding recorded events = %d, want 1 for one collapsed finding", recorded)
+			}
+			anchor := graph.entities["urn:cerebro:writer:finding:"+stored.ID]
+			if anchor == nil {
+				t.Fatalf("graph entities = %v, want finding anchor", graph.entities)
+			}
+			if got, want := anchor.Attributes["last_observed_at"], stored.LastObservedAt.UTC().Format(time.RFC3339Nano); got != want {
+				t.Fatalf("anchor last_observed_at = %q, want final state %q", got, want)
+			}
+		})
 	}
 }
 
