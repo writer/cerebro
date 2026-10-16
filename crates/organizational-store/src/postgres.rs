@@ -2145,7 +2145,7 @@ WHERE id = $1
         }
         transaction.commit().await.map_err(|error| {
             if error.code() == Some(&SqlState::FOREIGN_KEY_VIOLATION) {
-                StoreError::Conflict(format!(
+                StoreError::SourceEventReceiptPending(format!(
                     "legacy projection for source event {event_id} has no committed source event receipt"
                 ))
             } else {

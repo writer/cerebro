@@ -41,7 +41,7 @@ WHERE coalesce(client.attributes_json, '') CONTAINS '"status":"ACTIVE"'
     MATCH (client)-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
     WHERE coalesce(finding.attributes_json, '') CONTAINS '"status":"open"'
       AND coalesce(finding.attributes_json, '') CONTAINS '"rule_id":"identity-api-token-or-oauth-app-created"'
-  )
+  }
 RETURN client.urn AS primary_urn,
        client.label AS primary_label,
        client.entity_type AS primary_type,

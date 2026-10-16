@@ -34,6 +34,14 @@ var (
 const (
 	maxErrorBodyBytes   = 4 << 10
 	maxErrorDetailRunes = 512
+
+	// The Rust consumer records a source event only after reading it back
+	// from JetStream, which trails this producer's append by up to a few
+	// seconds while it drains a page.
+	sourceEventReceiptPendingCode    = "source_event_receipt_pending"
+	defaultReceiptPendingBudget      = 30 * time.Second
+	initialReceiptPendingBackoff     = 200 * time.Millisecond
+	maxReceiptPendingBackoffInterval = 2 * time.Second
 )
 
 // ProjectionResponseError keeps the Rust error code and message, which name
@@ -105,9 +113,10 @@ func boundedDetail(value string) string {
 
 // ProjectionClient talks only to the Rust projection authority boundary.
 type ProjectionClient struct {
-	baseURL string
-	client  *http.Client
-	auth    tenantAuthenticator
+	baseURL              string
+	client               *http.Client
+	auth                 tenantAuthenticator
+	receiptPendingBudget time.Duration
 }
 
 func NewProjectionClient(baseURL, sharedSecret string, timeout time.Duration) (*ProjectionClient, error) {
@@ -122,7 +131,12 @@ func NewProjectionClient(baseURL, sharedSecret string, timeout time.Duration) (*
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectionClient{baseURL: baseURL, client: &http.Client{Timeout: timeout}, auth: auth}, nil
+	return &ProjectionClient{
+		baseURL:              baseURL,
+		client:               &http.Client{Timeout: timeout},
+		auth:                 auth,
+		receiptPendingBudget: defaultReceiptPendingBudget,
+	}, nil
 }
 
 func normalizeBaseURL(raw string) (string, error) {
@@ -244,6 +258,13 @@ func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *ce
 		return err
 	}
 	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	// Cross-provider kinds such as asset.data_sensitivity carry a taxonomy
+	// prefix that differs from the emitting source. Projected records are
+	// stamped with the emitting source, and the Rust receipt rejects a delta
+	// whose records do not match the request source.
+	if emittingSource := strings.TrimSpace(event.GetSourceId()); emittingSource != "" {
+		sourceID = emittingSource
+	}
 	requestBody, err := json.Marshal(legacyProjectionRequest{
 		TenantID:           strings.TrimSpace(event.GetTenantId()),
 		SourceRuntimeID:    runtimeID,
@@ -257,12 +278,36 @@ func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *ce
 	if err != nil {
 		return fmt.Errorf("encode Rust legacy projection request: %w", err)
 	}
+	deadline := time.Now().Add(c.receiptPendingBudget)
+	backoff := initialReceiptPendingBackoff
+	for {
+		err := c.postLegacyProjection(ctx, event.GetTenantId(), requestBody)
+		var responseErr *ProjectionResponseError
+		if !errors.As(err, &responseErr) || responseErr.Code != sourceEventReceiptPendingCode {
+			return err
+		}
+		wait := min(backoff, time.Until(deadline))
+		if wait <= 0 {
+			return err
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, maxReceiptPendingBackoffInterval)
+	}
+}
+
+func (c *ProjectionClient) postLegacyProjection(ctx context.Context, tenantID string, requestBody []byte) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/projections/legacy-deltas", bytes.NewReader(requestBody))
 	if err != nil {
 		return fmt.Errorf("build Rust legacy projection request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
-	if err := c.auth.authorize(request, event.GetTenantId()); err != nil {
+	if err := c.auth.authorize(request, tenantID); err != nil {
 		return err
 	}
 	var response legacyProjectionResponse

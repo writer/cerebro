@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -227,6 +228,58 @@ func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
 	}
 }
 
+func TestLegacyDeltaUsesTheEmittingSourceForCrossProviderKinds(t *testing.T) {
+	var request legacyProjectionRequest
+	var authorityQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			authorityQuery = r.URL.Query()
+			response := projectionAuthorityResponse(projectionAuthorityLegacy)
+			response.SourceID = "asset"
+			response.FamilyID = "data_sensitivity"
+			_ = json.NewEncoder(w).Encode(response)
+		case "/v1/projections/legacy-deltas":
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode legacy delta: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(legacyProjectionResponse{Recorded: true, DeltaDigest: strings.Repeat("a", 64)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	event := projectionEvent()
+	event.SourceId = "aws"
+	event.Kind = "asset.data_sensitivity"
+	event.SchemaRef = "asset/data_sensitivity/v1"
+	legacy := &sourceProjectorWithDeltaStub{delta: ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:tenant-a:aws_s3_bucket:one",
+			TenantID:   "tenant-a",
+			SourceID:   "aws",
+			RuntimeID:  "box-runtime",
+			EntityType: "aws.s3.bucket",
+		}},
+	}}
+	if _, err := NewAppendLogProjector(legacy, client).Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if authorityQuery.Get("source_id") != "asset" || authorityQuery.Get("family_id") != "data_sensitivity" {
+		t.Fatalf("authority query = %v, want the kind taxonomy", authorityQuery)
+	}
+	if request.SourceID != "aws" || request.FamilyID != "data_sensitivity" {
+		t.Fatalf("legacy delta source/family = %q/%q, want aws/data_sensitivity", request.SourceID, request.FamilyID)
+	}
+	if request.Delta.Entities[0].SourceID != request.SourceID {
+		t.Fatalf("entity source %q does not match request source %q", request.Delta.Entities[0].SourceID, request.SourceID)
+	}
+}
+
 func TestAppendLogProjectorReportsLegacyReceiptConflictCause(t *testing.T) {
 	const conflictMessage = "legacy projection for source event event-1 conflicts with the stored record"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +325,127 @@ func TestAppendLogProjectorReportsLegacyReceiptConflictCause(t *testing.T) {
 		responseErr.Code != "projection_receipt_conflict" ||
 		responseErr.Message != conflictMessage {
 		t.Fatalf("Project() error = %#v, want status, code, and message", responseErr)
+	}
+}
+
+func receiptPendingServer(t *testing.T, pendingResponses int) (*httptest.Server, *int) {
+	t.Helper()
+	var deltaRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(projectionAuthorityLegacy))
+		case "/v1/projections/legacy-deltas":
+			deltaRequests++
+			if deltaRequests <= pendingResponses {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"code":    sourceEventReceiptPendingCode,
+					"message": "legacy projection for source event event-1 has no committed source event receipt",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(legacyProjectionResponse{
+				Recorded:    true,
+				DeltaDigest: strings.Repeat("a", 64),
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server, &deltaRequests
+}
+
+func receiptPendingDelta() *sourceProjectorWithDeltaStub {
+	return &sourceProjectorWithDeltaStub{delta: ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:tenant-a:asset:one",
+			TenantID:   "tenant-a",
+			SourceID:   "box",
+			RuntimeID:  "box-runtime",
+			EntityType: "box.asset",
+			Label:      "One",
+		}},
+	}}
+}
+
+func TestLegacyDeltaWaitsForTheConsumerSourceReceipt(t *testing.T) {
+	server, deltaRequests := receiptPendingServer(t, 2)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	result, err := NewAppendLogProjector(receiptPendingDelta(), client).Project(context.Background(), projectionEvent())
+	if err != nil || result.EntitiesProjected != 1 || *deltaRequests != 3 {
+		t.Fatalf("Project() = %#v, %v delta_requests=%d, want success on the third attempt", result, err, *deltaRequests)
+	}
+}
+
+func TestLegacyDeltaReceiptPendingIsRejectedAfterTheBudget(t *testing.T) {
+	server, deltaRequests := receiptPendingServer(t, 1_000)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	client.receiptPendingBudget = 300 * time.Millisecond
+	_, err = NewAppendLogProjector(receiptPendingDelta(), client).Project(context.Background(), projectionEvent())
+	var responseErr *ProjectionResponseError
+	if !errors.As(err, &responseErr) || responseErr.Code != sourceEventReceiptPendingCode {
+		t.Fatalf("Project() error = %v, want the pending code after the budget", err)
+	}
+	// Still a record-scoped rejection, so a consumer that never catches up
+	// dead-letters the record instead of hanging the sync.
+	if !errors.Is(err, ports.ErrSourceProjectionRecordRejected) {
+		t.Fatalf("Project() error = %v, want a record-scoped rejection", err)
+	}
+	if *deltaRequests < 2 || *deltaRequests > 4 {
+		t.Fatalf("delta_requests=%d, want a few bounded retries", *deltaRequests)
+	}
+}
+
+func TestLegacyDeltaReceiptPendingStopsWhenTheContextEnds(t *testing.T) {
+	server, _ := receiptPendingServer(t, 1_000)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = NewAppendLogProjector(receiptPendingDelta(), client).Project(ctx, projectionEvent())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Project() error = %v, want the context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("Project() took %s after the context ended", elapsed)
+	}
+}
+
+func TestLegacyDeltaRealReceiptConflictIsNotRetried(t *testing.T) {
+	var deltaRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(projectionAuthorityLegacy))
+		case "/v1/projections/legacy-deltas":
+			deltaRequests++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "projection_receipt_conflict"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	_, err = NewAppendLogProjector(receiptPendingDelta(), client).Project(context.Background(), projectionEvent())
+	if !errors.Is(err, ErrProjectionReceiptConflict) || deltaRequests != 1 {
+		t.Fatalf("Project() error = %v delta_requests=%d, want one attempt", err, deltaRequests)
 	}
 }
 

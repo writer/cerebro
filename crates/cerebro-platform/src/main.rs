@@ -4491,6 +4491,15 @@ fn receipt_write_error(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
                 message,
             }),
         ),
+        // The producer can reach this endpoint before the JetStream consumer
+        // records the event it just appended; callers retry this code.
+        StoreError::SourceEventReceiptPending(message) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "source_event_receipt_pending",
+                message,
+            }),
+        ),
         other => store_error(other),
     }
 }
@@ -6294,6 +6303,14 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.code, "projection_receipt_conflict");
         assert!(body.message.contains("conflicts with the stored record"));
+
+        let (status, Json(body)) = receipt_write_error(StoreError::SourceEventReceiptPending(
+            "legacy projection for source event e1 has no committed source event receipt"
+                .to_owned(),
+        ));
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.code, "source_event_receipt_pending");
+        assert!(body.message.contains("no committed source event receipt"));
 
         let (status, Json(body)) =
             receipt_write_error(StoreError::LifecycleProjectionUnavailable {

@@ -104,13 +104,13 @@ async fn legacy_receipts_replay_idempotently_and_revise_on_change() -> Result<()
     assert_eq!(stored, delta("run-c", "role-1-renamed"));
 
     match record(&ledger, "aws-iam-role-never-consumed", &delta("run-a", "x")).await {
-        Err(StoreError::Conflict(message)) => {
+        Err(StoreError::SourceEventReceiptPending(message)) => {
             assert!(
                 message.contains("has no committed source event receipt"),
                 "{message}"
             );
         }
-        other => panic!("missing source receipt must be an explicit conflict, got {other:?}"),
+        other => panic!("missing source receipt must be reported as pending, got {other:?}"),
     }
     Ok(())
 }
