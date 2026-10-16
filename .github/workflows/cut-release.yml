@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: resolve
     permissions:
-      actions: read
+      actions: write # Cancel this run when a newer main candidate is already queued.
       contents: read
     steps:
       - name: Require successful CI for candidate commit
@@ -72,13 +72,38 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
+          EVENT_NAME: ${{ github.event_name }}
           # A candidate CI run can queue behind one full main run before its own
           # full run starts, so cover both 45-minute CI envelopes.
           CI_GATE_DEADLINE_SECONDS: "5400"
         run: |
           set -euo pipefail
+          # The candidate-build-main group runs one candidate at a time and keeps
+          # only the newest pending one. Automatic Stable Release never publishes
+          # a commit main has moved past, so finishing a superseded push build
+          # only delays the queued candidate that can actually ship. Manual
+          # rebuilds of an explicit commit are never cancelled here.
+          superseded_by_queued_candidate() {
+            [ "${EVENT_NAME}" = push ] || return 1
+            local current_main queued
+            current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" || return 1
+            [ "${current_main}" != "${CANDIDATE_SHA}" ] || return 1
+            queued="$(
+              gh run list --repo "${GITHUB_REPOSITORY}" --workflow cut-release.yml --event push --branch main --limit 20 \
+                --json databaseId,headSha,status \
+                --jq "[.[] | select(.databaseId != ${GITHUB_RUN_ID} and .headSha == \"${current_main}\" and (.status == \"pending\" or .status == \"queued\" or .status == \"waiting\"))] | length"
+            )" || return 1
+            [ "${queued}" -gt 0 ]
+          }
           deadline=$((SECONDS + CI_GATE_DEADLINE_SECONDS))
           while [ "${SECONDS}" -lt "${deadline}" ]; do
+            if superseded_by_queued_candidate; then
+              echo "::notice::Main advanced past ${CANDIDATE_SHA} and its candidate is queued; cancelling this superseded build."
+              gh run cancel "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}"
+              # Cancellation is asynchronous; never fall through to a success.
+              sleep 300
+              exit 1
+            fi
             ci_run="$(
               gh run list --repo "${GITHUB_REPOSITORY}" --workflow CI --event push --branch main --limit 50 \
                 --json headSha,status,conclusion,url \

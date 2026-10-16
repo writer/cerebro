@@ -104,6 +104,30 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("needs: resolve", ci_gate)
         self.assertIn("Require successful CI for candidate commit", ci_gate)
 
+    def test_superseded_push_candidate_yields_to_the_queued_candidate(self) -> None:
+        workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        ci_gate = workflow.split("  ci-gate:\n", 1)[1].split("\n  binary:\n", 1)[0]
+        check = ci_gate.split("superseded_by_queued_candidate() {", 1)[1].split(
+            "\n          }\n", 1
+        )[0]
+
+        # Only automatic push candidates yield; manual rebuilds of an explicit
+        # commit always run to completion.
+        self.assertIn('[ "${EVENT_NAME}" = push ] || return 1', check)
+        # Yield only when main moved and a newer candidate for that exact head
+        # is waiting in the concurrency group, never on a lookup failure.
+        self.assertIn('[ "${current_main}" != "${CANDIDATE_SHA}" ] || return 1', check)
+        self.assertIn('.headSha == \\"${current_main}\\"', check)
+        self.assertIn(".databaseId != ${GITHUB_RUN_ID}", check)
+        self.assertIn('.status == \\"pending\\"', check)
+        self.assertIn('[ "${queued}" -gt 0 ]', check)
+        self.assertEqual(check.count("|| return 1"), 4)
+
+        self.assertIn("actions: write", ci_gate)
+        self.assertIn('gh run cancel "${GITHUB_RUN_ID}"', ci_gate)
+        cancel = ci_gate.split('gh run cancel "${GITHUB_RUN_ID}"', 1)[1]
+        self.assertLess(cancel.index("exit 1"), cancel.index("exit 0"))
+
     def test_candidate_web_images_use_native_architecture_runners(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
         web_image = workflow.split("  web-image:\n", 1)[1].split(
