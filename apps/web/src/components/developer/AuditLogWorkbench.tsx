@@ -98,7 +98,7 @@ export default function AuditLogWorkbench() {
   return (
     <div className="space-y-6">
       <Panel
-        title="Find audit events"
+        title="Find Audit Events"
         action={(
           <button
             type="button"
@@ -190,7 +190,7 @@ export default function AuditLogWorkbench() {
       </div>
 
       <Panel
-        title="Event timeline"
+        title="Event Timeline"
         action={page?.window ? (
           <span className="text-[11px] text-[var(--text-muted)]">
             {displayTime(page.window.startTime)} – {displayTime(page.window.endTime)}

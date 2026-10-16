@@ -35,13 +35,14 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Cerebro",
-  description: "Findings, controls, evidence, and connector health.",
+  applicationName: "Cerebro",
+  description: "Security posture and attack surface management.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} ${agentMono.variable} bg-[var(--app-bg)] text-[var(--text-primary)] antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${agentMono.variable} text-[var(--text-primary)] antialiased`}>
         <NuqsAdapter>
           <ApiKeyProvider>
             <GRCQueryProvider>
@@ -53,14 +54,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         <CerebroAgentProvider>
                           <CommandPaletteProvider>
                             <SidebarProvider>
-                              <div className="flex h-screen max-w-full overflow-hidden bg-[var(--app-bg)]">
+                              <div className="flex h-screen max-w-full overflow-hidden">
                                 <Sidebar />
                                 <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                                   <Suspense fallback={null}>
                                     <Topbar />
                                   </Suspense>
-                                  <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--app-bg)] px-8 py-6 max-md:px-4">
-                                    <Suspense fallback={null}>{children}</Suspense>
+                                  <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-10 py-8 max-lg:px-6 max-md:px-4 max-md:py-5">
+                                    <div className="mx-auto w-full max-w-[1480px]">
+                                      <Suspense fallback={null}>{children}</Suspense>
+                                    </div>
                                   </main>
                                 </div>
                               </div>

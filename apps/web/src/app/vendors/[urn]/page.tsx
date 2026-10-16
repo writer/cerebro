@@ -366,7 +366,7 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN, workspaceID }: { tenan
 
   return (
     <Panel
-      title="Questionnaire queue"
+      title="Questionnaire Queue"
       action={(
         <div className="flex flex-wrap items-center gap-2">
           <Link href={queueHref} className="primary-button inline-flex items-center gap-2 px-3 py-1.5 text-[12px]">
@@ -987,7 +987,7 @@ function VendorTabBar({ activeTab, onChange }: { activeTab: VendorTab; onChange:
 
 function PriorityIssuesPanel({ findings }: { findings: NonNullable<GRCVendorDetailResponse["findings"]> }) {
   return (
-    <Panel title="Priority issues" action={<Link href="/risks" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">View all risks <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
+    <Panel title="Priority Issues" action={<Link href="/risks" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">View all risks <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
       {findings.length === 0 ? (
         <div className="rounded-md border border-dashed border-[color:var(--border-strong)] p-4 text-[13px] text-[var(--text-muted)]">No open risks on this vendor.</div>
       ) : (
@@ -1050,7 +1050,7 @@ function RequiredDocumentsPanel({
   ];
 
   return (
-    <Panel title="Required documents" action={<span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[12px] font-semibold text-[var(--text-secondary)]">{documents.length}</span>}>
+    <Panel title="Required Documents" action={<span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[12px] font-semibold text-[var(--text-secondary)]">{documents.length}</span>}>
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead><tr><th>Document</th><th>Status</th><th>Last updated</th><th /></tr></thead>
@@ -1109,7 +1109,7 @@ function ReviewWorkflowPanel({
   ];
 
   return (
-    <Panel title="Review workflow" action={<Link href="/vendors" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">Vendor list <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
+    <Panel title="Review Workflow" action={<Link href="/vendors" className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">Vendor list <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}>
       <div className="divide-y divide-[color:var(--border)]">
         {rows.map((row) => (
           <div key={row.label} className="grid grid-cols-[42px_minmax(0,1fr)] gap-3 py-4 first:pt-0 last:pb-0">
@@ -1167,7 +1167,7 @@ function VendorContextPanel({
   vendorLifecycle: string;
 }) {
   return (
-    <Panel title="Vendor context">
+    <Panel title="Vendor Context">
       <dl className="divide-y divide-[color:var(--border)]">
         <DetailRow label="Lifecycle" value={humanize(vendorLifecycle)} />
         <DetailRow label="Source status" value={humanize(vendor.source_status || vendor.status)} />
@@ -1331,10 +1331,10 @@ export default function VendorDetailPage() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_390px]">
               <PriorityIssuesPanel findings={findings} />
               <div className="space-y-4">
-                <Panel title="Risk score">
+                <Panel title="Risk Score">
                   <ScoreFactorList factors={scoreFactors} />
                 </Panel>
-                <Panel title="Risk inputs">
+                <Panel title="Risk Inputs">
                   <dl className="divide-y divide-[color:var(--border)]">
                     <DetailRow label="Data" value={humanize(packetRisk?.data_sensitivity || vendor.data_sensitivity)} />
                     <DetailRow label="Access" value={humanize(packetRisk?.access_level || vendor.access_level)} />
@@ -1381,7 +1381,7 @@ export default function VendorDetailPage() {
                   )}
                 </Panel>
               </div>
-              <Panel title="Evidence freshness">
+              <Panel title="Evidence Freshness">
                 <FreshnessList clocks={packet?.evidence_freshness ?? vendor.evidence_freshness ?? []} />
               </Panel>
             </div>
@@ -1394,26 +1394,26 @@ export default function VendorDetailPage() {
           {activeTab === "activity" && (
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_390px]">
               <div className="space-y-4">
-                <Panel title="Review packet">
+                <Panel title="Review Packet">
                   <div className="grid gap-6 lg:grid-cols-2">
                     <div>
-                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Next actions</h3>
+                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Next Actions</h3>
                       <ActionList actions={actions} />
                     </div>
                     <div>
-                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Close conditions</h3>
+                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Close Conditions</h3>
                       <CloseActionList actions={closeActions} />
                     </div>
                   </div>
                 </Panel>
-                <Panel title="Operational posture">
+                <Panel title="Operational Posture">
                   <div className="grid gap-6 lg:grid-cols-2">
                     <div>
-                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Packet missing</h3>
+                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Packet Missing</h3>
                       <BadgeList items={packetMissingItems} emptyLabel="No missing packet items." />
                     </div>
                     <div>
-                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Packet ready</h3>
+                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Packet Ready</h3>
                       <BadgeList items={packetReadyItems} emptyLabel="No ready packet items." />
                     </div>
                     <div>
@@ -1431,20 +1431,20 @@ export default function VendorDetailPage() {
                     </div>
                   </div>
                 </Panel>
-                <Panel title="Vendor records">
+                <Panel title="Vendor Records">
                   <div className="grid gap-6 lg:grid-cols-2">
                     <div>
                       <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Contracts</h3>
                       <RelationshipList items={relationships.contracts ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
-                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Reviews and assurance</h3>
+                      <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Reviews and Assurance</h3>
                       <RelationshipList items={reviews} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                   </div>
                 </Panel>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <Panel title="Monitoring signals">
+                  <Panel title="Monitoring Signals">
                     <MonitoringSignalList signals={monitoringSignals} />
                   </Panel>
                   <Panel title="Obligations">
@@ -1453,7 +1453,7 @@ export default function VendorDetailPage() {
                 </div>
               </div>
               <aside className="space-y-4">
-                <Panel title="Vendor detail">
+                <Panel title="Vendor Detail">
                   <dl className="divide-y divide-[color:var(--border)]">
                     <DetailRow label="Owner" value={ownerLabel(vendor)} />
                     <DetailRow label="Owner state" value={vendor.owner_state === "missing" ? "Missing" : "Assigned"} />
@@ -1475,7 +1475,7 @@ export default function VendorDetailPage() {
                   </dl>
                 </Panel>
                 <CommercialPanel commercial={packetCommercial} vendor={vendor} />
-                <Panel title="Control posture">
+                <Panel title="Control Posture">
                   <dl className="divide-y divide-[color:var(--border)]">
                     <DetailRow label="Security review" value={humanize(packetControls?.security_review_status || vendor.security_review_status)} />
                     <DetailRow label="Privacy review" value={humanize(packetControls?.privacy_review_status || vendor.privacy_review_status)} />
@@ -1485,7 +1485,7 @@ export default function VendorDetailPage() {
                     <DetailRow label="ISO 27001" value={humanize(packetControls?.iso27001_status || vendor.iso27001_status)} />
                   </dl>
                 </Panel>
-                <Panel title="Linked identities">
+                <Panel title="Linked Identities">
                   <div className="space-y-4">
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Owners</div>

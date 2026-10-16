@@ -95,7 +95,7 @@ export default function FrameworksPage() {
       <PageHeader
         contractId="frameworks"
         title="Frameworks"
-        description="Open the programs your team is working on, resolve control gaps, and prepare audit packets."
+        description="Frameworks you report against, and their open gaps."
         action={soc2 ? (
           <Link href={`/frameworks/${frameworkRouteSegment(soc2)}`} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
             Open SOC 2
@@ -111,7 +111,7 @@ export default function FrameworksPage() {
       </div>
 
       <Panel
-        title="Compliance programs"
+        title="Compliance Programs"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <select value={lifecycle} onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)} className={inputClass}>

@@ -105,7 +105,7 @@ function DefinitionList({
   onLoad: (definition: ConnectorDefinition) => void;
 }) {
   return (
-    <Panel title="Custom library" action={<span className="text-[12px] text-[var(--text-muted)]">{definitions.length} definitions</span>}>
+    <Panel title="Custom Library" action={<span className="text-[12px] text-[var(--text-muted)]">{definitions.length} definitions</span>}>
       <div className="space-y-2">
         {definitions.map((definition) => (
           <button
@@ -140,7 +140,7 @@ function DefinitionList({
 function CheckList({ definition }: { definition: ConnectorDefinition }) {
   const checks = definition.validation?.checks ?? [];
   return (
-    <Panel title="Validation gates" action={<Badge value={connectorDefinitionStatus(definition)} />}>
+    <Panel title="Validation Gates" action={<Badge value={connectorDefinitionStatus(definition)} />}>
       <div className="space-y-2">
         {checks.map((check) => (
           <div key={check.id} className="flex items-start gap-3 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3">
@@ -198,7 +198,7 @@ function FamilyEditor({
   };
 
   return (
-    <Panel title="Resource types" action={<button type="button" onClick={addFamily} className="secondary-button inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px]"><Plus className="h-3.5 w-3.5" />Add</button>}>
+    <Panel title="Resource Types" action={<button type="button" onClick={addFamily} className="secondary-button inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px]"><Plus className="h-3.5 w-3.5" />Add</button>}>
       <div className="space-y-3">
         {families.map((family, index) => (
           <div key={`${family.id}-${index}`} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3">
@@ -436,7 +436,7 @@ function ConnectorBuilderContent() {
     <div className="space-y-6">
       <PageHeader
         title="Connector Builder"
-        description="Dynamic connector definitions, validation gates, credential-store boundaries, and staged promotion."
+        description="Define, validate, and promote custom connectors."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/connectors" className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
@@ -535,7 +535,7 @@ function ConnectorBuilderContent() {
             </div>
           </Panel>
 
-          <Panel title="Credential boundary">
+          <Panel title="Credential Boundary">
             <div className="grid gap-3 md:grid-cols-2">
               {(credentialStores.length > 0 ? credentialStores : normalizeCredentialStores(undefined)).map((store) => {
                 const checked = selectedStores.includes(store.id);
@@ -567,7 +567,7 @@ function ConnectorBuilderContent() {
         <div className="space-y-5">
           <DefinitionList definitions={definitions} selectedID={selectedDefinitionID || draft.id} onLoad={loadDefinition} />
           <CheckList definition={draft} />
-          <Panel title="Live preview">
+          <Panel title="Live Preview">
             <div className="space-y-3">
               <div className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-3">
                 <div className="text-[12px] font-semibold text-[var(--text-primary)]">Runtime config JSON</div>
@@ -634,7 +634,7 @@ function ConnectorBuilderContent() {
               </div>
             </div>
           </Panel>
-          <Panel title="Agent workspace">
+          <Panel title="Agent Workspace">
             <div className="space-y-2 text-[12px] leading-5 text-[var(--text-muted)]">
               {[
                 { icon: Bot, label: "Discovery", value: "Provider docs, API base, auth model, resources" },

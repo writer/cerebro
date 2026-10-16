@@ -83,9 +83,9 @@ const CONNECTOR_RENDER_LIMIT = 50;
 
 const libraryTabs: Array<{ id: LibraryTab; label: string; icon: ReactNode }> = [
   { id: "connected", label: "Connected", icon: <CheckCircle2 className="h-4 w-4" /> },
-  { id: "attention", label: "Needs attention", icon: <AlertTriangle className="h-4 w-4" /> },
+  { id: "attention", label: "Needs Attention", icon: <AlertTriangle className="h-4 w-4" /> },
   { id: "available", label: "Available", icon: <PlugZap className="h-4 w-4" /> },
-  { id: "backlog", label: "Request access", icon: <ShieldCheck className="h-4 w-4" /> },
+  { id: "backlog", label: "Request Access", icon: <ShieldCheck className="h-4 w-4" /> },
   { id: "all", label: "All", icon: <Database className="h-4 w-4" /> },
 ];
 
@@ -240,7 +240,7 @@ function ConnectorLibraryRow({
           attention={total === 0 && !setupAllowed}
         />
         <SourceSignal
-          label={total > 0 ? "Healthy" : "Resource types"}
+          label={total > 0 ? "Healthy" : "Resource Types"}
           value={total > 0 ? `${healthy}/${total}` : resourceTypeStats.resourceTypes || "Not listed"}
           attention={total > 0 && healthy < total}
         />
@@ -392,7 +392,7 @@ function AttentionNotice({
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-[13px] font-semibold">Some sources need attention</div>
+          <div className="text-[13px] font-semibold">Some Sources Need Attention</div>
           <div className="mt-0.5 text-[12px] leading-5">
             {attentionCount} source{attentionCount === 1 ? " has" : "s have"} {actionConnections} connection signal{actionConnections === 1 ? "" : "s"} to resolve.
           </div>
@@ -415,7 +415,7 @@ function ReadinessMix({
   onFilter: (filter: ReadinessFilter) => void;
 }) {
   return (
-    <Panel title="Readiness mix">
+    <Panel title="Readiness Mix">
       <div className="space-y-2">
         {readinessOrder.map((readiness) => (
           <button
@@ -450,7 +450,7 @@ function CustomConnectorPanel({
 }) {
   return (
     <Panel
-      title="Custom connectors"
+      title="Custom Connectors"
       action={
         <Link href={`/connectors/builder${tenantID ? `?tenant_id=${encodeURIComponent(tenantID)}` : ""}`} className="secondary-button inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px]">
           <Bot className="h-3.5 w-3.5" />
@@ -528,7 +528,7 @@ function ProviderAPIProofPanel({
   metrics: ReturnType<typeof providerAPIProofMetrics>;
 }) {
   return (
-    <Panel title="API proof queue" action={<Badge value={`${metrics.needsAction} open`} />}>
+    <Panel title="API Proof Queue" action={<Badge value={`${metrics.needsAction} open`} />}>
       <div className="grid grid-cols-3 gap-2">
         <SourceSignal label="Needs action" value={metrics.needsAction} attention={metrics.needsAction > 0} />
         <SourceSignal label="Verified" value={metrics.verified} />
@@ -592,7 +592,7 @@ function CatalogResourceTypesPanel({ cards, tenantID }: { cards: ConnectorCard[]
     .slice(0, 4);
 
   return (
-    <Panel title="Catalog resource types" action={<Badge value={`${resourceTypeTotals.sources} sources`} />}>
+    <Panel title="Catalog Resource Types" action={<Badge value={`${resourceTypeTotals.sources} sources`} />}>
       <div className="grid grid-cols-3 gap-2">
         <SourceSignal label="Resource types" value={resourceTypeTotals.resourceTypes} />
         <SourceSignal label="Distinct types" value={resourceTypeTotals.distinctResourceTypes} />
@@ -797,11 +797,11 @@ export default function ConnectorsPage() {
     setReadinessFilter("all");
   };
   const viewCopy: Record<LibraryTab, { title: string; detail: string }> = {
-    all: { title: "All sources", detail: "Every source, connected or not." },
-    attention: { title: "Sources needing attention", detail: "Fix failing, stale, or incomplete runtime signals first." },
-    available: { title: "Available sources", detail: "Sources that are ready to connect." },
-    backlog: { title: "Sources requiring access", detail: "Sources that need access or additional setup before they can be connected." },
-    connected: { title: "Connected sources", detail: "Monitor active sources and open their runtime details." },
+    all: { title: "All Sources", detail: "Every source, connected or not." },
+    attention: { title: "Sources Needing Attention", detail: "Failing or stale. Fix these first." },
+    available: { title: "Available Sources", detail: "Supported sources not yet connected." },
+    backlog: { title: "Sources Requiring Access", detail: "Need access or setup first." },
+    connected: { title: "Connected Sources", detail: "Feeding evidence into the graph." },
   };
   const currentView = viewCopy[libraryTab];
 
@@ -810,7 +810,7 @@ export default function ConnectorsPage() {
       <PageHeader
         contractId="connectors"
         title="Integrations"
-        description="Connect a source, confirm what it collects, and review current health."
+        description="Clouds, SaaS, identity providers, and scanners feeding the graph."
         action={
           <div className="flex flex-wrap gap-2">
             <button
@@ -822,7 +822,7 @@ export default function ConnectorsPage() {
               className="primary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]"
             >
               <Plus className="h-4 w-4" />
-              Add integration
+              Add Integration
             </button>
             <button type="button" onClick={() => { void libraryQuery.reload(); void runtimeHealthQuery.reload(); void definitionsQuery.reload(); }} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
               <RefreshCw className="h-4 w-4" />
@@ -841,7 +841,7 @@ export default function ConnectorsPage() {
       <section className="surface-panel p-4">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <label className={labelClass}>
-            Search integrations
+            Search Integrations
             <div className="relative mt-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
               <input

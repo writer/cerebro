@@ -1,6 +1,6 @@
 export function grcBrowserRouteContracts({ adminURN }) {
   return [
-    { route: "/", pageId: "overview", heading: "Security Overview" },
+    { route: "/", pageId: "overview", heading: "Security Posture" },
     { route: "/risks", pageId: "risks", heading: "Risks" },
     { route: "/controls", pageId: "controls", heading: "Controls" },
     { route: "/policies", pageId: "policies", heading: "Policy Documents" },

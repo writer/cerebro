@@ -83,10 +83,10 @@ export default function RiskScoringSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Risk Scoring"
-        description="Tune tenant-specific risk thresholds, signal cutoffs, graph relation weights, and factor weights used by the finding risk model."
+        description="How findings are ranked."
       />
 
-      <Panel title="Tenant configuration">
+      <Panel title="Tenant Configuration">
         <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <label>
             <div className={labelClass}>Tenant ID</div>
@@ -121,7 +121,7 @@ export default function RiskScoringSettingsPage() {
         {(formError || mutationError) && <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">{formError ?? mutationError}</div>}
       </Panel>
 
-      <Panel title="Level thresholds">
+      <Panel title="Level Thresholds">
         <div className="grid gap-3 md:grid-cols-3">
           <NumberField label="Critical" value={form.thresholds.critical} onChange={(value) => setThreshold("critical", value)} />
           <NumberField label="High" value={form.thresholds.high} onChange={(value) => setThreshold("high", value)} />
@@ -129,7 +129,7 @@ export default function RiskScoringSettingsPage() {
         </div>
       </Panel>
 
-      <Panel title="Signal thresholds">
+      <Panel title="Signal Thresholds">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <NumberField label="EPSS high" step="0.01" value={form.signals.epss_high} onChange={(value) => setSignal("epss_high", value)} />
           <NumberField label="EPSS elevated" step="0.01" value={form.signals.epss_elevated} onChange={(value) => setSignal("epss_elevated", value)} />
@@ -154,7 +154,7 @@ export default function RiskScoringSettingsPage() {
         />
       </div>
 
-      <Panel title="How this is applied">
+      <Panel title="How This Is Applied">
         <div className="flex items-start gap-3 text-[13px] leading-6 text-slate-600">
           <SlidersHorizontal className="mt-0.5 h-4 w-4 text-indigo-500" />
           <div>

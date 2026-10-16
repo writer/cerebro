@@ -224,19 +224,19 @@ export default function Topbar() {
   usePopoverDismissal({ containerRef: topbarRef, enabled: popoverOpen, onDismiss: closePopovers });
 
   return (
-    <header ref={topbarRef} className="relative flex h-16 items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[var(--surface)] px-6 max-md:px-3">
+    <header ref={topbarRef} className="glass-bar relative z-20 flex h-16 items-center justify-between gap-3 border-b border-[color:var(--border)] px-8 max-lg:px-6 max-md:px-3">
       <div className="min-w-[180px] max-md:hidden" />
 
-      <div className="w-[min(28rem,20vw)] min-w-[180px] max-md:min-w-0 max-md:flex-1">
+      <div className="w-[min(32rem,32vw)] min-w-[220px] max-md:min-w-0 max-md:flex-1">
         <button
           type="button"
           onClick={openCommandPalette}
-          className="flex w-full items-center gap-3 rounded-lg border border-[color:var(--border)] bg-[var(--surface-raised)] px-3.5 py-2 text-[13px] text-[var(--text-muted)] shadow-[var(--shadow-sm)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]"
+          className="flex w-full items-center gap-3 rounded-xl border border-[color:var(--border)] bg-[var(--surface-raised)] px-4 py-2.5 text-[13px] text-[var(--text-muted)] shadow-[var(--shadow-sm)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-4 w-4 text-[var(--text-muted)]">
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
-          <span className="truncate">Search work, controls, evidence, and integrations...</span>
+          <span className="truncate">Search assets, findings, identities, and sources...</span>
           <kbd className="ml-auto rounded border border-[color:var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">⌘K</kbd>
         </button>
       </div>
@@ -254,7 +254,7 @@ export default function Topbar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border)] bg-[var(--surface-raised)] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--border)] bg-[var(--surface-raised)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
           aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         >
@@ -278,7 +278,7 @@ export default function Topbar() {
             setShowIdentity(false);
             setShowConnection(false);
           }}
-          className={`relative rounded-md p-1.5 transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] ${showNotifications ? "bg-[var(--surface-hover)] text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
+          className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] ${showNotifications ? "bg-[var(--surface-hover)] text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}
           aria-label={unreadCount > 0 ? `Notifications, ${countLabel(unreadCount, "unread alert")}` : "Notifications"}
           aria-expanded={showNotifications}
         >
@@ -300,7 +300,8 @@ export default function Topbar() {
             setShowConnection(false);
             setShowNotifications(false);
           }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[12px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white shadow-[0_4px_12px_-4px_rgba(79,70,229,0.6)] ring-2 ring-[var(--surface)] transition hover:brightness-110"
+          style={{ background: "var(--primary-gradient)" }}
           aria-label={`Current user: ${identity.displayName}`}
           title={`${identity.displayName}${identity.actor && identity.actor !== identity.displayName ? ` (${identity.actor})` : ""} · ${identity.sourceLabel}`}
         >
@@ -470,7 +471,7 @@ export default function Topbar() {
                 <span className="min-w-0">
                   <span className="block text-[13px] font-semibold text-[var(--text-primary)]">Members</span>
                   <span className="mt-1 block text-[12px] leading-5 text-[var(--text-muted)]">
-                    Organizations, users, auth providers, roles, and login history.
+                    Who can sign in, and their roles.
                   </span>
                 </span>
               </Link>

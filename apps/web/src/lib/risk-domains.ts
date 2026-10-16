@@ -15,9 +15,9 @@ export const RISK_DOMAIN_LABELS: Record<RiskDomainID, string> = {
 export const RISK_DOMAIN_DETAIL: Record<RiskDomainID, string> = {
   cloud: "AWS, GCP, Azure, Kubernetes",
   saas: "GitHub, Microsoft 365, Slack, Salesforce",
-  identity: "Directories, accounts, secrets, certificates",
+  identity: "Principals, grants, federation, credentials",
   endpoint: "Managed devices and agents",
-  other: "Not attributable to a posture domain",
+  other: "Not yet mapped to a posture domain",
 };
 
 // A finding's rule ID leads with its catalog category, and the list API returns

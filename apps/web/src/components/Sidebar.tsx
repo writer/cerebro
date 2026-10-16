@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
+import CerebroMark from "@/components/brand/CerebroMark";
 import { useSidebar } from "@/components/providers";
 import { INVENTORY_GROUPS } from "@/lib/inventory-groups";
 import { navigationEntries, operatorNavLinks, utilityLinks, type NavigationEntry } from "@/lib/navigation";
@@ -217,9 +218,9 @@ export default function Sidebar() {
         href={link.href}
         prefetch={false}
         title={link.label}
-        className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-[8px] text-[13px] font-medium transition ${
+        className={`relative flex items-center gap-2.5 rounded-xl px-3 py-[9px] text-[13px] font-medium transition ${
           active
-            ? "bg-[var(--nav-active)] text-[var(--sidebar-active)] shadow-[var(--shadow-sm)] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-[var(--sidebar-active)]"
+            ? "bg-[var(--nav-active)] font-semibold text-[var(--sidebar-active)] shadow-[var(--shadow-sm)] ring-1 ring-inset ring-[color:color-mix(in_srgb,var(--sidebar-active)_14%,transparent)]"
             : "text-[var(--sidebar-fg)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--text-primary)]"
         } ${nested && !collapsed ? "pl-8" : ""} ${collapsed ? "justify-center" : "max-md:justify-center"}`}
       >
@@ -239,7 +240,7 @@ export default function Sidebar() {
     return (
       <div key={group.id} className="space-y-0.5">
         <div
-          className={`flex w-full items-center gap-1 rounded-lg px-2.5 py-[8px] text-[13px] font-medium transition ${
+          className={`flex w-full items-center gap-1 rounded-xl px-3 py-[9px] text-[13px] font-medium transition ${
             active
               ? "bg-[var(--surface-muted)] text-[var(--text-primary)]"
               : "text-[var(--sidebar-fg)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--text-primary)]"
@@ -287,19 +288,22 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={`flex h-screen flex-col border-r border-[color:var(--border)] bg-[var(--sidebar-bg)] transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[224px] max-md:w-[60px]"}`}>
-      <div className={`flex items-center pt-5 pb-4 ${collapsed ? "justify-center px-2" : "px-5"}`}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[11px] font-bold text-white">
-          C
-        </div>
+    <aside className={`glass-bar z-30 flex h-screen flex-col border-r border-[color:var(--border)] bg-[var(--sidebar-bg)] transition-all duration-200 ${collapsed ? "w-[68px]" : "w-[248px] max-md:w-[68px]"}`}>
+      <div className={`flex h-16 items-center ${collapsed ? "justify-center px-2" : "px-5 max-md:justify-center max-md:px-2"}`}>
+        <CerebroMark
+          title="Cerebro"
+          className="h-9 w-9 shrink-0 drop-shadow-[0_6px_12px_rgba(79,70,229,0.45)]"
+        />
         {!collapsed && (
-          <div className="ml-2 max-md:hidden">
-            <span className="block text-[15px] font-semibold text-[var(--text-primary)]">Cerebro</span>
+          <div className="ml-2.5 leading-tight max-md:hidden">
+            <span className="block text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">Cerebro</span>
+            <span className="block text-[11px] font-medium text-[var(--sidebar-muted)]">Posture &amp; Attack Surface</span>
           </div>
         )}
       </div>
 
-      <nav className={`flex-1 space-y-0.5 overflow-y-auto ${collapsed ? "px-1.5" : "px-3 max-md:px-1.5"}`}>
+      <nav className={`flex-1 space-y-1 overflow-y-auto pt-3 ${collapsed ? "px-2" : "px-3 max-md:px-2"}`}>
+        {!collapsed && <div className="eyebrow px-3 pb-1.5 text-[10px] max-md:hidden">Workspace</div>}
         {sidebarPrimaryLinks.map((link) => renderLink(link))}
         {sidebarNavGroups.map(renderGroup)}
         {sidebarSupportLinks.map((link) => renderLink(link))}
@@ -307,6 +311,7 @@ export default function Sidebar() {
         {collapsed && utilityLinks.length > 0 && <div className="my-3 border-t border-[color:var(--border)]" />}
         {!collapsed && utilityLinks.length > 0 && <div className="my-3 border-t border-[color:var(--border)]" />}
         {!collapsed && <div className="my-3 hidden border-t border-[color:var(--border)] max-md:block" />}
+        {!collapsed && <div className="eyebrow px-3 pb-1.5 pt-4 text-[10px] max-md:hidden">Settings</div>}
         {sidebarUtilityGroups.map(renderGroup)}
         {sidebarUtilityLinks.map((link) => renderLink(link))}
       </nav>

@@ -64,7 +64,7 @@ export default function ActionsPage() {
     <div>
       <PageHeader
         title="Verified Findings"
-        description="Findings an agent confirmed against empirical evidence, and the remediation each one produced."
+        description="Findings an agent confirmed, and the fix each produced."
         contractId="rust-actions"
       />
 

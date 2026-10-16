@@ -1,6 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ArrowUpRight,
+  Boxes,
+  ChevronRight,
+  ClipboardCheck,
+  Globe,
+  Flame,
+  type LucideIcon,
+  MessageSquareText,
+  PlugZap,
+  Radar,
+  ScanSearch,
+  ShieldAlert,
+  ShieldCheck,
+  TrendingUp,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import { useMemo } from "react";
@@ -47,72 +65,104 @@ export const homeGRCPaths = (scope: GRCScope) => {
 
 type CoverageTone = "danger" | "warning" | "success" | "neutral";
 
-const toneDot: Record<CoverageTone, string> = {
-  danger: "bg-red-500",
-  warning: "bg-amber-500",
-  success: "bg-emerald-500",
-  neutral: "bg-slate-300",
-};
-
-const toneText: Record<CoverageTone, string> = {
-  danger: "text-red-600",
-  warning: "text-amber-600",
-  success: "text-emerald-600",
-  neutral: "text-[var(--text-primary)]",
+const toneLabel: Record<CoverageTone, string> = {
+  danger: "Act Now",
+  warning: "Review",
+  success: "Healthy",
+  neutral: "Info",
 };
 
 function OverviewTile({
   detail,
+  hint,
   href,
+  icon: Icon,
   label,
   tone,
   value,
 }: {
   detail: string;
+  hint: string;
   href: string;
+  icon: LucideIcon;
   label: string;
   tone: CoverageTone;
   value: string | number;
 }) {
   return (
-    <Link href={href} className="surface-panel block px-4 py-3 transition hover:border-[color:var(--border-strong)]">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums ${toneText[tone]}`}>{value}</div>
-      <div className="mt-0.5 truncate text-[12px] text-[var(--text-muted)]">{detail}</div>
+    <Link href={href} className={`surface-panel metric-tile tone-${tone} group flex flex-col p-5`}>
+      <div className="relative flex items-start justify-between gap-3">
+        <span className="icon-bubble h-10 w-10" aria-hidden="true">
+          <Icon className="h-5 w-5" strokeWidth={2} />
+        </span>
+        <span className="tone-pill">{toneLabel[tone]}</span>
+      </div>
+      <div className="relative mt-4 eyebrow">{label}</div>
+      <div className="metric-value relative mt-1.5">{value}</div>
+      <div className="relative mt-1.5 truncate text-[13px] font-medium text-[var(--text-secondary)]">{detail}</div>
+      <p className="relative mt-3 border-t border-[color:var(--border)] pt-3 text-[12px] leading-5 text-[var(--text-muted)]">
+        {hint}
+      </p>
+      <ArrowUpRight
+        aria-hidden="true"
+        className="absolute right-4 bottom-4 h-4 w-4 text-[var(--text-muted)] opacity-0 transition group-hover:opacity-100"
+      />
     </Link>
   );
 }
 
 const HOME_ASK_PROMPTS = [
-  "Which assets have no owner?",
-  "What changed this week?",
-  "Which identities have admin access?",
+  "What can reach production from the internet?",
+  "Which identities can escalate to admin?",
+  "Which exposed assets have no owner?",
 ];
 
 function CoverageRow({
   detail,
   href,
+  icon: Icon,
   label,
   tone,
   value,
 }: {
   detail: string;
   href: string;
+  icon: LucideIcon;
   label: string;
   tone: CoverageTone;
   value: string | number;
 }) {
   return (
-    <Link href={href} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md px-2 py-2.5 transition hover:bg-[var(--surface-muted)]">
+    <Link
+      href={href}
+      className={`tone-${tone} group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 rounded-xl px-3 py-3 transition hover:bg-[var(--surface-hover)]`}
+    >
+      <span className="icon-bubble" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+      </span>
       <div className="min-w-0">
-        <div className="text-[12px] font-medium text-[var(--text-primary)]">{label}</div>
-        <div className="mt-0.5 truncate text-[12px] text-[var(--text-muted)]">{detail}</div>
+        <div className="text-[13px] font-semibold text-[var(--text-primary)]">{label}</div>
+        <div className="mt-0.5 truncate text-[12px] leading-5 text-[var(--text-muted)]">{detail}</div>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[16px] font-semibold tabular-nums text-[var(--text-primary)]">{value}</span>
-        <span className={`h-2 w-2 rounded-full ${toneDot[tone]}`} />
+        <span className="tone-pill px-2.5 py-1 text-[13px]">{value}</span>
+        <ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--text-muted)] transition group-hover:translate-x-0.5" />
       </div>
     </Link>
+  );
+}
+
+function SectionHeader({ description, icon: Icon, title }: { description: string; icon: LucideIcon; title: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="icon-bubble tone-neutral" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+      </span>
+      <div className="min-w-0">
+        <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{title}</h2>
+        <p className="mt-0.5 text-[13px] leading-5 text-[var(--text-muted)]">{description}</p>
+      </div>
+    </div>
   );
 }
 
@@ -120,47 +170,66 @@ function CoverageRow({
 // grew is visible without reading any number.
 export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
   const points = trends?.points ?? [];
-  const peak = Math.max(1, ...points.map((point) => Math.max(point.opened, point.closed)));
+  const peak = Math.max(1, ...points.map((point) => point.opened + point.closed));
   const summary = trends?.summary;
   const net = summary?.net ?? 0;
+  const stats = [
+    { label: "New", value: summary?.total_opened ?? 0, tone: "warning" as const, hint: "Detected" },
+    { label: "Resolved", value: summary?.total_closed ?? 0, tone: "success" as const, hint: "Fixed or gone" },
+    {
+      label: "Net Change",
+      value: net > 0 ? `+${net}` : net,
+      tone: net > 0 ? ("danger" as const) : ("success" as const),
+      hint: net > 0 ? "Outpacing fixes" : net < 0 ? "Burning down" : "Steady",
+    },
+  ];
   return (
-    <section className="surface-panel px-5 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">What Changed</h2>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Findings opened against findings closed, last {HOME_TREND_DAYS} days.
-          </p>
-        </div>
-        <div className="flex items-center gap-4 text-right">
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Opened</div>
-            <div className="text-[18px] font-semibold tabular-nums text-amber-600">{summary?.total_opened ?? 0}</div>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Closed</div>
-            <div className="text-[18px] font-semibold tabular-nums text-emerald-600">{summary?.total_closed ?? 0}</div>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Net</div>
-            <div className={`text-[18px] font-semibold tabular-nums ${net > 0 ? "text-red-600" : "text-emerald-600"}`}>
-              {net > 0 ? `+${net}` : net}
+    <section className="surface-panel p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <SectionHeader
+          icon={TrendingUp}
+          title="Risk Trend"
+          description={`New vs. resolved findings, last ${HOME_TREND_DAYS} days.`}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          {stats.map((stat) => (
+            <div key={stat.label} className={`tone-${stat.tone} rounded-xl border border-[color:var(--border)] bg-[var(--surface-muted)] px-3.5 py-2`}>
+              <div className="eyebrow text-[10px]">{stat.label}</div>
+              <div className="mt-0.5 text-[20px] font-semibold tabular-nums" style={{ color: "var(--bubble-fg)" }}>{stat.value}</div>
+              <div className="text-[11px] text-[var(--text-muted)]">{stat.hint}</div>
             </div>
-          </div>
-          <Link href="/trends" className="secondary-button px-3 py-1.5 text-[12px]">Open Trends</Link>
+          ))}
+          <Link href="/trends" className="secondary-button px-3.5 py-2 text-[12px]">
+            View Trends
+            <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </div>
       {points.length === 0 ? (
-        <div className="mt-4 text-[13px] text-[var(--text-muted)]">No finding activity recorded in this window.</div>
-      ) : (
-        <div className="mt-4 flex items-end gap-[3px]" aria-hidden="true">
-          {points.map((point) => (
-            <div key={point.date} className="flex min-w-0 flex-1 flex-col items-center gap-[2px]">
-              <div className="w-full rounded-sm bg-amber-400/80" style={{ height: `${(point.opened / peak) * 28}px` }} />
-              <div className="w-full rounded-sm bg-emerald-400/80" style={{ height: `${(point.closed / peak) * 28}px` }} />
-            </div>
-          ))}
+        <div className="mt-5 rounded-xl border border-dashed border-[color:var(--border-strong)] px-4 py-6 text-center text-[13px] text-[var(--text-muted)]">
+          No new or resolved findings in this window.
         </div>
+      ) : (
+        <>
+          <div className="mt-6 flex h-24 items-end gap-1" aria-hidden="true">
+            {points.map((point) => (
+              <div key={point.date} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-[3px]">
+                <div
+                  className="w-full rounded-md bg-gradient-to-t from-amber-400 to-amber-300 dark:from-amber-500/80 dark:to-amber-400/70"
+                  style={{ height: `${Math.max(point.opened > 0 ? 4 : 0, (point.opened / peak) * 88)}px` }}
+                />
+                <div
+                  className="w-full rounded-md bg-gradient-to-t from-emerald-500 to-emerald-300 dark:from-emerald-500/80 dark:to-emerald-400/70"
+                  style={{ height: `${Math.max(point.closed > 0 ? 4 : 0, (point.closed / peak) * 88)}px` }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-4 text-[12px] text-[var(--text-muted)]">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" />New Findings</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />Resolved</span>
+          </div>
+        </>
       )}
     </section>
   );
@@ -169,15 +238,17 @@ export function ChangeStrip({ trends }: { trends?: GRCTrends }) {
 export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventorySummary; pending: boolean }) {
   const placeholder = pending ? "Loading asset inventory." : "No asset inventory reported.";
   return (
-    <section className="surface-panel p-5">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Asset Coverage</h2>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">What Cerebro is tracking, and what is unaccounted for.</p>
-      </div>
+    <section className="surface-panel p-6">
+      <SectionHeader
+        icon={Boxes}
+        title="Asset Coverage"
+        description="Mapped, owned, and exposed assets."
+      />
       {assets ? (
-        <div className="mt-4 divide-y divide-[color:var(--border)]">
+        <div className="mt-4 space-y-1">
           <CoverageRow
             href="/inventory"
+            icon={UserX}
             label="Unowned Assets"
             value={assets.unassigned_assets}
             detail={`${assets.accountable_assets ?? 0} of ${assets.total_assets} have an accountable owner`}
@@ -185,20 +256,23 @@ export function AssetCoveragePanel({ assets, pending }: { assets?: GRCInventoryS
           />
           <CoverageRow
             href="/inventory"
+            icon={Globe}
             label="Publicly Reachable"
             value={assets.public_assets}
-            detail="Exposed outside the organization boundary."
+            detail="Internet-facing. Attack paths start here."
             tone={assets.public_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
             href="/inventory"
+            icon={Flame}
             label="High Risk Assets"
             value={assets.high_risk_assets}
-            detail="Carrying the heaviest composed risk."
+            detail="Highest composed risk score."
             tone={assets.high_risk_assets > 0 ? "danger" : "success"}
           />
           <CoverageRow
             href="/inventory"
+            icon={ClipboardCheck}
             label="Needs Review"
             value={assets.needs_review_assets ?? 0}
             detail={`${assets.out_of_scope_assets} currently out of scope`}
@@ -225,14 +299,16 @@ export function SignalCoveragePanel({
 }) {
   const healthySources = Math.max(0, summary.connectors - summary.stale_connectors);
   return (
-    <section className="surface-panel p-5">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Signal Coverage</h2>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">Where the data comes from, and whether it is current.</p>
-      </div>
-      <div className="mt-4 divide-y divide-[color:var(--border)]">
+    <section className="surface-panel p-6">
+      <SectionHeader
+        icon={Radar}
+        title="Source Health"
+        description="Freshness of the data behind each finding."
+      />
+      <div className="mt-4 space-y-1">
         <CoverageRow
           href="/connectors"
+          icon={PlugZap}
           label="Sources Reporting"
           value={`${healthySources}/${summary.connectors}`}
           detail={countLabel(summary.stale_connectors, "stale source")}
@@ -240,7 +316,8 @@ export function SignalCoveragePanel({
         />
         <CoverageRow
           href="/connectors"
-          label="Collection Gaps"
+          icon={ScanSearch}
+          label="Blind Spots"
           value={coveragePending ? "—" : coverageBlindSpotCount}
           detail={coveragePending
             ? "Loading source coverage."
@@ -249,20 +326,24 @@ export function SignalCoveragePanel({
         />
         <CoverageRow
           href="/rules"
-          label="Detection Coverage"
+          icon={ShieldCheck}
+          label="Rule Coverage"
           value="Review"
-          detail="Which rules can fire on the events being collected."
+          detail="Rules that can evaluate collected data."
           tone="neutral"
         />
       </div>
       <div className="mt-5 border-t border-[color:var(--border)] pt-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Ask Cerebro</div>
-        <div className="mt-2 space-y-1.5">
+        <div className="eyebrow flex items-center gap-1.5">
+          <MessageSquareText aria-hidden="true" className="h-3.5 w-3.5" />
+          Ask Cerebro
+        </div>
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {HOME_ASK_PROMPTS.map((question) => (
             <AskAboutLink
               key={question}
               question={question}
-              className="block truncate text-left text-[12px] text-[var(--primary)] hover:underline"
+              className="max-w-full truncate rounded-full border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-left text-[12px] font-medium text-[var(--primary)] transition hover:border-[color:var(--primary)] hover:bg-[var(--primary-soft)]"
             >
               {question}
             </AskAboutLink>
@@ -314,13 +395,13 @@ export default function Home() {
     <div className={compactHome ? "space-y-4" : "space-y-5"}>
       <PageHeader
         contractId="overview"
-        title="Security Overview"
-        description="Findings, assets, and source health across every connected cloud and SaaS account."
+        title="Security Posture"
+        description="Exposure, attack paths, and owners."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh Data</button>
-            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Connect Source</Link>
-            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Open Risks</Link>
+            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh</button>
+            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Add Source</Link>
+            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Review Findings</Link>
           </div>
         }
       />
@@ -338,9 +419,11 @@ export default function Home() {
 
       {data && summary && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <OverviewTile
               href="/risks"
+              icon={ShieldAlert}
+              hint="Risky states with an affected asset and a fix."
               label="Open Findings"
               value={summary.open_findings}
               detail={`${summary.critical_findings} critical, ${summary.high_findings} high`}
@@ -348,6 +431,8 @@ export default function Home() {
             />
             <OverviewTile
               href="/inventory"
+              icon={Boxes}
+              hint="Cloud, SaaS, identity, and code in one graph."
               label="Assets Tracked"
               value={assets ? assets.total_assets : "—"}
               detail={assets ? `${countLabel(assets.org_groups, "org group")} in scope` : "Loading asset inventory."}
@@ -355,6 +440,8 @@ export default function Home() {
             />
             <OverviewTile
               href="/connectors"
+              icon={PlugZap}
+              hint="Stale sources mean stale findings."
               label="Sources Connected"
               value={summary.connectors}
               detail={countLabel(summary.stale_connectors, "stale source")}
@@ -362,6 +449,8 @@ export default function Home() {
             />
             <OverviewTile
               href="/inventory"
+              icon={UserCheck}
+              hint="Unowned assets stall fixes. Target 90%+."
               label="Owner Coverage"
               value={assets ? `${assets.assigned_coverage_pct}%` : "—"}
               detail={assets ? countLabel(assets.unassigned_assets, "asset") + " unowned" : "Loading asset inventory."}

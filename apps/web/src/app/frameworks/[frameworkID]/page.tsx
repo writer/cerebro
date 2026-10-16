@@ -107,7 +107,7 @@ function PlanningMode({ framework }: { framework: GRCFramework }) {
     "Create a draft custom control pack before measurement starts.",
   ];
   return (
-    <Panel title="Upcoming planning mode">
+    <Panel title="Upcoming Planning Mode">
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <p className="text-[13px] leading-5 text-[var(--text-muted)]">
@@ -230,7 +230,7 @@ export default function FrameworkDetailPage() {
           {isUpcoming ? <PlanningMode framework={framework} /> : null}
 
           {!isUpcoming && (
-            <Panel title="Next action">
+            <Panel title="Next Action">
               {packetQuery.loading && !packetQuery.data ? <LoadingBlock label="Loading control readiness..." /> : null}
               {packetQuery.error && !packetQuery.data ? <ErrorBlock error={packetQuery.error} onRetry={packetQuery.reload} /> : null}
               {packetQuery.data ? <GapActions framework={framework} onExport={exportPacket} readiness={verifiedReadiness} exportState={exportState} /> : null}
@@ -258,7 +258,7 @@ export default function FrameworkDetailPage() {
                 <div className="mt-4 text-[12px] text-[var(--text-muted)]">Last packet generated {displayDate(packetQuery.data?.generated_at)}</div>
               </Panel>
 
-              <Panel title="Finding trend">
+              <Panel title="Finding Trend">
                 {trendsQuery.loading && !trendsQuery.data ? <LoadingBlock label="Loading trends..." /> : null}
                 {trendsQuery.error ? <ErrorBlock error={trendsQuery.error} onRetry={trendsQuery.reload} /> : null}
                 {trendsQuery.data && hasTrendActivity(trendsQuery.data) ? <TrendsChart points={trendsQuery.data.points} height={220} targets={trendsQuery.data.targets} /> : null}
@@ -268,7 +268,7 @@ export default function FrameworkDetailPage() {
           )}
 
           {!isUpcoming && (
-            <Panel title="Controls and readiness">
+            <Panel title="Controls and Readiness">
               {packetQuery.error && <ErrorBlock error={packetQuery.error} onRetry={packetQuery.reload} />}
               {packetQuery.loading && !packetQuery.data && <LoadingBlock label="Loading controls..." />}
               {!packetQuery.error && packetQuery.data && (
@@ -285,7 +285,7 @@ export default function FrameworkDetailPage() {
           )}
 
           {!isUpcoming && (
-            <Panel title="Open framework findings">
+            <Panel title="Open Framework Findings">
               {findingsQuery.error && <ErrorBlock error={findingsQuery.error} onRetry={findingsQuery.reload} />}
               {findingsQuery.loading && !findingsQuery.data && <LoadingBlock label="Loading findings..." />}
               {!findingsQuery.error && findingsQuery.data && (

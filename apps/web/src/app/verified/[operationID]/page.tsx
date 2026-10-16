@@ -83,7 +83,7 @@ export default function ActionDetailPage() {
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <Panel title="Finding and target">
+        <Panel title="Finding and Target">
           <dl>
             <DetailRow label="Finding" value={proposal.finding_id} mono />
             <DetailRow label="Finding revision" value={proposal.finding_revision_digest} mono />
@@ -94,7 +94,7 @@ export default function ActionDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="Proposal authority">
+        <Panel title="Proposal Authority">
           <dl>
             <DetailRow label="Proposed by" value={proposal.proposed_by} mono />
             <DetailRow label="Proposed" value={actionTimeLabel(proposal.proposed_at_unix_ms)} />
@@ -107,7 +107,7 @@ export default function ActionDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="Provider and effect receipts">
+        <Panel title="Provider and Effect Receipts">
           <dl>
             <DetailRow label="Claimed by" value={action.claimed_by || "Not claimed"} mono={Boolean(action.claimed_by)} />
             <DetailRow label="Claimed" value={actionTimeLabel(action.claimed_at_unix_ms)} />
@@ -122,7 +122,7 @@ export default function ActionDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="Independent verification">
+        <Panel title="Independent Verification">
           <dl>
             <DetailRow label="State" value={actionStateLabel(action.verification_state)} />
             <DetailRow label="Verifier" value={verification?.verifier_actor_id || "No verifier receipt"} mono={Boolean(verification?.verifier_actor_id)} />
@@ -137,7 +137,7 @@ export default function ActionDetailPage() {
 
       <div className="mt-4">
         <Panel
-          title="Authority history"
+          title="Authority History"
           action={
             <span className="text-[11px] text-[var(--text-muted)]">
               {historyQuery.loading && history.length === 0

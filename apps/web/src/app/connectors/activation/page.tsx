@@ -275,7 +275,7 @@ function TrustLadder({ definition }: { definition?: ConnectorDefinition }) {
   const next = definition ? connectorDefinitionNextStage(definition) : undefined;
   const gates = definition?.promotion?.required_gates ?? [];
   return (
-    <Panel title="Trust ladder" action={definition ? <Badge value={stageLabel(definition.stage)} /> : undefined}>
+    <Panel title="Trust Ladder" action={definition ? <Badge value={stageLabel(definition.stage)} /> : undefined}>
       <ol className="space-y-2">
         {connectorDefinitionStages.map((stage, index) => {
           const done = currentIndex > index;
@@ -331,7 +331,7 @@ function DataCoveragePanel({ definition }: { definition?: ConnectorDefinition })
   const boundedFamilies = grcBoundedRows({ rows: families, limit: GRC_DETAIL_LIMIT });
   const typeCount = distinctResourceTypes(families).size || families.length;
   return (
-    <Panel title="What this source collects" action={<Database className="h-4 w-4 text-[var(--primary)]" />}>
+    <Panel title="What This Source Collects" action={<Database className="h-4 w-4 text-[var(--primary)]" />}>
       {families.length === 0 ? (
         <EmptyBlock label={definition ? "No resource types are defined for this source yet." : "Choose a source to see what it collects."} />
       ) : (
@@ -378,13 +378,13 @@ function AccessSafetyPanel({ definition }: { definition?: ConnectorDefinition })
   const ingestMode = definition?.ingest?.mode === "deposit" ? "deposit" : "pull";
   if (!definition) {
     return (
-      <Panel title="Access and safety" action={<KeyRound className="h-4 w-4 text-[var(--primary)]" />}>
+      <Panel title="Access and Safety" action={<KeyRound className="h-4 w-4 text-[var(--primary)]" />}>
         <EmptyBlock label="Choose a source to see the access it needs." />
       </Panel>
     );
   }
   return (
-    <Panel title="Access and safety" action={<KeyRound className="h-4 w-4 text-[var(--primary)]" />}>
+    <Panel title="Access and Safety" action={<KeyRound className="h-4 w-4 text-[var(--primary)]" />}>
       <div className="space-y-2">
         <SafetyRow
           ok
@@ -455,7 +455,7 @@ function RuntimeActivationPlanPanel({ plan }: { plan?: SourceActivationPromotion
   const blockers = plan?.blockers ?? [];
   const boundedBlockers = grcBoundedRows({ rows: blockers, limit: SOURCE_ACTIVATION_BLOCKER_LIMIT });
   return (
-    <Panel title="Runtime activation plan" action={<Badge value={sourceActivationPlanStatusLabel(plan?.status)} />}>
+    <Panel title="Runtime Activation Plan" action={<Badge value={sourceActivationPlanStatusLabel(plan?.status)} />}>
       {!plan ? (
         <EmptyBlock label="Choose a saved source to compute the runtime activation plan." />
       ) : (
@@ -498,7 +498,7 @@ function ReadinessChecklist({ definition }: { definition?: ConnectorDefinition }
     "Confirm updates arrive often enough for your needs.",
   ];
   return (
-    <Panel title="What's left before you can rely on it" action={definition ? <Badge value={`${open.length} open`} /> : undefined}>
+    <Panel title="What's Left Before You Can Rely on It" action={definition ? <Badge value={`${open.length} open`} /> : undefined}>
       <div className="space-y-2">
         {open.length > 0 && <ResultLimitNotice loaded={boundedOpen.rows.length} meta={boundedOpen.meta} limit={SOURCE_ACTIVATION_CHECK_LIMIT} noun="open checks" />}
         {boundedOpen.rows.map((check) => {
@@ -560,7 +560,7 @@ function SourcesQueue({
 }) {
   const boundedDefinitions = grcBoundedRows({ rows: definitions, limit: SOURCE_ACTIVATION_SOURCE_LIMIT });
   return (
-    <Panel title="Your sources" action={<Badge value={`${boundedDefinitions.rows.length} shown`} />}>
+    <Panel title="Your Sources" action={<Badge value={`${boundedDefinitions.rows.length} shown`} />}>
       <div className="space-y-2">
         <ResultLimitNotice loaded={boundedDefinitions.rows.length} meta={boundedDefinitions.meta} limit={SOURCE_ACTIVATION_SOURCE_LIMIT} noun="sources" />
         {boundedDefinitions.rows.map((definition) => {
@@ -611,7 +611,7 @@ function CatalogSourcesPanel({ connectors, tenantID }: { connectors: ConnectorCa
   const resourceTypeSourceCount = rows.filter((row) => row.stats.resourceTypes > 0).length;
 
   return (
-    <Panel title="Catalog sources" action={<Badge value={`${resourceTypeSourceCount} with resource types`} />}>
+    <Panel title="Catalog Sources" action={<Badge value={`${resourceTypeSourceCount} with resource types`} />}>
       <div className="space-y-2">
         <ResultLimitNotice loaded={boundedConnectors.rows.length} meta={boundedConnectors.meta} limit={GRC_WORKLIST_LIMIT} noun="catalog sources" />
         {rows.slice(0, 8).map(({ connector, resourceTypes, stats }) => {
@@ -696,7 +696,7 @@ function RuntimeActivationPanel({
   const runtimeID = existingConnection?.runtime_id ?? "";
   const isDeposit = definition?.ingest?.mode === "deposit";
   return (
-    <Panel title="Activate runtime" action={definition ? <Badge value={isDeposit ? "Deposit ingest" : "Pull runtime"} /> : undefined}>
+    <Panel title="Activate Runtime" action={definition ? <Badge value={isDeposit ? "Deposit ingest" : "Pull runtime"} /> : undefined}>
       {!definition && <EmptyBlock label="Choose a source to activate its runtime." />}
       {definition && (
         <div className="space-y-4">
@@ -814,7 +814,7 @@ function SourceReadinessContent() {
     <div className="space-y-6">
       <PageHeader
         title="Runtime Source Activation"
-        description="Promote a source definition, preview the data it emits, and connect it at runtime without a GitHub handoff."
+        description="Preview a source's data, then connect it at runtime."
         action={
           <div className="flex flex-wrap gap-2">
             <Link

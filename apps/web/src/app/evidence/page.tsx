@@ -249,7 +249,7 @@ export default function EvidencePage() {
       <PageHeader
         contractId="evidence"
         title="Evidence"
-        description={shouldLoadPackaged ? "Collect, review, and approve the proof required by your controls." : "Inspect raw proof linked to findings, runs, rules, and affected assets."}
+        description={shouldLoadPackaged ? "Proof your controls require." : "Raw observations behind each finding."}
         action={
           <button type="button" onClick={refreshCurrentView} className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--primary)] bg-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -330,7 +330,7 @@ export default function EvidencePage() {
             <div>
               <div className="flex items-center gap-2">
                 <PackageCheck className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence work</h2>
+                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence Work</h2>
               </div>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 Proof requests and reviews that block control readiness or packet export.
@@ -356,7 +356,7 @@ export default function EvidencePage() {
               <div className="grid gap-4 xl:grid-cols-2">
               <WorklistTable
                 title="Evidence requests"
-                description="Requested proof units with quality, freshness, and review posture."
+                description="Requested proof, quality, and freshness."
                 rows={packagedData.evidence_requests ?? []}
                 columns={requestColumns}
                 emptyMessage="No packaged evidence requests are available."
@@ -370,7 +370,7 @@ export default function EvidencePage() {
               />
               <WorklistTable
                 title="Control posture"
-                description="Control-level evidence packaging status and mapped request counts."
+                description="Packaging status per control."
                 rows={packagedData.controls ?? []}
                 columns={controlColumns}
                 emptyMessage="No packaged controls are available."
@@ -391,7 +391,7 @@ export default function EvidencePage() {
                 <div className="grid gap-4 border-t border-[color:var(--border)] p-4 xl:grid-cols-2">
                   <WorklistTable
                     title="Questionnaire answers"
-                    description="Answer records linked to packets, controls, citations, and evidence gaps."
+                    description="Answers linked to controls and evidence."
                     rows={packagedData.questionnaire_answers ?? []}
                     columns={questionnaireAnswerColumns}
                     emptyMessage="No questionnaire answer records are available."
@@ -405,7 +405,7 @@ export default function EvidencePage() {
                   />
                   <WorklistTable
                     title="Collection sources"
-                    description="Runtime collection status, sync freshness, and evidence coverage."
+                    description="Collection status and sync freshness."
                     rows={packagedData.collection_sources ?? []}
                     columns={sourceColumns}
                     emptyMessage="No collection source records are available."
@@ -419,7 +419,7 @@ export default function EvidencePage() {
                   />
                   <WorklistTable
                     title="Evidence items"
-                    description="Raw proof records linked to findings, requests, packets, and graph anchors."
+                    description="Raw proof linked to findings and packets."
                     rows={packagedData.evidence_items ?? []}
                     columns={itemColumns}
                     emptyMessage="No evidence item records are available."
@@ -433,7 +433,7 @@ export default function EvidencePage() {
                   />
                   <WorklistTable
                     title="Evidence lineage"
-                    description="End-to-end links from raw proof through packets, controls, claims, events, and graph roots."
+                    description="Lineage from raw proof to controls."
                     rows={packagedData.evidence_lineage ?? []}
                     columns={lineageColumns}
                     emptyMessage="No evidence lineage records are available."
@@ -471,7 +471,7 @@ export default function EvidencePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence register</h2>
+                    <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence Register</h2>
                   </div>
                   <p className="mt-1 text-[12px] text-[var(--text-muted)]">Search proof items by finding, run, rule, claim, event, or graph root.</p>
                 </div>
@@ -513,7 +513,7 @@ export default function EvidencePage() {
               <div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Evidence detail</h2>
+                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Evidence Detail</h2>
                 </div>
                 <p className="mt-1 text-[12px] text-[var(--text-muted)]">Proof links and graph anchors for the selected item.</p>
               </div>

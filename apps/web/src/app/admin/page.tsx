@@ -19,7 +19,7 @@ const adminSections = [
     label: "Credential Stores",
   },
   {
-    description: "What changed in this console, who changed it, and when.",
+    description: "Who changed what, and when.",
     href: "/developer/audit",
     icon: ScrollText,
     label: "Audit Events",
@@ -31,7 +31,7 @@ export default function AdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Admin"
-        description="Settings that govern this console: who may use it, what it may reach, and what it recorded."
+        description="Access, secrets, and audit history for this console."
       />
 
       <Panel title="Settings">
@@ -52,7 +52,7 @@ export default function AdminPage() {
         </div>
       </Panel>
 
-      <Panel title="Cerebro has no user list of its own">
+      <Panel title="Cerebro Has No User List of Its Own">
         <div className="space-y-2 text-[13px] leading-6 text-[var(--text-muted)]">
           <p>
             Accounts are not created here. Your identity provider decides who reaches the console, and the group claims

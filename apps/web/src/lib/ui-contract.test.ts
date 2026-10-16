@@ -191,10 +191,10 @@ describe("product UI contract", () => {
     const page = source.slice(source.indexOf("export default function ConnectorsPage"));
     const advancedTools = page.indexOf("Advanced integration tools");
 
-    expect(page).toContain("Add integration");
+    expect(page).toContain("Add Integration");
     expect(page).toContain("Connected sources");
     expect(page).toContain("Available to connect");
-    expect(page).toContain("Search integrations");
+    expect(page).toContain("Search Integrations");
     expect(page).toContain("Filter by tenant or source ID");
     expect(advancedTools).toBeGreaterThan(0);
     expect(page.indexOf("ProviderAPIProofPanel")).toBeGreaterThan(advancedTools);

@@ -272,10 +272,10 @@ describe("Security overview", () => {
       root.render(<Home />);
     });
 
-    expect(container.textContent).toContain("What Changed");
+    expect(container.textContent).toContain("Risk Trend");
     const trendLink = [...container.querySelectorAll<HTMLAnchorElement>("a")]
       .find((link) => link.getAttribute("href") === "/trends");
-    expect(trendLink?.textContent).toContain("Open Trends");
+    expect(trendLink?.textContent).toContain("View Trends");
     expect(container.textContent).toContain("+4");
   });
 

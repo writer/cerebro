@@ -95,7 +95,7 @@ function LifecycleDrawer({
         </div>
 
         <div className="space-y-4 p-5">
-          <Panel title="Canonical resource">
+          <Panel title="Canonical Resource">
             <ReferenceValue label="Stable resource URN" reference={observation.subject_ref} />
             <div className="grid gap-3 border-t border-[color:var(--border)] pt-3 sm:grid-cols-2">
               <div>
@@ -125,7 +125,7 @@ function LifecycleDrawer({
             </div>
           </Panel>
 
-          <Panel title="Observation and policy">
+          <Panel title="Observation and Policy">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <div className={labelClass}>Observed</div>
@@ -187,7 +187,7 @@ function LifecycleDrawer({
             )}
           </Panel>
 
-          <Panel title="Approval, dispatch, and verification">
+          <Panel title="Approval, Dispatch, and Verification">
             {(record.action_routes ?? []).length > 0 ? (
               <div className="space-y-4">
                 {(record.action_routes ?? []).map((route) => (
@@ -308,7 +308,7 @@ export default function SecurityLifecyclePage() {
     <div>
       <PageHeader
         title="Credential and Certificate Lifecycle"
-        description="Review stable resource slots, current material revisions, policy state, evidence, findings, and external action routing. Only a later complete observation can verify that a finding condition is gone."
+        description="Rotation state and open findings for keys, tokens, and certificates."
         contractId="security-lifecycle"
         action={(
           <button type="button" className="secondary-button px-3 py-2 text-[12px]" onClick={refreshLifecycle} disabled={query.loading}>
@@ -409,7 +409,7 @@ export default function SecurityLifecyclePage() {
         {!query.loading && !query.error && records.length === 0 ? <EmptyBlock label="No credential or certificate records match these filters." /> : null}
         {records.length > 0 ? (
           <Panel
-            title="Lifecycle records"
+            title="Lifecycle Records"
             action={<span className="text-[11px] text-[var(--text-muted)]">{pageAvailabilityLabel} · observed {lifecycleExpiryLabel(query.data?.as_of)}</span>}
           >
             <div className="space-y-3 md:hidden" data-lifecycle-mobile-records>

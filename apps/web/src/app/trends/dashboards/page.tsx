@@ -69,7 +69,7 @@ export default function CustomDashboardsPage() {
       <PageHeader
         contractId="grc-custom-dashboards"
         title="Custom Dashboards"
-        description="Create saved GRC trend dashboards with reusable filters, widgets, and sharing scope."
+        description="Saved, shareable trend views."
         action={
           <Link href="/trends" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600">
             Back to trends
@@ -77,7 +77,7 @@ export default function CustomDashboardsPage() {
         }
       />
 
-      <Panel title="Create dashboard">
+      <Panel title="Create Dashboard">
         <div className="grid gap-3 md:grid-cols-3">
           <label className={labelClass}>Name<input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
           <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="Default tenant" className={inputClass} /></label>
@@ -105,7 +105,7 @@ export default function CustomDashboardsPage() {
       {dashboardsQuery.error && <ErrorBlock error={dashboardsQuery.error} onRetry={() => void dashboardsQuery.reload()} recoveryDetail="Dashboards will appear when the API is reachable." />}
 
       {!dashboardsQuery.loading && !dashboardsQuery.error && (
-        <Panel title="Saved dashboards">
+        <Panel title="Saved Dashboards">
           {dashboards.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-[13px] text-slate-500">
               No custom dashboards yet.

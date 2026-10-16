@@ -57,7 +57,7 @@ export default function CustomDashboardDetailPage() {
       <PageHeader
         contractId="grc-custom-dashboard-detail"
         title={dashboard.name}
-        description={dashboard.description || "Saved GRC dashboard."}
+        description={dashboard.description || "Saved trend dashboard."}
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/trends/dashboards" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600">
@@ -130,7 +130,7 @@ function DashboardSettings({
   };
 
   return (
-    <Panel title="Dashboard settings">
+    <Panel title="Dashboard Settings">
       <div className="grid gap-3 md:grid-cols-4">
         <label className={labelClass}>Name<input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
         <label className={`${labelClass} md:col-span-2`}>Description<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" className={inputClass} /></label>

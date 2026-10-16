@@ -266,7 +266,7 @@ export default function ControlsPage() {
       <PageHeader
         contractId="controls"
         title="Controls"
-        description="Control status, failing objectives, mapped findings, and evidence gaps."
+        description="Control status, backed by findings and evidence."
         action={
           <div className="flex items-center gap-2">
             <Link href="/controls/builder" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
@@ -315,7 +315,7 @@ export default function ControlsPage() {
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
             <div>
-              <h2 className="text-[13px] font-semibold text-slate-900">Auditor work queue</h2>
+              <h2 className="text-[13px] font-semibold text-slate-900">Auditor Work Queue</h2>
               <p className="mt-0.5 text-[12px] text-slate-500">
                 {isRefreshing ? "Refreshing controls..." : "Prioritized controls by findings, evidence gaps, freshness, and due dates."}
               </p>
@@ -530,7 +530,7 @@ function ControlReviewDrawer({
 
           <section className="border-t border-[color:var(--border)] pt-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped findings</h3>
+              <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped Findings</h3>
               <span className="text-[11px] text-[var(--text-muted)]">{findings.length.toLocaleString()} total</span>
             </div>
             {visibleFindings.length > 0 ? (
@@ -554,7 +554,7 @@ function ControlReviewDrawer({
           </section>
 
           <section className="border-t border-[color:var(--border)] pt-4">
-            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Audit context</h3>
+            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Audit Context</h3>
             <p className="mt-2 text-[13px] leading-5 text-[var(--text-secondary)]">{auditContext}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {control.evidence_quality && <Badge value={control.evidence_quality} />}
@@ -584,7 +584,7 @@ function ControlDetailPanel({
   if (!control) {
     return (
       <aside className="surface-panel p-5">
-        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Control details</h2>
+        <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Control Details</h2>
         <p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">
           Select a control to inspect evidence gaps, mapped findings, and the next action.
         </p>
@@ -653,7 +653,7 @@ function ControlDetailPanel({
         </section>
 
         <section className="border-t border-[color:var(--border)] pt-4">
-          <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Next action</h3>
+          <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Next Action</h3>
           <p className="mt-1 text-[13px] leading-5 text-[var(--text-secondary)]">{controlRecommendation(control)}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge value={evidenceRequestState(control)} />
@@ -666,7 +666,7 @@ function ControlDetailPanel({
 
         <section className="border-t border-[color:var(--border)] pt-4">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped findings</h3>
+            <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Mapped Findings</h3>
             <span className="text-[11px] text-[var(--text-muted)]">{findings.length.toLocaleString()} total</span>
           </div>
           {visibleFindings.length > 0 ? (
@@ -695,7 +695,7 @@ function ControlDetailPanel({
         </section>
 
         <section className="border-t border-[color:var(--border)] pt-4">
-          <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Audit context</h3>
+          <h3 className="text-[12px] font-semibold text-[var(--text-primary)]">Audit Context</h3>
           <p className="mt-1 text-[13px] leading-5 text-[var(--text-secondary)]">{auditContext}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {control.evidence_quality && <Badge value={control.evidence_quality} />}

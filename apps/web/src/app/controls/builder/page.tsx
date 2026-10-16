@@ -395,7 +395,7 @@ export default function ControlBuilderPage() {
       <PageHeader
         contractId="control-builder"
         title="Control Builder"
-        description="Build a custom framework from reusable control families, preview mapped coverage, and export auditor-ready YAML."
+        description="Compose a custom framework and export it as YAML."
         action={
           <Link href="/controls" className="rounded-md border border-[color:var(--border)] bg-white px-3 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]">
             Controls
@@ -419,7 +419,7 @@ export default function ControlBuilderPage() {
             <div className="rounded-lg border border-[color:var(--border)] bg-white px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Common controls</h2>
+                  <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Common Controls</h2>
                   <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{effectiveSelectedArchetypes.length} selected across {selectedFamilies} families</p>
                 </div>
                 <div className="inline-flex rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] p-0.5">

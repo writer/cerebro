@@ -297,7 +297,7 @@ export default function ReportsPage() {
       <PageHeader
         contractId="reports"
         title="Reports"
-        description="Build control evidence packets or review current finding evidence, scope exclusions, and source records."
+        description="Evidence packets for controls and findings."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PacketActions
@@ -409,7 +409,7 @@ export default function ReportsPage() {
       {reportMode === "finding" && !selectedFindingID && !findingsQuery.loading && !findingsQuery.error && (
         <div className="rounded-lg border border-dashed border-[color:var(--border-strong)] bg-white p-8 dark:bg-white/5">
           <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">No finding is selected</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">No Finding Is Selected</h2>
             <p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">
               Build a control evidence packet from the default profile, or enter a finding ID above to load its current audit preview.
             </p>
@@ -608,7 +608,7 @@ function ControlPacketView({
       <ScopePanel metadata={packet.metadata} redactionMode={redactionMode} />
 
       {controls.length === 0 ? (
-        <Panel title="Control blockers">
+        <Panel title="Control Blockers">
           {isUpcoming ? (
             <div className="py-8 text-center text-[13px] text-violet-700">
               {upcomingFrameworkName} is upcoming. It is discoverable for planning, but not yet available for measured control evidence packets.
@@ -646,7 +646,7 @@ function ControlPacketView({
 function ControlReadinessDetail({ control }: { control: GRCControlPacketControl | null }) {
   if (!control) {
     return (
-      <Panel title="Control detail">
+      <Panel title="Control Detail">
         <div className="py-8 text-center text-[13px] text-[var(--text-muted)]">Select a control.</div>
       </Panel>
     );
@@ -654,7 +654,7 @@ function ControlReadinessDetail({ control }: { control: GRCControlPacketControl 
   const expectations = control.evidence.expectations ?? [];
   const blockers = expectations.filter((expectation) => ["missing", "stale", "failed", "blocked"].includes(expectation.status.toLowerCase()));
   return (
-    <Panel title="Control detail">
+    <Panel title="Control Detail">
       <div className="flex flex-wrap items-center gap-2">
         <Badge value={control.status} />
         {control.audit_readiness && <Badge value={control.audit_readiness.rating} />}
@@ -731,7 +731,7 @@ function FindingPacketView({
 
       <ScopePanel metadata={packet.metadata} redactionMode={redactionMode} />
 
-      <Panel title="Impact path">
+      <Panel title="Impact Path">
         <GraphViewer graph={graph} />
       </Panel>
     </>
@@ -871,7 +871,7 @@ function ScopePanel({ metadata, redactionMode }: { metadata?: GRCReportMetadata;
     ...(exclusions?.excluded_resource_urns ?? []),
   ].slice(0, 10);
   return (
-    <Panel title="Scope and source collection">
+    <Panel title="Scope and Source Collection">
       <div className="grid gap-4 md:grid-cols-4">
         <MetricCard label="Exclusions" value={exclusions?.total ?? 0} detail="collection scope" intent={(exclusions?.total ?? 0) > 0 ? "warning" : "success"} />
         <MetricCard label="Runtimes" value={metadata?.provenance?.runtime_count ?? 0} detail="supporting packet" />

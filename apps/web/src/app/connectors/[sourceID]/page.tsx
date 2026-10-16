@@ -378,7 +378,7 @@ function CatalogDefinitionPanel({ connector }: { connector: ConnectorCatalogEntr
   const resourceTypes = connectorResourceTypes(connector, 8);
   if (!connector.catalog_status && families.length === 0) return null;
   return (
-    <Panel title="Catalog definition" action={<Badge value={connectorRuntimeSurfaceLabel(connector)} />}>
+    <Panel title="Catalog Definition" action={<Badge value={connectorRuntimeSurfaceLabel(connector)} />}>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg bg-[var(--surface-muted)] p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Readiness</div>
@@ -493,7 +493,7 @@ function CatalogSetupNotice({ connector }: { connector: ConnectorCatalogEntry })
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <CatalogDefinitionPanel connector={connector} />
-      <Panel title="Runtime status" action={<Badge value={connector.access_status ? accessLabel : connector.catalog_status || "catalog"} />}>
+      <Panel title="Runtime Status" action={<Badge value={connector.access_status ? accessLabel : connector.catalog_status || "catalog"} />}>
         <div className="space-y-3 text-[13px] leading-5 text-[var(--text-secondary)]">
           <p>
             {connector.access_reason
@@ -533,7 +533,7 @@ function ScopeView({ connector, connections }: { connector: ConnectorCatalogEntr
   const excludedConnections = connections.filter((connection) => scopePolicyExclusionCount(connection.scope_policy) > 0);
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <Panel title="Collection policy">
+      <Panel title="Collection Policy">
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-lg bg-[var(--surface-muted)] p-3">
             <div className="text-xl font-semibold text-[var(--text-primary)]">{scopeOptions.length}</div>
@@ -555,7 +555,7 @@ function ScopeView({ connector, connections }: { connector: ConnectorCatalogEntr
           ))}
         </div>
       </Panel>
-      <Panel title="Capability coverage">
+      <Panel title="Capability Coverage">
         {scopeOptions.length > 0 && (
           <div className="mb-4 space-y-2">
             {scopeOptions.slice(0, 10).map((option) => (
@@ -834,7 +834,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
 
       {activeTab === "overview" && (
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)]">
-          <Panel title="Activity summary" action={<button type="button" onClick={() => setActiveTab("activity")} className="secondary-button px-3 py-1.5 text-[12px]">View activity</button>}>
+          <Panel title="Activity Summary" action={<button type="button" onClick={() => setActiveTab("activity")} className="secondary-button px-3 py-1.5 text-[12px]">View activity</button>}>
             <p className="text-[15px] leading-7 text-[var(--text-primary)]">
               {summary.status === "healthy"
                 ? `${displayName} syncs are running successfully and current.`
@@ -859,7 +859,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
               </div>
             </div>
           </Panel>
-          <Panel title="Connection details">
+          <Panel title="Connection Details">
             <div className="space-y-3 text-[13px]">
               {[
                 ["Last activity", summary.last_activity_at ? displayDate(summary.last_activity_at) : "Not observed"],
@@ -886,7 +886,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
             </div>
           </Panel>
           <CatalogDefinitionPanel connector={connector} />
-          <Panel title="Recent activity" action={<span className="text-[12px] text-[var(--text-muted)]">{activity.slice(0, 5).length} events</span>}>
+          <Panel title="Recent Activity" action={<span className="text-[12px] text-[var(--text-muted)]">{activity.slice(0, 5).length} events</span>}>
             <ConnectorActivityTable activity={activity.slice(0, 5)} />
           </Panel>
         </div>
@@ -914,7 +914,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
 
       {activeTab === "activity" && (
         <div className="space-y-4">
-          <Panel title="Diagnostic timeline" action={<span className="text-[12px] text-[var(--text-muted)]">{diagnosticTimeline.length} stages</span>}>
+          <Panel title="Diagnostic Timeline" action={<span className="text-[12px] text-[var(--text-muted)]">{diagnosticTimeline.length} stages</span>}>
             <ResultLimitNotice className="mb-3" loaded={diagnosticTimeline.length} meta={boundedDiagnosticRows.meta} limit={GRC_DETAIL_LIMIT} noun="diagnostic stages" />
             <ConnectorDiagnosticTimelinePanel timeline={diagnosticTimeline} />
           </Panel>
@@ -928,7 +928,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
       {activeTab === "scope" && <ScopeView connector={connector} connections={connections} />}
 
       {activeTab === "data" && (
-        <Panel title="Data and graph" action={<Search className="h-4 w-4 text-[var(--text-muted)]" />}>
+        <Panel title="Data and Graph" action={<Search className="h-4 w-4 text-[var(--text-muted)]" />}>
           <DataKinds connector={connector} />
         </Panel>
       )}

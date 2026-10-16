@@ -505,7 +505,7 @@ export default function QuestionnairesPage() {
     <main className="space-y-6">
       <PageHeader
         title="Questionnaires"
-        description="Customer questionnaires and vendor reviews with evidence-backed answers, blockers, owners, and approvals."
+        description="Evidence-backed answers for customers and vendors."
         contractId="questionnaires"
         action={<button type="button" onClick={reloadRuns} className="secondary-button inline-flex items-center gap-2 px-3 py-1.5 text-[12px]"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>}
       />
@@ -520,7 +520,7 @@ export default function QuestionnairesPage() {
         <MetricCard label="Unassigned" value={rollups.unassigned} detail="questions without owner" intent={rollups.unassigned > 0 ? "warning" : "success"} state={metricState} />
       </div>
 
-      <Panel title="Add questionnaire">
+      <Panel title="Add Questionnaire">
         <form onSubmit={submitCreateRun} className="space-y-4">
           {createMutation.error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100">{createMutation.error}</div>}
           <div className="grid gap-3 lg:grid-cols-4">
@@ -869,7 +869,7 @@ function QuestionnaireDetail({
 }) {
   if (!run || !row) {
     return (
-      <Panel title="Answer detail">
+      <Panel title="Answer Detail">
         <div className="rounded-md border border-dashed border-[color:var(--border)] p-4 text-[13px] text-[var(--text-muted)]">No questionnaire answer selected.</div>
       </Panel>
     );
@@ -881,7 +881,7 @@ function QuestionnaireDetail({
   const assignmentSlotID = assignmentGap ? assignmentGap.slot_id || "" : firstOpenEvidenceSlotID(answer);
   return (
     <Panel
-      title="Answer detail"
+      title="Answer Detail"
       action={<button type="button" onClick={() => { void onProcess(); }} disabled={actionSaving} className="secondary-button inline-flex items-center gap-2 px-3 py-1.5 text-[12px]"><RefreshCw className="h-3.5 w-3.5" />Process</button>}
     >
       <div className="space-y-5">
