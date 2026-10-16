@@ -191,6 +191,24 @@ class AutoStableReleaseWorkflowTest(unittest.TestCase):
             "(candidate run ${{ inputs.candidate_run_id ||", run_name[0]
         )
 
+    def test_rust_graph_proof_starts_on_main_push(self) -> None:
+        workflow = RUST_GRAPH_WORKFLOW.read_text(encoding="utf-8")
+        triggers = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        push = triggers.split("  push:\n", 1)[1].split("\n  workflow_dispatch:", 1)[0]
+
+        # The proof runs alongside CI so the orchestrator finds it finished
+        # instead of dispatching it after the candidate receipt.
+        self.assertIn("branches: [main]", push)
+        self.assertNotIn("paths:", push)
+        self.assertIn("workflow_dispatch:", triggers)
+        # A newer main push supersedes and cancels the older proof run.
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+            workflow,
+        )
+        self.assertIn("cancel-in-progress: true", workflow)
+        self.assertIn("github.event.pull_request.head.sha || github.sha", workflow)
+
     def test_rust_graph_proof_has_a_cold_build_budget(self) -> None:
         workflow = RUST_GRAPH_WORKFLOW.read_text(encoding="utf-8")
         replacement = workflow.split("  replacement:\n", 1)[1]

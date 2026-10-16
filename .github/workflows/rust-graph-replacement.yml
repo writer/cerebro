@@ -18,6 +18,12 @@ on:
       - "crates/organizational-store/**"
       - "gen/cerebro/graph/**"
       - "proto/cerebro/graph/**"
+  # Automatic Stable Release requires this proof for the exact main commit.
+  # Starting it on push lets it finish alongside CI and Candidate Build instead
+  # of being dispatched only after the candidate receipt exists. A newer push
+  # cancels an older one through the ref-scoped concurrency group below.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
