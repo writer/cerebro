@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -83,11 +84,45 @@ class CIDeliveryControlTests(unittest.TestCase):
         )
 
     def test_shared_actions_own_go_and_rust_cache_keys(self):
-        self.assertIn("go-v3-${{ inputs.cache-scope }}", self.go_setup)
-        self.assertIn("rust-v2-${{ inputs.cache-scope }}", self.rust_setup)
+        self.assertIn("go-v4-${{ inputs.cache-scope }}", self.go_setup)
+        self.assertIn("rust-v3-${{ inputs.cache-scope }}", self.rust_setup)
         self.assertGreaterEqual(self.ci.count("uses: ./.github/actions/setup-go-cached"), 7)
         self.assertGreaterEqual(self.ci.count("uses: ./.github/actions/setup-rust-cached"), 3)
         self.assertNotIn("name: Cache Go build data", self.ci)
+
+    def test_only_main_producers_save_shared_caches(self):
+        # Pull request saves evict main caches under the repository storage cap.
+        for name, action in (("go", self.go_setup), ("rust", self.rust_setup)):
+            with self.subTest(action=name):
+                self.assertIn("actions/cache/restore@", action)
+                for line in action.splitlines():
+                    if "uses: actions/cache@" in line:
+                        index = action.index(line)
+                        guard = action[action.rindex("if:", 0, index):index]
+                        self.assertIn("github.ref == 'refs/heads/main'", guard)
+        workflows = {
+            "ci": self.ci,
+            "deterministic-review": self.deterministic,
+            "rust-graph-replacement": (WORKFLOWS / "rust-graph-replacement.yml").read_text(encoding="utf-8"),
+        }
+        for name, workflow in workflows.items():
+            with self.subTest(workflow=name):
+                self.assertNotIn("DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha --cache-to", workflow)
+                self.assertNotIn("cache-scope: verify-", workflow)
+                self.assertNotIn("cache-scope: test-shard-", workflow)
+                self.assertNotIn("cache-scope: deterministic-review", workflow)
+        self.assertIn("save-cache: ${{ matrix.name == 'graph-actions' }}", self.ci)
+        self.assertIn("go-cache-warm", self.ci)
+
+    def test_codegen_registry_does_not_rerun_the_rust_workspace_gate(self):
+        registry = json.loads((ROOT / "devex" / "codegen_catalog.json").read_text(encoding="utf-8"))
+        commands = [
+            check["command"]
+            for family in registry["families"]
+            for check in family.get("checks", [])
+        ]
+        self.assertIn(["make", "graph-action-generated-check"], commands)
+        self.assertNotIn(["make", "graph-action-check"], commands)
 
     def test_deterministic_review_reuses_dedicated_security_scanners(self):
         self.assertIn("uses: ./.github/actions/setup-go-cached", self.deterministic)

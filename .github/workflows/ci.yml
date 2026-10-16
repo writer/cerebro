@@ -108,7 +108,11 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build and smoke web image
-        run: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha,scope=cerebro-web-ci --cache-to type=gha,mode=max,ignore-error=true,scope=cerebro-web-ci' make web-docker-smoke
+        env:
+          # Only main writes layer cache; pull requests read it so they cannot
+          # evict the shared cache under the repository storage cap.
+          DOCKER_CACHE_TO: ${{ github.ref == 'refs/heads/main' && '--cache-to type=gha,mode=max,ignore-error=true,scope=cerebro-web-ci' || '' }}
+        run: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS="--cache-from type=gha,scope=cerebro-web-ci ${DOCKER_CACHE_TO}" make web-docker-smoke
 
   web-integration:
     runs-on: ubuntu-latest
@@ -119,12 +123,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-go-cached
-        with:
-          cache-scope: web-integration
 
       - uses: ./.github/actions/setup-rust-cached
-        with:
-          cache-scope: web-integration
 
       - uses: ./.github/actions/setup-javascript-workspaces
 
@@ -152,8 +152,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-rust-cached
-        with:
-          cache-scope: web-rust-integration
 
       - uses: ./.github/actions/setup-javascript-workspaces
 
@@ -290,7 +288,7 @@ jobs:
           - name: release-smoke
             command: make release-smoke
           - name: docker-smoke
-            command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS='--cache-from type=gha --cache-to type=gha,mode=max,ignore-error=true' make docker-smoke
+            command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS="--cache-from type=gha ${DOCKER_CACHE_TO}" make docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
@@ -303,13 +301,13 @@ jobs:
         run: git fetch origin main:refs/remotes/origin/main
 
       - uses: ./.github/actions/setup-go-cached
-        with:
-          cache-scope: verify-${{ matrix.name }}
 
       - uses: ./.github/actions/setup-rust-cached
         if: matrix.setup_rust == true
         with:
-          cache-scope: verify-${{ matrix.name }}
+          # graph-actions compiles, lints, and tests the whole workspace, so its
+          # target directory is the superset every other Rust job restores.
+          save-cache: ${{ matrix.name == 'graph-actions' }}
           components: clippy,rustfmt,llvm-tools-preview
           target: wasm32-unknown-unknown
           install-policy-tools: "true"
@@ -319,6 +317,8 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Run ${{ matrix.name }}
+        env:
+          DOCKER_CACHE_TO: ${{ github.ref == 'refs/heads/main' && '--cache-to type=gha,mode=max,ignore-error=true' || '' }}
         run: ${{ matrix.command }}
 
   go-lint-shard:
@@ -385,8 +385,8 @@ jobs:
 
       - uses: ./.github/actions/setup-go-cached
         with:
-          cache-scope: lint-${{ matrix.name }}
           golangci: "true"
+          golangci-scope: lint-${{ matrix.name }}
 
       - name: Run ${{ matrix.name }} lint
         run: make lint-shard LINT_PACKAGES="${{ matrix.packages }}" LINT_SHARD_TOTAL="${{ matrix.shard_total }}" LINT_SHARD_INDEX="${{ matrix.shard_index }}"
@@ -410,11 +410,49 @@ jobs:
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-go-cached
-        with:
-          cache-scope: catalog-${{ matrix.name }}
 
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
+
+  # Every Go job restores one shared build cache instead of a cache per job, so
+  # the whole set fits under the repository cache cap. These jobs compile every
+  # package and test binary on main without running tests, which makes that
+  # one cache a superset for every shard.
+  go-cache-warm:
+    name: go-cache-warm-${{ matrix.family }}
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.core == 'true' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: build
+          - family: race
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-go-cached
+        with:
+          cache-scope: ${{ matrix.family }}
+          save-cache: "true"
+
+      - name: Compile Go packages and test binaries
+        env:
+          CACHE_FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "${CACHE_FAMILY}" = "race" ]; then
+            flags+=(-race)
+          fi
+          go build "${flags[@]}" ./...
+          go test "${flags[@]}" -count=1 -run '^$' -exec /bin/true ./...
 
   go-test-shard:
     name: test-${{ matrix.shard_index }}
@@ -431,8 +469,6 @@ jobs:
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-go-cached
-        with:
-          cache-scope: test-shard-${{ matrix.shard_index }}
 
       - name: Run Go test shard ${{ matrix.shard_index }}
         env:
@@ -456,7 +492,7 @@ jobs:
 
       - uses: ./.github/actions/setup-go-cached
         with:
-          cache-scope: race-shard-${{ matrix.shard_index }}
+          cache-scope: race
 
       - name: Run Go race shard ${{ matrix.shard_index }}
         env:
@@ -477,7 +513,7 @@ jobs:
 
       - uses: ./.github/actions/setup-go-cached
         with:
-          cache-scope: race-changed
+          cache-scope: race
 
       - name: Race-test changed Go packages
         shell: bash

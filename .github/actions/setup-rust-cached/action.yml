@@ -1,11 +1,19 @@
 name: Set up cached Rust toolchain
 description: Install the repository Rust toolchain and restore shared Cargo caches.
 
+# Pull requests only restore caches. Repository cache storage is capped, and
+# per-PR saves evict the main-branch caches every PR restores from, which leaves
+# every job compiling from scratch. Only designated producers on main save.
+
 inputs:
   cache-scope:
-    description: Stable cache namespace for the owning job.
+    description: Cache family to restore. Jobs that compile the same crates should share one family.
     required: false
-    default: shared
+    default: workspace
+  save-cache:
+    description: Save the Cargo cache on main. Set only on the job that compiles the whole family.
+    required: false
+    default: "false"
   components:
     description: Comma-separated rustup components.
     required: false
@@ -38,7 +46,31 @@ runs:
         fi
         rustup "${args[@]}"
 
+    - name: Compute cache generation
+      id: generation
+      shell: bash
+      # A weekly generation lets main refresh caches whose lockfile hash has not
+      # changed, so restored workspace artifacts do not drift arbitrarily far from HEAD.
+      run: echo "week=$(date -u +%G-%V)" >> "${GITHUB_OUTPUT}"
+
     - name: Restore Rust build data
+      if: inputs.save-cache != 'true' || github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/bin/cargo-deny
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          target
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-
+
+    - name: Restore and save Rust build data
+      if: inputs.save-cache == 'true' && github.ref == 'refs/heads/main'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
@@ -48,11 +80,10 @@ runs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
           target
-        key: ${{ runner.os }}-${{ runner.arch }}-rust-v2-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-cargo-deny-0.20.2-cargo-llvm-cov-0.8.7
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-rust-v2-${{ inputs.cache-scope }}-
-          ${{ runner.os }}-${{ runner.arch }}-rust-v2-
-          ${{ runner.os }}-${{ runner.arch }}-rust-v1-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-
 
     - name: Install Rust dependency policy tool
       if: inputs.install-policy-tools == 'true'
