@@ -1016,3 +1016,112 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 		Attributes: attributes,
 	}
 }
+
+type batchProjectionRecorder struct {
+	*projectionRecorder
+	singleWrites int
+	entityBatch  int
+	linkBatch    int
+}
+
+func (r *batchProjectionRecorder) UpsertProjectedEntity(ctx context.Context, entity *ports.ProjectedEntity) error {
+	r.singleWrites++
+	return r.projectionRecorder.UpsertProjectedEntity(ctx, entity)
+}
+
+func (r *batchProjectionRecorder) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	r.singleWrites++
+	return r.projectionRecorder.UpsertProjectedLink(ctx, link)
+}
+
+func (r *batchProjectionRecorder) UpsertProjectedEntities(ctx context.Context, entities []*ports.ProjectedEntity) error {
+	r.entityBatch++
+	for _, entity := range entities {
+		if err := r.projectionRecorder.UpsertProjectedEntity(ctx, entity); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpsertProjectedLinks mirrors the graph store by dropping links whose
+// endpoints do not exist yet.
+func (r *batchProjectionRecorder) UpsertProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) error {
+	r.linkBatch++
+	for _, link := range links {
+		if r.entities[link.FromURN] == nil || r.entities[link.ToURN] == nil {
+			continue
+		}
+		if err := r.projectionRecorder.UpsertProjectedLink(ctx, link); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestProjectFindingRecordedBatchesWritesAndStillPrunes(t *testing.T) {
+	graph := &batchProjectionRecorder{projectionRecorder: &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:resource:a": {URN: "urn:cerebro:writer:resource:a", TenantID: "writer", SourceID: "test", EntityType: "resource"},
+		},
+	}}
+	service := New(graph)
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "writer",
+		SourceSystem:       "findings",
+		FindingID:          "finding-batch",
+		Fingerprint:        "fp-batch",
+		Title:              "Finding with MITRE context",
+		RuleID:             "policy-test",
+		Severity:           "high",
+		Status:             "open",
+		RuntimeID:          "runtime-graph",
+		PrimaryResourceURN: "urn:cerebro:writer:resource:a",
+		ResourceURNs:       []string{"urn:cerebro:writer:resource:a"},
+		Metadata:           map[string]string{"rule_mitre_attack": "Initial Access:T1190"},
+	}
+	project := func(recordedAt string) ports.ProjectionResult {
+		t.Helper()
+		event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{Finding: finding, RecordedAt: recordedAt})
+		if err != nil {
+			t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+		}
+		result, err := service.Project(context.Background(), event)
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+		return result
+	}
+	anchorURN := "urn:cerebro:writer:finding:finding-batch"
+	project("2026-04-27T11:59:00Z")
+	if graph.singleWrites != 0 {
+		t.Fatalf("single-record writes = %d, want 0 with a batch-capable store", graph.singleWrites)
+	}
+	if graph.entityBatch == 0 || graph.linkBatch == 0 {
+		t.Fatalf("batches = entities:%d links:%d, want both used", graph.entityBatch, graph.linkBatch)
+	}
+	for _, key := range []string{
+		"urn:cerebro:writer:resource:a|has_finding|" + anchorURN,
+		anchorURN + "|has_context|urn:cerebro:writer:mitre_attack_technique:T1190",
+		anchorURN + "|has_context|urn:cerebro:writer:mitre_attack_tactic:TA0001",
+	} {
+		if _, ok := graph.links[key]; !ok {
+			t.Fatalf("link %q missing; entities must flush before links", key)
+		}
+	}
+
+	finding.Metadata = map[string]string{"rule_mitre_attack": "Discovery:T1087"}
+	result := project("2026-04-27T12:05:00Z")
+	if result.LinksDeleted != 3 {
+		t.Fatalf("LinksDeleted = %d, want 3 stale MITRE context links", result.LinksDeleted)
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1190"]; ok {
+		t.Fatal("stale MITRE ATT&CK technique link was not pruned")
+	}
+	if _, ok := graph.links[anchorURN+"|has_context|urn:cerebro:writer:mitre_attack_technique:T1087"]; !ok {
+		t.Fatal("updated MITRE ATT&CK technique link missing")
+	}
+	if graph.singleWrites != 0 {
+		t.Fatalf("single-record writes = %d, want 0", graph.singleWrites)
+	}
+}

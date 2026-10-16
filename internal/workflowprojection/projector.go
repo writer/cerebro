@@ -132,6 +132,7 @@ var workflowMITREDefendArtifactKeys = []string{
 type Service struct {
 	graph   ports.ProjectionGraphStore
 	catalog ports.EntityCatalogStore
+	pending *projectionWriteBuffer
 }
 
 // New constructs one workflow graph projector.
@@ -541,6 +542,18 @@ func findingStatusProjectsToGraph(status string) bool {
 }
 
 func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
+	scoped := s.withBufferedWrites()
+	urns, err := scoped.ensureFindingAnchorWrites(ctx, finding, result)
+	if err != nil {
+		return nil, err
+	}
+	if err := scoped.flushPendingWrites(ctx); err != nil {
+		return nil, err
+	}
+	return urns, nil
+}
+
+func (s *Service) ensureFindingAnchorWrites(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
 	if err := s.ensureFindingEntity(ctx, finding, result); err != nil {
 		return nil, err
 	}
@@ -554,6 +567,18 @@ func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevent
 }
 
 func (s *Service) ensureFindingForWorkflow(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
+	scoped := s.withBufferedWrites()
+	urns, err := scoped.ensureFindingForWorkflowWrites(ctx, finding, result)
+	if err != nil {
+		return nil, err
+	}
+	if err := scoped.flushPendingWrites(ctx); err != nil {
+		return nil, err
+	}
+	return urns, nil
+}
+
+func (s *Service) ensureFindingForWorkflowWrites(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
 	if err := s.ensureFindingEntity(ctx, finding, result); err != nil {
 		return nil, err
 	}
@@ -1044,6 +1069,9 @@ func (s *Service) ensureFindingMITREAttackTechniqueKnowledge(ctx context.Context
 }
 
 func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentResourceURNs []string, result *ports.ProjectionResult) error {
+	if err := s.flushPendingWrites(ctx); err != nil {
+		return err
+	}
 	if s.catalog == nil {
 		return nil
 	}
@@ -1123,6 +1151,9 @@ func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, 
 }
 
 func (s *Service) pruneFindingMITREContextLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentContextURNs []string, result *ports.ProjectionResult) error {
+	if err := s.flushPendingWrites(ctx); err != nil {
+		return err
+	}
 	if s.catalog == nil {
 		return nil
 	}
@@ -1285,6 +1316,11 @@ func canonicalFindingActorURN(tenantID string, urn string) string {
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, result *ports.ProjectionResult) error {
+	if s.pending != nil {
+		s.pending.entities = append(s.pending.entities, entity)
+		result.EntitiesProjected++
+		return nil
+	}
 	if err := s.graph.UpsertProjectedEntity(ctx, entity); err != nil {
 		return err
 	}
@@ -1293,6 +1329,11 @@ func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntit
 }
 
 func (s *Service) upsertLink(ctx context.Context, link *ports.ProjectedLink, result *ports.ProjectionResult) error {
+	if s.pending != nil {
+		s.pending.links = append(s.pending.links, link)
+		result.LinksProjected++
+		return nil
+	}
 	if err := s.graph.UpsertProjectedLink(ctx, link); err != nil {
 		return err
 	}

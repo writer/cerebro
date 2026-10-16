@@ -478,6 +478,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	evidenceIDs := map[string]struct{}{}
 	evaluatedEventIDs := map[string]struct{}{}
 	emittedFindingIDs := map[string]struct{}{}
+	pendingGraph := newPendingFindingGraphProjections[struct{}]()
 	var eventsMatched uint32
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
@@ -523,20 +524,12 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evidenceIDs[evidence.GetId()] = struct{}{}
 				result.Evidence = append(result.Evidence, evidence)
 			}
-			if err := s.projectFindingAnchor(ctx, stored); err != nil {
-				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
-			}
-			if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
-				evaluationErr := fmt.Errorf("project finding %q external refs: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
-			}
-			if isNewFinding {
-				if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
-					evaluationErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
-					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
-				}
-			}
+			pendingGraph.add(result.Rule.GetId(), stored, isNewFinding, struct{}{})
+		}
+	}
+	for _, pending := range pendingGraph.entries() {
+		if err := s.projectFindingGraph(ctx, pending.finding, pending.isNew); err != nil {
+			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), err)
 		}
 	}
 	if s.canResolveFromEventEvaluationRun(run, result.EventsEvaluated) {
@@ -627,6 +620,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	result.EventsEvaluated = boundedUint32(len(events))
 	evaluatedEventIDs := map[string]struct{}{}
+	pendingGraph := newPendingFindingGraphProjections[*ruleEvaluationState]()
 	var evaluationErr error
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
@@ -696,32 +690,19 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					state.evidenceIDs[evidence.GetId()] = struct{}{}
 					state.result.Evidence = append(state.result.Evidence, evidence)
 				}
-				if err := s.projectFindingAnchor(ctx, stored); err != nil {
-					ruleErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
-					evaluationErr = errors.Join(evaluationErr, ruleErr)
-					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
-					}
-					break
-				}
-				if err := s.projectFindingExternalRefs(ctx, stored); err != nil {
-					ruleErr := fmt.Errorf("project finding %q external refs: %w", stored.ID, err)
-					evaluationErr = errors.Join(evaluationErr, ruleErr)
-					if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-						return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
-					}
-					break
-				}
-				if isNewFinding {
-					if err := s.projectFindingNewActionRecommendations(ctx, stored); err != nil {
-						ruleErr := fmt.Errorf("project finding %q action recommendations: %w", stored.ID, err)
-						evaluationErr = errors.Join(evaluationErr, ruleErr)
-						if failErr := s.markRuleEvaluationFailed(ctx, state, ruleErr); failErr != nil {
-							return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
-						}
-						break
-					}
-				}
+				pendingGraph.add(state.result.Rule.GetId(), stored, isNewFinding, state)
+			}
+		}
+	}
+	for _, pending := range pendingGraph.entries() {
+		state := pending.state
+		if state.failed {
+			continue
+		}
+		if err := s.projectFindingGraph(ctx, pending.finding, pending.isNew); err != nil {
+			evaluationErr = errors.Join(evaluationErr, err)
+			if failErr := s.markRuleEvaluationFailed(ctx, state, err); failErr != nil {
+				return nil, s.markRuleEvaluationsFailed(ctx, states, errors.Join(evaluationErr, failErr))
 			}
 		}
 	}
