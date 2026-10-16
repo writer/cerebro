@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func newMetricExporter(ctx context.Context, options OpenTelemetryOptions) (metri
 
 func traceHTTPOptions(options OpenTelemetryOptions) []otlptracehttp.Option {
 	var opts []otlptracehttp.Option
-	if endpoint := firstNonEmpty(options.TracesEndpoint, options.Endpoint); endpoint != "" {
+	if endpoint := httpSignalEndpoint(options.TracesEndpoint, options.Endpoint, "/v1/traces"); endpoint != "" {
 		opts = append(opts, otlptracehttp.WithEndpointURL(endpoint))
 	}
 	if options.Insecure {
@@ -159,7 +160,7 @@ func traceGRPCOptions(options OpenTelemetryOptions) []otlptracegrpc.Option {
 
 func metricHTTPOptions(options OpenTelemetryOptions) []otlpmetrichttp.Option {
 	var opts []otlpmetrichttp.Option
-	if endpoint := firstNonEmpty(options.MetricsEndpoint, options.Endpoint); endpoint != "" {
+	if endpoint := httpSignalEndpoint(options.MetricsEndpoint, options.Endpoint, "/v1/metrics"); endpoint != "" {
 		opts = append(opts, otlpmetrichttp.WithEndpointURL(endpoint))
 	}
 	if options.Insecure {
@@ -183,6 +184,28 @@ func metricGRPCOptions(options OpenTelemetryOptions) []otlpmetricgrpc.Option {
 		opts = append(opts, otlpmetricgrpc.WithHeaders(options.Headers))
 	}
 	return opts
+}
+
+// httpSignalEndpoint follows the OTLP exporter spec: a signal-specific endpoint
+// is used as-is, while the shared base endpoint gets the signal path appended.
+// WithEndpointURL sends to the URL's literal path (an empty path means "/"
+// since otel-go v1.45), so passing the base endpoint unchanged makes the
+// collector answer 404 and every export is dropped.
+func httpSignalEndpoint(signalEndpoint, baseEndpoint, signalPath string) string {
+	if endpoint := strings.TrimSpace(signalEndpoint); endpoint != "" {
+		return endpoint
+	}
+	base := strings.TrimSpace(baseEndpoint)
+	if base == "" {
+		return ""
+	}
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return base
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + signalPath
+	parsed.RawPath = ""
+	return parsed.String()
 }
 
 func firstNonEmpty(values ...string) string {
