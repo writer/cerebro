@@ -1,15 +1,27 @@
 name: Set up cached Go toolchain
 description: Install the repository Go toolchain and restore shared build caches.
 
+# Pull requests only restore caches. Repository cache storage is capped, and
+# per-PR saves evict the main-branch caches every PR restores from, which leaves
+# every job compiling from scratch. Only designated producers on main save.
+
 inputs:
   cache-scope:
-    description: Stable cache namespace for the owning job.
+    description: Cache family to restore. Jobs that compile the same packages should share one family.
     required: false
-    default: shared
+    default: build
+  save-cache:
+    description: Save the Go build cache on main. Set only on the job that compiles the whole family.
+    required: false
+    default: "false"
   golangci:
     description: Restore the golangci-lint binary and analysis cache.
     required: false
     default: "false"
+  golangci-scope:
+    description: Stable golangci-lint analysis cache namespace for the owning job.
+    required: false
+    default: shared
 
 runs:
   using: composite
@@ -19,26 +31,57 @@ runs:
         go-version-file: go.mod
         cache: false
 
+    - name: Compute cache generation
+      id: generation
+      shell: bash
+      # A weekly generation lets main refresh caches whose dependency hash has not
+      # changed, so restored build data does not drift arbitrarily far from HEAD.
+      run: echo "week=$(date -u +%G-%V)" >> "${GITHUB_OUTPUT}"
+
     - name: Restore Go build data
+      if: inputs.save-cache != 'true' || github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-${{ steps.generation.outputs.week }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
+          ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-
+
+    - name: Restore and save Go build data
+      if: inputs.save-cache == 'true' && github.ref == 'refs/heads/main'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-${{ runner.arch }}-go-v3-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-${{ steps.generation.outputs.week }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-go-v3-${{ inputs.cache-scope }}-
-          ${{ runner.os }}-${{ runner.arch }}-go-v3-
-          ${{ runner.os }}-${{ runner.arch }}-go-v2-
+          ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}-
+          ${{ runner.os }}-${{ runner.arch }}-go-v4-${{ inputs.cache-scope }}-
 
     - name: Restore golangci-lint
-      if: inputs.golangci == 'true'
+      if: inputs.golangci == 'true' && github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/golangci-lint
+          ~/go/bin/golangci-lint
+        key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-${{ steps.generation.outputs.week }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-
+
+    - name: Restore and save golangci-lint
+      if: inputs.golangci == 'true' && github.ref == 'refs/heads/main'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.cache/golangci-lint
           ~/go/bin/golangci-lint
-        key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v2-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-${{ steps.generation.outputs.week }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v2-${{ inputs.cache-scope }}-
-          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}-
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v3-${{ inputs.golangci-scope }}-

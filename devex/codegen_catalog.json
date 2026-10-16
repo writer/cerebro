@@ -174,12 +174,12 @@
       },
       "checks": [
         {
-          "key": "graph-action-check",
+          "key": "graph-action-generated-check",
           "summary": "Verify generated graph action registry is up to date",
-          "make_target": "graph-action-check",
+          "make_target": "graph-action-generated-check",
           "command": [
             "make",
-            "graph-action-check"
+            "graph-action-generated-check"
           ],
           "include_in_pr_generated_step": true
         }

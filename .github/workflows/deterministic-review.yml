@@ -30,12 +30,9 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-go-cached
-        with:
-          cache-scope: deterministic-review
 
       - uses: ./.github/actions/setup-rust-cached
         with:
-          cache-scope: deterministic-review
           components: llvm-tools-preview
           target: wasm32-unknown-unknown
           install-policy-tools: "true"

@@ -46,16 +46,22 @@ jobs:
       - name: Build the exact Rust runtime
         env:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Only main writes layer cache; pull requests read it so they cannot
+          # evict the shared cache under the repository storage cap.
+          SAVE_LAYER_CACHE: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
+          cache_args=(--cache-from "type=gha,scope=rust-graph-replacement")
+          if [ "${SAVE_LAYER_CACHE}" = "true" ]; then
+            cache_args+=(--cache-to "type=gha,mode=max,ignore-error=true,scope=rust-graph-replacement")
+          fi
           docker buildx build \
             --file Dockerfile.rust \
             --target replacement-test-runtime \
             --load \
             --provenance=false \
             --tag "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" \
-            --cache-from type=gha,scope=rust-graph-replacement \
-            --cache-to type=gha,mode=max,ignore-error=true,scope=rust-graph-replacement \
+            "${cache_args[@]}" \
             .
 
       - name: Start the disposable stores
