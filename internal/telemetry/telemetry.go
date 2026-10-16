@@ -536,6 +536,14 @@ func ErrorKind(err error) string {
 			return ErrorKind(unwrapped)
 		}
 		return "wrapped_error"
+	case "errors.joinError":
+		// errors.Join(err, nil, ...) still wraps a single cause; report the
+		// cause so cleanup-error joins do not mask the real failure kind.
+		if joined, ok := err.(interface{ Unwrap() []error }); ok {
+			if children := joined.Unwrap(); len(children) == 1 && children[0] != nil {
+				return ErrorKind(children[0])
+			}
+		}
 	}
 	return compactErrorKind(typeName)
 }
