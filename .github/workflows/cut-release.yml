@@ -212,7 +212,7 @@ jobs:
       # Uploading is a network call on a runner that has already done all the
       # expensive work, so a transient DNS or connectivity blip here throws away
       # a completed build and fails the candidate. One retry absorbs that.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload_candidate_binary
         continue-on-error: true
         with:
@@ -225,7 +225,7 @@ jobs:
         run: sleep 30
       - name: Retry candidate binary upload
         if: steps.upload_candidate_binary.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-binary-${{ needs.resolve.outputs.sha }}-${{ matrix.os }}-${{ matrix.arch }}
           path: .dist/release/*.tar.gz
@@ -249,7 +249,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: candidate-binary-${{ needs.resolve.outputs.sha }}-*
           path: .dist/release
@@ -264,7 +264,7 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: .dist/release/*.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-binaries-${{ needs.resolve.outputs.sha }}
           path: .dist/release
@@ -313,7 +313,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build and publish candidate image
         shell: bash
         env:
@@ -345,7 +345,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Publish candidate manifest
         id: publish
         shell: bash
@@ -548,7 +548,7 @@ jobs:
       - name: Print runtime logs
         if: always()
         run: docker logs cerebro-rust-platform 2>&1 || true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-rust-e2e-${{ needs.resolve.outputs.sha }}
           path: .dist/rust-e2e/rust-organizational-e2e-receipt.json
@@ -596,7 +596,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build and publish candidate web image
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -629,7 +629,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Publish candidate web manifest
         id: publish
         env:
@@ -681,7 +681,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Verify candidate image platforms
         shell: bash
         env:
@@ -755,7 +755,7 @@ jobs:
             --bundle-root .dist/product \
             --slack-archive "${slack_archive}" \
             --sdk-archive "${sdk_archive}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: product-input-${{ needs.resolve.outputs.sha }}
           path: .dist/product
@@ -773,7 +773,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: product-input-${{ needs.resolve.outputs.sha }}
           path: .dist/product
@@ -815,7 +815,7 @@ jobs:
             --output-signature .dist/product/cerebro-product-release.json.sig \
             --output-certificate .dist/product/cerebro-product-release.json.pem \
             .dist/product/cerebro-product-release.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-product-${{ needs.resolve.outputs.sha }}
           path: .dist/product
@@ -832,13 +832,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: candidate-*-${{ needs.resolve.outputs.sha }}
           path: candidate
           merge-multiple: true
       - name: Download the Rust-only E2E receipt
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: rust-only-e2e-${{ needs.resolve.outputs.sha }}
           path: candidate
@@ -882,7 +882,7 @@ jobs:
           checksum_file="$(mktemp)"
           (cd candidate && find . -type f ! -name bundle-checksums.txt -print0 | sort -z | xargs -0 sha256sum) > "${checksum_file}"
           mv "${checksum_file}" candidate/bundle-checksums.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cerebro-candidate-${{ needs.resolve.outputs.sha }}
           path: candidate
