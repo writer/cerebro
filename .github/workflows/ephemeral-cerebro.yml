@@ -72,7 +72,7 @@ jobs:
           ref: ${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Install Rust toolchain
         run: rustup toolchain install 1.93.1 --profile minimal
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload graph qualification receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pr-rust-graph-${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
           path: |
@@ -240,7 +240,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: pr-rust-graph-${{ inputs.candidate_sha }}
           path: .dist/pr-rust-graph
@@ -260,7 +260,7 @@ jobs:
             --output-signature .dist/pr-rust-graph/smoke-receipt.json.sig \
             --output-certificate .dist/pr-rust-graph/smoke-receipt.json.pem \
             .dist/pr-rust-graph/smoke-receipt.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed-pr-rust-graph-${{ inputs.candidate_sha }}
           path: .dist/pr-rust-graph
