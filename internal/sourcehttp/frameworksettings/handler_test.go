@@ -50,8 +50,8 @@ func testHandler(store ports.StateStore) Handler {
 	})
 }
 
-func testRequest(method, target, body string) *http.Request {
-	return httptest.NewRequest(method, target, strings.NewReader(body))
+func testRequest(method, body string) *http.Request {
+	return httptest.NewRequest(method, "/grc/framework-settings", strings.NewReader(body))
 }
 
 func decodeFrameworkSettings(t *testing.T, recorder *httptest.ResponseRecorder) Response {
@@ -66,7 +66,7 @@ func decodeFrameworkSettings(t *testing.T, recorder *httptest.ResponseRecorder) 
 func TestHandleGetFrameworkSettingsReturnsDefaults(t *testing.T) {
 	handler := testHandler(newStubFrameworkSettingsStore())
 	recorder := httptest.NewRecorder()
-	handler.Get(recorder, testRequest(http.MethodGet, "/grc/framework-settings", ""))
+	handler.Get(recorder, testRequest(http.MethodGet, ""))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -85,7 +85,7 @@ func TestHandlePutFrameworkSettingsPersistsCanonicalSelection(t *testing.T) {
 	handler := testHandler(store)
 	recorder := httptest.NewRecorder()
 	body := `{"enabled_frameworks":["cis aws foundations benchmark v2.0","SOC 2","SOC 2"]}`
-	handler.Put(recorder, testRequest(http.MethodPut, "/grc/framework-settings", body))
+	handler.Put(recorder, testRequest(http.MethodPut, body))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -100,12 +100,12 @@ func TestHandlePutFrameworkSettingsPersistsCanonicalSelection(t *testing.T) {
 
 	// An explicit empty list is a valid choice and must not fall back to defaults.
 	recorder = httptest.NewRecorder()
-	handler.Put(recorder, testRequest(http.MethodPut, "/grc/framework-settings", `{"enabled_frameworks":[]}`))
+	handler.Put(recorder, testRequest(http.MethodPut, `{"enabled_frameworks":[]}`))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("empty selection status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 	recorder = httptest.NewRecorder()
-	handler.Get(recorder, testRequest(http.MethodGet, "/grc/framework-settings", ""))
+	handler.Get(recorder, testRequest(http.MethodGet, ""))
 	if response := decodeFrameworkSettings(t, recorder); !response.Persisted || len(response.Settings.EnabledFrameworks) != 0 {
 		t.Fatalf("after empty save = %#v, want persisted empty selection", response)
 	}
@@ -122,7 +122,7 @@ func TestHandlePutFrameworkSettingsRejectsInvalidSelections(t *testing.T) {
 			store := newStubFrameworkSettingsStore()
 			handler := testHandler(store)
 			recorder := httptest.NewRecorder()
-			handler.Put(recorder, testRequest(http.MethodPut, "/grc/framework-settings", body))
+			handler.Put(recorder, testRequest(http.MethodPut, body))
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, body = %s, want 400", recorder.Code, recorder.Body.String())
 			}
@@ -137,7 +137,7 @@ func TestHandlePutFrameworkSettingsRejectsOtherTenant(t *testing.T) {
 	store := newStubFrameworkSettingsStore()
 	handler := testHandler(store)
 	recorder := httptest.NewRecorder()
-	handler.Put(recorder, testRequest(http.MethodPut, "/grc/framework-settings", `{"tenant_id":"other","enabled_frameworks":["SOC 2"]}`))
+	handler.Put(recorder, testRequest(http.MethodPut, `{"tenant_id":"other","enabled_frameworks":["SOC 2"]}`))
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, body = %s, want 403", recorder.Code, recorder.Body.String())
 	}
@@ -149,7 +149,7 @@ func TestHandlePutFrameworkSettingsRejectsOtherTenant(t *testing.T) {
 func TestHandlePutFrameworkSettingsWithoutStoreIsUnavailable(t *testing.T) {
 	handler := testHandler(nil)
 	recorder := httptest.NewRecorder()
-	handler.Put(recorder, testRequest(http.MethodPut, "/grc/framework-settings", `{"enabled_frameworks":["SOC 2"]}`))
+	handler.Put(recorder, testRequest(http.MethodPut, `{"enabled_frameworks":["SOC 2"]}`))
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, body = %s, want 503", recorder.Code, recorder.Body.String())
 	}

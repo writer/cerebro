@@ -96,32 +96,36 @@ type appendLogTablesReady struct {
 
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db                               *sql.DB
-	schemaMu                         sync.Mutex
-	claimTablesReady                 bool
-	projectionTablesReady            bool
-	findingTablesReady               bool
-	reportTablesReady                bool
-	sourceRuntimeTableReady          bool
-	findingEvidenceReady             bool
-	findingEvaluationRunReady        bool
-	findingIntel                     findingIntelReady
-	vulnDBTablesReady                bool
-	deviceAuthTablesReady            bool
-	mcpOAuthTablesReady              bool
-	startupLeaseTableReady           bool
-	schemaMigrationsReady            bool
-	ask                              askTablesReady
-	jobTablesReady                   bool
-	runtimeBlocklistReady            bool
-	grc                              grcTablesReady
-	identity                         identityTablesReady
-	platform                         platformTablesReady
-	connector                        connectorTablesReady
-	appendLog                        appendLogTablesReady
-	userPreferencesReady             bool
-	complianceFrameworkSettingsReady bool
-	customFindingRulesReady          bool
+	db                        *sql.DB
+	schemaMu                  sync.Mutex
+	claimTablesReady          bool
+	projectionTablesReady     bool
+	findingTablesReady        bool
+	reportTablesReady         bool
+	sourceRuntimeTableReady   bool
+	findingEvidenceReady      bool
+	findingEvaluationRunReady bool
+	findingIntel              findingIntelReady
+	vulnDBTablesReady         bool
+	deviceAuthTablesReady     bool
+	mcpOAuthTablesReady       bool
+	startupLeaseTableReady    bool
+	schemaMigrationsReady     bool
+	ask                       askTablesReady
+	jobTablesReady            bool
+	runtimeBlocklistReady     bool
+	grc                       grcTablesReady
+	identity                  identityTablesReady
+	platform                  platformTablesReady
+	connector                 connectorTablesReady
+	appendLog                 appendLogTablesReady
+	settings                  settingsTablesReady
+}
+
+type settingsTablesReady struct {
+	userPreferences             bool
+	complianceFrameworkSettings bool
+	customFindingRules          bool
 }
 
 // Open opens a Postgres-backed current-state store.

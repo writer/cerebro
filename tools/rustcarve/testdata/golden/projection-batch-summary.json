@@ -1,7 +1,7 @@
 {
   "schema_version": "cerebro.rustcarve.projection-batch-plan/v1",
   "tool_revision": "cerebro.rustcarve/v2",
-  "input_digest_sha256": "25b414cce464c8c63944caf7223a310c1b7501c999808c69409afad395961df0",
+  "input_digest_sha256": "4d17256ef433ecda7e419e9e83f27e26bb7d82ba2762c686f6038518d3e165a5",
   "eligible_sources": 73,
   "eligible_families": 514,
   "candidate_sources": 0,

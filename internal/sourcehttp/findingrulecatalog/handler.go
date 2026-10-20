@@ -54,10 +54,10 @@ type CatalogResponse struct {
 
 // DocumentRequest carries one authored rule document.
 type DocumentRequest struct {
-	TenantID string         `json:"tenant_id"`
-	Format   string         `json:"format"`
-	Content  string         `json:"content"`
-	Resource map[string]any `json:"resource,omitempty"`
+	TenantID string                     `json:"tenant_id"`
+	Format   string                     `json:"format"`
+	Content  string                     `json:"content"`
+	Resource rulecatalog.SampleResource `json:"resource,omitempty"`
 }
 
 // List returns built-in rules followed by the tenant's custom rules.
