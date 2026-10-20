@@ -25,7 +25,7 @@ var ensureComplianceFrameworkSettingsStatements = []string{
 const complianceFrameworkSettingsColumns = `tenant_id, enabled_frameworks::text, created_at, updated_at`
 
 func (s *Store) ensureComplianceFrameworkSettingsTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.complianceFrameworkSettingsReady, "compliance framework settings", ensureComplianceFrameworkSettingsStatements)
+	return s.ensureStatements(ctx, &s.settings.complianceFrameworkSettings, "compliance framework settings", ensureComplianceFrameworkSettingsStatements)
 }
 
 // PutComplianceFrameworkSettings upserts one tenant's enabled framework list.

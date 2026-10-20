@@ -21,16 +21,14 @@ func newFakeGraph() *fakeGraph {
 	return &fakeGraph{entities: map[string]ports.CatalogEntity{}, relations: map[string][]ports.EntityCatalogRelation{}}
 }
 
-func (g *fakeGraph) add(urn, kind string, attrs map[string]string) ports.CatalogEntity {
-	entity := ports.CatalogEntity{URN: urn, TenantID: testTenant, EntityType: kind, Label: urn, Attributes: attrs}
-	g.entities[urn] = entity
-	return entity
+func (g *fakeGraph) add(urn, kind string, attrs map[string]string) {
+	g.entities[urn] = ports.CatalogEntity{URN: urn, TenantID: testTenant, EntityType: kind, Label: urn, Attributes: attrs}
 }
 
 // link records from -relation-> to, visible from both ends.
-func (g *fakeGraph) link(from, relation, to string, edgeJSON string) {
-	g.relations[from] = append(g.relations[from], ports.EntityCatalogRelation{Direction: ports.EntityRelationOutgoing, Relation: relation, Entity: g.entities[to], AttributesJSON: edgeJSON})
-	g.relations[to] = append(g.relations[to], ports.EntityCatalogRelation{Direction: ports.EntityRelationIncoming, Relation: relation, Entity: g.entities[from], AttributesJSON: edgeJSON})
+func (g *fakeGraph) link(from, relation, to string) {
+	g.relations[from] = append(g.relations[from], ports.EntityCatalogRelation{Direction: ports.EntityRelationOutgoing, Relation: relation, Entity: g.entities[to]})
+	g.relations[to] = append(g.relations[to], ports.EntityCatalogRelation{Direction: ports.EntityRelationIncoming, Relation: relation, Entity: g.entities[from]})
 }
 
 func (g *fakeGraph) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
@@ -220,14 +218,14 @@ func adminGraph() *fakeGraph {
 	g.add("urn:host:db", "aws.rds_database", map[string]string{"data_classification": "restricted"})
 	g.add("urn:vuln:cve-2", "vulnerability", map[string]string{"epss_score": "0.5"})
 	g.add("urn:group:eng", "okta.group", nil)
-	g.link("urn:device:laptop", "owned_by", "urn:person:admin", "")
-	g.link("urn:device:laptop", "affected_by", "urn:vuln:cve-1", "")
-	g.link("urn:person:admin", "same_actor", "urn:okta:user:admin", "")
-	g.link("urn:okta:user:admin", "can_admin", "urn:app:payroll", "")
-	g.link("urn:app:payroll", "can_reach", "urn:host:db", "")
-	g.link("urn:host:db", "affected_by", "urn:vuln:cve-2", "")
+	g.link("urn:device:laptop", "owned_by", "urn:person:admin")
+	g.link("urn:device:laptop", "affected_by", "urn:vuln:cve-1")
+	g.link("urn:person:admin", "same_actor", "urn:okta:user:admin")
+	g.link("urn:okta:user:admin", "can_admin", "urn:app:payroll")
+	g.link("urn:app:payroll", "can_reach", "urn:host:db")
+	g.link("urn:host:db", "affected_by", "urn:vuln:cve-2")
 	// Incoming member_of must not be walked: the group does not gain the user's access.
-	g.link("urn:okta:user:admin", "member_of", "urn:group:eng", "")
+	g.link("urn:okta:user:admin", "member_of", "urn:group:eng")
 	return g
 }
 
@@ -298,8 +296,8 @@ func TestScorePathsCountermeasureCutsStep(t *testing.T) {
 	g.add("urn:user:a", "okta.user", nil)
 	g.add("urn:user:b", "okta.user", map[string]string{"mfa_enforced": "yes"})
 	g.add("urn:role:admin", "aws.iam_role", nil)
-	g.link("urn:user:a", "can_impersonate", "urn:user:b", "")
-	g.link("urn:user:b", "can_assume", "urn:role:admin", "")
+	g.link("urn:user:a", "can_impersonate", "urn:user:b")
+	g.link("urn:user:b", "can_assume", "urn:role:admin")
 	result, err := ScorePaths(context.Background(), g, DefaultModel(testTenant), PathRequest{TenantID: testTenant, RootURN: "urn:user:a", AssumeCompromised: true})
 	if err != nil {
 		t.Fatalf("ScorePaths() error = %v", err)

@@ -126,8 +126,11 @@ func Validate(format string, content string) ValidationResult {
 	return result
 }
 
+// SampleResource is the resource attribute document a rule test evaluates.
+type SampleResource map[string]any
+
 // Test evaluates a document's CEL conditions against one sample resource.
-func Test(format string, content string, resource map[string]any) TestResult {
+func Test(format string, content string, resource SampleResource) TestResult {
 	rule, issues := ParseDocument(format, content)
 	result := TestResult{Issues: issues}
 	if HasErrors(issues) {
@@ -140,7 +143,7 @@ func Test(format string, content string, resource map[string]any) TestResult {
 		return result
 	}
 	if resource == nil {
-		resource = map[string]any{}
+		resource = SampleResource{}
 	}
 	matched, err := findingdsl.EvaluatePolicyRuleTestCase(rule, findingdsl.PolicyRuleTestCase{Name: "sample", Resource: resource})
 	if err != nil {
@@ -263,8 +266,10 @@ func CustomDetail(rule findingdsl.PolicyFindingRule, document string, metadata C
 		Document:          document,
 		Editable:          true,
 		Testable:          len(spec.Match.Conditions) != 0,
-		CreatedBy:         strings.TrimSpace(metadata.CreatedBy),
-		UpdatedBy:         strings.TrimSpace(metadata.UpdatedBy),
+		Authorship: Authorship{
+			CreatedBy: strings.TrimSpace(metadata.CreatedBy),
+			UpdatedBy: strings.TrimSpace(metadata.UpdatedBy),
+		},
 	}
 	if !metadata.CreatedAt.IsZero() {
 		detail.CreatedAt = metadata.CreatedAt.UTC().Format(time.RFC3339)

@@ -28,7 +28,7 @@ var ensureUserPreferenceStatements = []string{
 const userPreferenceColumns = `tenant_id, user_id, preferences_json::text, created_at, updated_at`
 
 func (s *Store) ensureUserPreferenceTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.userPreferencesReady, "user preferences", ensureUserPreferenceStatements)
+	return s.ensureStatements(ctx, &s.settings.userPreferences, "user preferences", ensureUserPreferenceStatements)
 }
 
 // PutUserPreferences upserts one tenant/user preference document.

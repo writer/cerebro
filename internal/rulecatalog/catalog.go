@@ -59,31 +59,41 @@ type MITRERef struct {
 // Detail is the full view of one rule.
 type Detail struct {
 	Entry
-	Description           string       `json:"description"`
-	AttackDescription     string       `json:"attack_description"`
-	Remediation           string       `json:"remediation"`
-	RemediationSteps      []string     `json:"remediation_steps,omitempty"`
-	Runbook               string       `json:"runbook,omitempty"`
-	FalsePositives        []string     `json:"false_positives,omitempty"`
-	References            []string     `json:"references,omitempty"`
-	ControlRefs           []ControlRef `json:"control_refs,omitempty"`
-	MITREAttack           []MITRERef   `json:"mitre_attack,omitempty"`
-	Conditions            []string     `json:"conditions,omitempty"`
-	Query                 string       `json:"query,omitempty"`
-	GraphQuery            string       `json:"graph_query,omitempty"`
-	GraphSourceKinds      []string     `json:"graph_source_kinds,omitempty"`
-	CorrelatedRuleIDs     []string     `json:"correlated_rule_ids,omitempty"`
-	CorrelationDimensions []string     `json:"correlation_dimensions,omitempty"`
-	CorrelationWindow     string       `json:"correlation_window,omitempty"`
-	FingerprintFields     []string     `json:"fingerprint_fields,omitempty"`
-	Lifecycle             string       `json:"lifecycle,omitempty"`
-	SourcePath            string       `json:"source_path,omitempty"`
-	Document              string       `json:"document,omitempty"`
-	Editable              bool         `json:"editable"`
-	Testable              bool         `json:"testable"`
-	CreatedBy             string       `json:"created_by,omitempty"`
-	UpdatedBy             string       `json:"updated_by,omitempty"`
-	CreatedAt             string       `json:"created_at,omitempty"`
+	Description       string       `json:"description"`
+	AttackDescription string       `json:"attack_description"`
+	Remediation       string       `json:"remediation"`
+	RemediationSteps  []string     `json:"remediation_steps,omitempty"`
+	Runbook           string       `json:"runbook,omitempty"`
+	FalsePositives    []string     `json:"false_positives,omitempty"`
+	References        []string     `json:"references,omitempty"`
+	ControlRefs       []ControlRef `json:"control_refs,omitempty"`
+	MITREAttack       []MITRERef   `json:"mitre_attack,omitempty"`
+	Conditions        []string     `json:"conditions,omitempty"`
+	Query             string       `json:"query,omitempty"`
+	GraphQuery        string       `json:"graph_query,omitempty"`
+	GraphSourceKinds  []string     `json:"graph_source_kinds,omitempty"`
+	Correlation
+	FingerprintFields []string `json:"fingerprint_fields,omitempty"`
+	Lifecycle         string   `json:"lifecycle,omitempty"`
+	SourcePath        string   `json:"source_path,omitempty"`
+	Document          string   `json:"document,omitempty"`
+	Editable          bool     `json:"editable"`
+	Testable          bool     `json:"testable"`
+	Authorship
+}
+
+// Correlation lists the member rules and grouping of a correlation pattern.
+type Correlation struct {
+	CorrelatedRuleIDs     []string `json:"correlated_rule_ids,omitempty"`
+	CorrelationDimensions []string `json:"correlation_dimensions,omitempty"`
+	CorrelationWindow     string   `json:"correlation_window,omitempty"`
+}
+
+// Authorship records who created and last changed a custom rule.
+type Authorship struct {
+	CreatedBy string `json:"created_by,omitempty"`
+	UpdatedBy string `json:"updated_by,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 var builtinCatalog struct {
@@ -334,12 +344,14 @@ func correlationDetail(pattern findings.FindingCorrelationPattern, severityByID 
 			Maturity:   findings.RuleMaturityGA,
 			Tags:       append([]string{"correlation"}, pattern.Reasons...),
 		},
-		Description:           summary,
-		AttackDescription:     attack,
-		Remediation:           "Remediate the contributing findings (" + strings.Join(pattern.RuleIDs, ", ") + "); resolving any one of them breaks the correlated risk.",
-		CorrelatedRuleIDs:     append([]string(nil), pattern.RuleIDs...),
-		CorrelationDimensions: append([]string(nil), pattern.Dimensions...),
-		CorrelationWindow:     window,
+		Description:       summary,
+		AttackDescription: attack,
+		Remediation:       "Remediate the contributing findings (" + strings.Join(pattern.RuleIDs, ", ") + "); resolving any one of them breaks the correlated risk.",
+		Correlation: Correlation{
+			CorrelatedRuleIDs:     append([]string(nil), pattern.RuleIDs...),
+			CorrelationDimensions: append([]string(nil), pattern.Dimensions...),
+			CorrelationWindow:     window,
+		},
 	}
 }
 

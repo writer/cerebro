@@ -30,7 +30,7 @@ var ensureCustomFindingRulesStatements = []string{
 const customFindingRuleColumns = `tenant_id, rule_id, document, created_by, updated_by, created_at, updated_at`
 
 func (s *Store) ensureCustomFindingRulesTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.customFindingRulesReady, "custom finding rules", ensureCustomFindingRulesStatements)
+	return s.ensureStatements(ctx, &s.settings.customFindingRules, "custom finding rules", ensureCustomFindingRulesStatements)
 }
 
 // ListCustomFindingRules returns one tenant's custom rules ordered by ID.
