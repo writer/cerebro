@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/writer/cerebro/internal/identitysso"
 )
 
 const defaultHTTPAddr = ":8080"
@@ -76,6 +78,14 @@ type Config struct {
 	SourceRuntime         SourceRuntimeConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
+	IdentitySSO           IdentitySSOConfig
+}
+
+// IdentitySSOConfig controls web console SSO state owned by the Go runtime.
+type IdentitySSOConfig struct {
+	// Bootstrap is the stack-configured SSO connection (and optional policy)
+	// seeded at startup. Nil when CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON is unset.
+	Bootstrap *identitysso.Bootstrap
 }
 
 // SourceRuntimeConfig controls source event admission execution.
@@ -957,6 +967,9 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
 	}
+	if cfg.IdentitySSO.Bootstrap, err = loadIdentitySSOBootstrap(cfg.StateStore); err != nil {
+		return Config{}, err
+	}
 	if cfg.GraphStore.Driver == "" && cfg.GraphStore.Neo4jURI != "" {
 		cfg.GraphStore.Driver = GraphStoreDriverNeo4j
 	}
@@ -1012,6 +1025,21 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func loadIdentitySSOBootstrap(stateStore StateStoreConfig) (*identitysso.Bootstrap, error) {
+	raw, err := readConfigValue("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON")
+	if err != nil || raw == "" {
+		return nil, err
+	}
+	bootstrap, err := identitysso.ParseBootstrap([]byte(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parse CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON: %w", err)
+	}
+	if stateStore.Driver != StateStoreDriverPostgres {
+		return nil, errors.New("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON requires CEREBRO_STATE_STORE_DRIVER=postgres and CEREBRO_POSTGRES_DSN")
+	}
+	return bootstrap, nil
 }
 
 func defaultSourceEventAdmissionWorkerPath() string {

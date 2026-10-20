@@ -239,6 +239,34 @@ The web image (`ghcr.io/writer/cerebro-web:<tag>`) proxies browser requests to t
 
 The web server sends a nonce-based `Content-Security-Policy` on every page. Do not add `'unsafe-inline'` to `script-src` at a reverse proxy or CDN in front of it.
 
+### Web console single sign-on
+
+The console signs people in itself through OIDC or SAML 2.0 identity providers (Okta, Microsoft Entra ID, Google Workspace, or any standards provider). It can also accept users and groups pushed over SCIM 2.0. Admins configure all of this under **Admin → Access Control**, on the **Single sign-on**, **Provisioning**, and **People** tabs. Connections, the sign-in policy, sessions, and the SCIM directory are stored in Postgres.
+
+| Variable | Guidance |
+| --- | --- |
+| `CEREBRO_WEB_PUBLIC_URL` | The console's external origin, for example `https://cerebro.example.com`. Redirect URIs, the SAML ACS URL and entity ID, and the SCIM base URL are all built from it. |
+| `CEREBRO_WEB_SESSION_SECRET` | At least 32 random bytes. It encrypts the short-lived sign-in transaction cookie. Store it as a secret and rotate it with a rolling deploy; sign-ins that are in flight during the rotation must be retried. |
+| `CEREBRO_SSO_BREAK_GLASS` | Set to `true` only to recover from a broken connection. It ignores "Require single sign-on", so proxy or header identity works again. Remove it once access is restored. |
+| `CEREBRO_SSO_REQUIRED` | Set to `true` when nothing in front of the console authenticates users. SSO is then enforced whatever the stored policy says, proxy identity headers are never trusted, and `CEREBRO_SSO_BREAK_GLASS` is ignored. |
+| `CEREBRO_SSO_OIDC_CALLBACK_PATH` | `/api/auth/oidc/callback` (default) or `/oauth2/idpresponse`. The second lets an OIDC app registered for an AWS ALB OIDC listener be reused unchanged once the ALB stops authenticating console traffic. |
+
+Secrets are never stored in Cerebro. An OIDC connection stores a reference to its client secret, and the web server reads that reference at sign-in time:
+
+- `env:CEREBRO_SSO_<NAME>` reads an environment variable on the web service. Only names that start with `CEREBRO_SSO_` are allowed, unless you list other names in `CEREBRO_SSO_SECRET_ENV_ALLOWLIST`. This stops a connection from sending some other server secret to an identity provider that an admin controls. Injecting an Infisical-synced Secrets Manager secret as an ECS task secret works with this form.
+- `aws-sm:<region>/<secret-id>[#json-field]` reads AWS Secrets Manager at sign-in time. It is refused until `CEREBRO_SSO_AWS_SECRET_PREFIXES` lists the secret-id prefixes that connections may use. The web task role also needs `secretsmanager:GetSecretValue` on those secrets.
+
+Rollout order:
+
+1. Add a connection, copy the redirect or ACS values into the identity provider, and save.
+2. Run **Test sign-in**. The connection can be turned on only after a test passes.
+3. Sign in through SSO yourself. "Require single sign-on" stays locked until you hold an SSO session, so you can't lock yourself out.
+4. Turn on "Require single sign-on". From then on, proxy identity headers and the local developer identity are ignored.
+
+To run the console with no authenticating proxy from its first boot, seed the connection from deployment configuration instead. Set `CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON` on the API service, for example `{"tenantId":"<tenant>","connection":{"id":"okta","name":"Okta","protocol":"oidc","domains":["example.com"],"oidc":{"issuer":"https://<org>.okta.com/oauth2/default","clientId":"<client-id>","clientSecretRef":"env:CEREBRO_SSO_OKTA_CLIENT_SECRET","scopes":["openid","profile","email","groups"]},"defaultRoles":["cerebro.viewer"]},"policy":{"enforced":true}}`, and set `CEREBRO_SSO_REQUIRED=true` on the web service. The API writes the connection as active at every startup. The connection, and an enforced policy, are then read-only in Access Control (`409 bootstrap_managed`); change them in deployment configuration.
+
+Identity-provider-initiated SAML is rejected. Point the provider's app tile, through its "Initiate login URI" setting, at the URI the connection editor shows.
+
 ### Append log
 
 | Variable | Guidance |

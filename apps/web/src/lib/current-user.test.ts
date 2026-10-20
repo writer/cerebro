@@ -11,13 +11,13 @@ import {
   currentUserFromHeadersWithFallback,
   currentUserRefreshDelayMs,
   currentUserSourceLabel,
-  identityHealthFromHeaders,
   identityPosture,
   identityRuntimeConfig,
   localCurrentUserFallback,
-  resolveCurrentUserFromHeaders,
+  resolveProxyCurrentUserFromHeaders as resolveCurrentUserFromHeaders,
   type CurrentUser,
 } from "./identity";
+import { identityHealthFromHeaders } from "./identity-server";
 import cloudflareAccessFixture from "./fixtures/identity/cloudflare-access.json";
 import localIdentityFixture from "./fixtures/identity/local.json";
 import oktaProxyFixture from "./fixtures/identity/okta-proxy.json";

@@ -1,21 +1,32 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { KeyRound, ShieldCheck, UserPlus, Users } from "lucide-react";
+import type { ReactNode } from "react";
 
+import { Chip, SegmentedTabs } from "@/components/access/fields";
+import { PeopleTab } from "@/components/access/PeopleTab";
+import { ProvisioningTab } from "@/components/access/ProvisioningTab";
+import { SsoTab } from "@/components/access/SsoTab";
 import { AttentionBanner, Badge, ErrorBlock, LoadingBlock, PageHeader, Panel } from "@/components/grc/Primitives";
 import { accessRoleRows, deniedPermissions, type AccessControl } from "@/lib/access-control";
+import { useQueryParamState } from "@/lib/query-params";
 
-// Role, group, and permission names are identifiers, so they keep their exact
-// spelling rather than the title-casing the status badge applies.
-function Chip({ value }: { value: string }) {
-  return (
-    <span className="whitespace-nowrap rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-primary)]">
-      {value}
-    </span>
-  );
-}
+type AccessTab = "roles" | "sso" | "provisioning" | "people";
+
+const accessTabs: { id: AccessTab; label: string; icon: ReactNode }[] = [
+  { id: "roles", label: "Roles", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+  { id: "sso", label: "Single sign-on", icon: <KeyRound className="h-3.5 w-3.5" /> },
+  { id: "provisioning", label: "Provisioning", icon: <UserPlus className="h-3.5 w-3.5" /> },
+  { id: "people", label: "People", icon: <Users className="h-3.5 w-3.5" /> },
+];
 
 export default function AdminAccessControlPage() {
+  const [tabValue, setTab] = useQueryParamState("tab", "roles");
+  const [tested] = useQueryParamState("tested");
+  const [testOk] = useQueryParamState("ok");
+  const [testReason] = useQueryParamState("reason");
+  const tab = (accessTabs.some((item) => item.id === tabValue) ? tabValue : "roles") as AccessTab;
   const query = useQuery<AccessControl, Error>({
     queryFn: async ({ signal }) => {
       const response = await fetch("/api/admin/access", { cache: "no-store", signal });
@@ -40,13 +51,26 @@ export default function AdminAccessControlPage() {
     <div className="space-y-6">
       <PageHeader
         title="Access Control"
-        description="Which identity-provider groups get which Cerebro roles, and what each role allows. Change access by changing group membership in your identity provider."
+        description="How people sign in, how they're provisioned, and which identity-provider groups get which Cerebro roles."
       />
 
-      {query.isPending && <LoadingBlock label="Loading access control..." />}
-      {query.error && <ErrorBlock error={query.error.message} onRetry={() => void query.refetch()} />}
+      <SegmentedTabs tabs={accessTabs} active={tab} onChange={setTab} />
 
-      {data && (
+      {tab === "sso" && (
+        <SsoTab
+          roles={data?.roles.map((role) => role.role) ?? []}
+          testedConnectionId={tested || undefined}
+          testOk={testOk === "1"}
+          testReason={testReason || undefined}
+        />
+      )}
+      {tab === "provisioning" && <ProvisioningTab />}
+      {tab === "people" && <PeopleTab />}
+
+      {tab === "roles" && query.isPending && <LoadingBlock label="Loading access control..." />}
+      {tab === "roles" && query.error && <ErrorBlock error={query.error.message} onRetry={() => void query.refetch()} />}
+
+      {tab === "roles" && data && (
         <div className="space-y-6" id="access-control">
           {data.sampleMappings && (
             <AttentionBanner>

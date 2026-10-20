@@ -41,8 +41,8 @@ describe("proxy content security policy", () => {
     })).toBe(false);
   });
 
-  it("sets a nonce-based script-src with no unsafe-inline", () => {
-    const response = proxy(request("GET", "/findings"));
+  it("sets a nonce-based script-src with no unsafe-inline", async () => {
+    const response = await proxy(request("GET", "/findings"));
     expect(response.status).toBe(200);
     const policy = response.headers.get("content-security-policy");
     const nonce = nonceFromContentSecurityPolicy(policy);
@@ -52,8 +52,8 @@ describe("proxy content security policy", () => {
     expect(policy).toContain("frame-ancestors 'none'");
   });
 
-  it("forwards the same nonce and policy to the app router as request headers", () => {
-    const response = proxy(request("GET", "/"));
+  it("forwards the same nonce and policy to the app router as request headers", async () => {
+    const response = await proxy(request("GET", "/"));
     const policy = response.headers.get("content-security-policy");
     const nonce = nonceFromContentSecurityPolicy(policy);
     expect(nonce).toBeTruthy();
@@ -61,8 +61,8 @@ describe("proxy content security policy", () => {
     expect(response.headers.get("x-middleware-request-content-security-policy")).toBe(policy);
   });
 
-  it("ignores nonce and policy headers supplied by the client", () => {
-    const response = proxy(request("GET", "/", {
+  it("ignores nonce and policy headers supplied by the client", async () => {
+    const response = await proxy(request("GET", "/", {
       "x-nonce": "attacker",
       "content-security-policy": "script-src 'unsafe-inline'",
     }));
@@ -73,15 +73,15 @@ describe("proxy content security policy", () => {
     expect(response.headers.get("x-middleware-request-x-nonce")).toBe(nonceFromContentSecurityPolicy(policy));
   });
 
-  it("uses a fresh nonce for every request", () => {
+  it("uses a fresh nonce for every request", async () => {
     const nonces = new Set(
-      Array.from({ length: 8 }, () => nonceFromContentSecurityPolicy(proxy(request("GET", "/")).headers.get("content-security-policy"))),
+      await Promise.all(Array.from({ length: 8 }, async () => nonceFromContentSecurityPolicy((await proxy(request("GET", "/"))).headers.get("content-security-policy")))),
     );
     expect(nonces.size).toBe(8);
   });
 
-  it("applies the policy to API responses too", () => {
-    const response = proxy(request("GET", "/api/cerebro/grc/findings"));
+  it("applies the policy to API responses too", async () => {
+    const response = await proxy(request("GET", "/api/cerebro/grc/findings"));
     expect(nonceFromContentSecurityPolicy(response.headers.get("content-security-policy"))).toBeTruthy();
   });
 });
@@ -100,91 +100,91 @@ describe("proxy", () => {
     })).toBe(false);
   });
 
-  it("passes normal API requests through", () => {
-    const response = proxy(request("GET", "/api/cerebro/grc/findings"));
+  it("passes normal API requests through", async () => {
+    const response = await proxy(request("GET", "/api/cerebro/grc/findings"));
     expect(response.status).toBe(200);
   });
 
-  it("passes POST requests with reasonable body size", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/ask", {
+  it("passes POST requests with reasonable body size", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/ask", {
       "content-length": "1024",
     }));
     expect(response.status).toBe(200);
   });
 
-  it("rejects oversized POST requests to API routes", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/ask", {
+  it("rejects oversized POST requests to API routes", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/ask", {
       "content-length": String(10 * 1024 * 1024),
     }));
     expect(response.status).toBe(413);
   });
 
-  it("allows image-bearing agent requests up to the image request limit", () => {
-    const response = proxy(request("POST", "/api/agent/ask", {
+  it("allows image-bearing agent requests up to the image request limit", async () => {
+    const response = await proxy(request("POST", "/api/agent/ask", {
       "content-length": String(ASK_AGENT_REQUEST_MAX_BYTES - 1024),
       "content-type": "application/json",
     }));
     expect(response.status).toBe(200);
   });
 
-  it("rejects agent requests above the image request limit", () => {
-    const response = proxy(request("POST", "/api/agent/ask", {
+  it("rejects agent requests above the image request limit", async () => {
+    const response = await proxy(request("POST", "/api/agent/ask", {
       "content-length": String(ASK_AGENT_REQUEST_MAX_BYTES + 1),
       "content-type": "application/json",
     }));
     expect(response.status).toBe(413);
   });
 
-  it("allows GRC policy uploads up to the backend upload limit", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/policy-lifecycle/uploads", {
+  it("allows GRC policy uploads up to the backend upload limit", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/policy-lifecycle/uploads", {
       "content-length": String(GRC_UPLOAD_MAX_BYTES - 1024),
       "content-type": "multipart/form-data; boundary=test",
     }));
     expect(response.status).toBe(200);
   });
 
-  it("allows GRC vendor uploads up to the backend upload limit", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/vendors/uploads", {
+  it("allows GRC vendor uploads up to the backend upload limit", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/vendors/uploads", {
       "content-length": String(GRC_UPLOAD_MAX_BYTES - 1024),
       "content-type": "multipart/form-data; boundary=test",
     }));
     expect(response.status).toBe(200);
   });
 
-  it("rejects GRC uploads above the backend upload limit", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/policy-lifecycle/uploads", {
+  it("rejects GRC uploads above the backend upload limit", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/policy-lifecycle/uploads", {
       "content-length": String(GRC_UPLOAD_MAX_BYTES + 1),
       "content-type": "multipart/form-data; boundary=test",
     }));
     expect(response.status).toBe(413);
   });
 
-  it("rejects oversized PUT requests to API routes", () => {
-    const response = proxy(request("PUT", "/api/cerebro/grc/inventory/asset-reports", {
+  it("rejects oversized PUT requests to API routes", async () => {
+    const response = await proxy(request("PUT", "/api/cerebro/grc/inventory/asset-reports", {
       "content-length": String(5 * 1024 * 1024),
     }));
     expect(response.status).toBe(413);
   });
 
-  it("does not reject large GET requests", () => {
-    const response = proxy(request("GET", "/api/cerebro/grc/findings", {
+  it("does not reject large GET requests", async () => {
+    const response = await proxy(request("GET", "/api/cerebro/grc/findings", {
       "content-length": String(10 * 1024 * 1024),
     }));
     expect(response.status).toBe(200);
   });
 
-  it("passes bodyless DELETE requests without content-length", () => {
-    const response = proxy(request("DELETE", "/api/cerebro/grc/dashboards/dashboard-1"));
+  it("passes bodyless DELETE requests without content-length", async () => {
+    const response = await proxy(request("DELETE", "/api/cerebro/grc/dashboards/dashboard-1"));
     expect(response.status).toBe(200);
   });
 
-  it("rejects write requests without content-length", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/ask"));
+  it("rejects write requests without content-length", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/ask"));
     expect(response.status).toBe(411);
   });
 
-  it("rejects malformed content-length", () => {
-    const response = proxy(request("POST", "/api/cerebro/grc/ask", {
+  it("rejects malformed content-length", async () => {
+    const response = await proxy(request("POST", "/api/cerebro/grc/ask", {
       "content-length": "1024garbage",
     }));
     expect(response.status).toBe(400);

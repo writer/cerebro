@@ -1738,3 +1738,31 @@ func TestLoadRejectsPartialContentPackConfig(t *testing.T) {
 		t.Fatal("Load() error = nil, want partial content-pack config rejection")
 	}
 }
+
+func TestLoadIdentitySSOBootstrap(t *testing.T) {
+	const doc = `{"tenantId":"tenant-a","connection":{"id":"okta","name":"Okta","protocol":"oidc","domains":["example.com"],` +
+		`"oidc":{"issuer":"https://example.okta.com","clientId":"client-1","clientSecretRef":"env:CEREBRO_SSO_OKTA_CLIENT_SECRET"},` +
+		`"defaultRoles":["cerebro.admin"]},"policy":{"enforced":true}}`
+
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "false")
+	t.Setenv("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON", doc)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "requires CEREBRO_STATE_STORE_DRIVER=postgres") {
+		t.Fatalf("Load() without postgres error = %v", err)
+	}
+
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.IdentitySSO.Bootstrap == nil || !cfg.IdentitySSO.Bootstrap.ManagesConnection("tenant-a", "okta") {
+		t.Fatalf("IdentitySSO.Bootstrap = %#v", cfg.IdentitySSO.Bootstrap)
+	}
+
+	t.Setenv("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON", strings.Replace(doc, "env:CEREBRO_SSO_OKTA_CLIENT_SECRET", "plaintext", 1))
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON") {
+		t.Fatalf("Load() with a raw secret error = %v", err)
+	}
+}

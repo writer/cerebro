@@ -260,6 +260,14 @@ body {
     transform: translateY(-1px);
   }
 
+  .primary-button:disabled,
+  .secondary-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    filter: none;
+    transform: none;
+  }
+
   .primary-button:focus-visible,
   .secondary-button:focus-visible {
     outline: none;

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -410,6 +411,52 @@ func TestDeadLetterForcePurgeHTTPRouteRequiresAdminOnly(t *testing.T) {
 	admin := authContext{principal: authPrincipal{Roles: []string{roleCerebroAdmin}}}
 	if err := authorizeHTTPRequestScope(admin, request); err != nil {
 		t.Fatalf("admin authorization error = %v", err)
+	}
+}
+
+func TestIdentitySSOHTTPRoutesRequireDedicatedScopes(t *testing.T) {
+	tokenHash := strings.Repeat("a", 64)
+	cases := []struct {
+		method string
+		path   string
+		scope  string
+	}{
+		{http.MethodGet, "/platform/identity/sso/connections", scopeIdentitySSORead},
+		{http.MethodPost, "/platform/identity/sso/connections", scopeIdentitySSOWrite},
+		{http.MethodPut, "/platform/identity/sso/policy", scopeIdentitySSOWrite},
+		{http.MethodGet, "/platform/identity/sessions/" + tokenHash, scopeIdentitySSORead},
+		{http.MethodDelete, "/platform/identity/sessions/" + tokenHash, scopeIdentitySSOWrite},
+		{http.MethodPost, "/platform/identity/scim/tokens", scopeIdentitySSOWrite},
+		{http.MethodPatch, "/platform/identity/scim/v2/Users/usr_1", scopeIdentitySSOWrite},
+		{http.MethodGet, "/platform/identity/directory/users/lookup", scopeIdentitySSORead},
+	}
+	for _, tc := range cases {
+		policy := httpRoutePolicyFor(tc.method, tc.path)
+		if policy.Scope != tc.scope {
+			t.Fatalf("%s %s scope = %q, want %q", tc.method, tc.path, policy.Scope, tc.scope)
+		}
+		// Session paths carry token hashes, so they must not be audit-logged verbatim.
+		if policy.Static {
+			t.Fatalf("%s %s policy must not be static", tc.method, tc.path)
+		}
+		for _, role := range []string{roleCerebroViewer, roleCerebroFindingManager, roleCerebroConnectorManager} {
+			if err := authorizePrincipalHTTPPolicy(authPrincipal{Roles: []string{role}}, policy); err == nil {
+				t.Fatalf("%s authorized for %s %s", role, tc.method, tc.path)
+			}
+		}
+		if err := authorizePrincipalHTTPPolicy(authPrincipal{Roles: []string{roleCerebroAdmin}}, policy); err != nil {
+			t.Fatalf("admin rejected for %s %s: %v", tc.method, tc.path, err)
+		}
+		if err := authorizePrincipalHTTPPolicy(authPrincipal{Scopes: []string{tc.scope}}, policy); err != nil {
+			t.Fatalf("%s rejected for %s %s: %v", tc.scope, tc.method, tc.path, err)
+		}
+	}
+	reader := authPrincipal{Scopes: []string{scopeIdentitySSORead}}
+	if err := authorizePrincipalHTTPPolicy(reader, httpRoutePolicyFor(http.MethodPost, "/platform/identity/sessions")); err == nil {
+		t.Fatal("identity SSO read scope authorized a session write")
+	}
+	if !slices.Contains(supportedOAuthScopes(), scopeIdentitySSOWrite) {
+		t.Fatal("identity SSO write scope is not advertised as a supported OAuth scope")
 	}
 }
 

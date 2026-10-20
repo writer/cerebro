@@ -335,6 +335,17 @@ export const authHeadersFor = (request: NextRequest, upstreamPath = ""): Headers
   return headers;
 };
 
+/**
+ * Credentials for server-to-server calls that act as the web service itself. Unlike authHeadersFor, this
+ * never forwards credentials from the browser request.
+ */
+export const serviceAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {};
+  if (SERVER_API_KEY) headers["X-Cerebro-API-Key"] = SERVER_API_KEY;
+  if (SERVER_AUTHORIZATION) headers.Authorization = SERVER_AUTHORIZATION;
+  return headers;
+};
+
 export const signedIdentityHeadersFor = (request: NextRequest): HeadersInit => {
   const scope = requiredCerebroProxyScope(request);
   if (scope.workspaceID) {

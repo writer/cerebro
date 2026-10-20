@@ -25,6 +25,8 @@ const (
 	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	scopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	scopeIdentitySSORead           = "cerebro.identity.sso.read"
+	scopeIdentitySSOWrite          = "cerebro.identity.sso.write"
 
 	scopePolicyEvaluationDatasetsRead    = "cerebro.policy_evaluation_datasets.read"
 	scopePolicyEvaluationDatasetsPropose = "cerebro.policy_evaluation_datasets.propose"

@@ -50,6 +50,7 @@ const permissionEnvPrefix: Record<AuthorizationPermission, string> = {
   "sources:preview": "CEREBRO_AUTHZ_SOURCES_PREVIEW",
   "source-runtimes:write": "CEREBRO_AUTHZ_SOURCE_RUNTIMES_WRITE",
   "jobs:write": "CEREBRO_AUTHZ_JOBS_WRITE",
+  "identity:admin": "CEREBRO_AUTHZ_IDENTITY_ADMIN",
 };
 
 const splitEnvList = (value: string | undefined) =>
@@ -79,8 +80,12 @@ export const entitlementPolicyFor = (permission: AuthorizationPermission): Entit
 const hasEntitlementPolicy = (policy: EntitlementPolicy) =>
   policy.groups.length > 0 || policy.roles.length > 0 || policy.scopes.length > 0;
 
+// SSO session roles are computed by Cerebro itself from connection role mappings, so they are always
+// enforced; otherwise a session with no mapped roles would pass every check in deployments without RBAC env.
 const builtinRbacRequired = (user: CurrentUser | null | undefined) =>
-  truthyEnv(process.env.CEREBRO_AUTHZ_BUILTIN_RBAC) || hasExplicitCerebroRoleOrScope(user);
+  truthyEnv(process.env.CEREBRO_AUTHZ_BUILTIN_RBAC) ||
+  user?.source === "sso-session" ||
+  hasExplicitCerebroRoleOrScope(user);
 
 const truthyEnv = (value: string | undefined) =>
   ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());

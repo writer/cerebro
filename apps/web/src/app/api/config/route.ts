@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { getCerebroPublicConfig } from "@/lib/cerebro-proxy";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 
 export async function GET(request: NextRequest) {
   const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);

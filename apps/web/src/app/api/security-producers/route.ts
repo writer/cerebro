@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 import { runtimeSecurityProducerCatalog } from "@/lib/security-producers-runtime";
 
 export async function GET(request: NextRequest) {

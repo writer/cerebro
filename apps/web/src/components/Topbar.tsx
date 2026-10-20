@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Check, Settings2, Share2, UsersRound } from "lucide-react";
+import { Check, LogOut, Settings2, Share2, UsersRound } from "lucide-react";
 
 import { API_BASE } from "@/lib/api";
 import { useApiKey, useCommandPalette, useConsoleConfig, useCurrentUser, useTheme, useUserPreferences } from "@/components/providers";
@@ -78,6 +78,27 @@ export default function Topbar() {
   const { config } = useConsoleConfig();
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [shareURL, setShareURL] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  const signOut = async () => {
+    setSigningOut(true);
+    let redirectTo = "/login";
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: "",
+        credentials: "same-origin",
+      });
+      const payload = (await response.json().catch(() => null)) as { redirectTo?: unknown } | null;
+      if (response.ok && typeof payload?.redirectTo === "string" && payload.redirectTo) redirectTo = payload.redirectTo;
+    } catch {
+      redirectTo = "/login";
+    }
+    // A full navigation is required: the target may be the IdP's end-session URL, and in-memory client state
+    // from the signed-out session must not survive.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(redirectTo);
+  };
 
   const serverAuthConfigured = config?.serverAuthConfigured ?? false;
   const clientKeyEnabled = config?.forwardRequestAuth ?? false;
@@ -441,9 +462,22 @@ export default function Topbar() {
             <Link href="/developer/identity" className="text-[12px] font-medium text-[var(--primary)] hover:text-[var(--primary-hover)]">
               View identity contract
             </Link>
-            <button type="button" onClick={() => setShowIdentity(false)} className="text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-              Close
-            </button>
+            <div className="flex items-center gap-3">
+              {user?.source === "sso-session" && (
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  disabled={signingOut}
+                  className="secondary-button inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] disabled:opacity-60"
+                >
+                  <LogOut className="h-3.5 w-3.5" aria-hidden />
+                  {signingOut ? "Signing out..." : "Sign out"}
+                </button>
+              )}
+              <button type="button" onClick={() => setShowIdentity(false)} className="text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

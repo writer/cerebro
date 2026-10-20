@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizationErrorResponse, authorizeCurrentUser, entitlementPolicyFor } from "@/lib/authorization";
 import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
 import { identityRequired } from "@/lib/identity";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 import {
   authorizationPermissionCatalog,
   authorizationRoleCatalog,

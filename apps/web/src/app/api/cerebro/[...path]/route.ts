@@ -32,10 +32,9 @@ import { permissionForCerebroProxyRequest } from "@/lib/rbac";
 import {
   currentUserActor,
   currentUserActorLabel,
-  resolveCurrentUserFromHeadersWithFallback,
   type CurrentUser,
 } from "@/lib/identity";
-import { currentUserServerAuditFields } from "@/lib/identity-server";
+import { currentUserServerAuditFields, resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 import { normalizeProxyPath, stampCurrentUserOnWriteBody } from "@/lib/identity-write-stamp";
 import {
   headersWithTrace,
@@ -691,9 +690,20 @@ function proxyPathFamily(path: string) {
   return segments.length ? `/${segments.join("/")}` : "/";
 }
 
+// The identity API holds SSO connections, sessions, and SCIM state. Only server routes that call it with the
+// web service credential may reach it, so the generic browser proxy refuses the whole prefix.
+function isBlockedProxyPath(path: string) {
+  const segments = path.split("/").filter(Boolean).map((segment) => segment.toLowerCase());
+  return segments[0] === "platform" && segments[1] === "identity";
+}
+
 function normalizeRequestPath(pathSegments: string[] | undefined) {
   try {
-    return normalizeProxyPath((pathSegments ?? []).join("/"));
+    const path = normalizeProxyPath((pathSegments ?? []).join("/"));
+    if (isBlockedProxyPath(path)) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    return path;
   } catch (error) {
     if (error instanceof TypeError) {
       return NextResponse.json(

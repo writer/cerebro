@@ -8,7 +8,7 @@ export type CurrentUser = {
   username?: string;
   subject?: string;
   provider?: IdentityProvider;
-  source: "headers" | "jwt" | "azure-client-principal" | "local-fallback";
+  source: "headers" | "jwt" | "azure-client-principal" | "local-fallback" | "sso-session";
   entitlements?: IdentityEntitlements;
   evidence?: IdentityEvidence;
   conflicts?: string[];
@@ -48,6 +48,8 @@ export type IdentityProvider =
   | "google-iap"
   | "okta"
   | "oauth2-proxy"
+  | "oidc"
+  | "saml"
   | "local";
 
 export type IdentityEvidence = {
@@ -783,6 +785,8 @@ export const currentUserSourceLabel = (source: CurrentUser["source"] | null | un
       return "Azure client principal";
     case "local-fallback":
       return "Local fallback";
+    case "sso-session":
+      return "SSO session";
     default:
       return "Unavailable";
   }
@@ -817,6 +821,8 @@ export const currentUserSourceDetail = (source: CurrentUser["source"] | null | u
       return "Azure Static Web Apps client-principal claims supplied the current user.";
     case "local-fallback":
       return "No upstream identity header was present, so local development uses a stable fallback identity.";
+    case "sso-session":
+      return "A Cerebro SSO session established through the configured identity provider supplied the current user.";
     default:
       return "No current-user signal was found on the request.";
   }
@@ -832,6 +838,9 @@ export const currentUserConfidenceDetail = (user: CurrentUser | null | undefined
     case "claims-validated":
       return "JWT claims matched the configured issuer, audience, and time window. Signature verification is not performed in this UI layer.";
     case "signature-verified":
+      if (user.source === "sso-session") {
+        return "Signed in through SSO. The identity provider response was verified when the session was created.";
+      }
       return "JWT signature verification and configured claim checks passed.";
     case "unverified":
       return "JWT claims were decoded for display. Treat them as diagnostic unless the upstream proxy enforces token verification.";
@@ -1053,7 +1062,11 @@ export const currentUserFromHeaders = (headers: Headers): CurrentUser | null => 
 export const currentUserFromHeadersWithFallback = (headers: Headers): CurrentUser | null =>
   currentUserFromHeaders(headers) ?? (localIdentityFallbackEnabled() ? localCurrentUserFallback() : null);
 
-export const resolveCurrentUserFromHeaders = async (headers: Headers): Promise<CurrentUser | null> => {
+/**
+ * Resolves identity from proxy headers, identity JWTs, and Azure client principals only. Route handlers
+ * must use the SSO-aware resolvers in identity-server.ts, which disable this path when SSO is enforced.
+ */
+export const resolveProxyCurrentUserFromHeaders = async (headers: Headers): Promise<CurrentUser | null> => {
   const candidates: CurrentUser[] = [];
   const directUser = directHeaderCandidate(headers);
   if (directUser) candidates.push(directUser);
@@ -1087,11 +1100,7 @@ export const resolveCurrentUserFromHeaders = async (headers: Headers): Promise<C
   return withCandidateConflicts(mergeComplementaryCandidates(preferred, candidates.slice(1)), candidates.slice(1));
 };
 
-export const resolveCurrentUserFromHeadersWithFallback = async (headers: Headers): Promise<CurrentUser | null> =>
-  await resolveCurrentUserFromHeaders(headers) ?? (localIdentityFallbackEnabled() ? localCurrentUserFallback() : null);
-
-export const identityHealthFromHeaders = async (headers: Headers): Promise<IdentityHealth> => {
-  const user = await resolveCurrentUserFromHeadersWithFallback(headers);
+export const identityHealthForUser = (user: CurrentUser | null, extraIssues: string[] = []): IdentityHealth => {
   const audit = currentUserAuditFields(user);
   const issues = [
     ...(!user ? ["identity-missing"] : []),
@@ -1099,6 +1108,7 @@ export const identityHealthFromHeaders = async (headers: Headers): Promise<Ident
     ...(user?.confidence === "unverified" && identityRequired() ? ["unverified-identity-blocked"] : []),
     ...(user?.conflicts?.length ? ["identity-conflict"] : []),
     ...(user?.warnings ?? []),
+    ...extraIssues,
   ];
   const blocked = identityRequired() && (
     !user ||
