@@ -40,6 +40,7 @@ describe("admin access control fixture mode", () => {
 
     expect(payload.roleClaimMappings.length).toBeGreaterThan(0);
     expect(payload.roleClaimMappings.every((mapping: { claim: string }) => mapping.claim === "groups")).toBe(true);
+    expect(payload.sampleMappings).toBe(true);
   });
 
   it("prefers real configured mappings over the samples", async () => {
@@ -49,6 +50,7 @@ describe("admin access control fixture mode", () => {
     const payload = await (await get()).json();
 
     expect(payload.roleClaimMappings).toEqual([{ claim: "groups", roles: ["cerebro.viewer"], value: "platform" }]);
+    expect(payload.sampleMappings).toBe(false);
   });
 
   it("renders sample values the way real parsed mappings render, lowercased", async () => {
@@ -78,6 +80,17 @@ describe("admin access control fixture mode", () => {
     const body = JSON.stringify(await (await get()).json());
 
     expect(body).not.toMatch(/DEPT\s*-\s*SECURITY/i);
+  });
+
+  it("reports permissions as allowed when the deployment does not enforce roles", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    delete process.env.CEREBRO_API_BASE;
+
+    const payload = await (await get()).json();
+
+    expect(payload.sampleMappings).toBe(false);
+    expect(payload.permissions.every((entry: { granted: boolean }) => entry.granted)).toBe(true);
+    expect(payload.viewer.permissions).toHaveLength(payload.permissions.length);
   });
 
   it("stays off unless fixture mode is asked for", async () => {
