@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   PlugZap,
   Radar,
+  RefreshCw,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
@@ -399,9 +400,17 @@ export default function Home() {
         description="Exposure, attack paths, and owners."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh</button>
-            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Add Source</Link>
-            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Review Findings</Link>
+            <button
+              type="button"
+              onClick={reload}
+              className="secondary-button inline-flex h-9 w-9 items-center justify-center p-0"
+              aria-label="Refresh dashboard data"
+              title="Refresh dashboard data"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <Link href="/connectors?tab=available" className="secondary-button inline-flex h-9 items-center px-3 text-[13px]">Add Integration</Link>
+            <Link href="/risks" className="primary-button inline-flex h-9 items-center px-3 text-[13px]">Review Findings</Link>
           </div>
         }
       />
