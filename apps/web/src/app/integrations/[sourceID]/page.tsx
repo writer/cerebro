@@ -586,7 +586,7 @@ function setupHref(sourceID: string, tenantID: string, framework = "") {
   if (tenantID.trim()) params.set("tenant_id", tenantID.trim());
   if (framework.trim()) params.set("framework", framework.trim());
   const query = params.toString();
-  return `/connectors/${encodeURIComponent(sourceID)}/setup${query ? `?${query}` : ""}`;
+  return `/integrations/${encodeURIComponent(sourceID)}/setup${query ? `?${query}` : ""}`;
 }
 
 function detailHref(sourceID: string, tenantID: string, framework = "") {
@@ -594,7 +594,7 @@ function detailHref(sourceID: string, tenantID: string, framework = "") {
   if (tenantID.trim()) params.set("tenant_id", tenantID.trim());
   if (framework.trim()) params.set("framework", framework.trim());
   const query = params.toString();
-  return `/connectors/${encodeURIComponent(sourceID)}${query ? `?${query}` : ""}`;
+  return `/integrations/${encodeURIComponent(sourceID)}${query ? `?${query}` : ""}`;
 }
 
 export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: boolean }) {
@@ -646,7 +646,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
     return (
       <div className="space-y-4">
         <ErrorBlock error="Connector source was not found." />
-        <Link href="/connectors" className="secondary-button inline-flex px-3 py-2 text-[13px]">Back to connectors</Link>
+        <Link href="/integrations" className="secondary-button inline-flex px-3 py-2 text-[13px]">Back to integrations</Link>
       </div>
     );
   }
@@ -752,7 +752,7 @@ export function ConnectorDetailContent({ setupOnly = false }: { setupOnly?: bool
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <Link href="/connectors" className="mb-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <Link href="/integrations" className="mb-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]">
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to connectors
           </Link>

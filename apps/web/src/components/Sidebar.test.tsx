@@ -113,7 +113,7 @@ describe("isSidebarLinkActive", () => {
     // of as a flat link beside it.
     expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual(["/"]);
     expect(sidebarNavGroups[0]?.id).toBe("risks");
-    expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
+    expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/integrations"]);
   });
 
   it("drops the retired governance record pages from the sidebar", () => {

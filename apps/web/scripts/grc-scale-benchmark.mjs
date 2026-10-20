@@ -47,19 +47,19 @@ const allRouteSpecs = [
     usableThresholdMs: 1000,
   },
   {
-    route: "/connectors?tab=attention",
+    route: "/integrations?tab=attention",
     label: "Connectors",
-    readySelector: 'a[href*="/connectors/source-"]:visible',
+    readySelector: 'a[href*="/integrations/source-"]:visible',
     filterSelector: 'input[placeholder="Provider, source, capability"]:visible',
     filterText: "source 12",
   },
   {
-    route: "/connectors/activation",
+    route: "/integrations/activation",
     label: "Source Activation",
     readySelector: "text=Runtime activation plan",
   },
   {
-    route: "/connectors/source-0?tab=connections",
+    route: "/integrations/source-0?tab=connections",
     label: "Connector Detail",
     readySelector: "table.data-table",
     interactions: [

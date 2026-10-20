@@ -181,7 +181,7 @@ function AuditContextPanel({ finding }: { finding: GRCAuditPacket["finding"] }) 
               {boundedSourceCoverage.rows.map((coverage, index) => (
                 <Link
                   key={`${coverage.source_id}-${coverage.dimension_id}-${index}`}
-                  href={coverage.source_id ? `/connectors/${encodeURIComponent(coverage.source_id)}?tab=scope` : "/connectors"}
+                  href={coverage.source_id ? `/integrations/${encodeURIComponent(coverage.source_id)}?tab=scope` : "/integrations"}
                   className="rounded-md border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40"
                 >
                   <div className="mb-2 flex items-start justify-between gap-3">

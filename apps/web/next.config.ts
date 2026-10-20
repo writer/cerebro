@@ -69,6 +69,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: workspaceRoot,
   },
+  // The console pages moved from /connectors to /integrations; API paths under
+  // /api are unaffected because they never matched these sources.
+  async redirects() {
+    return [
+      { source: "/connectors", destination: "/integrations", permanent: false },
+      { source: "/connectors/:path*", destination: "/integrations/:path*", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

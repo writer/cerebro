@@ -7,7 +7,7 @@ const pageSourcesByRoute = {
   "/": "src/app/page.tsx",
   "/risks": "src/app/risks/page.tsx",
   "/grc": "src/app/grc/page.tsx",
-  "/connectors": "src/app/connectors/page.tsx",
+  "/integrations": "src/app/integrations/page.tsx",
   "/explore": "src/app/explore/page.tsx",
   "/reports": "src/app/reports/page.tsx",
 };
@@ -19,7 +19,7 @@ describe("GRC browser route contract", () => {
       "/",
       "/risks",
       "/grc",
-      "/connectors",
+      "/integrations",
       "/explore?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
       "/reports",
     ]);

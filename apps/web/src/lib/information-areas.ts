@@ -66,8 +66,8 @@ export const informationAreas: InformationArea[] = [
       { key: "highImpact", label: "Critical/high", href: "/risks?severity=CRITICAL" },
       { key: "ownerGaps", label: "No owner", href: "/risks?owner=unassigned" },
       { key: "evidenceIssues", label: "Evidence issues", href: "/reports" },
-      { key: "sourceTrust", label: "Stale sources", href: "/connectors" },
-      { key: "coverageGaps", label: "Coverage gaps", href: "/connectors" },
+      { key: "sourceTrust", label: "Stale sources", href: "/integrations" },
+      { key: "coverageGaps", label: "Coverage gaps", href: "/integrations" },
     ],
     workQueue: {
       title: "Risks",
@@ -84,7 +84,7 @@ export const informationAreas: InformationArea[] = [
     ],
     secondaryRoutes: [
       { href: "/trends", label: "Trends", detail: "Opened, closed, aged, and breached finding flow." },
-      { href: "/connectors", label: "Sources", detail: "Source freshness and ingestion health." },
+      { href: "/integrations", label: "Sources", detail: "Source freshness and ingestion health." },
     ],
   },
   {
@@ -101,8 +101,8 @@ export const informationAreas: InformationArea[] = [
       { key: "auditReadiness", label: "Packet score", href: "/reports?report_type=control&profile=soc2-security-core" },
       { key: "evidenceIssues", label: "Evidence gaps", href: "/reports" },
       { key: "controlFailures", label: "Violated controls", href: "/grc" },
-      { key: "coverageGaps", label: "Scope gaps", href: "/connectors" },
-      { key: "sourceTrust", label: "Stale sources", href: "/connectors" },
+      { key: "coverageGaps", label: "Scope gaps", href: "/integrations" },
+      { key: "sourceTrust", label: "Stale sources", href: "/integrations" },
       { key: "activeRisk", label: "Mapped risks", href: "/risks" },
     ],
     workQueue: {
@@ -120,7 +120,7 @@ export const informationAreas: InformationArea[] = [
     secondaryRoutes: [
       { href: "/trends/dashboards", label: "Dashboards", detail: "Saved compliance and trend widgets." },
       { href: "/reports/schedules", label: "Report Schedules", detail: "Recurring packet runs and recent scheduled outputs." },
-      { href: "/connectors", label: "Sources", detail: "Source coverage and freshness for evidence." },
+      { href: "/integrations", label: "Sources", detail: "Source coverage and freshness for evidence." },
       { href: "/risks", label: "Issues", detail: "Findings that affect controls and framework posture." },
     ],
   },
@@ -135,8 +135,8 @@ export const informationAreas: InformationArea[] = [
     headline: "source issues need repair",
     summaryFocus: ["source sync", "coverage", "ownership"],
     signals: [
-      { key: "sourceTrust", label: "Runtime freshness", href: "/connectors" },
-      { key: "coverageGaps", label: "Coverage gaps", href: "/connectors" },
+      { key: "sourceTrust", label: "Runtime freshness", href: "/integrations" },
+      { key: "coverageGaps", label: "Coverage gaps", href: "/integrations" },
       { key: "ownerGaps", label: "No owner", href: "/inventory?owner=unassigned" },
       { key: "highImpact", label: "High-risk assets", href: "/inventory?risk=high" },
       { key: "controlFailures", label: "Violated controls", href: "/grc" },
@@ -146,18 +146,18 @@ export const informationAreas: InformationArea[] = [
       title: "Sources",
       description: "Stale sources, coverage gaps, missing owners, and runtime status.",
       actionLabel: "Review sources",
-      actionHref: "/connectors",
+      actionHref: "/integrations",
       empty: "All sources synced and in scope.",
     },
     primaryRoutes: [
       { href: "/", label: "Home", detail: "Connector health, source coverage, and ownership." },
-      { href: "/connectors", label: "Sources", detail: "Source library, freshness, scope, and ingestion health." },
+      { href: "/integrations", label: "Sources", detail: "Source library, freshness, scope, and ingestion health." },
       { href: "/inventory", label: "Inventory", detail: "Assets, owners, scope, tests, and graph context." },
       { href: "/explore", label: "Attack Graphs", detail: "Trace relationships around entities and sources." },
       { href: "/trends", label: "Trends", detail: "Runtime-backed risk and backlog movement." },
     ],
     secondaryRoutes: [
-      { href: "/connectors/activation", label: "Source Activation", detail: "Source collection scope, access, and trust posture." },
+      { href: "/integrations/activation", label: "Integration Activation", detail: "Collection scope, access, and trust posture for each integration." },
       { href: "/developer", label: "Developer Tools", detail: "API status, OpenAPI resources, and diagnostics." },
     ],
   },
@@ -176,7 +176,7 @@ export const informationAreas: InformationArea[] = [
       { key: "auditReadiness", label: "Review packet", href: "/reports?report_type=control&profile=soc2-security-core" },
       { key: "ownerGaps", label: "Owner follow-up", href: "/risks?owner=unassigned" },
       { key: "controlFailures", label: "Violated controls", href: "/grc" },
-      { key: "sourceTrust", label: "Stale sources", href: "/connectors" },
+      { key: "sourceTrust", label: "Stale sources", href: "/integrations" },
       { key: "activeRisk", label: "Open risks", href: "/risks" },
     ],
     workQueue: {

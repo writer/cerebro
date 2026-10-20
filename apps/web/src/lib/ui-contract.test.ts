@@ -127,9 +127,6 @@ describe("product UI contract", () => {
     const bannerPages = [
       "src/app/risks/page.tsx",
     ];
-    const runtimePages = [
-      "src/app/connectors/page.tsx",
-    ];
 
     expect(layoutSource).toContain("NuqsAdapter");
     expect(queryParamSource).toContain("useQueryState");
@@ -146,13 +143,6 @@ describe("product UI contract", () => {
       expect(source).toContain("DataStateBanner");
       expect(source).toContain("queryState");
       expect(source).toContain("lastSuccessfulAt");
-      expect(source).toMatch(/state(?:=\{|:)\s*metricState/);
-    }
-
-    for (const page of runtimePages) {
-      const source = readProjectFile(page);
-      expect(source).toContain("AppliedFilterChips");
-      expect(source).toContain("runtimeStateForError");
       expect(source).toMatch(/state(?:=\{|:)\s*metricState/);
     }
 
@@ -184,28 +174,30 @@ describe("product UI contract", () => {
     expect(reportsSource).not.toContain("applyScope");
   });
 
-  it("keeps integration setup and source health ahead of operator diagnostics", () => {
-    const source = readProjectFile("src/app/connectors/page.tsx");
-    const page = source.slice(source.indexOf("export default function ConnectorsPage"));
+  it("keeps integration tiles ahead of operator diagnostics", () => {
+    const source = readProjectFile("src/app/integrations/page.tsx");
+    const page = source.slice(source.indexOf("export default function IntegrationsPage"));
     const advancedTools = page.indexOf("Advanced integration tools");
 
     expect(page).toContain("Add Integration");
-    expect(page).toContain("Connected sources");
-    expect(page).toContain("Available to connect");
-    expect(page).toContain("Search Integrations");
-    expect(page).toContain("Filter by tenant or source ID");
-    expect(advancedTools).toBeGreaterThan(0);
+    expect(page).toContain("Search integrations");
+    expect(page).toContain("runtimeStateForError");
+    expect(page.indexOf("IntegrationTile")).toBeGreaterThan(0);
+    expect(page.indexOf("IntegrationTile")).toBeLessThan(advancedTools);
     expect(page.indexOf("ProviderAPIProofPanel")).toBeGreaterThan(advancedTools);
-    expect(page.indexOf("CustomConnectorPanel")).toBeGreaterThan(advancedTools);
-    expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
+    expect(page.indexOf("CustomIntegrationsPanel")).toBeGreaterThan(advancedTools);
+    // A single-team console: no tenant filter, no request-access path, and the
+    // product word is "integration", not "source".
+    expect(source).not.toContain("tenant_id");
+    expect(source).not.toMatch(/Request access|request_access_url/i);
+    expect(source).not.toMatch(/>[^<{]*\bsources?\b[^<{]*</i);
   });
 
-  it("uses the Rust source-runtime readiness contract for the connector presentation", () => {
-    const page = readProjectFile("src/app/connectors/page.tsx");
+  it("uses the Rust source-runtime readiness contract for the integration presentation", () => {
+    const page = readProjectFile("src/app/integrations/page.tsx");
     const runtime = readProjectFile("src/lib/connector-runtime.ts");
 
     expect(page).toContain('withQuery("/v1/source-runtimes/health"');
-    expect(page).toContain("tenant_id: debouncedTenantID");
     expect(page).toContain("normalizeSourceRuntimeSummary");
     expect(page).not.toContain("sourceHealthBreakdown");
     expect(runtime).toContain('stringField(runtime, ["readiness"])');

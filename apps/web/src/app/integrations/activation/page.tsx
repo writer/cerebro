@@ -174,7 +174,7 @@ function toneBorder(tone: string) {
 }
 
 function nextStepForOperator(definition?: ConnectorDefinition) {
-  if (!definition) return "Pick one of your sources to see what it collects and whether it is ready to trust.";
+  if (!definition) return "Pick one of your integrations to see what it collects and whether it is ready to trust.";
   const checks = definition.validation?.checks ?? [];
   const blocking = checks.filter((check) => check.blocking || check.status === "blocked");
   if (blocking.length > 0) return blocking[0].next_action || "Finish the required setup before this source can be trusted.";
@@ -193,7 +193,7 @@ function builderHref(definition: ConnectorDefinition) {
   if (definition.tenant_id) params.set("tenant_id", definition.tenant_id);
   if (definition.id) params.set("definition_id", definition.id);
   const query = params.toString();
-  return `/connectors/builder${query ? `?${query}` : ""}`;
+  return `/integrations/builder${query ? `?${query}` : ""}`;
 }
 
 function KeyStat({ label, value }: { label: string; value: string | number }) {
@@ -639,7 +639,7 @@ function CatalogSourcesPanel({ connectors, tenantID }: { connectors: ConnectorCa
           );
         })}
         {rows.length > 8 && (
-          <Link href={`/connectors${tenantID ? `?tenant_id=${encodeURIComponent(tenantID)}&tab=available` : "?tab=available"}`} className="secondary-button inline-flex w-full justify-center px-3 py-2 text-[12px]">
+          <Link href={`/integrations${tenantID ? `?tenant_id=${encodeURIComponent(tenantID)}&tab=available` : "?tab=available"}`} className="secondary-button inline-flex w-full justify-center px-3 py-2 text-[12px]">
             Open {rows.length - 8} more
           </Link>
         )}
@@ -818,7 +818,7 @@ function SourceReadinessContent() {
         action={
           <div className="flex flex-wrap gap-2">
             <Link
-              href={`/connectors${scopedTenantID ? `?tenant_id=${encodeURIComponent(scopedTenantID)}` : ""}`}
+              href={`/integrations${scopedTenantID ? `?tenant_id=${encodeURIComponent(scopedTenantID)}` : ""}`}
               className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -845,7 +845,7 @@ function SourceReadinessContent() {
           recoveryDetail="Runtime activation needs the connector definitions service."
         />
       )}
-      {definitionsQuery.loading && !definitionsQuery.data && <LoadingBlock label="Loading your sources..." />}
+      {definitionsQuery.loading && !definitionsQuery.data && <LoadingBlock label="Loading your integrations..." />}
       {planQuery.error && <ErrorBlock error={planQuery.error} onRetry={() => void planQuery.reload()} recoveryDetail="Save or select a connector definition, then refresh the runtime activation plan." />}
       {planQuery.loading && selectedDefinitionID && !planQuery.data && <LoadingBlock label="Computing runtime activation plan..." />}
 

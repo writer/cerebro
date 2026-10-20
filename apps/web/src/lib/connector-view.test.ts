@@ -70,7 +70,7 @@ describe("connector view model", () => {
   });
 
   it("builds shareable connector routes without leaking extra state", () => {
-    expect(connectorPath("github", { runtime_id: "example-runtime", tenant_id: "" })).toBe("/connectors/github?runtime_id=example-runtime");
+    expect(connectorPath("github", { runtime_id: "example-runtime", tenant_id: "" })).toBe("/integrations/github?runtime_id=example-runtime");
   });
 
   it("keeps catalog-only executable definitions in inspection mode", () => {
@@ -271,7 +271,7 @@ describe("connector view model", () => {
 
     expect(queue.map((item) => item.sourceID)).toEqual(["openai", "jira", "github"]);
     expect(queue[0]).toMatchObject({ label: "Find API source", tier: "urgent", priority: 111 });
-    expect(queue[0].href).toBe("/connectors/openai?tenant_id=tenant-a");
+    expect(queue[0].href).toBe("/integrations/openai?tenant_id=tenant-a");
     expect(providerAPIProofMetrics(cards)).toMatchObject({
       total: 4,
       needsAction: 3,

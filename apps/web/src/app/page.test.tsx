@@ -241,7 +241,7 @@ describe("Security overview", () => {
     });
 
     expect(container.textContent).toContain("Open Findings");
-    expect(container.textContent).toContain("Loading source coverage.");
+    expect(container.textContent).toContain("Loading integration coverage.");
     expect(container.textContent).toContain("Loading asset inventory.");
   });
 
@@ -342,10 +342,10 @@ describe("Security overview", () => {
     });
 
     const sourceLinks = [...container.querySelectorAll<HTMLAnchorElement>("a")]
-      .filter((link) => link.getAttribute("href") === "/connectors")
+      .filter((link) => link.getAttribute("href") === "/integrations")
       .map((link) => link.textContent ?? "");
-    expect(sourceLinks.find((text) => text.includes("Sources Reporting"))).toContain("4/6");
-    expect(sourceLinks.find((text) => text.includes("Sources Connected"))).toContain("2 stale sources");
+    expect(sourceLinks.find((text) => text.includes("Integrations Reporting"))).toContain("4/6");
+    expect(sourceLinks.find((text) => text.includes("Integrations Connected"))).toContain("2 stale integrations");
     // Compliance reporting is owned elsewhere; Home must not grow it back.
     expect(container.textContent).not.toContain("Export audit packet");
     expect(container.textContent).not.toContain("SOC 2");

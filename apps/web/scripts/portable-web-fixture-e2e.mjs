@@ -60,11 +60,12 @@ const routeParameterSamples = Object.freeze({
   urn: "urn:cerebro:demo-tenant:identity:platform-admin",
 });
 const expectedRouteRedirects = new Map([
-  ["/connectors/cdk", { pathname: "/connectors/activation", preserveScope: true }],
+  ["/credentials", { pathname: "/integrations", preserveScope: false }],
+  ["/integrations/cdk", { pathname: "/integrations/activation", preserveScope: true }],
   ["/controls", { pathname: "/grc", preserveScope: true }],
   ["/frameworks", { pathname: "/grc", preserveScope: true }],
   ["/developer/codegen", { pathname: "/developer", preserveScope: false }],
-  ["/mission", { pathname: "/connectors", preserveScope: false }],
+  ["/mission", { pathname: "/integrations", preserveScope: false }],
   ["/vision", { pathname: "/", preserveScope: false }],
 ]);
 

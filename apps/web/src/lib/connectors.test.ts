@@ -458,7 +458,7 @@ describe("dynamic connector definitions", () => {
 
   it("derives source activation plan labels, links, and category counts", () => {
     expect(sourceActivationPlanStatusLabel("blocked")).toBe("Blocked");
-    expect(sourceActivationPlanPath("tenant-a-example", "tenant-a")).toBe("/connectors/activation?definition_id=tenant-a-example&tenant_id=tenant-a");
+    expect(sourceActivationPlanPath("tenant-a-example", "tenant-a")).toBe("/integrations/activation?definition_id=tenant-a-example&tenant_id=tenant-a");
     expect(sourceActivationPlanCategoryCounts({
       checklist: [
         { id: "definition.id", title: "Definition ID", category: "definition", status: "ready" },

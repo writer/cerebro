@@ -17,5 +17,5 @@ export default async function LegacySourceActivationRedirectPage({ searchParams 
   });
 
   const queryString = query.toString();
-  redirect(`/connectors/activation${queryString ? `?${queryString}` : ""}`);
+  redirect(`/integrations/activation${queryString ? `?${queryString}` : ""}`);
 }

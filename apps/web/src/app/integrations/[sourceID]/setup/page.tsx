@@ -1,6 +1,6 @@
 "use client";
 
-import { ConnectorDetailContent } from "@/app/connectors/[sourceID]/page";
+import { ConnectorDetailContent } from "@/app/integrations/[sourceID]/page";
 
 export default function ConnectorSetupPage() {
   return <ConnectorDetailContent setupOnly />;

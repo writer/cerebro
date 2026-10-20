@@ -251,7 +251,7 @@ const connectorCommand = (query: string, connector: GRCConnector): LiveSearchCom
   return {
     id: `live:connector:${connector.runtime_id}`,
     label: connector.source_id || connector.runtime_id,
-    href: `/connectors?source_id=${encodeURIComponent(connector.source_id || connector.runtime_id)}`,
+    href: `/integrations?q=${encodeURIComponent(connector.source_id || connector.runtime_id)}`,
     description: `${connector.status} · ${connector.freshness} · last sync ${displayDate(connector.last_synced_at)}`,
     section: "Connector",
     keywords,

@@ -89,7 +89,7 @@ const SUMMARY_RULES: SummaryRule[] = [
     count: (summary) => summary.stale_connectors,
     title: (count) => `${count} stale ${pluralize(count, "connector")}`,
     detail: "Connector ingestion is behind.",
-    href: "/connectors",
+    href: "/integrations",
   },
 ];
 

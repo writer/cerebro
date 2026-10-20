@@ -91,10 +91,10 @@ export const operatorNavLinks: NavigationEntry[] = [
   },
   {
     label: "Integrations",
-    href: "/connectors",
-    description: "Source setup and health.",
+    href: "/integrations",
+    description: "Connected tools, their health, and credentials.",
     section: "Operator",
-    keywords: ["runtimes", "sources", "connectors", "freshness", "scope", "credentials", "secrets", "credential stores", "vault"],
+    keywords: ["runtimes", "sources", "integrations", "connectors", "freshness", "scope", "credentials", "secrets", "credential stores", "vault"],
   },
 ];
 
@@ -121,11 +121,11 @@ const commandOnlyNavLinks: NavigationEntry[] = [
     keywords: ["risk", "scoring", "model", "attack path", "asset value", "classification", "countermeasure", "exposure", "cvss", "epss", "kev"],
   },
   {
-    label: "Source Activation",
-    href: "/connectors/activation",
-    description: "Preview what a source collects before you rely on it.",
+    label: "Integration Activation",
+    href: "/integrations/activation",
+    description: "Preview what an integration collects before you rely on it.",
     section: "Operator",
-    keywords: ["source", "activation", "connector", "coverage", "access", "trust", "onboarding"],
+    keywords: ["integration", "source", "activation", "connector", "coverage", "access", "trust", "onboarding"],
   },
 ];
 
@@ -177,7 +177,7 @@ const routeLabels: Record<string, string> = Object.fromEntries(
 routeLabels["/"] = "Home";
 routeLabels["/findings"] = "Finding detail";
 routeLabels["/identity"] = "Members";
-routeLabels["/connectors/builder"] = "Connector builder";
+routeLabels["/integrations/builder"] = "Integration builder";
 routeLabels["/developer/agents"] = "Agent platform";
 routeLabels["/developer/audit"] = "Audit Events";
 routeLabels["/developer/evals"] = "Ask evals";

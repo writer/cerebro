@@ -132,7 +132,7 @@ describe("portable web fixture route bug bash", () => {
     const webRoot = path.resolve(import.meta.dirname, "..");
     const routes = await discoverPageRoutes(webRoot);
     expect(routes).toContain("/verified/fixture-operation");
-    expect(routes).toContain("/connectors/okta/setup");
+    expect(routes).toContain("/integrations/okta/setup");
     expect(routes).toContain("/findings/demo-finding-critical");
     expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");
     expect(routes).toContain("/frameworks/soc2");
@@ -230,11 +230,11 @@ describe("portable web fixture route bug bash", () => {
       body: "Ready",
       consoleErrors: [],
       documentStatus: 200,
-      finalURL: "http://127.0.0.1:43123/connectors/activation?tenant_id=tenant-a",
+      finalURL: "http://127.0.0.1:43123/integrations/activation?tenant_id=tenant-a",
       pageErrors: [],
-      route: "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a",
+      route: "/integrations/cdk?tenant_id=tenant-a&workspace_id=workspace-a",
     })).toEqual([
-      "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
+      "/integrations/cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
     ]);
   });
 });

@@ -47,7 +47,7 @@ const searchCommands = (query: string, askGraph: (question: string) => void): Co
     { id: "open-graph", label: `Open graph connections for "${trimmed}"`, href: `/explore?root_urn=${encoded}`, description: "Use as entity URN or graph root.", section: "Operator", keywords: ["graph", "connections", "impact", "affected"] },
     { id: "search-inventory", label: `Search inventory for "${trimmed}"`, href: inventoryHref, description: "Filter assets by type, owner, or URN.", section: "Operator", keywords: ["inventory", "assets", "resources", "framework", "scope"] },
     { id: "open-report", label: `Build audit packet for "${trimmed}"`, href: `/reports?finding_id=${encoded}`, description: "Use as a finding ID for an audit packet.", section: "Operator", keywords: ["reports", "audit"] },
-    { id: "open-connectors", label: `Filter connectors by "${trimmed}"`, href: `/connectors?q=${encoded}`, description: "Search connector sources and runtimes.", section: "Operator", keywords: ["connectors", "runtimes"] },
+    { id: "open-connectors", label: `Filter integrations by "${trimmed}"`, href: `/integrations?q=${encoded}`, description: "Search connected and available integrations.", section: "Operator", keywords: ["integrations", "connectors", "runtimes"] },
   ];
 };
 
@@ -124,7 +124,7 @@ export default function CommandPalette() {
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
             onKeyDown={onInputKeyDown}
-            placeholder="Search risks, controls, evidence, assets, sources..."
+            placeholder="Search risks, controls, evidence, assets, integrations..."
             className="flex-1 border-0 bg-transparent text-[15px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
           <kbd className="rounded border border-[color:var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">ESC</kbd>
