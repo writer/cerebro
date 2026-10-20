@@ -1,4 +1,6 @@
 import { lookup } from "dns/promises";
+import { request as httpRequest, type IncomingMessage } from "http";
+import { request as httpsRequest } from "https";
 import { isIP } from "net";
 
 import { isDevelopment } from "./config";
@@ -49,12 +51,22 @@ export const isPrivateAddress = (address: string) => {
 const loopbackHostname = (hostname: string) =>
   hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]";
 
+type SafeTarget = {
+  url: URL;
+  /** Address the connection must use: the one that passed the private-address check. */
+  address: string;
+};
+
+const DEV_LOOPBACK_V4 = "127.0.0.1";
+const DEV_LOOPBACK_V6 = "::1";
+
 /**
- * Rejects URLs that could reach internal infrastructure. Outside development only https URLs whose
- * hostname resolves exclusively to public addresses are allowed. DNS is re-resolved on every call, but a
- * resolver that changes answers between this check and the connection (rebinding) is not fully covered.
+ * Validates an outbound URL and picks the address to connect to. Outside development only https URLs whose
+ * hostname resolves exclusively to public addresses are allowed. Callers connect to the returned address
+ * rather than re-resolving the hostname, so a resolver that changes answers after the check (DNS rebinding)
+ * cannot redirect the request to an internal address.
  */
-export const assertSafeOutboundUrl = async (input: string | URL) => {
+const resolveSafeTarget = async (input: string | URL): Promise<SafeTarget> => {
   let url: URL;
   try {
     url = new URL(input);
@@ -63,15 +75,12 @@ export const assertSafeOutboundUrl = async (input: string | URL) => {
   }
   if (url.username || url.password) throw new UnsafeUrlError("URL must not contain credentials.");
   const dev = isDevelopment();
-  if (dev && url.protocol === "http:" && loopbackHostname(url.hostname)) return url;
-  if (url.protocol !== "https:") throw new UnsafeUrlError("URL must use https.");
-  if (dev && loopbackHostname(url.hostname)) return url;
-  const hostname = url.hostname.replace(/^\[|\]$/g, "");
-  if (isIP(hostname)) {
-    if (isPrivateAddress(hostname)) throw new UnsafeUrlError("URL must not target a private or loopback address.");
-    return url;
+  if (dev && loopbackHostname(url.hostname) && (url.protocol === "http:" || url.protocol === "https:")) {
+    return { url, address: url.hostname === "[::1]" ? DEV_LOOPBACK_V6 : DEV_LOOPBACK_V4 };
   }
-  if (loopbackHostname(hostname) || hostname.endsWith(".internal") || hostname.endsWith(".local")) {
+  if (url.protocol !== "https:") throw new UnsafeUrlError("URL must use https.");
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (!isIP(hostname) && (loopbackHostname(hostname) || hostname.endsWith(".internal") || hostname.endsWith(".local"))) {
     throw new UnsafeUrlError("URL must not target an internal host.");
   }
   let addresses: { address: string }[];
@@ -83,8 +92,11 @@ export const assertSafeOutboundUrl = async (input: string | URL) => {
   if (addresses.length === 0 || addresses.some(({ address }) => isPrivateAddress(address))) {
     throw new UnsafeUrlError("URL must not target a private or loopback address.");
   }
-  return url;
+  return { url, address: addresses[0].address };
 };
+
+/** Rejects URLs that could reach internal infrastructure; see resolveSafeTarget. */
+export const assertSafeOutboundUrl = async (input: string | URL) => (await resolveSafeTarget(input)).url;
 
 export type SafeFetchOptions = {
   timeoutMs?: number;
@@ -94,67 +106,107 @@ export type SafeFetchOptions = {
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_BYTES = 1024 * 1024;
 
-const readCapped = async (response: Response, maxBytes: number) => {
-  const declared = Number.parseInt(response.headers.get("content-length") ?? "", 10);
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    await response.body?.cancel();
-    throw new UnsafeUrlError("Response is too large.");
-  }
-  if (!response.body) return new Uint8Array();
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new UnsafeUrlError("Response is too large.");
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
+const requestBody = (body: RequestInit["body"]): Buffer | undefined => {
+  if (body === undefined || body === null) return undefined;
+  if (typeof body === "string") return Buffer.from(body, "utf8");
+  if (body instanceof URLSearchParams) return Buffer.from(body.toString(), "utf8");
+  if (body instanceof ArrayBuffer) return Buffer.from(body);
+  if (ArrayBuffer.isView(body)) return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  throw new UnsafeUrlError("Unsupported request body for identity provider requests.");
 };
 
+const responseHeaders = (message: IncomingMessage) => {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(message.headers)) {
+    if (value === undefined) continue;
+    for (const item of Array.isArray(value) ? value : [value]) headers.append(name, item);
+  }
+  return headers;
+};
+
+const readCapped = (message: IncomingMessage, maxBytes: number) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const declared = Number.parseInt(message.headers["content-length"] ?? "", 10);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      message.destroy();
+      reject(new UnsafeUrlError("Response is too large."));
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    message.on("data", (chunk: Buffer) => {
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        message.destroy();
+        reject(new UnsafeUrlError("Response is too large."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    message.on("end", () => resolve(Buffer.concat(chunks)));
+    message.on("error", reject);
+  });
+
 /**
- * fetch() for admin- or IdP-supplied URLs: SSRF-checked, no redirects, bounded time and size. The
- * returned Response has a fully buffered body.
+ * fetch() for admin- or IdP-supplied URLs: SSRF-checked, pinned to the checked address, no redirects, bounded
+ * time and size. The returned Response has a fully buffered body.
  */
 export const safeFetch = async (
   input: string | URL,
   init: RequestInit = {},
   { timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES }: SafeFetchOptions = {},
 ): Promise<Response> => {
-  const url = await assertSafeOutboundUrl(input);
+  const { url, address } = await resolveSafeTarget(input);
+  const body = requestBody(init.body);
+  const headers: Record<string, string> = {};
+  new Headers(init.headers).forEach((value, name) => {
+    headers[name] = value;
+  });
+  headers.host = url.host;
+  if (body) headers["content-length"] = String(body.byteLength);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const parentSignal = init.signal;
   const abort = () => controller.abort();
   parentSignal?.addEventListener("abort", abort, { once: true });
+  const send = url.protocol === "https:" ? httpsRequest : httpRequest;
   try {
-    // Fetch the validated URL object, never the caller's input, so the SSRF check covers what is requested.
-    const response = await fetch(url, {
-      ...init,
-      redirect: "manual",
-      signal: controller.signal,
+    const message = await new Promise<IncomingMessage>((resolve, reject) => {
+      const request = send(
+        {
+          protocol: url.protocol,
+          host: address,
+          port: url.port || undefined,
+          path: `${url.pathname}${url.search}`,
+          method: (init.method ?? "GET").toUpperCase(),
+          headers,
+          // The connection goes to the pinned address; the certificate must still match the URL's hostname.
+          servername: isIP(url.hostname.replace(/^\[|\]$/g, "")) ? undefined : url.hostname,
+          signal: controller.signal,
+        },
+        resolve,
+      );
+      request.on("error", reject);
+      request.end(body);
     });
-    if (response.status >= 300 && response.status < 400) {
-      await response.body?.cancel();
+    const status = message.statusCode ?? 0;
+    if (status >= 300 && status < 400) {
+      message.destroy();
       throw new UnsafeUrlError("Redirects are not followed for identity provider requests.");
     }
-    const body = await readCapped(response, maxBytes);
-    return new Response(body.byteLength > 0 ? body : null, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
+    const payload = await readCapped(message, maxBytes);
+    const nullBody = status === 204 || status === 205 || status === 304;
+    return new Response(nullBody || payload.byteLength === 0 ? null : new Uint8Array(payload), {
+      status,
+      statusText: message.statusMessage ?? "",
+      headers: responseHeaders(message),
     });
+  } catch (error) {
+    if (controller.signal.aborted && !(error instanceof UnsafeUrlError)) {
+      throw new UnsafeUrlError("Identity provider request timed out or was aborted.");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
     parentSignal?.removeEventListener("abort", abort);
