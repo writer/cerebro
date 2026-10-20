@@ -242,15 +242,6 @@ export default function Topbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <div
-          className="flex max-w-[260px] items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-[var(--surface-raised)] px-2.5 py-1.5 max-lg:hidden"
-          title={`${authLabel} · ${identity.displayName} · ${identity.sourceLabel}`}
-        >
-          <span className={`h-2 w-2 shrink-0 rounded-full ${runtimeWarning ? "bg-amber-500" : "bg-emerald-500"}`} />
-          <span className="truncate text-[12px] font-medium text-[var(--text-secondary)]">
-            {authLabel} · {identity.label}
-          </span>
-        </div>
         <button
           type="button"
           onClick={toggleTheme}

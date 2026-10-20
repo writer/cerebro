@@ -57,17 +57,16 @@ const routeParameterSamples = Object.freeze({
   slug: "grc",
   snapshotID: "fixture-snapshot-1",
   sourceID: "okta",
+  urn: "urn:cerebro:demo-tenant:identity:platform-admin",
 });
 const expectedRouteRedirects = new Map([
   ["/connectors/cdk", { pathname: "/connectors/activation", preserveScope: true }],
+  ["/controls", { pathname: "/grc", preserveScope: true }],
+  ["/frameworks", { pathname: "/grc", preserveScope: true }],
   ["/developer/codegen", { pathname: "/developer", preserveScope: false }],
   ["/mission", { pathname: "/connectors", preserveScope: false }],
   ["/vision", { pathname: "/", preserveScope: false }],
 ]);
-
-const routeURNParameterSample = (pageFile) => pageFile === path.join("vendors", "[urn]", "page.tsx")
-  ? "urn:cerebro:demo-tenant:vendor:core-sso"
-  : "urn:cerebro:demo-tenant:identity:platform-admin";
 
 export function parseArgs(argv) {
   const options = {
@@ -116,14 +115,12 @@ export function parseArgs(argv) {
   return options;
 }
 
-function pageRouteSegment(segment, pageFile) {
+function pageRouteSegment(segment) {
   if (segment.startsWith("(") && segment.endsWith(")")) return "";
   if (segment.startsWith("@")) return "";
   const dynamic = segment.match(/^\[(?:\.\.\.)?([^\]]+)\]$/);
   if (!dynamic) return segment;
-  const sample = dynamic[1] === "urn"
-    ? routeURNParameterSample(pageFile)
-    : routeParameterSamples[dynamic[1]];
+  const sample = routeParameterSamples[dynamic[1]];
   if (!sample) {
     throw new Error(`No local route sample is registered for [${dynamic[1]}]`);
   }
@@ -152,7 +149,7 @@ export async function discoverPageRoutes(webRoot = defaultWebRoot) {
       const segments = path.dirname(pageFile)
         .split(path.sep)
         .filter((segment) => segment !== ".")
-        .map((segment) => pageRouteSegment(segment, pageFile))
+        .map(pageRouteSegment)
         .filter(Boolean);
       return `/${segments.join("/")}`;
     })

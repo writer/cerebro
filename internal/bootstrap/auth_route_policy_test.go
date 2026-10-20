@@ -231,23 +231,74 @@ func TestCustomDashboardHTTPRoutesRequireWriteScope(t *testing.T) {
 }
 
 func TestRiskScoringConfigHTTPRoutesRequireWriteScope(t *testing.T) {
-	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/risk-scoring-config")
-	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
-		t.Fatalf("GET /grc/risk-scoring-config policy = %#v, want read scope", readPolicy)
-	}
+	for _, path := range []string{"/grc/risk-scoring-config", "/grc/asset-risk-model"} {
+		readPolicy := httpRoutePolicyFor(http.MethodGet, path)
+		if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+			t.Fatalf("GET %s policy = %#v, want read scope", path, readPolicy)
+		}
 
+		for _, method := range []string{http.MethodPut, http.MethodDelete} {
+			policy := httpRoutePolicyFor(method, path)
+			if policy.Scope != scopeRiskScoringWrite || policy.AdminOnly {
+				t.Fatalf("%s %s policy = %#v, want risk scoring write scope", method, path, policy)
+			}
+			readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+			if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+				t.Fatalf("read-only principal authorized for %s %s: %v", method, path, err)
+			}
+			writer := authPrincipal{Scopes: []string{scopeRiskScoringWrite}}
+			if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+				t.Fatalf("risk scoring writer rejected for %s %s: %v", method, path, err)
+			}
+		}
+	}
+	if policy := httpRoutePolicyFor(http.MethodGet, "/platform/graph/risk-paths"); policy.Scope != scopeCosmoSecurityRead || policy.AdminOnly {
+		t.Fatalf("GET /platform/graph/risk-paths policy = %#v, want read scope", policy)
+	}
+}
+
+func TestFrameworkSettingsHTTPRoutesRequireWriteScope(t *testing.T) {
+	readPolicy := httpRoutePolicyFor(http.MethodGet, "/grc/framework-settings")
+	if readPolicy.Scope != scopeCosmoSecurityRead || readPolicy.AdminOnly {
+		t.Fatalf("GET /grc/framework-settings policy = %#v, want read scope", readPolicy)
+	}
+	policy := httpRoutePolicyFor(http.MethodPut, "/grc/framework-settings")
+	if policy.Scope != scopeGRCInventoryWrite || policy.AdminOnly {
+		t.Fatalf("PUT /grc/framework-settings policy = %#v, want GRC write scope", policy)
+	}
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("read-only principal authorized for PUT /grc/framework-settings: %v", err)
+	}
+	writer := authPrincipal{Scopes: []string{scopeGRCInventoryWrite}}
+	if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
+		t.Fatalf("GRC writer rejected for PUT /grc/framework-settings: %v", err)
+	}
+}
+
+func TestFindingRuleCatalogHTTPRoutePolicies(t *testing.T) {
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/finding-rules/catalog"},
+		{http.MethodGet, "/finding-rules/catalog/aws-user-inactive-admin-no-mfa"},
+		{http.MethodPost, "/finding-rules/validate"},
+		{http.MethodPost, "/finding-rules/test"},
+	} {
+		if policy := httpRoutePolicyFor(route.method, route.path); policy.Scope != scopeCosmoSecurityRead || policy.AdminOnly {
+			t.Fatalf("%s %s policy = %#v, want read scope", route.method, route.path, policy)
+		}
+	}
+	readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
+	writer := authPrincipal{Scopes: []string{scopeFindingLifecycleWrite}}
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		policy := httpRoutePolicyFor(method, "/grc/risk-scoring-config")
-		if policy.Scope != scopeRiskScoringWrite || policy.AdminOnly {
-			t.Fatalf("%s /grc/risk-scoring-config policy = %#v, want risk scoring write scope", method, policy)
+		policy := httpRoutePolicyFor(method, "/finding-rules/custom/custom-rule")
+		if policy.Scope != scopeFindingLifecycleWrite || policy.AdminOnly {
+			t.Fatalf("%s /finding-rules/custom policy = %#v, want findings write scope", method, policy)
 		}
-		readOnly := authPrincipal{Scopes: []string{scopeCosmoSecurityRead}}
 		if err := authorizePrincipalHTTPPolicy(readOnly, policy); !errors.Is(err, errScopeForbidden) {
-			t.Fatalf("read-only principal authorized for %s /grc/risk-scoring-config: %v", method, err)
+			t.Fatalf("read-only principal authorized for %s /finding-rules/custom: %v", method, err)
 		}
-		writer := authPrincipal{Scopes: []string{scopeRiskScoringWrite}}
 		if err := authorizePrincipalHTTPPolicy(writer, policy); err != nil {
-			t.Fatalf("risk scoring writer rejected for %s /grc/risk-scoring-config: %v", method, err)
+			t.Fatalf("findings writer rejected for %s /finding-rules/custom: %v", method, err)
 		}
 	}
 }

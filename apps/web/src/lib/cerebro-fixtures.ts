@@ -8,6 +8,8 @@ import type {
   GRCVendorCreateRequest,
   GRCVendorDiscovery,
 } from "@/lib/grc";
+import { assetRiskFixtureResponse, resetAssetRiskFixturesForTests } from "@/lib/asset-risk-fixtures";
+import { findingRuleFixtureResponse, resetFindingRuleFixturesForTests } from "@/lib/finding-rule-fixtures";
 import { inventoryGroupFor, inventoryGroupForEntityType } from "@/lib/inventory-groups";
 
 type FixtureResponse = {
@@ -29,15 +31,15 @@ const adminURN = `urn:cerebro:${tenantID}:identity:platform-admin`;
 const apiURN = `urn:cerebro:${tenantID}:service:payments-api`;
 const repoURN = `urn:cerebro:${tenantID}:repository:public-demo`;
 const bucketURN = `urn:cerebro:${tenantID}:storage:audit-bucket`;
+const internetURN = `urn:cerebro:${tenantID}:internet:any`;
+const roleURN = `urn:cerebro:${tenantID}:aws_iam_role:deploy`;
+const permissionURN = `urn:cerebro:${tenantID}:aws_iam_permission:s3-write`;
 const saasAppURN = `urn:cerebro:${tenantID}:application:demo-analytics`;
 const secretURN = `urn:cerebro:${tenantID}:secret:deploy-token`;
 const installedAppURN = `urn:cerebro:${tenantID}:sentinelone_installed_app:agent-1:browser`;
 const emailAliasURN = `urn:cerebro:${tenantID}:identifier:email:platform-admin@example.com`;
 const coreSsoVendorURN = `urn:cerebro:${tenantID}:vendor:core-sso`;
 const paymentsProcessorVendorURN = `urn:cerebro:${tenantID}:vendor:payments-processor`;
-const lifecycleSubjectURN = `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`;
-const lifecycleFindingURN = `urn:cerebro:${tenantID}:finding:deploy-signing-expiry`;
-const lifecycleEvidenceClaimURN = `urn:cerebro:${tenantID}:claim:deploy-signing-expiry`;
 
 const vendorDiscoverySourceLabels: Record<string, string> = {
   aws: "AWS",
@@ -215,7 +217,10 @@ const findings = [
     rule_id: "storage.bucket_policy_review",
     policy_id: "ISO-A.5.15",
     policy_name: "Access Control",
-    controls: [{ framework_name: "ISO 27001", framework_id: "iso27001", control_id: "A.5.15" }],
+    controls: [
+      { framework_name: "ISO 27001", framework_id: "iso27001", control_id: "A.5.15" },
+      { framework_name: "CIS AWS Foundations Benchmark v2.0", control_id: "2.1.4" },
+    ],
     attributes: { owner: "platform", source: "aws" },
     risk_score: 54,
     likelihood_score: 45,
@@ -818,6 +823,36 @@ const assets = [
     attributes: { provider: "SentinelOne", resource_type: "Installed application", version: "126.0.0", agent_id: "agent-1" },
   },
   {
+    urn: deviceURN,
+    entity_type: "sentinelone.agent",
+    surface: "asset",
+    label: "LAPTOP-4821",
+    source_id: "sentinelone",
+    runtime_id: "demo-sentinelone-runtime",
+    risk_score: 66,
+    risk_level: "medium",
+    risk_reasons: ["Agent out of date"],
+    scope_state: "in_scope",
+    review_disposition: { state: "baseline", label: "Baseline", detail: "Covered by endpoint agent telemetry." },
+    accountability: { state: "known", label: "Owner known", principal: "jordan.lee@example.com" },
+    attributes: { provider: "SentinelOne", resource_type: "Endpoint agent", computer_name: "LAPTOP-4821", user_name: "jordan.lee", serial_number: "C02DEMO4821", os_name: "macOS", agent_version: "24.1.2" },
+  },
+  {
+    urn: `urn:cerebro:${tenantID}:kandji.device:mac-0193`,
+    entity_type: "kandji.device",
+    surface: "asset",
+    label: "Priya's MacBook Pro",
+    source_id: "kandji",
+    runtime_id: "demo-kandji-runtime",
+    risk_score: 22,
+    risk_level: "low",
+    risk_reasons: ["Managed device"],
+    scope_state: "in_scope",
+    review_disposition: { state: "baseline", label: "Baseline", detail: "Enrolled in MDM." },
+    accountability: { state: "known", label: "Owner known", principal: "priya.shah@example.com" },
+    attributes: { provider: "Kandji", resource_type: "Managed device", user_email: "priya.shah@example.com", owner_email: "priya.shah@example.com", serial_number: "C02DEMO0193", os_version: "15.1" },
+  },
+  {
     urn: emailAliasURN,
     entity_type: "identifier.email",
     surface: "alias",
@@ -1367,6 +1402,9 @@ export const resetCerebroFixtureStateForTests = () => {
   currentVendors = baseVendors.map(cloneVendor);
   vendorDiscoveries = baseVendorDiscoveries.map(cloneVendorDiscovery);
   questionnaireRuns = baseQuestionnaireRuns.map(cloneQuestionnaireRun);
+  fixtureEnabledFrameworks = null;
+  resetFindingRuleFixturesForTests();
+  resetAssetRiskFixturesForTests();
 };
 
 const allFixtureVendors = () => [...fixtureCreatedVendors, ...currentVendors];
@@ -1531,9 +1569,59 @@ const frameworksFixture = () => ({
       description: "ISO 27001 control coverage, evidence gaps, and open findings.",
       rows: controls.filter((control) => control.framework_id === "iso27001"),
     }),
+    // Catalog-only frameworks: the real catalog leaves most ids empty and
+    // carries no per-control packet rows here, so neither do these.
+    catalogFrameworkRecord("CIS AWS Foundations Benchmark v2.0", "2.0", "CIS AWS Foundations Benchmark configuration checks for AWS accounts.", 58, 50),
+    catalogFrameworkRecord("NIST 800-53 r5", "r5", "NIST SP 800-53 Rev. 5 security and privacy controls.", 324, 687),
+    catalogFrameworkRecord("PCI DSS v4.0.1", "4.0.1", "PCI DSS requirements for cardholder data environments.", 116, 413),
+    catalogFrameworkRecord("CSA CCM v4.0", "4.0", "Cloud Controls Matrix. Rules are not mapped yet.", 197, 0, "upcoming"),
   ],
   generated_at: generatedAt,
 });
+
+const catalogFrameworkRecord = (name: string, version: string, description: string, controlCount: number, mappedRules: number, lifecycle = "active") => ({
+  name,
+  framework_version: version,
+  lifecycle,
+  description,
+  family_count: 0,
+  control_count: controlCount,
+  coverage: { selected_controls: controlCount, mapped_controls: 0, unmapped_controls: controlCount, mapped_rules: mappedRules },
+});
+
+const fixtureDefaultEnabledFrameworks = ["SOC 2", "ISO 27001", "CIS AWS Foundations Benchmark v2.0"];
+let fixtureEnabledFrameworks: string[] | null = null;
+
+// Mirrors GET/PUT /grc/framework-settings: canonical names in catalog order,
+// unknown or upcoming frameworks rejected, defaults until the first save.
+const frameworkSettingsFixture = (method: string, body?: string) => {
+  const catalog = frameworksFixture().frameworks;
+  if (method === "PUT") {
+    let requested: unknown;
+    try {
+      requested = body ? (JSON.parse(body) as { enabled_frameworks?: unknown }).enabled_frameworks : undefined;
+    } catch {
+      requested = undefined;
+    }
+    if (!Array.isArray(requested)) {
+      return jsonFixture({ error: "enabled_frameworks is required" }, 400);
+    }
+    const wanted = new Set(requested.map((value) => String(value).trim().toLowerCase()).filter(Boolean));
+    const unknown = [...wanted].filter((value) => !catalog.some((framework) => framework.lifecycle !== "upcoming" && framework.name.toLowerCase() === value));
+    if (unknown.length > 0) {
+      return jsonFixture({ error: `unknown compliance framework: "${unknown[0]}"` }, 400);
+    }
+    fixtureEnabledFrameworks = catalog.filter((framework) => wanted.has(framework.name.toLowerCase())).map((framework) => framework.name);
+  }
+  return jsonFixture({
+    settings: {
+      tenant_id: tenantID,
+      enabled_frameworks: fixtureEnabledFrameworks ?? fixtureDefaultEnabledFrameworks,
+      ...(fixtureEnabledFrameworks ? { updated_at: generatedAt } : {}),
+    },
+    persisted: fixtureEnabledFrameworks !== null,
+  });
+};
 
 const reportDefinitionsFixture = () => ({
   reports: [
@@ -4201,12 +4289,108 @@ const questionnaireRunCommentFixture = (runID: string, parsed: Record<string, un
   return jsonFixture({ run: cloneQuestionnaireRun(run), generated_at: generatedAt });
 };
 
+// The risk-delta demo graph mirrors the ListCloudAttackPaths fixture: the
+// internet reaches the audit bucket and the payments API, both of which can
+// assume the deploy role and its S3 write permission.
+const fixtureCloudAttackPath = (exposedURN: string, exposedType: string, score: number, findingID: string) => ({
+  pattern: "public_exposure_to_privileged_identity",
+  score,
+  finding_id: findingID,
+  steps: [
+    { from_urn: internetURN, relation: "can_reach", to_urn: exposedURN, from_type: "internet.principal", to_type: exposedType },
+    { from_urn: exposedURN, relation: "can_assume", to_urn: roleURN, from_type: exposedType, to_type: "aws.iam_role" },
+    { from_urn: roleURN, relation: "can_perform", to_urn: permissionURN, from_type: "aws.iam_role", to_type: "aws.iam_permission" },
+  ],
+});
+
+const fixtureAttackPaths = [
+  fixtureCloudAttackPath(bucketURN, "storage_bucket", 82, "finding-public-bucket-path"),
+  fixtureCloudAttackPath(apiURN, "service", 76, "finding-public-admin-path"),
+  {
+    pattern: "public_repository_secret_exposure",
+    score: 64,
+    finding_id: "finding-public-repo-secret",
+    steps: [{ from_urn: repoURN, relation: "can_reach", to_urn: secretURN, from_type: "repository", to_type: "secret" }],
+  },
+];
+
+const riskDeltaFixture = (parameters: Record<string, unknown>) => {
+  const scenario = String(parameters.scenario_type ?? "").trim();
+  const target = String(parameters.target_urn ?? "").trim();
+  const scenarios = ["remove_public_exposure", "remove_privilege", "patch_vulnerability", "compromise_identity"];
+  if (!scenarios.includes(scenario)) {
+    return jsonFixture({ error: `report parameter "scenario_type" must be one of ${scenarios.join(", ")}`, generated_at: generatedAt }, 400);
+  }
+  if (!target || !String(parameters.runtime_ids ?? "").trim()) {
+    return jsonFixture({ error: "report parameters \"target_urn\" and \"runtime_ids\" are required", generated_at: generatedAt }, 400);
+  }
+  const breaks = (relation: string) =>
+    (scenario === "remove_public_exposure" && relation === "can_reach")
+    || (scenario === "remove_privilege" && ["can_admin", "can_assume", "can_impersonate", "can_perform"].includes(relation));
+  const removed = fixtureAttackPaths.filter((path) => path.steps.some((step) => (step.from_urn === target || step.to_urn === target) && breaks(step.relation)));
+  const onDemoGraph = target.startsWith(`urn:cerebro:${tenantID}:identity:`)
+    || fixtureAttackPaths.some((path) => path.steps.some((step) => step.from_urn === target || step.to_urn === target));
+  const added = scenario === "compromise_identity" && onDemoGraph
+    ? [{ pattern: "compromised_identity_reach", score: 71, finding_id: "finding-public-admin-path", steps: [{ from_urn: target, relation: "can_admin", to_urn: bucketURN, from_type: "identity_user", to_type: "storage_bucket" }] }]
+    : [];
+  const remaining = fixtureAttackPaths.filter((path) => !removed.includes(path));
+  const score = (paths: typeof fixtureAttackPaths) => paths.reduce((sum, path) => sum + path.score, 0);
+  const affected = [...removed, ...added].map((path) => ({
+    finding_id: path.finding_id,
+    rule_id: path.pattern,
+    resource_urns: [target],
+    before_risk_score: 90,
+    after_risk_score: added.includes(path) ? 97 : 40,
+    reduction: added.includes(path) ? -7 : 50,
+    ...(added.includes(path) ? { added_reasons: ["compromised_identity"] } : { removed_reasons: [scenario === "remove_privilege" ? "privileged_access" : "public_exposure"] }),
+  }));
+  const beforeRisk = 320;
+  const afterRisk = beforeRisk - affected.reduce((sum, impact) => sum + impact.reduction, 0);
+  const before = { finding_count: 6, total_risk_score: beforeRisk, attack_path_count: fixtureAttackPaths.length, total_attack_path_score: score(fixtureAttackPaths) };
+  const after = { finding_count: 6, total_risk_score: afterRisk, attack_path_count: remaining.length + added.length, total_attack_path_score: score(remaining) + score(added) };
+  return jsonFixture({
+    definition: { id: "risk-delta", name: "Risk Delta Simulation" },
+    run: {
+      id: `fixture-risk-delta-${scenario}`,
+      report_id: "risk-delta",
+      status: "completed",
+      generated_at: generatedAt,
+      parameters,
+      result: {
+        tenant_id: parameters.tenant_id,
+        scenario_type: scenario,
+        target_urn: target,
+        graph_evidence_status: "included",
+        risk_delta: {
+          scenario_type: scenario,
+          target_urn: target,
+          before,
+          after,
+          risk_score_change: afterRisk - beforeRisk,
+          attack_path_score_change: after.total_attack_path_score - before.total_attack_path_score,
+          attack_path_count_change: after.attack_path_count - before.attack_path_count,
+          affected_findings: affected,
+          added_attack_paths: added,
+          removed_attack_paths: removed,
+          remaining_attack_paths: remaining,
+          reasons: removed.length > 0 ? ["removed_graph_relation:can_reach"] : [],
+        },
+      },
+    },
+  });
+};
+
 const writeFixture = (path: string, body?: string) => {
   let parsed: Record<string, unknown> = {};
   try {
     parsed = body ? JSON.parse(body) as Record<string, unknown> : {};
   } catch {
     return jsonFixture({ error: "Malformed JSON request body.", generated_at: generatedAt }, 400);
+  }
+
+  if (path === "reports/risk-delta/runs") {
+    const parameters = parsed.parameters && typeof parsed.parameters === "object" ? parsed.parameters as Record<string, unknown> : {};
+    return riskDeltaFixture(parameters);
   }
 
   if (path === "grc/vendors") {
@@ -4404,12 +4588,6 @@ const writeFixture = (path: string, body?: string) => {
   return notFoundFixture(path);
 };
 
-const lifecycleEnumLabelFixture = (value: string) =>
-  value
-    .replace(/^SECURITY_LIFECYCLE_SUBJECT_KIND_/, "")
-    .replace(/^SECURITY_LIFECYCLE_STATE_/, "")
-    .toLowerCase();
-
 const ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
 const FIXTURE_GRAPH_REVISION = 184;
 
@@ -4434,9 +4612,6 @@ const attackEdge = (relation: string, sourceID: string, runtimeID: string) => ({
   attributes_json: "{}",
 });
 
-const internetURN = `urn:cerebro:${tenantID}:internet:any`;
-const roleURN = `urn:cerebro:${tenantID}:aws_iam_role:deploy`;
-const permissionURN = `urn:cerebro:${tenantID}:aws_iam_permission:s3-write`;
 const accountURN = `urn:cerebro:${tenantID}:aws_account:prod`;
 const oktaGroupURN = `urn:cerebro:${tenantID}:okta_group:platform`;
 const personURN = `urn:cerebro:${tenantID}:person:ana-ruiz`;
@@ -4562,6 +4737,15 @@ export const cerebroFixtureResponseFor = ({
   const normalizedMethod = method.trim().toUpperCase();
   const normalizedPath = normalizePath(path);
 
+  const findingRuleFixture = findingRuleFixtureResponse(normalizedMethod, normalizedPath, body);
+  if (findingRuleFixture) {
+    return jsonFixture(findingRuleFixture.payload, findingRuleFixture.status);
+  }
+  const assetRiskFixture = assetRiskFixtureResponse(normalizedMethod, normalizedPath, body);
+  if (assetRiskFixture) {
+    return jsonFixture(assetRiskFixture.payload, assetRiskFixture.status);
+  }
+
   if (normalizedMethod !== "GET") {
     // A bare lookup also matches inherited keys such as "constructor", so only own keys may dispatch.
     const graphPathFixture = Object.hasOwn(organizationalGraphPathFixtures, normalizedPath)
@@ -4581,6 +4765,9 @@ export const cerebroFixtureResponseFor = ({
     }
     if (normalizedPath === "grc/risk-scoring-config") {
       return jsonFixture(riskScoringConfigFixture(searchParams));
+    }
+    if (normalizedMethod === "PUT" && normalizedPath === "grc/framework-settings") {
+      return frameworkSettingsFixture("PUT", body);
     }
     if (normalizedMethod === "POST" && normalizedPath === "grc/ask") {
       return textFixture("event: done\ndata: {\"answer\":\"Fixture mode is enabled.\",\"trace_id\":\"fixture-trace\"}\n\n", "text/event-stream; charset=utf-8");
@@ -4719,85 +4906,6 @@ export const cerebroFixtureResponseFor = ({
     return jsonFixture(credentialStoresFixture(searchParams));
   }
 
-  if (normalizedPath === "v1/security/lifecycle") {
-    const lifecycleRecords = [
-      {
-        observation: {
-          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
-          subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
-          provider: "aws",
-          authority_id: "aws/production",
-          stable_locator: "deploy/signing",
-          display_name: "Deployment signing credential",
-          state: "SECURITY_LIFECYCLE_STATE_EXPIRING",
-          observed_at: "2026-07-26T12:00:00Z",
-          expires_at: "2026-08-01T12:00:00Z",
-          owner_urn: `urn:cerebro:${tenantID}:team:security-platform`,
-          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
-        },
-        policy_evaluations: [{
-          policy_id: "credential-expiry",
-          policy_version: "1",
-          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
-          state: "expiring",
-          warning_window_days: 30,
-          evaluated_at: "2026-07-26T12:00:00Z",
-          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
-        }],
-        findings: [{
-          finding_ref: { kind: "finding", id: lifecycleFindingURN },
-          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
-          finding_kind: "credential_expiry",
-          status: "open",
-          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
-        }],
-        action_routes: [{
-          finding_ref: { kind: "finding", id: lifecycleFindingURN },
-          target_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
-          action_type: "rotate_credential",
-          approval_required: true,
-          action_intent_ref: { kind: "action_intent", id: `urn:cerebro:${tenantID}:action_intent:deploy-signing` },
-          dispatch_ref: { kind: "dispatch", id: `urn:cerebro:${tenantID}:dispatch:deploy-signing` },
-          verification_ref: { kind: "verification", id: `urn:cerebro:${tenantID}:verification:deploy-signing` },
-        }],
-        projected_at: "2026-07-26T12:00:00Z",
-      },
-      {
-        observation: {
-          subject_ref: { kind: "certificate", id: `urn:cerebro:${tenantID}:certificate:cloudflare%2Fproduction:api.writer.com`, revision: "sha256:fixture-certificate" },
-          subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
-          provider: "cloudflare",
-          authority_id: "cloudflare/production",
-          stable_locator: "api.writer.com",
-          display_name: "api.writer.com certificate",
-          state: "SECURITY_LIFECYCLE_STATE_ACTIVE",
-          observed_at: "2026-07-26T12:00:00Z",
-          expires_at: "2026-11-18T12:00:00Z",
-          owner_urn: `urn:cerebro:${tenantID}:team:edge-platform`,
-          evidence_claim_refs: [],
-        },
-        policy_evaluations: [{
-          policy_id: "certificate-expiry",
-          policy_version: "1",
-          subject_ref: { kind: "certificate", id: `urn:cerebro:${tenantID}:certificate:cloudflare%2Fproduction:api.writer.com`, revision: "sha256:fixture-certificate" },
-          state: "compliant",
-          warning_window_days: 30,
-          evaluated_at: "2026-07-26T12:00:00Z",
-        }],
-        findings: [],
-        action_routes: [],
-        projected_at: "2026-07-26T12:00:00Z",
-      },
-    ].filter((record) => {
-      const kind = lifecycleEnumLabelFixture(record.observation.subject_kind);
-      const state = lifecycleEnumLabelFixture(record.observation.state);
-      return (!searchParams?.get("subject_kind") || searchParams.get("subject_kind") === kind)
-        && (!searchParams?.get("state") || searchParams.get("state") === state)
-        && (!["true", "1"].includes(searchParams?.get("findings_only") ?? "") || record.findings.length > 0);
-    });
-    return jsonFixture({ records: lifecycleRecords, truncated: false, as_of: "2026-07-26T12:00:00Z" });
-  }
-
   if (normalizedPath === "grc/findings") {
     return jsonFixture({ findings: filterFindings(searchParams), generated_at: generatedAt });
   }
@@ -4899,6 +5007,10 @@ export const cerebroFixtureResponseFor = ({
 
   if (normalizedPath === "grc/frameworks") {
     return jsonFixture(frameworksFixture());
+  }
+
+  if (normalizedPath === "grc/framework-settings") {
+    return frameworkSettingsFixture("GET");
   }
 
   const impactMatch = /^grc\/entities\/(.+)\/impact$/.exec(normalizedPath);

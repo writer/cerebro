@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GRCInventoryAsset, GRCInventoryCategory } from "@/lib/grc";
-import { inventoryMetadataMatch, inventorySourceOptions, inventoryTypeOptions } from "./inventory-search";
+import { inventoryDeviceUser, inventoryMetadataMatch, inventorySourceOptions, inventoryTypeOptions } from "./inventory-search";
 
 const asset = (overrides: Partial<GRCInventoryAsset> = {}): GRCInventoryAsset => ({
   urn: "urn:cerebro:writer:aws.s3.bucket:reports",
@@ -67,5 +67,25 @@ describe("inventorySourceOptions", () => {
 
   it("skips rows with no source", () => {
     expect(inventorySourceOptions([asset({ source_id: undefined }), asset({ source_id: " " })])).toEqual([]);
+  });
+});
+
+describe("inventoryDeviceUser", () => {
+  const device = (attributes: Record<string, string>) =>
+    asset({ entity_type: "sentinelone.agent", source_id: "sentinelone", attributes });
+
+  it("reads the EDR logged-in user and the MDM assigned email", () => {
+    expect(inventoryDeviceUser(device({ user_name: "jordan.lee" }))).toEqual({ name: "jordan.lee", email: "" });
+    expect(inventoryDeviceUser(device({ owner_email: "priya@example.com" }))).toEqual({ name: "", email: "priya@example.com" });
+    expect(inventoryDeviceUser(device({ username: "dev", user_email: "dev@example.com" }))).toEqual({ name: "dev", email: "dev@example.com" });
+  });
+
+  it("does not repeat an email-shaped username", () => {
+    expect(inventoryDeviceUser(device({ user_name: "a@example.com", user_email: "a@example.com" }))).toEqual({ name: "", email: "a@example.com" });
+  });
+
+  it("reports nothing when the source collected no user", () => {
+    expect(inventoryDeviceUser(device({ user_name: "  " }))).toEqual({ name: "", email: "" });
+    expect(inventoryDeviceUser(asset({ attributes: undefined }))).toEqual({ name: "", email: "" });
   });
 });

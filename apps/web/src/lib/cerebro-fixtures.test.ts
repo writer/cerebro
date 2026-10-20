@@ -106,6 +106,41 @@ describe("cerebro fixture proxy responses", () => {
     }));
   });
 
+  it("serves default framework settings until a save, then keeps canonical catalog order", () => {
+    withFixtureMode();
+    const initial = parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "grc/framework-settings" })!);
+    expect(initial).toMatchObject({
+      persisted: false,
+      settings: { enabled_frameworks: ["SOC 2", "ISO 27001", "CIS AWS Foundations Benchmark v2.0"] },
+    });
+
+    const saved = cerebroFixtureResponseFor({
+      method: "PUT",
+      path: "grc/framework-settings",
+      body: JSON.stringify({ enabled_frameworks: ["iso 27001", "SOC 2"] }),
+    });
+    expect(saved?.status).toBe(200);
+    expect(parseFixture(saved!)).toMatchObject({ persisted: true, settings: { enabled_frameworks: ["SOC 2", "ISO 27001"] } });
+    expect(parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "grc/framework-settings" })!)).toMatchObject({
+      persisted: true,
+      settings: { enabled_frameworks: ["SOC 2", "ISO 27001"] },
+    });
+  });
+
+  it("rejects unknown, upcoming, and malformed framework settings", () => {
+    withFixtureMode();
+    for (const body of [
+      JSON.stringify({ enabled_frameworks: ["Made Up Framework"] }),
+      JSON.stringify({ enabled_frameworks: ["CSA CCM v4.0"] }),
+      JSON.stringify({}),
+      "not json",
+    ]) {
+      const response = cerebroFixtureResponseFor({ method: "PUT", path: "grc/framework-settings", body });
+      expect(response?.status, body).toBe(400);
+    }
+    expect(parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "grc/framework-settings" })!)).toMatchObject({ persisted: false });
+  });
+
   it("rejects fixture writes without an explicit handler", () => {
     withFixtureMode();
     const response = cerebroFixtureResponseFor({
@@ -160,32 +195,6 @@ describe("cerebro fixture proxy responses", () => {
     });
     const payload = parseFixture(response!);
     expect(payload.findings).toContainEqual(expect.objectContaining({ id: "demo-finding-high" }));
-  });
-
-  it("does not fabricate an audit packet for an opaque lifecycle finding reference", () => {
-    withFixtureMode();
-    const lifecycle = parseFixture(cerebroFixtureResponseFor({
-      method: "GET",
-      path: "v1/security/lifecycle",
-    })!) as { records: Array<{ findings: unknown[] }> };
-    const response = cerebroFixtureResponseFor({
-      method: "GET",
-      path: "grc/audit-packets/deploy-signing-expiry",
-    })!;
-    const lifecycleRecord = lifecycle.records[0];
-
-    expect(lifecycleRecord.findings[0]).toMatchObject({
-      finding_ref: {
-        kind: "finding",
-        id: "urn:cerebro:demo-tenant:finding:deploy-signing-expiry",
-      },
-      evidence_claim_refs: [{
-        kind: "claim",
-        id: "urn:cerebro:demo-tenant:claim:deploy-signing-expiry",
-      }],
-    });
-    expect(response.status).toBe(404);
-    expect(parseFixture(response)).toEqual({ error: "Audit packet not found" });
   });
 
   it("uses operator-readable plural labels for inventory categories", () => {
@@ -683,6 +692,40 @@ describe("cerebro fixture proxy responses", () => {
     });
     const payload = parseFixture(response!);
     expect(payload.asset).toMatchObject({ urn, label: "public-demo" });
+  });
+
+  it("finds devices in the inventory search by their user", () => {
+    withFixtureMode();
+    const search = (params: Record<string, string>) => parseFixture(cerebroFixtureResponseFor({
+      method: "GET",
+      path: "grc/inventory/assets",
+      searchParams: new URLSearchParams({ surface: "asset", ...params }),
+    })!).assets as Array<{ label: string }>;
+
+    expect(search({ category_id: "devices" }).map((asset) => asset.label).sort()).toEqual(["LAPTOP-4821", "Priya's MacBook Pro"]);
+    expect(search({ category_id: "devices", q: "jordan.lee" }).map((asset) => asset.label)).toEqual(["LAPTOP-4821"]);
+    expect(search({ q: "priya.shah@example.com" }).map((asset) => asset.label)).toEqual(["Priya's MacBook Pro"]);
+  });
+
+  it("simulates attack graph changes through the risk-delta report", () => {
+    withFixtureMode();
+    const simulate = (parameters: Record<string, string>) => cerebroFixtureResponseFor({
+      method: "POST",
+      path: "reports/risk-delta/runs",
+      body: JSON.stringify({ parameters: { tenant_id: "demo-tenant", runtime_ids: "demo-aws-runtime", ...parameters } }),
+    });
+
+    const fix = parseFixture(simulate({ scenario_type: "remove_public_exposure", target_urn: "urn:cerebro:demo-tenant:service:payments-api" })!);
+    expect(fix.run).toMatchObject({ report_id: "risk-delta", result: { risk_delta: { attack_path_count_change: -1 } } });
+
+    // The deploy role sits on both cloud attack paths, so removing its privilege closes both.
+    const role = parseFixture(simulate({ scenario_type: "remove_privilege", target_urn: "urn:cerebro:demo-tenant:aws_iam_role:deploy" })!);
+    expect(role.run).toMatchObject({ result: { risk_delta: { attack_path_count_change: -2 } } });
+
+    const attack = parseFixture(simulate({ scenario_type: "compromise_identity", target_urn: "urn:cerebro:demo-tenant:identity:platform-admin" })!);
+    expect(attack.run).toMatchObject({ result: { risk_delta: { attack_path_count_change: 1 } } });
+
+    expect(simulate({ scenario_type: "drop_everything", target_urn: "urn:cerebro:demo-tenant:service:payments-api" })?.status).toBe(400);
   });
 
   it("returns empty report runs in fixture mode", () => {

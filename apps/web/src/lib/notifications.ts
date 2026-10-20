@@ -82,7 +82,7 @@ const SUMMARY_RULES: SummaryRule[] = [
     count: (summary) => summary.controls_failing,
     title: (count) => `${count} ${pluralize(count, "control")} failing`,
     detail: "Controls with a failing posture.",
-    href: "/controls",
+    href: "/grc",
   },
   {
     id: "stale-connectors",

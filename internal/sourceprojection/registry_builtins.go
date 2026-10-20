@@ -5242,6 +5242,10 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"vulncheck.policies":        vulncheckPoliciesProjections,
 	"vulncheck.vulnerabilities": vulncheckVulnerabilitiesProjections,
 
+	// public vulnerability intelligence enriching canonical vulnerability nodes
+	"vulnerability_intel.epss": vulnerabilityIntelEpssProjections,
+	"vulnerability_intel.kev":  vulnerabilityIntelKevProjections,
+
 	// webex generated projectors (sourcegen promotion)
 	"webex.audit_events": webexAuditEventsProjections,
 	"webex.documents":    webexDocumentsProjections,

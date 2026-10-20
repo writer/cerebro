@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useApiKey, useCurrentUser } from "@/components/providers";
+import { complianceControlHref } from "@/lib/compliance-links";
 import { fetchCachedGRC, grcDashboardPath, grcTimeoutMessage } from "@/lib/grc-client";
 import { grcScopeQuery, type GRCScope, useGRCScopeQueryState } from "@/lib/grc-scope";
 import {
@@ -194,7 +195,7 @@ const controlCommand = (query: string, control: GRCControl): LiveSearchCommand |
   return {
     id: `live:control:${control.framework_name}:${control.control_id}`,
     label: controlLabel,
-    href: `/controls?framework=${encodeURIComponent(control.framework_name)}&control=${encodeURIComponent(control.control_id)}`,
+    href: complianceControlHref(control.framework_name, control.control_id),
     description: `${control.status} · ${control.open_findings} open findings · ${control.evidence_items} evidence items`,
     section: "Control",
     keywords,
@@ -218,10 +219,13 @@ const evidenceCommand = (query: string, evidence: GRCEvidence): LiveSearchComman
     return null;
   }
   const href = evidence.finding_id
-    ? `/evidence?finding_id=${encodeURIComponent(evidence.finding_id)}`
+    ? `/findings/${encodeURIComponent(evidence.finding_id)}`
     : evidence.graph_root_urns?.[0]
-      ? `/evidence?graph_root_urn=${encodeURIComponent(evidence.graph_root_urns[0])}`
-      : `/evidence?run_id=${encodeURIComponent(evidence.run_id ?? evidence.id)}`;
+      ? `/explore?root_urn=${encodeURIComponent(evidence.graph_root_urns[0])}`
+      : null;
+  if (!href) {
+    return null;
+  }
   return {
     id: `live:evidence:${evidence.id}`,
     label: evidence.finding_title || evidence.id,

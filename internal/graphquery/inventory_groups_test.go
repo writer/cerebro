@@ -28,8 +28,6 @@ func TestInventoryGroupForEntityType(t *testing.T) {
 		{"trusted_endpoint.agent", InventoryGroupDevices},
 		{"kandji.blueprint", InventoryGroupDevices},
 		{"sentinelone.agent", InventoryGroupDevices},
-		{"secret", InventoryGroupSecrets},
-		{"cerebro.credential", InventoryGroupSecrets},
 	}
 	for _, testCase := range cases {
 		got, label, ok := InventoryGroupForEntityType(testCase.entityType)
@@ -59,7 +57,6 @@ func TestInventoryGroupRuleOrderResolvesOverlaps(t *testing.T) {
 		{"gcp.service_account", InventoryGroupIAM, InventoryGroupCloud},
 		{"aws.ecr.container.image", InventoryGroupCode, InventoryGroupCloud},
 		{"okta.user", InventoryGroupIAM, InventoryGroupSaaS},
-		{"aws.secret", InventoryGroupSecrets, InventoryGroupCloud},
 		{"kolide.device", InventoryGroupDevices, InventoryGroupIAM},
 	}
 	for _, testCase := range cases {
@@ -77,7 +74,6 @@ func TestInventoryGroupHandlesRuntimeTypes(t *testing.T) {
 		"runtime.user":        InventoryGroupIAM,
 		"runtime.group":       InventoryGroupIAM,
 		"runtime.repository":  InventoryGroupCode,
-		"runtime.secret":      InventoryGroupSecrets,
 		"runtime.device":      InventoryGroupDevices,
 		"runtime.integration": InventoryGroupSaaS,
 	}
@@ -112,7 +108,7 @@ func TestInventoryGroupMatchesUnderscoreSeparatedTypes(t *testing.T) {
 }
 
 func TestInventoryGroupLeavesUnmatchedTypesUngrouped(t *testing.T) {
-	for _, entityType := range []string{"policy", "control", "document", "grc.target", "", "   "} {
+	for _, entityType := range []string{"policy", "control", "document", "grc.target", "secret", "runtime.secret", "cerebro.credential", "", "   "} {
 		if _, _, ok := InventoryGroupForEntityType(entityType); ok {
 			t.Fatalf("%q: expected no group", entityType)
 		}

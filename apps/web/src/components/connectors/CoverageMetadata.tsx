@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/grc/Primitives";
+import { complianceControlHref } from "@/lib/compliance-links";
 import { connectorCoverageControlRefLabel, type ConnectorCoverageControlRef } from "@/lib/connectors";
 import { humanize } from "@/lib/grc";
 
@@ -38,7 +39,7 @@ const cleanList = (values?: string[]) =>
 const refHref = (ref: ConnectorCoverageControlRef) => {
   const framework = ref.framework_name || ref.framework_id;
   if (!framework || !ref.control_id) return "";
-  return `/controls?framework=${encodeURIComponent(framework)}&control=${encodeURIComponent(ref.control_id)}`;
+  return complianceControlHref(framework, ref.control_id);
 };
 
 export const coverageMetadataTitle = (item: CoverageMetadataItem) => {

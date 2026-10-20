@@ -6,17 +6,10 @@ import { grcBrowserRouteContracts } from "./grc-route-contract.mjs";
 const pageSourcesByRoute = {
   "/": "src/app/page.tsx",
   "/risks": "src/app/risks/page.tsx",
-  "/controls": "src/app/controls/page.tsx",
-  "/policies": "src/app/policies/page.tsx",
-  "/frameworks": "src/app/frameworks/page.tsx",
-  "/controls/builder": "src/app/controls/builder/page.tsx",
-  "/evidence": "src/app/evidence/page.tsx",
-  "/questionnaires": "src/app/questionnaires/page.tsx",
-  "/vendors": "src/app/vendors/page.tsx",
+  "/grc": "src/app/grc/page.tsx",
   "/connectors": "src/app/connectors/page.tsx",
   "/explore": "src/app/explore/page.tsx",
   "/reports": "src/app/reports/page.tsx",
-  "/reports/packages": "src/app/reports/packages/page.tsx",
 };
 
 describe("GRC browser route contract", () => {
@@ -25,32 +18,18 @@ describe("GRC browser route contract", () => {
     expect(contracts.map((contract) => contract.route)).toEqual([
       "/",
       "/risks",
-      "/controls",
-      "/policies",
-      "/frameworks",
-      "/controls/builder",
-      "/evidence",
-      "/questionnaires",
-      "/vendors",
+      "/grc",
       "/connectors",
       "/explore?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
       "/reports",
-      "/reports/packages",
     ]);
     expect(contracts.map((contract) => contract.pageId)).toEqual([
       "overview",
       "risks",
-      "controls",
-      "policies",
-      "frameworks",
-      "control-builder",
-      "evidence",
-      "questionnaires",
-      "vendors",
+      "grc",
       "connectors",
       "graph-explorer",
       "reports",
-      "audit-packages",
     ]);
     expect(new Set(contracts.map((contract) => contract.pageId)).size).toBe(contracts.length);
   });

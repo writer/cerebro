@@ -22,6 +22,10 @@ type policyRuleConfig struct {
 	Definition         RuleDefinition
 	Conditions         []string
 	Query              string
+	Summary            string
+	Remediation        string
+	RemediationSteps   []string
+	RelPath            string
 	Resource           string
 	ResourceType       string
 	Category           string

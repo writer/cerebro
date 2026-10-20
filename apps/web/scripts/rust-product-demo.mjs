@@ -424,70 +424,6 @@ async function browserProof(webBase, rootURN, expectedProof, workDir, deadlineAt
   }
 }
 
-async function vendorBrowserProof(webBase, workDir, deadlineAt) {
-  const { chromium } = await import("@playwright/test");
-  let browser;
-  try {
-    browser = await withDeadline(
-      chromium.launch({ headless: true }),
-      deadlineAt,
-      "Chromium launch",
-    );
-  } catch (error) {
-    if (!String(error?.message).includes("Executable doesn't exist")) throw error;
-    browser = await withDeadline(
-      chromium.launch({ channel: "chrome", headless: true }),
-      deadlineAt,
-      "installed Chrome launch",
-    );
-  }
-  try {
-    const page = await browser.newPage({ viewport: { height: 900, width: 1440 } });
-    const pageErrors = [];
-    page.on("pageerror", (error) => pageErrors.push(error));
-    const vendorsResponse = page.waitForResponse(
-      (candidate) => new URL(candidate.url()).pathname === "/api/cerebro/grc/vendors",
-      { timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor browser request")) },
-    );
-    const navigation = await page.goto(`${webBase}/vendors?tenant_id=${tenantID}`, {
-      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor navigation")),
-      waitUntil: "domcontentloaded",
-    });
-    expect(navigation?.status() === 200, `Vendor page returned ${navigation?.status()}`);
-    const response = await vendorsResponse;
-    expect(response.status() === 200, `Vendor browser query returned ${response.status()}`);
-    expect(response.headers()["x-cerebro-fixture"] !== "true", "Vendor browser query used fixture data");
-    const payload = await response.json();
-    expect(payload.data_authority === "rust_graph", "Vendor response did not report Rust graph authority");
-    expect(
-      Number.isSafeInteger(payload.graph_revision) && payload.graph_revision > 0,
-      "Vendor response did not report a positive graph revision",
-    );
-    expect(payload.vendors?.length === 2, `Vendor response returned ${payload.vendors?.length ?? 0} rows; expected 2`);
-    await page.getByText("Identity Platform", { exact: true }).first().waitFor({
-      state: "visible",
-      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor row rendering")),
-    });
-    await page.getByText(`Rust graph revision ${payload.graph_revision}`, { exact: false }).waitFor({
-      state: "visible",
-      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor authority rendering")),
-    });
-    expect(pageErrors.length === 0, `Vendor page raised ${pageErrors[0]?.message}`);
-    const screenshot = path.join(workDir, "rust-product-vendors.png");
-    await page.screenshot({ fullPage: true, path: screenshot });
-    return {
-      endpoint_status: 200,
-      data_authority: payload.data_authority,
-      graph_revision: payload.graph_revision,
-      vendor_count: payload.vendors.length,
-      fixture_header: response.headers()["x-cerebro-fixture"] ?? "absent",
-      screenshot: path.basename(screenshot),
-    };
-  } finally {
-    await browser.close();
-  }
-}
-
 function waitForOperatorShutdown(children) {
   return new Promise((resolve, reject) => {
     const childListeners = new Map();
@@ -689,16 +625,14 @@ export async function runRustProductDemo(options = {}) {
     expect(proxiedGraph.root?.urn === rootURN, "Web proxy returned another graph root");
 
     const graphURL = `${webBase}/explore?root_urn=${encodeURIComponent(rootURN)}`;
-    const vendorsURL = `${webBase}/vendors?tenant_id=${tenantID}`;
     if (!options.check) {
       console.log(`[demo:rust] Graph explorer: ${graphURL}`);
-      console.log(`[demo:rust] Vendor register: ${vendorsURL}`);
       console.log("[demo:rust] Authority: Rust in-memory organizational graph");
       console.log("[demo:rust] Provider credentials: not required");
       console.log("[demo:rust] Press Ctrl-C to stop the Rust and web processes.");
       await waitForOperatorShutdown(processes);
       failed = false;
-      return { graphURL, vendorsURL, workDir };
+      return { graphURL, workDir };
     }
 
     const browser = await browserProof(
@@ -708,7 +642,6 @@ export async function runRustProductDemo(options = {}) {
       workDir,
       deadlineAt,
     );
-    const vendors = await vendorBrowserProof(webBase, workDir, deadlineAt);
     const revision = (
       process.env.GITHUB_SHA?.trim() ||
       (
@@ -741,7 +674,6 @@ export async function runRustProductDemo(options = {}) {
       },
       contract: {
         path: "/platform/graph/neighborhood",
-        vendor_path: "/grc/vendors",
         root_urn: rootURN,
         tenant_selected_by_browser: false,
       },
@@ -749,7 +681,6 @@ export async function runRustProductDemo(options = {}) {
         direct_rust_status: 200,
         web_proxy_status: 200,
         browser,
-        vendors,
       },
     };
     await mkdir(path.dirname(receiptPath), { recursive: true });

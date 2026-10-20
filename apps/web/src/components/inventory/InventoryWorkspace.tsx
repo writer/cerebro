@@ -16,9 +16,9 @@ import {
 import { grcPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
 import { grcScopeQuery, useDebouncedGRCScope, useGRCScopeQueryState, withGRCScope } from "@/lib/grc-scope";
 import { GRC_WORKLIST_LIMIT } from "@/lib/grc-list";
-import { inventoryGroupFor, type InventoryGroupID } from "@/lib/inventory-groups";
+import { INVENTORY_GROUPS, inventoryGroupFor, isInventoryGroupID, type InventoryGroupID } from "@/lib/inventory-groups";
 import { inventoryAttr } from "@/lib/inventory-review";
-import { inventoryMetadataMatch, inventorySourceOptions, inventoryTypeOptions } from "@/lib/inventory-search";
+import { inventoryDeviceUser, inventoryMetadataMatch, inventorySourceOptions, inventoryTypeOptions } from "@/lib/inventory-search";
 import { inventoryAssetSurface, inventoryNarrowingFilterCount, inventoryRequestSurface } from "@/lib/inventory-surface";
 import { useQueryParamState } from "@/lib/query-params";
 import { metricDetailForState, metricValueForState, runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
@@ -126,9 +126,14 @@ function AssetClassRail({
   );
 }
 
-export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {}) {
-  const groupDefinition = inventoryGroupFor(group);
+export function InventoryWorkspace({ group: pinnedGroup }: { group?: InventoryGroupID } = {}) {
   const { tenantID, workspaceID, setTenantID, setWorkspaceID } = useGRCScopeQueryState();
+  const [groupFilter, setGroupFilter] = useQueryParamState("group");
+  // A preset route pins its group; the main register takes it from the Group filter.
+  const selectedGroupFilter = groupFilter.trim();
+  const group = pinnedGroup ?? (isInventoryGroupID(selectedGroupFilter) ? selectedGroupFilter : undefined);
+  const groupDefinition = inventoryGroupFor(group);
+  const showDeviceUser = group === "devices";
   const [categoryID, setCategoryID] = useQueryParamState("category_id");
   const [query, setQuery] = useQueryParamState("q");
   const [sourceID, setSourceID] = useQueryParamState("source_id");
@@ -202,6 +207,7 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
   }, [assets.length, categories, categoryID]);
 
   const filterChips = [
+    { label: "Group", value: pinnedGroup ? "" : groupDefinition?.label ?? selectedGroupFilter, onClear: () => { setGroupFilter(""); setCategoryID(""); } },
     { label: "Records", value: surfaceFilter ? surfaceFilterLabel(surfaceFilter) : "", onClear: () => { setSurfaceFilter(""); setCategoryID(""); } },
     { label: "Class", value: selectedCategory?.label || categoryID, onClear: () => setCategoryID("") },
     { label: "Search", value: query, onClear: () => setQuery("") },
@@ -217,9 +223,10 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
     query,
     entityType,
     source: sourceID,
-  }) + Number(Boolean(workspaceID.trim()));
+  }) + Number(Boolean(workspaceID.trim())) + Number(!pinnedGroup && Boolean(selectedGroupFilter));
 
   const clearFilters = () => {
+    setGroupFilter("");
     setCategoryID("");
     setQuery("");
     setSourceID("");
@@ -230,17 +237,21 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
   };
 
   const exportAssets = () => {
-    const header = ["urn", "label", "entity_type", "surface", "source_id", "account_region", "risk_score", "risk_level"];
-    const rows = assets.map((asset) => [
-      asset.urn,
-      asset.label,
-      asset.entity_type,
-      inventoryAssetSurface(asset),
-      asset.source_id ?? "",
-      regionLabel(asset),
-      asset.risk_score ?? "",
-      asset.risk_level ?? "",
-    ]);
+    const header = ["urn", "label", "entity_type", "surface", "source_id", "account_region", "risk_score", "risk_level", ...(showDeviceUser ? ["user_name", "user_email"] : [])];
+    const rows = assets.map((asset) => {
+      const user = inventoryDeviceUser(asset);
+      return [
+        asset.urn,
+        asset.label,
+        asset.entity_type,
+        inventoryAssetSurface(asset),
+        asset.source_id ?? "",
+        regionLabel(asset),
+        asset.risk_score ?? "",
+        asset.risk_level ?? "",
+        ...(showDeviceUser ? [user.name, user.email] : []),
+      ];
+    });
     const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
     const link = document.createElement("a");
@@ -285,15 +296,26 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
               <input
                 value={query}
                 onChange={(event) => { setQuery(event.target.value); setAssetPage(1); }}
-                placeholder="Name, URN, account, region, tag, or any metadata value"
+                placeholder={showDeviceUser ? "Device name, username, user email, serial, or IP" : "Name, URN, account, region, username, tag, or any metadata value"}
                 className="control-input mt-1 w-full px-3 py-2.5 text-[15px]"
               />
             </label>
             <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-              Matches the asset name, its URN, and every attribute collected from the source.
+              {showDeviceUser
+                ? "Matches the device name, its URN, and every attribute collected from the source, including the endpoint's user."
+                : "Matches the asset name, its URN, and every attribute collected from the source."}
             </p>
 
             <div className="mt-4 flex flex-wrap items-end gap-3">
+              {!pinnedGroup && (
+                <label className={`${labelClass} min-w-[140px] flex-1`}>
+                  Group
+                  <select value={group ?? ""} onChange={(event) => { setGroupFilter(event.target.value); setCategoryID(""); setAssetPage(1); }} className={inputClass}>
+                    <option value="">All groups</option>
+                    {INVENTORY_GROUPS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </select>
+                </label>
+              )}
               <label className={`${labelClass} min-w-[150px] flex-1`}>
                 Records
                 <select value={surfaceFilter} onChange={(event) => { setSurfaceFilter(event.target.value); setCategoryID(""); setAssetPage(1); }} className={inputClass}>
@@ -364,6 +386,7 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
                   <thead>
                     <tr>
                       <th>{surfaceIsAssets ? "Asset" : "Record"}</th>
+                      {showDeviceUser && <th>User</th>}
                       <th>Type</th>
                       <th>Source</th>
                       <th>Account / Region</th>
@@ -372,7 +395,10 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
                   </thead>
                   <tbody>
                     {visibleAssets.map((asset) => {
+                      const deviceUser = showDeviceUser ? inventoryDeviceUser(asset) : null;
                       const metadataHit = inventoryMetadataMatch(asset, debouncedQuery);
+                      // The User column already shows a username or email hit.
+                      const showMetadataHit = metadataHit && !(deviceUser && [deviceUser.name, deviceUser.email].includes(metadataHit.value.trim()));
                       return (
                         <tr key={asset.urn}>
                           <td className="inventory-record-cell">
@@ -381,7 +407,7 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
                               <div className="min-w-0">
                                 <Link href={withGRCScope(`/inventory/${encodeURIComponent(asset.urn)}`, { tenantID, workspaceID })} className="block max-w-[26rem] truncate font-medium text-[var(--text-primary)] hover:text-[var(--primary)]">{asset.label || shortEntity(asset.urn)}</Link>
                                 {secondaryAssetID(asset) && <div className="truncate font-mono text-[11px] text-[var(--text-muted)]">{secondaryAssetID(asset)}</div>}
-                                {metadataHit && (
+                                {metadataHit && showMetadataHit && (
                                   <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)]" title={`${metadataHit.key}: ${metadataHit.value}`}>
                                     Matched {humanize(metadataHit.key)}: {metadataHit.value}
                                   </div>
@@ -389,6 +415,18 @@ export function InventoryWorkspace({ group }: { group?: InventoryGroupID } = {})
                               </div>
                             </div>
                           </td>
+                          {deviceUser && (
+                            <td data-label="User">
+                              {deviceUser.name || deviceUser.email ? (
+                                <>
+                                  {deviceUser.name && <div className="truncate text-[13px] text-[var(--text-primary)]">{deviceUser.name}</div>}
+                                  {deviceUser.email && <div className={deviceUser.name ? "truncate text-[11px] text-[var(--text-muted)]" : "truncate text-[13px] text-[var(--text-primary)]"}>{deviceUser.email}</div>}
+                                </>
+                              ) : (
+                                <span className="text-[13px] text-[var(--text-muted)]">Not reported</span>
+                              )}
+                            </td>
+                          )}
                           <td data-label="Type">
                             <div className="text-[13px] text-[var(--text-primary)]">{descriptionLabel(asset)}</div>
                             <div className="mt-0.5 font-mono text-[11px] text-[var(--text-muted)]">{asset.entity_type}</div>

@@ -9,7 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
-const wantBuiltinCatalogEntries = 800
+const wantBuiltinCatalogEntries = 801
 const wantBuiltinCatalogBespokeRuntimeEntries = 3
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {

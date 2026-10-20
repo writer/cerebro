@@ -86,7 +86,11 @@ export const frameworkRouteSegment = (framework: { id?: string; name: string }) 
 
 export const frameworkMatchesRouteSegment = (framework: { id?: string; name: string }, segment: string) => {
   const decoded = decodeURIComponent(segment).trim().toLowerCase();
-  return decoded === framework.id?.trim().toLowerCase() || decoded === decodeURIComponent(frameworkRouteSegment(framework));
+  // Links built from a finding's control ref only know the framework name, so
+  // the name-derived segment must resolve even when the catalog entry has an id.
+  return decoded === framework.id?.trim().toLowerCase()
+    || decoded === decodeURIComponent(frameworkRouteSegment(framework))
+    || decoded === decodeURIComponent(frameworkRouteSegment({ name: framework.name }));
 };
 
 export const staticGRCFrameworkCatalog: GRCFramework[] = supportedGRCFrameworks.map((framework) => {

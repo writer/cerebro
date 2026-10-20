@@ -45,14 +45,14 @@ func TestInventoryGroupFilterResolvesLiveEntityKinds(t *testing.T) {
 }
 
 // Without the empty-group guard the filter stays unset and the catalog returns
-// every kind, which would show cloud resources under an empty Secrets page.
+// every kind, which would show cloud resources under an empty Devices page.
 func TestInventoryEmptyGroupReturnsNothingRatherThanEverything(t *testing.T) {
 	store := inventoryGroupCatalog("aws.ec2.instance", "okta.user")
 	service := NewWithCapabilities(nil, store, nil)
 
-	assets, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: "secrets", Limit: 10})
+	assets, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", CategoryID: InventoryGroupDevices, Limit: 10})
 	if err != nil {
-		t.Fatalf("ListInventoryAssets(secrets) error = %v", err)
+		t.Fatalf("ListInventoryAssets(devices) error = %v", err)
 	}
 	if len(assets) != 0 {
 		t.Fatalf("expected no assets for an unpopulated group, got %d", len(assets))

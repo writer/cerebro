@@ -101,9 +101,9 @@ export default function SharedAuditPackagePage() {
         description="Approved evidence and scope, ready for review."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Link href="/reports/packages" className={buttonClass}>
+            <Link href="/reports" className={buttonClass}>
               <ArrowLeft className="h-3.5 w-3.5" />
-              Packet review
+              Reports
             </Link>
             <a href={`/api/cerebro${grcPath("/grc/control-packets/export", { format: "markdown" })}`} className={buttonClass}>
               <Download className="h-3.5 w-3.5" />

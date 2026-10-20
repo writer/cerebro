@@ -14,7 +14,7 @@ const developerLinks = [
   { label: "Audit Events", href: "/developer/audit", description: "Search actions by actor, resource, or outcome." },
   { label: "Identity Contract", href: "/developer/identity", description: "Current user and write-stamp fields." },
   { label: "Security Producers", href: "/developer/producers", description: "Sources producing security evidence." },
-  { label: "Risk Scoring", href: "/developer/scoring", description: "How findings are ranked." },
+  { label: "Risk Model", href: "/developer/scoring", description: "How assets and attack paths are scored." },
   { label: "Ask Evals", href: "/developer/evals", description: "Local Ask quality evals and rubric outcomes." },
 ];
 

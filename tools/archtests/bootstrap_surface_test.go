@@ -179,7 +179,10 @@ import (
 // Manual GRC vendor creation leaves only scope/auth adapters, dependency wiring,
 // cache invalidation, and route handoff in bootstrap. Bounded request decoding,
 // event mapping, and append/projection ordering stay in sourcehttp/grcvendorcreate.
-const bootstrapProductionGoLineBudget = 29817
+// The asset risk model adds only route registration and scope policies.
+// Model validation, path traversal, and scoring stay in internal/assetrisk;
+// request mapping stays in sourcehttp/assetriskmodel.
+const bootstrapProductionGoLineBudget = 29823
 
 type bootstrapFileLineCount struct {
 	path  string

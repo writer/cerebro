@@ -3,7 +3,6 @@ package graphquery
 import "strings"
 
 const (
-	InventoryGroupSecrets = "secrets"
 	InventoryGroupDevices = "devices"
 	InventoryGroupIAM     = "iam"
 	InventoryGroupCode    = "code"
@@ -28,12 +27,6 @@ type inventoryGroupRule struct {
 // declared before the provider-prefix rules that would otherwise absorb them.
 func inventoryGroupRules() []inventoryGroupRule {
 	return []inventoryGroupRule{
-		{
-			id:       InventoryGroupSecrets,
-			label:    "Secrets",
-			exact:    []string{"secret", "certificate"},
-			suffixes: []string{".secret", ".credential", ".certificate"},
-		},
 		{
 			id:       InventoryGroupDevices,
 			label:    "Devices",

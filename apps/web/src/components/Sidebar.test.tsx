@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MINOR_TITLE_WORDS, navigationEntries, operatorNavLinks } from "@/lib/navigation";
 
-import { hasSidebarIcon, isSidebarLinkActive, sidebarNavGroups, sidebarNavLinks, sidebarPrimaryLinks, sidebarSupportLinks, sidebarUtilityGroups, sidebarUtilityLinks } from "./Sidebar";
+import { hasSidebarIcon, isSidebarGroupActive, isSidebarLinkActive, sidebarNavGroups, sidebarNavLinks, sidebarPrimaryLinks, sidebarSupportLinks, sidebarUtilityGroups, sidebarUtilityLinks } from "./Sidebar";
 
 const links = [
   { href: "/trends" },
@@ -67,9 +67,17 @@ describe("isSidebarLinkActive", () => {
       "/inventory/saas",
       "/inventory/code",
       "/inventory/devices",
-      "/inventory/secrets",
-      "/explore",
     ]);
+  });
+
+  it("puts Attack Graphs directly under Inventory as its own heading", () => {
+    const ids = sidebarNavGroups.map((group) => group.id);
+    const attackGraphs = sidebarNavGroups.find((group) => group.id === "attack-graphs");
+
+    expect(ids.indexOf("attack-graphs")).toBe(ids.indexOf("inventory") + 1);
+    expect(attackGraphs?.label).toBe("Attack Graphs");
+    expect(attackGraphs?.href).toBe("/explore");
+    expect(attackGraphs?.links).toEqual([]);
   });
 
   it("keeps finding surfaces under Risks rather than in the asset register", () => {
@@ -78,8 +86,8 @@ describe("isSidebarLinkActive", () => {
 
     expect(risks?.label).toBe("Risks");
     expect(risks?.href).toBe("/risks");
-    expect(risks?.links.map((link) => link.href)).toEqual(["/verified", "/security/lifecycle"]);
-    expect(inventory?.links.map((link) => link.href)).not.toContain("/security/lifecycle");
+    expect(risks?.links.map((link) => link.href)).toEqual(["/verified"]);
+    expect(inventory?.links.map((link) => link.href)).not.toContain("/verified");
   });
 
   it("gives rule content a home of its own", () => {
@@ -90,20 +98,14 @@ describe("isSidebarLinkActive", () => {
     expect(rules?.links.map((link) => link.href)).toEqual(["/developer/scoring"]);
   });
 
-  it("gathers every governance record under Compliance", () => {
+  it("keeps Compliance to frameworks and the reports that export them", () => {
     const complianceGroup = sidebarNavGroups.find((group) => group.id === "compliance");
 
     expect(complianceGroup?.label).toBe("Compliance");
-    expect(complianceGroup?.links.map((link) => link.href)).toEqual([
-      "/controls",
-      "/evidence",
-      "/frameworks",
-      "/policies",
-      "/questionnaires",
-      "/vendors",
-      "/reports",
-      "/reports/packages",
-    ]);
+    expect(complianceGroup?.href).toBe("/grc");
+    expect(complianceGroup?.links.map((link) => link.href)).toEqual(["/reports"]);
+    expect(isSidebarGroupActive("/frameworks/soc-2", complianceGroup!)).toBe(true);
+    expect(isSidebarGroupActive("/inventory", complianceGroup!)).toBe(false);
   });
 
   it("leads with daily work rather than governance records", () => {
@@ -114,11 +116,13 @@ describe("isSidebarLinkActive", () => {
     expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/connectors"]);
   });
 
-  it("never shows a report child without its parent", () => {
+  it("drops the retired governance record pages from the sidebar", () => {
     const hrefs = sidebarNavLinks.map((link) => link.href);
 
-    expect(hrefs).toContain("/reports/packages");
     expect(hrefs).toContain("/reports");
+    for (const retired of ["/controls", "/evidence", "/frameworks", "/policies", "/questionnaires", "/vendors", "/reports/packages"]) {
+      expect(hrefs).not.toContain(retired);
+    }
   });
 
   it("keeps trend pages outside the visible sidebar", () => {

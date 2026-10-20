@@ -135,7 +135,7 @@ describe("portable web fixture route bug bash", () => {
     expect(routes).toContain("/connectors/okta/setup");
     expect(routes).toContain("/findings/demo-finding-critical");
     expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");
-    expect(routes).toContain("/vendors/urn%3Acerebro%3Ademo-tenant%3Avendor%3Acore-sso");
+    expect(routes).toContain("/frameworks/soc2");
     expect(routes).not.toContain(expect.stringMatching(/\[[^\]]+\]/));
   });
 
@@ -288,7 +288,7 @@ describe("portable web fixture E2E contracts", () => {
   it("checks public config before every declared route", async () => {
     const contracts = [
       { heading: "Overview", pageId: "overview", route: "/" },
-      { heading: "Controls", pageId: "controls", route: "/controls" },
+      { heading: "Compliance", pageId: "grc", route: "/grc" },
     ];
     const fetchPage = vi.fn(async (url) => {
       const pathname = new URL(url).pathname;
@@ -310,7 +310,7 @@ describe("portable web fixture E2E contracts", () => {
     await expect(validateHttpContracts("http://127.0.0.1:43123", { contracts, fetchPage }))
       .resolves.toEqual(contracts);
     expect(fetchPage.mock.calls.map(([url]) => new URL(url).pathname))
-      .toEqual(["/api/config", "/", "/controls"]);
+      .toEqual(["/api/config", "/", "/grc"]);
   });
 });
 

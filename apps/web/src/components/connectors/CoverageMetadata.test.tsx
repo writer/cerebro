@@ -47,6 +47,6 @@ describe("CoverageMetadata", () => {
     expect(container.textContent).toContain("Identity Configuration");
     expect(container.textContent).toContain("Identity And Access");
     expect(container.textContent).toContain("SOC 2 CC6.1");
-    expect(container.querySelector("a")?.getAttribute("href")).toBe("/controls?framework=SOC%202&control=CC6.1");
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("/frameworks/soc-2?control=CC6.1");
   });
 });

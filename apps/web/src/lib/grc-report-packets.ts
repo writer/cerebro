@@ -1,4 +1,4 @@
-import type { GRCGraph, GRCGraphNode, GRCGraphRelation, GRCReportMetadata } from "@/lib/grc";
+import type { GRCReportMetadata } from "@/lib/grc";
 
 export type ReportRedactionMode = "share_safe" | "internal";
 
@@ -27,54 +27,6 @@ export const redactReportIdentifier = (value: string | undefined, mode: ReportRe
   const text = value?.trim() ?? "";
   if (!text || mode === "internal") return text;
   return replacement;
-};
-
-const placeholderFor = (type: string | undefined, index: number) => {
-  const normalizedType = (type ?? "resource").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "resource";
-  return `[${normalizedType}-${index}]`;
-};
-
-const redactAttributes = (attributes: Record<string, string> | undefined, mode: ReportRedactionMode) => {
-  if (!attributes || mode === "internal") return attributes;
-  return Object.fromEntries(
-    Object.entries(attributes).map(([key, value]) => [key, redactReportText(value, mode)]),
-  );
-};
-
-export const redactReportGraph = (graph: GRCGraph | undefined, mode: ReportRedactionMode): GRCGraph | undefined => {
-  if (!graph || mode === "internal") return graph;
-
-  const urnPlaceholders = new Map<string, { index: number; urn: string }>();
-  const placeholderURN = (urn: string, type?: string) => {
-    const existing = urnPlaceholders.get(urn);
-    if (existing) return existing;
-    const index = urnPlaceholders.size + 1;
-    const next = { index, urn: placeholderFor(type, index) };
-    urnPlaceholders.set(urn, next);
-    return next;
-  };
-  const redactNode = (node: GRCGraphNode | undefined): GRCGraphNode | undefined => {
-    if (!node) return undefined;
-    const placeholder = placeholderURN(node.urn, node.entity_type);
-    return {
-      ...node,
-      urn: placeholder.urn,
-      label: placeholderFor(node.entity_type, placeholder.index),
-      attributes: redactAttributes(node.attributes, mode),
-    };
-  };
-  const redactRelation = (relation: GRCGraphRelation): GRCGraphRelation => ({
-    ...relation,
-    from_urn: placeholderURN(relation.from_urn).urn,
-    to_urn: placeholderURN(relation.to_urn).urn,
-    attributes: redactAttributes(relation.attributes, mode),
-  });
-
-  return {
-    root: redactNode(graph.root),
-    neighbors: graph.neighbors?.map(redactNode).filter((node): node is GRCGraphNode => Boolean(node)),
-    relations: graph.relations?.map(redactRelation),
-  };
 };
 
 export const reportReadinessIntent = (status?: string): "danger" | "warning" | "success" | "neutral" => {

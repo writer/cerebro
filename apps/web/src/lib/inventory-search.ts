@@ -28,6 +28,20 @@ export const inventoryMetadataMatch = (
 };
 
 /**
+ * Names the person a device belongs to, from whichever user attribute its source collected.
+ *
+ * Device sources disagree on where the user lives: EDR agents report the last
+ * logged-in account, MDMs report the assigned user's email.
+ */
+export const inventoryDeviceUser = (asset: GRCInventoryAsset): { name: string; email: string } => {
+  const attributes = asset.attributes ?? {};
+  const value = (key: "user_name" | "username" | "user_email" | "owner_email") => String(attributes[key] ?? "").trim();
+  const email = value("user_email") || value("owner_email");
+  const name = value("user_name") || value("username");
+  return { name: name && name !== email ? name : "", email };
+};
+
+/**
  * Lists every entity type the catalog reports, for the server-side type filter.
  *
  * Categories cover the whole corpus, so these options do not drift with the

@@ -296,14 +296,6 @@ async function request(url, options = {}) {
   return { body, headers: response.headers, status: response.status };
 }
 
-function lifecycleSuccesses(metrics) {
-  const match =
-    /cerebro_rust_http_requests_total\{operation="security_lifecycle",status_class="success"\} (\d+)/.exec(
-      metrics,
-    );
-  return match ? Number.parseInt(match[1], 10) : 0;
-}
-
 function neighborhoodSuccesses(metrics) {
   const match =
     /cerebro_rust_http_requests_total\{operation="neighborhood",status_class="success"\} (\d+)/.exec(
@@ -1086,9 +1078,7 @@ export async function runAuthenticatedRustE2E(options = {}) {
     });
 
     const metricsBefore = await request(`http://127.0.0.1:${rustPort}/metrics`);
-    const beforeCount = lifecycleSuccesses(metricsBefore.body);
     const graphBeforeCount = neighborhoodSuccesses(metricsBefore.body);
-    expect(beforeCount >= 1, "Direct Rust lifecycle read was not recorded");
     expect(graphBeforeCount >= 1, "Direct Rust graph read was not recorded");
 
     const { chromium } = await import("@playwright/test");
@@ -1109,34 +1099,6 @@ export async function runAuthenticatedRustE2E(options = {}) {
     const page = await context.newPage();
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error));
-    const lifecycleResponse = page.waitForResponse(
-      (candidate) =>
-        new URL(candidate.url()).pathname === "/api/cerebro/v1/security/lifecycle",
-      { timeout: Math.min(30_000, remaining(deadlineAt, "lifecycle browser request")) },
-    );
-    const navigation = await page.goto(
-      `http://127.0.0.1:${webPort}/security/lifecycle`,
-      {
-        timeout: Math.min(30_000, remaining(deadlineAt, "lifecycle navigation")),
-        waitUntil: "domcontentloaded",
-      },
-    );
-    expect(navigation?.status() === 200, `Lifecycle page returned ${navigation?.status()}`);
-    const dataResponse = await lifecycleResponse;
-    expect(dataResponse.status() === 200, `Lifecycle browser query returned ${dataResponse.status()}`);
-    await page
-      .getByText("No credential or certificate records match these filters.", {
-        exact: true,
-      })
-      .waitFor({
-        state: "visible",
-        timeout: Math.min(30_000, remaining(deadlineAt, "lifecycle empty state")),
-      });
-    expect(pageErrors.length === 0, `Lifecycle page raised ${pageErrors[0]?.message}`);
-    await page.screenshot({
-      fullPage: true,
-      path: path.join(workDir, "authenticated-rust-lifecycle.png"),
-    });
     await context.setExtraHTTPHeaders({
       Authorization: `Bearer ${bearer}`,
     });
@@ -1212,12 +1174,7 @@ export async function runAuthenticatedRustE2E(options = {}) {
     });
 
     const metricsAfter = await request(`http://127.0.0.1:${rustPort}/metrics`);
-    const afterCount = lifecycleSuccesses(metricsAfter.body);
     const graphAfterCount = neighborhoodSuccesses(metricsAfter.body);
-    expect(
-      afterCount > beforeCount,
-      `Browser lifecycle read did not reach Rust (${beforeCount} -> ${afterCount})`,
-    );
     expect(
       graphAfterCount > graphBeforeCount,
       `Browser graph read did not reach Rust (${graphBeforeCount} -> ${graphAfterCount})`,
@@ -1225,7 +1182,6 @@ export async function runAuthenticatedRustE2E(options = {}) {
     failed = false;
     return {
       identityConfidence: identity.user.confidence,
-      lifecycleRequests: afterCount,
       actionVersion: actionResult.operation.version,
       graphNodes: graphNodeCount,
       graphRelations: graphRelationCount,
@@ -1269,7 +1225,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runAuthenticatedRustE2E(parseArgs(process.argv.slice(2)))
     .then((result) => {
       console.log(
-        `[e2e:rust-auth:local] passed signed browser identity, Graph explorer, and Action lifecycle -> Next relay -> Rust/Postgres/provider authority (${result.identityConfidence}, ${result.graphNodes} graph nodes, ${result.graphRelations} relations, Action version ${result.actionVersion}, ${result.lifecycleRequests} lifecycle reads, ${result.graphRequests} graph reads)`,
+        `[e2e:rust-auth:local] passed signed browser identity, Graph explorer, and Action lifecycle -> Next relay -> Rust/Postgres/provider authority (${result.identityConfidence}, ${result.graphNodes} graph nodes, ${result.graphRelations} relations, Action version ${result.actionVersion}, ${result.graphRequests} graph reads)`,
       );
     })
     .catch((error) => {

@@ -15,12 +15,15 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp/assetriskmodel"
 	complianceassessmenthttp "github.com/writer/cerebro/internal/sourcehttp/complianceassessment"
 	compliancemonitorhttp "github.com/writer/cerebro/internal/sourcehttp/compliancemonitor"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
 	evidenceledgerhttp "github.com/writer/cerebro/internal/sourcehttp/evidenceledger"
+	"github.com/writer/cerebro/internal/sourcehttp/findingrulecatalog"
+	"github.com/writer/cerebro/internal/sourcehttp/frameworksettings"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
 	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
@@ -206,6 +209,11 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handleGetRiskScoringConfig)
 	registerHTTPRoute(mux, "PUT /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handlePutRiskScoringConfig)
 	registerHTTPRoute(mux, "DELETE /grc/risk-scoring-config", routeSurfacePlatformHTTP, app.handleDeleteRiskScoringConfig)
+	assetRisk := assetriskmodel.NewHandler(app.deps.StateStore, app.deps.GraphReads.Catalog, effectiveTenantFilter)
+	registerHTTPRoute(mux, "GET /grc/asset-risk-model", routeSurfacePlatformHTTP, assetRisk.GetModel)
+	registerHTTPRoute(mux, "PUT /grc/asset-risk-model", routeSurfacePlatformHTTP, assetRisk.PutModel)
+	registerHTTPRoute(mux, "DELETE /grc/asset-risk-model", routeSurfacePlatformHTTP, assetRisk.DeleteModel)
+	registerHTTPRoute(mux, "GET /platform/graph/risk-paths", routeSurfacePlatformHTTP, assetRisk.GetPaths)
 	registerHTTPRoute(mux, "GET /grc/findings", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("findings", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCFindings))
 	registerHTTPRoute(mux, "POST /grc/work-items", routeSurfacePlatformHTTP, app.handleDeriveComplianceWork)
 	registerHTTPRoute(mux, "GET /grc/work-items", routeSurfacePlatformHTTP, app.handleListComplianceWorkItems)
@@ -221,6 +229,9 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/controls/export", routeSurfacePlatformHTTP, app.handleGRCControlsExport)
 	registerHTTPRoute(mux, "GET /grc/evidence", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("evidence", time.Minute, grcCacheScopeEvidence, grcCacheScopeFindings, grcCacheScopeRuntime), app.handleGRCEvidence))
 	registerHTTPRoute(mux, "GET /grc/frameworks", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("frameworks", 5*time.Minute), app.handleGRCFrameworks))
+	frameworkSettings := frameworksettings.NewHandler(app.deps.StateStore, effectiveTenantFilter)
+	registerHTTPRoute(mux, "GET /grc/framework-settings", routeSurfacePlatformHTTP, frameworkSettings.Get)
+	registerHTTPRoute(mux, "PUT /grc/framework-settings", routeSurfacePlatformHTTP, frameworkSettings.Put)
 	registerHTTPRoute(mux, "GET /grc/control-archetypes", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.archetypes", 5*time.Minute), app.handleGRCControlArchetypes))
 	registerHTTPRoute(mux, "GET /grc/control-profiles", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.profiles", 5*time.Minute), app.handleGRCControlProfiles))
 	registerHTTPRoute(mux, "GET /grc/control-coverage", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("control.coverage", 5*time.Minute), app.handleGRCControlCoverage))
@@ -270,6 +281,13 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 }
 func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /finding-rules", routeSurfacePlatformHTTP, app.handleListFindingRules)
+	ruleCatalog := findingrulecatalog.NewHandler(app.deps.StateStore, effectiveTenantFilter, customDashboardActorID)
+	registerHTTPRoute(mux, "GET /finding-rules/catalog", routeSurfacePlatformHTTP, ruleCatalog.List)
+	registerHTTPRoute(mux, "GET /finding-rules/catalog/{ruleID}", routeSurfacePlatformHTTP, ruleCatalog.Get)
+	registerHTTPRoute(mux, "POST /finding-rules/validate", routeSurfacePlatformHTTP, ruleCatalog.Validate)
+	registerHTTPRoute(mux, "POST /finding-rules/test", routeSurfacePlatformHTTP, ruleCatalog.Test)
+	registerHTTPRoute(mux, "PUT /finding-rules/custom/{ruleID}", routeSurfacePlatformHTTP, ruleCatalog.Put)
+	registerHTTPRoute(mux, "DELETE /finding-rules/custom/{ruleID}", routeSurfacePlatformHTTP, ruleCatalog.Delete)
 	registerHTTPRoute(mux, "GET /findings/{findingID}", routeSurfacePlatformHTTP, app.handleGetFinding)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/resolve", routeSurfacePlatformHTTP, app.handleResolveFinding)
 	registerHTTPRoute(mux, "POST /findings/{findingID}/suppress", routeSurfacePlatformHTTP, app.handleSuppressFinding)
