@@ -68,6 +68,12 @@ import {
   type SourceReadiness,
 } from "@/lib/connector-runtime";
 import { useQueryParamState } from "@/lib/query-params";
+import {
+  sourceCredentialHealth,
+  type CredentialStoreListResponse,
+  type SourceCredentialHealth,
+  type SourceCredentialState,
+} from "@/lib/credential-stores";
 
 type LibraryTab = "all" | "attention" | "connected" | "available" | "backlog";
 
@@ -146,13 +152,33 @@ function SourceSignal({ label, value, attention = false }: { label: string; valu
   );
 }
 
+const credentialStateLabels: Record<SourceCredentialState, string> = {
+  attention: "Needs attention",
+  failing: "Failing",
+  ok: "Valid",
+};
+
+function credentialSignalValue(credential: SourceCredentialHealth) {
+  return (
+    <>
+      {credential.state === "ok" && credential.referenceOnly ? "Referenced" : credentialStateLabels[credential.state]}
+      <span className="block text-[11px] font-normal text-[var(--text-muted)]">
+        {credential.stores.join(", ") || "No store"}
+        {credential.lastValidatedAt ? ` · checked ${displayDate(credential.lastValidatedAt)}` : ""}
+      </span>
+    </>
+  );
+}
+
 function ConnectorLibraryRow({
   card,
   active,
+  credential,
   tenantID,
 }: {
   card: ConnectorCard;
   active: boolean;
+  credential?: SourceCredentialHealth;
   tenantID: string;
 }) {
   const status = compactConnectorStatus(card);
@@ -233,7 +259,7 @@ function ConnectorLibraryRow({
           )}
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className={`mt-4 grid grid-cols-1 gap-2 ${credential ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <SourceSignal
           label={total > 0 ? "Connections" : "Setup"}
           value={total > 0 ? total : setupAllowed ? "Ready to connect" : card.requestable ? "Request access" : "Unavailable"}
@@ -245,7 +271,20 @@ function ConnectorLibraryRow({
           attention={total > 0 && healthy < total}
         />
         <SourceSignal label="Last activity" value={latestActivity} />
+        {credential && (
+          <SourceSignal label="Credential" value={credentialSignalValue(credential)} attention={credential.state !== "ok"} />
+        )}
       </div>
+      {credential && credential.state !== "ok" && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
+          <span>
+            <span className="font-semibold">Credential:</span> {credential.detail || credentialStateLabels[credential.state]}
+          </span>
+          <Link href={connectorPath(card.source_id, { tenant_id: tenantID, tab: "setup" })} className="font-semibold underline-offset-2 hover:underline">
+            Fix credential
+          </Link>
+        </div>
+      )}
       {status !== "healthy" && status !== "not_configured" && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
           <span className="font-semibold">Next action:</span> {card.coverage?.next_action || card.nextAction || statusDescription}
@@ -665,12 +704,14 @@ function ConnectorResultList({
   libraryTab,
   visibleCards,
   sourceRuntimes,
+  credentialHealth,
   tenantID,
   activeSourceID,
 }: {
   libraryTab: LibraryTab;
   visibleCards: ConnectorCard[];
   sourceRuntimes: ConnectorRuntime[];
+  credentialHealth: Map<string, SourceCredentialHealth>;
   tenantID: string;
   activeSourceID: string;
 }) {
@@ -684,6 +725,7 @@ function ConnectorResultList({
           key={card.source_id}
           card={card}
           active={activeSourceID === card.source_id}
+          credential={connectorRuntimeTotal(card) > 0 ? credentialHealth.get(card.source_id) : undefined}
           tenantID={tenantID}
         />
       ))}
@@ -707,6 +749,10 @@ export default function ConnectorsPage() {
     tenant_id: debouncedTenantID,
   }));
   const definitionsQuery = useGRCQuery<ConnectorDefinitionListResponse>(withQuery("/connector-definitions", { tenant_id: debouncedTenantID }));
+  // Viewers without connector-credentials:read get an error here; the list
+  // simply renders without a credential column for them.
+  const credentialStoresQuery = useGRCQuery<CredentialStoreListResponse>(withQuery("/credential-stores", { tenant_id: debouncedTenantID, limit: 1000 }));
+  const credentialHealth = useMemo(() => sourceCredentialHealth(credentialStoresQuery.data), [credentialStoresQuery.data]);
 
   const boundedSourceRuntimeRows = useMemo(
     () => grcBoundedRows({
@@ -762,8 +808,16 @@ export default function ConnectorsPage() {
       }
       return true;
     });
-    return filterConnectorCards(scoped, sourceQuery, readinessFilter);
-  }, [cards, debouncedSourceID, libraryTab, readinessFilter, sourceQuery]);
+    const filtered = filterConnectorCards(scoped, sourceQuery, readinessFilter);
+    const credentialRank = (card: ConnectorCard) => {
+      const state = connectorRuntimeTotal(card) > 0 ? credentialHealth.get(card.source_id)?.state : undefined;
+      return state === "failing" ? 2 : state === "attention" ? 1 : 0;
+    };
+    return filtered
+      .map((card, index) => ({ card, index, rank: credentialRank(card) }))
+      .sort((a, b) => b.rank - a.rank || a.index - b.index)
+      .map((entry) => entry.card);
+  }, [cards, credentialHealth, debouncedSourceID, libraryTab, readinessFilter, sourceQuery]);
   const boundedVisibleCards = useMemo(
     () => grcBoundedRows({ rows: visibleCards, limit: CONNECTOR_RENDER_LIMIT, total: visibleCards.length }),
     [visibleCards],
@@ -824,7 +878,7 @@ export default function ConnectorsPage() {
               <Plus className="h-4 w-4" />
               Add Integration
             </button>
-            <button type="button" onClick={() => { void libraryQuery.reload(); void runtimeHealthQuery.reload(); void definitionsQuery.reload(); }} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
+            <button type="button" onClick={() => { void libraryQuery.reload(); void runtimeHealthQuery.reload(); void definitionsQuery.reload(); void credentialStoresQuery.reload(); }} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
@@ -889,6 +943,7 @@ export default function ConnectorsPage() {
                 libraryTab={libraryTab}
                 visibleCards={renderedCards}
                 sourceRuntimes={sourceRuntimes}
+                credentialHealth={credentialHealth}
                 tenantID={debouncedTenantID}
                 activeSourceID={debouncedSourceID}
               />
@@ -915,6 +970,7 @@ export default function ConnectorsPage() {
                 libraryTab={libraryTab}
                 visibleCards={renderedCards}
                 sourceRuntimes={sourceRuntimes}
+                credentialHealth={credentialHealth}
                 tenantID={debouncedTenantID}
                 activeSourceID={debouncedSourceID}
               />

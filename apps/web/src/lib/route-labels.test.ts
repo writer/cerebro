@@ -7,7 +7,6 @@ describe("route labels", () => {
     expect(routeLabelForPath("/")).toBe("Home");
     expect(routeLabelForPath("/connectors/builder")).toBe("Connector builder");
     expect(routeLabelForPath("/connectors/activation")).toBe("Source Activation");
-    expect(routeLabelForPath("/credentials")).toBe("Credential Stores");
     expect(routeLabelForPath("/identity")).toBe("Members");
     expect(routeLabelForPath("/reports/shared/fixture-snapshot-1")).toBe("Shared Snapshot");
     expect(routeLabelForPath("/developer/audit")).toBe("Audit Events");

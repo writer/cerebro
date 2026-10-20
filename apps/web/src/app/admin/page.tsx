@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { KeyRound, ScrollText, ShieldCheck } from "lucide-react";
+import { ScrollText, ShieldCheck } from "lucide-react";
 
 import { PageHeader, Panel } from "@/components/grc/Primitives";
 
@@ -10,13 +10,6 @@ const adminSections = [
     href: "/admin/access",
     icon: ShieldCheck,
     label: "Access Control",
-  },
-  {
-    description:
-      "Where the credentials for connected sources are held, either sealed in Cerebro or referenced from your own secret manager.",
-    href: "/credentials",
-    icon: KeyRound,
-    label: "Credential Stores",
   },
   {
     description: "Who changed what, and when.",
@@ -31,7 +24,7 @@ export default function AdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Admin"
-        description="Access, secrets, and audit history for this console."
+        description="Access and audit history for this console. Integration credentials are managed on each integration."
       />
 
       <Panel title="Settings">

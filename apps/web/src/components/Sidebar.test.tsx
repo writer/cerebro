@@ -144,7 +144,6 @@ describe("admin sub-tree", () => {
     expect(adminGroup?.links.map((link) => link.href)).toEqual([
       "/admin/access",
       "/identity",
-      "/credentials",
       "/developer/audit",
       "/developer",
     ]);
@@ -162,14 +161,14 @@ describe("admin sub-tree", () => {
   });
 
   it("reuses the existing entry for a page rather than declaring a second one", () => {
-    const duplicated = navigationEntries.filter((entry) => entry.href === "/credentials");
+    const duplicated = navigationEntries.filter((entry) => entry.href === "/identity");
     expect(duplicated).toHaveLength(1);
     expect(adminGroup?.links).toContain(duplicated[0]);
   });
 
-  it("keeps credential stores out of Inventory now that Admin owns it", () => {
-    const inventory = sidebarNavGroups.find((group) => group.id === "inventory");
-    expect(inventory?.links.map((link) => link.href)).not.toContain("/credentials");
+  // Credential health is shown on each integration, so there is no separate page to link.
+  it("no longer links a standalone credential stores page", () => {
+    expect(navigationEntries.map((entry) => entry.href)).not.toContain("/credentials");
   });
 
   it("does not render a grouped page twice in the utility list", () => {

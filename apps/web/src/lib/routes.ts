@@ -94,14 +94,7 @@ export const operatorNavLinks: NavigationEntry[] = [
     href: "/connectors",
     description: "Source setup and health.",
     section: "Operator",
-    keywords: ["runtimes", "sources", "connectors", "freshness", "scope"],
-  },
-  {
-    label: "Credential Stores",
-    href: "/credentials",
-    description: "Secret store setup and status.",
-    section: "Operator",
-    keywords: ["credential stores", "credentials", "secret stores", "vault", "secrets", "resolver"],
+    keywords: ["runtimes", "sources", "connectors", "freshness", "scope", "credentials", "secrets", "credential stores", "vault"],
   },
 ];
 

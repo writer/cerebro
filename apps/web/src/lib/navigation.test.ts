@@ -39,7 +39,7 @@ describe("navigation entries", () => {
     expect(hrefs).toContain("/verified");
     expect(hrefs).toContain("/grc");
     expect(hrefs).toContain("/connectors");
-    expect(hrefs).toContain("/credentials");
+    expect(hrefs).not.toContain("/credentials");
   });
 
   it("uses operator labels for risks, actions, and compliance", () => {
