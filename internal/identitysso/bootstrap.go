@@ -207,7 +207,7 @@ func SeedBootstrap(ctx context.Context, store ports.SSOConnectionStore, bootstra
 // SeedConfiguredBootstrap seeds the bootstrap before the server accepts
 // requests, so the console can sign in without an admin having configured SSO.
 // Any failure stops startup rather than serving a console nobody can log in to.
-func SeedConfiguredBootstrap(ctx context.Context, stateStore any, bootstrap *Bootstrap) error {
+func SeedConfiguredBootstrap(ctx context.Context, stateStore ports.StateStore, bootstrap *Bootstrap) error {
 	if bootstrap == nil {
 		return nil
 	}

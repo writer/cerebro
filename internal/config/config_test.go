@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/identitysso"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -1747,7 +1749,7 @@ func TestLoadIdentitySSOBootstrap(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "false")
 	t.Setenv("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON", doc)
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "requires CEREBRO_STATE_STORE_DRIVER=postgres") {
+	if _, err := Load(); !errors.Is(err, ErrIdentitySSOBootstrapRequiresPostgres) {
 		t.Fatalf("Load() without postgres error = %v", err)
 	}
 
@@ -1762,7 +1764,7 @@ func TestLoadIdentitySSOBootstrap(t *testing.T) {
 	}
 
 	t.Setenv("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON", strings.Replace(doc, "env:CEREBRO_SSO_OKTA_CLIENT_SECRET", "plaintext", 1))
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON") {
+	if _, err := Load(); !errors.Is(err, identitysso.ErrInvalid) {
 		t.Fatalf("Load() with a raw secret error = %v", err)
 	}
 }

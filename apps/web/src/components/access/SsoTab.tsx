@@ -47,9 +47,16 @@ const statusTone = { draft: "warning", tested: "neutral", active: "success", dis
 
 function presetFor(connection: SSOConnection): SSOProviderPreset {
   const issuer = connection.oidc?.issuer ?? connection.saml?.idpSsoUrl ?? "";
-  if (/okta(preview)?\.com|oktapreview/.test(issuer)) return SSO_PROVIDER_PRESETS[0];
-  if (/microsoftonline\.com|login\.microsoft/.test(issuer)) return SSO_PROVIDER_PRESETS[1];
-  if (/google\.com/.test(issuer)) return SSO_PROVIDER_PRESETS[2];
+  let host = "";
+  try {
+    host = new URL(issuer).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  const under = (...domains: string[]) => domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  if (under("okta.com", "oktapreview.com", "okta-emea.com")) return SSO_PROVIDER_PRESETS[0];
+  if (under("microsoftonline.com", "microsoft.com")) return SSO_PROVIDER_PRESETS[1];
+  if (under("google.com")) return SSO_PROVIDER_PRESETS[2];
   return SSO_PROVIDER_PRESETS[3];
 }
 

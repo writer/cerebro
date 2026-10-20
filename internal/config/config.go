@@ -1027,6 +1027,10 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+// ErrIdentitySSOBootstrapRequiresPostgres is returned when an SSO bootstrap is
+// configured without the Postgres state store that would hold it.
+var ErrIdentitySSOBootstrapRequiresPostgres = errors.New("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON requires CEREBRO_STATE_STORE_DRIVER=postgres and CEREBRO_POSTGRES_DSN")
+
 func loadIdentitySSOBootstrap(stateStore StateStoreConfig) (*identitysso.Bootstrap, error) {
 	raw, err := readConfigValue("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON")
 	if err != nil || raw == "" {
@@ -1037,7 +1041,7 @@ func loadIdentitySSOBootstrap(stateStore StateStoreConfig) (*identitysso.Bootstr
 		return nil, fmt.Errorf("parse CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON: %w", err)
 	}
 	if stateStore.Driver != StateStoreDriverPostgres {
-		return nil, errors.New("CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON requires CEREBRO_STATE_STORE_DRIVER=postgres and CEREBRO_POSTGRES_DSN")
+		return nil, ErrIdentitySSOBootstrapRequiresPostgres
 	}
 	return bootstrap, nil
 }

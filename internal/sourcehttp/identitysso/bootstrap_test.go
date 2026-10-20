@@ -120,24 +120,35 @@ func TestSeedBootstrapRequiresStore(t *testing.T) {
 	}
 }
 
+type pingOnlyStore struct{}
+
+func (pingOnlyStore) Ping(context.Context) error { return nil }
+
+type pingingFakeStore struct{ *fakeStore }
+
+func (*pingingFakeStore) Ping(context.Context) error { return nil }
+
 func TestSeedConfiguredBootstrap(t *testing.T) {
 	bootstrap := mustBootstrap(t, bootstrapDoc)
-	if err := sso.SeedConfiguredBootstrap(context.Background(), struct{}{}, nil); err != nil {
+	if err := sso.SeedConfiguredBootstrap(context.Background(), pingOnlyStore{}, nil); err != nil {
 		t.Fatalf("unset bootstrap: %v", err)
 	}
-	if err := sso.SeedConfiguredBootstrap(context.Background(), struct{}{}, bootstrap); err == nil {
+	if err := sso.SeedConfiguredBootstrap(context.Background(), pingOnlyStore{}, bootstrap); err == nil {
 		t.Fatal("seeded into a store without identity SSO support")
 	}
-	var typedNil *fakeStore
+	if err := sso.SeedConfiguredBootstrap(context.Background(), nil, bootstrap); err == nil {
+		t.Fatal("seeded into a nil store")
+	}
+	var typedNil *pingingFakeStore
 	if err := sso.SeedConfiguredBootstrap(context.Background(), typedNil, bootstrap); err == nil {
 		t.Fatal("seeded into a typed-nil store")
 	}
 	//nolint:staticcheck // A nil context is the misuse being tested.
-	if err := sso.SeedConfiguredBootstrap(nil, newFakeStore(), bootstrap); err == nil {
+	if err := sso.SeedConfiguredBootstrap(nil, &pingingFakeStore{newFakeStore()}, bootstrap); err == nil {
 		t.Fatal("seeded without a context")
 	}
 	store := newFakeStore()
-	if err := sso.SeedConfiguredBootstrap(context.Background(), store, bootstrap); err != nil {
+	if err := sso.SeedConfiguredBootstrap(context.Background(), &pingingFakeStore{store}, bootstrap); err != nil {
 		t.Fatalf("SeedConfiguredBootstrap: %v", err)
 	}
 	if _, err := store.GetSSOConnection(context.Background(), "default", "okta"); err != nil {
