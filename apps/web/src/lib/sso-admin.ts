@@ -329,7 +329,7 @@ export const durationLabel = (minutes: number) => {
 };
 
 export const testLoginHref = (connectionId: string) =>
-  `/api/auth/sso/start?${new URLSearchParams({ connection: connectionId, test: "1", returnTo: "/admin/access?tab=sso" })}`;
+  `/api/auth/sso/test?${new URLSearchParams({ connection: connectionId, returnTo: "/admin/access?tab=sso" })}`;
 
 export class IdentityAdminError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {

@@ -94,11 +94,13 @@ export const ssoRoutes = (origin: string) => ({
   // not the entity ID, decides which connection validates a SAML response.
   samlEntityId: `${origin}/api/auth/saml/metadata`,
   samlMetadataUrl: `${origin}/api/auth/saml/metadata`,
-  initiateLoginUrl: (connectionId: string) =>
-    `${origin}/api/auth/sso/start?connection=${encodeURIComponent(connectionId)}`,
   scimBaseUrl: `${origin}/scim/v2`,
   loginUrl: `${origin}/login`,
 });
+
+/** IdP-initiated start URL for one connection; empty until the connection has an id. */
+export const connectionStartUrl = (origin: string, connectionId: string) =>
+  connectionId ? `${origin}/api/auth/sso/start?${new URLSearchParams({ connection: connectionId })}` : "";
 
 /** Keyed hash for values (like client IPs) that should be correlatable without being stored in clear. */
 export const keyedHash = (value: string) => {

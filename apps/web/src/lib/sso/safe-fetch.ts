@@ -86,12 +86,6 @@ export const assertSafeOutboundUrl = async (input: string | URL) => {
   return url;
 };
 
-const requestUrl = (input: RequestInfo | URL) => {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input;
-  return input.url;
-};
-
 export type SafeFetchOptions = {
   timeoutMs?: number;
   maxBytes?: number;
@@ -134,20 +128,20 @@ const readCapped = async (response: Response, maxBytes: number) => {
  * returned Response has a fully buffered body.
  */
 export const safeFetch = async (
-  input: RequestInfo | URL,
+  input: string | URL,
   init: RequestInit = {},
   { timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES }: SafeFetchOptions = {},
 ): Promise<Response> => {
-  const url = await assertSafeOutboundUrl(requestUrl(input));
+  const url = await assertSafeOutboundUrl(input);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const parentSignal = init.signal ?? (input instanceof Request ? input.signal : undefined);
+  const parentSignal = init.signal;
   const abort = () => controller.abort();
   parentSignal?.addEventListener("abort", abort, { once: true });
   try {
-    const request = input instanceof Request ? new Request(input, init) : null;
-    const response = await fetch(request ?? url, {
-      ...(request ? {} : init),
+    // Fetch the validated URL object, never the caller's input, so the SSRF check covers what is requested.
+    const response = await fetch(url, {
+      ...init,
       redirect: "manual",
       signal: controller.signal,
     });

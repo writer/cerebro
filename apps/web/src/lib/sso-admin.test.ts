@@ -151,9 +151,8 @@ describe("validatePolicy", () => {
 describe("testLoginHref", () => {
   it("starts a test sign-in that returns to the SSO tab", () => {
     const url = new URL(testLoginHref("conn 1"), "https://cerebro.example.com");
-    expect(url.pathname).toBe("/api/auth/sso/start");
+    expect(url.pathname).toBe("/api/auth/sso/test");
     expect(url.searchParams.get("connection")).toBe("conn 1");
-    expect(url.searchParams.get("test")).toBe("1");
     expect(url.searchParams.get("returnTo")).toBe("/admin/access?tab=sso");
   });
 });

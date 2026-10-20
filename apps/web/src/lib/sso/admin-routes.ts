@@ -88,7 +88,7 @@ export const forwardAdminIdentityRequest = async (request: Request, segments: st
     const stamped = stampedBody(raw, resolved.route.actorField, authorization.user);
     if (stamped === null) return json({ error: "Request body must be a JSON object." }, 400);
     // A passing test is what allows a connection to become active, so only the real login test flow
-    // (/api/auth/sso/start?test=1) may record one.
+    // (/api/auth/sso/test) may record one.
     if (path.endsWith("/test-result") && (JSON.parse(stamped) as { ok?: unknown }).ok !== false) {
       return json({ error: "Successful tests are recorded only by the SSO test sign-in." }, 400);
     }
