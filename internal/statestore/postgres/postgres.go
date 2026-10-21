@@ -54,6 +54,7 @@ type askTablesReady struct {
 
 type identityTablesReady struct {
 	directory bool
+	sso       bool
 }
 
 type connectorTablesReady struct {

@@ -50,6 +50,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/grcfindings"
+	"github.com/writer/cerebro/internal/identitysso"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/knowledge"
 	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
@@ -289,6 +290,9 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 			return nil, fmt.Errorf("MCP OAuth bootstrap failed: %w", err)
 		}
 		app.mcpOAuthService = service
+	}
+	if err := identitysso.SeedConfiguredBootstrap(options.eventAdmissionContext, deps.StateStore, cfg.IdentitySSO.Bootstrap); err != nil {
+		return nil, err
 	}
 	app.services.sourceOps = newSourceService(app.cfg, app.sources)
 	app.services.reports = app.newReportService()

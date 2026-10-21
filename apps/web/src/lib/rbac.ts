@@ -22,7 +22,8 @@ export type AuthorizationPermission =
   | "workflow:replay"
   | "sources:preview"
   | "source-runtimes:write"
-  | "jobs:write";
+  | "jobs:write"
+  | "identity:admin";
 
 const permissionOrder: AuthorizationPermission[] = [
   "identity:read",
@@ -45,6 +46,7 @@ const permissionOrder: AuthorizationPermission[] = [
   "sources:preview",
   "source-runtimes:write",
   "jobs:write",
+  "identity:admin",
   "admin:read",
 ];
 
@@ -244,15 +246,28 @@ export const parseRoleClaimMappings = (raw: string | undefined | null): RoleClai
   return mappings;
 };
 
+/** Lowercased role names that map to a built-in permission bundle; unknown names are dropped. */
+export const knownAuthorizationRoles = (roles: Iterable<string>): string[] => {
+  const known: string[] = [];
+  for (const entry of roles) {
+    const role = String(entry).trim().toLowerCase();
+    if (role && Object.hasOwn(rolePermissionBundles, role) && !known.includes(role)) known.push(role);
+  }
+  return known;
+};
+
 export const roleClaimMappings = (): RoleClaimMapping[] =>
   parseRoleClaimMappings(process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS);
 
-/** Roles a user earns from mapped claim values, on top of any role claim they already carry. */
+/**
+ * Roles a user earns from mapped claim values, on top of any role claim they already carry. SSO sessions are
+ * excluded: their roles come only from the signing-in connection's own role mappings.
+ */
 export const rolesFromClaimMappings = (
   user: CurrentUser | null | undefined,
   mappings: RoleClaimMapping[] = roleClaimMappings(),
 ): string[] => {
-  if (mappings.length === 0) return [];
+  if (mappings.length === 0 || user?.source === "sso-session") return [];
   const claimValues: Record<RoleClaimSource, string[]> = {
     groups: cleanList(user?.entitlements?.groups),
     roles: cleanList(user?.entitlements?.roles),

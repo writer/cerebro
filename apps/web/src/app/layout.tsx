@@ -4,6 +4,7 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Suspense } from "react";
 import "./globals.css";
 
+import AppChrome from "@/components/AppChrome";
 import CerebroAgentPanelShell from "@/components/agent/CerebroAgentPanelShell";
 import { CerebroAgentProvider } from "@/components/agent/CerebroAgentProvider";
 import CommandPaletteShell from "@/components/CommandPaletteShell";
@@ -54,21 +55,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         <CerebroAgentProvider>
                           <CommandPaletteProvider>
                             <SidebarProvider>
-                              <div className="flex h-screen max-w-full overflow-hidden">
-                                <Sidebar />
-                                <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+                              <AppChrome
+                                sidebar={<Sidebar />}
+                                topbar={(
                                   <Suspense fallback={null}>
                                     <Topbar />
                                   </Suspense>
-                                  <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-10 py-8 max-lg:px-6 max-md:px-4 max-md:py-5">
-                                    <div className="mx-auto w-full max-w-[1480px]">
-                                      <Suspense fallback={null}>{children}</Suspense>
-                                    </div>
-                                  </main>
-                                </div>
-                              </div>
-                              <CommandPaletteShell />
-                              <CerebroAgentPanelShell />
+                                )}
+                                overlays={(
+                                  <>
+                                    <CommandPaletteShell />
+                                    <CerebroAgentPanelShell />
+                                  </>
+                                )}
+                              >
+                                <Suspense fallback={null}>{children}</Suspense>
+                              </AppChrome>
                             </SidebarProvider>
                           </CommandPaletteProvider>
                         </CerebroAgentProvider>

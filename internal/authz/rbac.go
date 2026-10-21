@@ -25,6 +25,8 @@ const (
 	ScopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	ScopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	ScopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	ScopeIdentitySSORead           = "cerebro.identity.sso.read"
+	ScopeIdentitySSOWrite          = "cerebro.identity.sso.write"
 
 	ScopePolicyEvaluationDatasetsRead    = "cerebro.policy_evaluation_datasets.read"
 	ScopePolicyEvaluationDatasetsPropose = "cerebro.policy_evaluation_datasets.propose"
@@ -67,6 +69,8 @@ var allScopes = []string{
 	ScopePolicyEvaluationDatasetsPropose,
 	ScopePolicyEvaluationDatasetsApprove,
 	ScopeUserPreferencesWrite,
+	ScopeIdentitySSORead,
+	ScopeIdentitySSOWrite,
 }
 
 var roleAliases = map[string]string{
@@ -124,6 +128,12 @@ func ScopesForRoles(roles []string) []string {
 
 func ExpandedScopes(scopes []string, roles []string) []string {
 	return normalize(append(clone(scopes), ScopesForRoles(roles)...))
+}
+
+// IsKnownRole reports whether role names a built-in Cerebro role or alias.
+func IsKnownRole(role string) bool {
+	_, ok := roleScopes[canonicalRole(strings.TrimSpace(role))]
+	return ok
 }
 
 func HasRole(roles []string) bool {

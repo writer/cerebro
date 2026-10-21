@@ -8,8 +8,15 @@ COPY apps/slack-companion/package.json ./apps/slack-companion/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY sdk/typescript/package.json ./sdk/typescript/package.json
 
+# npm's own fetch retries do not cover a connection reset mid-download, so retry the whole install.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci --workspace @writer/cerebro-web --include-workspace-root
+    for attempt in 1 2 3; do \
+      npm ci --workspace @writer/cerebro-web --include-workspace-root \
+        --fetch-retries=5 --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=60000 && exit 0; \
+      echo "npm ci attempt ${attempt} failed" >&2; \
+      sleep $((attempt * 10)); \
+    done; \
+    exit 1
 
 FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
 WORKDIR /workspace

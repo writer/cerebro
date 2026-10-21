@@ -63,6 +63,9 @@ const resolveAppVersion = () => {
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: workspaceRoot,
+  // SAML XML signature handling and the AWS SDK are Node-only libraries; load them from node_modules at
+  // runtime instead of bundling them into server chunks.
+  serverExternalPackages: ["@node-saml/node-saml", "@aws-sdk/client-secrets-manager"],
   env: {
     NEXT_PUBLIC_CEREBRO_WEB_VERSION: resolveAppVersion(),
   },

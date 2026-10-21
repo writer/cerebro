@@ -7793,6 +7793,901 @@ paths:
         '401':
           description: Authenticated user identity is required.
 
+  /platform/identity/sso/connections:
+    get:
+      summary: List web console SSO connections
+      description: Server-to-server route for the web console. Requires cerebro.identity.sso.read.
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: SSO connections.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSOConnection'
+        '404':
+          description: identity_sso_unavailable when the state store has no identity SSO support. Every /platform/identity/ route returns this code in that case.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+    post:
+      summary: Create a web console SSO connection
+      description: New connections start as draft or disabled; activation requires a passing test result. Requires cerebro.identity.sso.write.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSOConnectionInput'
+      responses:
+        '201':
+          description: Created connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOConnection'
+        '400':
+          description: Invalid connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '409':
+          description: Domain already routed to another connection (domain_in_use) or the connection was never tested (connection_not_tested).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+  /platform/identity/sso/connections/{connectionID}:
+    parameters:
+      - name: connectionID
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get a web console SSO connection
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOConnection'
+        '404':
+          description: Connection not found.
+    put:
+      summary: Replace a web console SSO connection
+      description: Changing OIDC or SAML settings clears the last test and resets the status to draft unless the connection is disabled. Disabling the connection or changing its domains, roleMappings, or defaultRoles revokes every session on the connection. The enforced-policy lockout check runs inside the store transaction.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSOConnectionInput'
+      responses:
+        '200':
+          description: Updated connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOConnection'
+        '400':
+          description: Invalid connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '404':
+          description: Connection not found.
+        '409':
+          description: domain_in_use, connection_not_tested, or last_active_connection while SSO is enforced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+    delete:
+      summary: Delete a web console SSO connection
+      description: Also deletes the connection's sessions, SCIM tokens, and directory records. The enforced-policy lockout check runs inside the store transaction.
+      tags:
+        - Identity
+      responses:
+        '204':
+          description: Connection deleted.
+        '404':
+          description: Connection not found.
+        '409':
+          description: last_active_connection while SSO is enforced.
+  /platform/identity/sso/connections/{connectionID}/test-result:
+    post:
+      summary: Record an SSO connection test login
+      description: A passing test promotes a draft connection to tested. Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route. The authenticated principal is recorded as lastTest.actor and the body actor as lastTest.onBehalfOf.
+      tags:
+        - Identity
+      parameters:
+        - name: connectionID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok:
+                  type: boolean
+                actor:
+                  type: string
+                  description: Admin who ran the test login. Stored as lastTest.onBehalfOf, never as the principal.
+                detail:
+                  type: string
+      responses:
+        '200':
+          description: Connection with the recorded test.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOConnection'
+        '404':
+          description: Connection not found.
+  /platform/identity/sso/policy:
+    get:
+      summary: Get the web console SSO policy
+      description: Returns defaults when no policy has been saved.
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Effective SSO policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOPolicy'
+    put:
+      summary: Replace the web console SSO policy
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSOPolicy'
+      responses:
+        '200':
+          description: Saved SSO policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOPolicy'
+        '400':
+          description: Invalid policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '409':
+          description: no_active_connection when enforcing without an active connection. Checked inside the store transaction.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+  /platform/identity/sessions:
+    post:
+      summary: Create a web console session
+      description: The caller sends only the SHA-256 hash of the opaque cookie token. Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route. expiresAt and idleTimeoutMinutes are capped at the policy values, and sessions whose roles include cerebro.admin expire after at most min(policy sessionMaxLifetimeMinutes, 12h). The email domain must be one of the connection's domains, and without jitProvisioning a matching directory user must exist.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSOSessionInput'
+      responses:
+        '201':
+          description: Created session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOSession'
+        '400':
+          description: Invalid session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '403':
+          description: user_inactive when the matching directory user is inactive, user_deprovisioned when it was deleted through SCIM, or domain_not_allowed when the email domain is not routed to the connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '404':
+          description: Connection not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '409':
+          description: connection_not_active, session_exists, or subject_mismatch when the directory user is bound to a different subject on the connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+    get:
+      summary: List live web console sessions
+      tags:
+        - Identity
+      parameters:
+        - name: subject
+          in: query
+          description: Match a session subject exactly or its email case-insensitively.
+          schema:
+            type: string
+        - name: email
+          in: query
+          description: Alias for subject, used when subject is omitted.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Live sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSOSessionSummary'
+    delete:
+      summary: Revoke every session for a user
+      description: Exactly one of subject or email is required.
+      tags:
+        - Identity
+      parameters:
+        - name: subject
+          in: query
+          description: Match a session subject exactly or its email case-insensitively.
+          schema:
+            type: string
+        - name: email
+          in: query
+          description: Match a session email case-insensitively.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Number of revoked sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: integer
+        '400':
+          description: Neither or both of subject and email were given.
+  /platform/identity/sessions/{tokenHash}:
+    parameters:
+      - name: tokenHash
+        in: path
+        required: true
+        description: Lowercase hex SHA-256 of the session cookie token.
+        schema:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    get:
+      summary: Resolve a web console session
+      description: Returns 404 for missing, expired, revoked, or idle-expired sessions, for sessions whose connection is missing or not active, and for sessions whose matching directory user is inactive or deleted through SCIM. Bumps lastSeenAt at most once per minute. Requires cerebro.identity.sso.service.
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Live session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSOSession'
+        '404':
+          description: Session not found or no longer valid.
+    delete:
+      summary: Delete a web console session
+      description: Requires cerebro.identity.sso.service.
+      tags:
+        - Identity
+      responses:
+        '204':
+          description: Session deleted (idempotent).
+  /platform/identity/saml/assertions:
+    post:
+      summary: Consume a verified SAML assertion once
+      description: The web console calls this after verifying a SAML response and before creating a session. The insert is atomic, so a replayed assertion ID on the connection or a reused request ID is rejected. Expired records are pruned opportunistically. Assertions valid for more than 24 hours are refused with 400. Requires cerebro.identity.sso.service.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SAMLAssertionInput'
+      responses:
+        '201':
+          description: Assertion recorded for the first time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [consumed]
+                properties:
+                  consumed:
+                    type: boolean
+        '400':
+          description: Missing fields or notOnOrAfter in the past.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '409':
+          description: assertion_replayed when the assertion ID or request ID was already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+  /platform/identity/scim/tokens:
+    get:
+      summary: List SCIM bearer tokens
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: SCIM token metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SCIMTokenInfo'
+    post:
+      summary: Create a SCIM bearer token
+      description: The raw token is returned once; only its SHA-256 hash is stored.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, connectionId]
+              properties:
+                name:
+                  type: string
+                connectionId:
+                  type: string
+                createdBy:
+                  type: string
+                  description: Admin who created the token. Stored as createdOnBehalfOf; createdBy in the response is the authenticated principal.
+      responses:
+        '201':
+          description: Created token.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SCIMTokenInfo'
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+        '400':
+          description: Invalid request.
+  /platform/identity/scim/tokens/{tokenID}:
+    delete:
+      summary: Delete a SCIM bearer token
+      tags:
+        - Identity
+      parameters:
+        - name: tokenID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token deleted.
+        '404':
+          description: Token not found.
+  /platform/identity/scim/v2/ServiceProviderConfig:
+    get:
+      summary: SCIM service provider configuration
+      description: SCIM 2.0 protocol route. Requires the X-Cerebro-SCIM-Token header in addition to service authentication.
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+      responses:
+        '200':
+          description: ServiceProviderConfig resource.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+  /platform/identity/scim/v2/ResourceTypes:
+    get:
+      summary: SCIM resource types
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+      responses:
+        '200':
+          description: ResourceType list.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMListResponse'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+  /platform/identity/scim/v2/Schemas:
+    get:
+      summary: SCIM schemas
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+      responses:
+        '200':
+          description: Schema list.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMListResponse'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+  /platform/identity/scim/v2/Users:
+    get:
+      summary: List SCIM users
+      description: Supports only the filter `userName eq "value"`.
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+        - $ref: '#/components/parameters/scimFilter'
+        - $ref: '#/components/parameters/scimStartIndex'
+        - $ref: '#/components/parameters/scimCount'
+      responses:
+        '200':
+          description: User list.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMListResponse'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+    post:
+      summary: Create a SCIM user
+      description: Adopts an existing just-in-time user with the same userName on the connection (clearing its jitGroups) or revives a SCIM-deleted user. Creating or adopting a user with active false revokes its console sessions on the token's connection.
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMResource'
+      responses:
+        '201':
+          description: Created user.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '409':
+          description: Duplicate userName.
+  /platform/identity/scim/v2/Users/{userID}:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/scimTokenHeader'
+    get:
+      summary: Get a SCIM user
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: User.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: User not found.
+    put:
+      summary: Replace a SCIM user
+      description: Setting active to false revokes the user's console sessions.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMResource'
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: User not found.
+    patch:
+      summary: Patch a SCIM user
+      description: Supports add, replace, and remove. Deactivation revokes the user's console sessions.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMPatchRequest'
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: User not found.
+    delete:
+      summary: Delete a SCIM user
+      description: Tombstones the user instead of deleting the row. The user becomes inactive, is hidden from SCIM reads (404), cannot be re-created by just-in-time provisioning, and its console sessions on the token's connection are revoked. A later SCIM create with the same userName revives it.
+      tags:
+        - Identity
+      responses:
+        '204':
+          description: User deleted.
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: User not found.
+  /platform/identity/scim/v2/Groups:
+    get:
+      summary: List SCIM groups
+      description: Supports only the filter `displayName eq "value"` and excludedAttributes=members.
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+        - $ref: '#/components/parameters/scimFilter'
+        - $ref: '#/components/parameters/scimStartIndex'
+        - $ref: '#/components/parameters/scimCount'
+        - name: excludedAttributes
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Group list.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMListResponse'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+    post:
+      summary: Create a SCIM group
+      description: Group create, replace, patch, and delete revoke the console sessions of every affected member on the token's connection.
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/scimTokenHeader'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMResource'
+      responses:
+        '201':
+          description: Created group.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '409':
+          description: Duplicate displayName.
+  /platform/identity/scim/v2/Groups/{groupID}:
+    parameters:
+      - name: groupID
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/scimTokenHeader'
+    get:
+      summary: Get a SCIM group
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Group.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: Group not found.
+    put:
+      summary: Replace a SCIM group
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMResource'
+      responses:
+        '200':
+          description: Updated group.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: Group not found.
+    patch:
+      summary: Patch a SCIM group
+      description: Supports displayName and externalId changes and member add, remove (including members[value eq "id"]), and replace.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SCIMPatchRequest'
+      responses:
+        '200':
+          description: Updated group.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SCIMResource'
+        '400':
+          $ref: '#/components/responses/SCIMBadRequest'
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: Group not found.
+    delete:
+      summary: Delete a SCIM group
+      tags:
+        - Identity
+      responses:
+        '204':
+          description: Group deleted.
+        '401':
+          $ref: '#/components/responses/SCIMUnauthorized'
+        '404':
+          description: Group not found.
+  /platform/identity/directory/users:
+    get:
+      summary: List console directory users
+      tags:
+        - Identity
+      parameters:
+        - name: query
+          in: query
+          description: Case-insensitive substring of userName, email, or name.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Directory users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DirectoryUser'
+  /platform/identity/directory/users/lookup:
+    get:
+      summary: Look up a directory user at login
+      description: Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route. Only scimGroups may be combined with assertion groups to authorize a session; jitGroups are display only.
+      tags:
+        - Identity
+      parameters:
+        - name: connectionId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: subject
+          in: query
+          description: IdP subject. When given, a user bound to this subject on the connection is preferred over an email match.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching user, preferring a subject binding, then SCIM-provisioned users.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectoryUser'
+        '404':
+          description: No matching user. SCIM-deleted users are not returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+  /platform/identity/directory/users/jit:
+    post:
+      summary: Record a login and provision the user just in time
+      description: Updates lastLoginAt, the per-connection subject binding, and jitGroups (replaced with the assertion groups) for an existing active user, or creates a just-in-time user when the connection allows it (409 jit_disabled otherwise). Never changes active or source, and never re-creates a SCIM-deleted user. Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route.
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [connectionId, subject, email]
+              properties:
+                connectionId:
+                  type: string
+                subject:
+                  type: string
+                email:
+                  type: string
+                name:
+                  type: string
+                groups:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Existing user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectoryUser'
+        '201':
+          description: Created just-in-time user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectoryUser'
+        '403':
+          description: user_inactive when the user is inactive, user_deprovisioned when it was deleted through SCIM, or domain_not_allowed when the email domain is not routed to the connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '404':
+          description: Connection not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+        '409':
+          description: connection_not_active, jit_disabled, or subject_mismatch when the user is bound to a different subject on the connection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySSOError'
+  /platform/identity/directory/groups:
+    get:
+      summary: List console directory groups
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Directory groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, displayName, memberCount, connectionId]
+                      properties:
+                        id:
+                          type: string
+                        displayName:
+                          type: string
+                        memberCount:
+                          type: integer
+                        connectionId:
+                          type: string
 components:
   securitySchemes:
     bearerAuth:
@@ -7929,7 +8824,425 @@ components:
       description: Optional retry key for agent task requests, limited to 255 UTF-8 bytes. When also present as idempotency_key in the JSON body, both values must match.
       schema:
         type: string
+    scimTokenHeader:
+      name: X-Cerebro-SCIM-Token
+      in: header
+      required: true
+      description: SCIM bearer token (cscim_...) forwarded by the web console from the IdP Authorization header. An optional "Bearer " prefix is accepted.
+      schema:
+        type: string
+    scimFilter:
+      name: filter
+      in: query
+      required: false
+      description: SCIM filter. Only a single `eq` comparison on the documented attribute is supported.
+      schema:
+        type: string
+    scimStartIndex:
+      name: startIndex
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+    scimCount:
+      name: count
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+      description: Page size; values above 200 are clamped to 200.
+  responses:
+    SCIMUnauthorized:
+      description: Missing or invalid SCIM token.
+      content:
+        application/scim+json:
+          schema:
+            $ref: '#/components/schemas/SCIMError'
+    SCIMBadRequest:
+      description: Invalid SCIM request, filter, or patch.
+      content:
+        application/scim+json:
+          schema:
+            $ref: '#/components/schemas/SCIMError'
   schemas:
+    IdentitySSOError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Validation message for 400 responses; otherwise the same value as code.
+        code:
+          type: string
+          description: Stable machine code such as invalid_request, connection_limit, domain_in_use, connection_not_tested, no_active_connection, connection_not_active, last_active_connection, bootstrap_managed, jit_disabled, subject_mismatch, user_inactive, user_deprovisioned, domain_not_allowed, assertion_replayed, session_exists, directory_conflict, not_found, tenant_forbidden, identity_sso_unavailable, internal_error.
+        detail:
+          type: string
+    SAMLAssertionInput:
+      type: object
+      required: [connectionId, assertionId, requestId, notOnOrAfter]
+      properties:
+        connectionId:
+          type: string
+        assertionId:
+          type: string
+          description: The verified assertion's ID attribute.
+        requestId:
+          type: string
+          description: The AuthnRequest ID the assertion answered (InResponseTo).
+        notOnOrAfter:
+          type: string
+          format: date-time
+          description: Must be in the future and at most 24 hours from now.
+    SSOOIDCConfig:
+      type: object
+      required: [issuer, clientId, clientSecretRef]
+      properties:
+        issuer:
+          type: string
+        clientId:
+          type: string
+        clientSecretRef:
+          type: string
+          description: Secret reference (env:NAME, aws-sm:<region>/<secret-id>, aws-sm:<region>:<secret-id>, or aws-sm:<secret ARN>, with an optional #field on aws-sm forms); never a secret value.
+        scopes:
+          type: array
+          items:
+            type: string
+        groupsClaim:
+          type: string
+        trustEmailClaim:
+          type: boolean
+          default: false
+          description: Declares the IdP authoritative for the email claim, so logins are accepted without email_verified=true.
+    SSOSAMLConfig:
+      type: object
+      required: [idpEntityId, idpSsoUrl, idpCertificates]
+      properties:
+        idpEntityId:
+          type: string
+        idpSsoUrl:
+          type: string
+        idpCertificates:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: string
+        idpMetadataUrl:
+          type: string
+        wantAssertionsSigned:
+          type: boolean
+        emailAttribute:
+          type: string
+        nameAttribute:
+          type: string
+        groupsAttribute:
+          type: string
+        nameIdFormat:
+          type: string
+    SSORoleMapping:
+      type: object
+      required: [group, roles]
+      properties:
+        group:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+    SSOConnectionInput:
+      type: object
+      required: [name, protocol]
+      properties:
+        name:
+          type: string
+        protocol:
+          type: string
+          enum: [oidc, saml]
+        status:
+          type: string
+          enum: [draft, tested, active, disabled]
+        domains:
+          type: array
+          items:
+            type: string
+        oidc:
+          $ref: '#/components/schemas/SSOOIDCConfig'
+        saml:
+          $ref: '#/components/schemas/SSOSAMLConfig'
+        roleMappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/SSORoleMapping'
+        defaultRoles:
+          type: array
+          items:
+            type: string
+        jitProvisioning:
+          type: boolean
+        updatedBy:
+          type: string
+          description: On input, the admin acting through the caller; stored as updatedOnBehalfOf. On output, the authenticated principal that wrote the connection.
+    SSOConnection:
+      allOf:
+        - $ref: '#/components/schemas/SSOConnectionInput'
+        - type: object
+          required: [id, status, domains, roleMappings, defaultRoles, jitProvisioning, managed, createdAt, updatedAt, updatedBy]
+          properties:
+            id:
+              type: string
+            managed:
+              type: boolean
+              description: True when stack configuration (CEREBRO_IDENTITY_SSO_BOOTSTRAP_JSON) owns this connection. Updates and deletion return 409 bootstrap_managed.
+            updatedOnBehalfOf:
+              type: string
+              description: Caller-asserted admin the principal acted for.
+            lastTest:
+              type: object
+              required: [at, ok, actor, detail]
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                ok:
+                  type: boolean
+                actor:
+                  type: string
+                  description: Authenticated principal that recorded the result.
+                onBehalfOf:
+                  type: string
+                  description: Caller-asserted admin who ran the test login.
+                detail:
+                  type: string
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    SSOPolicy:
+      type: object
+      required: [enforced, sessionMaxLifetimeMinutes, sessionIdleTimeoutMinutes]
+      properties:
+        enforced:
+          type: boolean
+        sessionMaxLifetimeMinutes:
+          type: integer
+          minimum: 15
+          maximum: 43200
+        sessionIdleTimeoutMinutes:
+          type: integer
+          minimum: 5
+          maximum: 10080
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+          description: On input, the admin acting through the caller; stored as updatedOnBehalfOf. On output, the authenticated principal that wrote the policy.
+        updatedOnBehalfOf:
+          type: string
+          description: Caller-asserted admin the principal acted for.
+    SSOSessionInput:
+      type: object
+      required: [tokenHash, connectionId, subject, expiresAt, idleTimeoutMinutes]
+      properties:
+        tokenHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        connectionId:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        roles:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+        idleTimeoutMinutes:
+          type: integer
+        userAgent:
+          type: string
+        ipHash:
+          type: string
+    SSOSession:
+      type: object
+      required: [id, connectionId, subject, email, name, groups, roles, createdAt, lastSeenAt, expiresAt, idleTimeoutMinutes]
+      properties:
+        id:
+          type: string
+        connectionId:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        roles:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        idleTimeoutMinutes:
+          type: integer
+    SSOSessionSummary:
+      allOf:
+        - $ref: '#/components/schemas/SSOSession'
+        - type: object
+          required: [tokenHashPrefix]
+          properties:
+            tokenHashPrefix:
+              type: string
+              maxLength: 8
+            userAgent:
+              type: string
+    SCIMTokenInfo:
+      type: object
+      required: [id, name, prefix, connectionId, createdAt, createdBy]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+        connectionId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          description: Authenticated principal that created the token.
+        createdOnBehalfOf:
+          type: string
+          description: Caller-asserted admin the principal acted for.
+        lastUsedAt:
+          type: string
+          format: date-time
+    DirectoryUser:
+      type: object
+      required: [id, userName, email, name, active, groups, scimGroups, jitGroups, source, connectionId]
+      properties:
+        id:
+          type: string
+        userName:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        groups:
+          type: array
+          description: Display union of scimGroups and jitGroups.
+          items:
+            type: string
+        scimGroups:
+          type: array
+          description: Display names of SCIM-managed group memberships. The only stored groups that may authorize a session.
+          items:
+            type: string
+        jitGroups:
+          type: array
+          description: Groups from the latest login assertion. Display only; cleared when SCIM takes over the user.
+          items:
+            type: string
+        source:
+          type: string
+          enum: [scim, jit]
+        connectionId:
+          type: string
+        lastLoginAt:
+          type: string
+          format: date-time
+    SCIMResource:
+      type: object
+      description: SCIM 2.0 resource (RFC 7643).
+      required: [schemas]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+    SCIMListResponse:
+      type: object
+      required: [schemas, totalResults, startIndex, itemsPerPage, Resources]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        itemsPerPage:
+          type: integer
+        Resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/SCIMResource'
+    SCIMPatchRequest:
+      type: object
+      required: [schemas, Operations]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        Operations:
+          type: array
+          items:
+            type: object
+            required: [op]
+            properties:
+              op:
+                type: string
+              path:
+                type: string
+              value: {}
+    SCIMError:
+      type: object
+      required: [schemas, status]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        scimType:
+          type: string
+        detail:
+          type: string
     SecurityLifecycleAggregates:
       type: object
       required: [counts_are_exact, matched_records, matched_findings, subject_kind_counts, state_counts, policy_state_counts]

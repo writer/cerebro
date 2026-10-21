@@ -495,3 +495,28 @@ describe("Cerebro proxy route", () => {
     expect(readBody).not.toHaveBeenCalled();
   });
 });
+
+describe("Cerebro proxy identity API boundary", () => {
+  it.each([
+    ["GET", ["platform", "identity", "sso", "connections"]],
+    ["GET", ["Platform", "IDENTITY", "sessions"]],
+    ["POST", ["platform", "identity", "sessions"]],
+    ["GET", ["platform/identity", "scim", "tokens"]],
+    ["DELETE", ["platform", "", "identity", "sessions", "abc"]],
+  ])("refuses %s %j without calling upstream", async (method, path) => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK = "1";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = { GET, POST, DELETE }[method as "GET" | "POST" | "DELETE"];
+    const response = await handler(
+      new NextRequest(`http://localhost/api/cerebro/${path.join("/")}`, {
+        method,
+        ...(method === "POST" ? { body: "{}", headers: { "content-type": "application/json", "content-length": "2" } } : {}),
+      }),
+      { params: Promise.resolve({ path }) },
+    );
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

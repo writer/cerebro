@@ -122,3 +122,29 @@ func hasScope(scopes []string, want string) bool {
 	}
 	return false
 }
+
+func TestIdentitySSOScopesAreAdminOnly(t *testing.T) {
+	for _, scope := range []string{ScopeIdentitySSORead, ScopeIdentitySSOWrite} {
+		if !contains(ScopesForRoles([]string{RoleCerebroAdmin}), scope) {
+			t.Fatalf("admin role missing %s", scope)
+		}
+		for _, role := range []string{RoleCerebroViewer, RoleCerebroAnalyst, RoleCerebroConnectorManager, RoleCerebroSourceManager} {
+			if contains(ScopesForRoles([]string{role}), scope) {
+				t.Fatalf("%s must not grant %s", role, scope)
+			}
+		}
+	}
+}
+
+func TestIsKnownRole(t *testing.T) {
+	for _, role := range []string{RoleCerebroAdmin, RoleCerebroViewer, "admin", " viewer "} {
+		if !IsKnownRole(role) {
+			t.Fatalf("IsKnownRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"", "root", "cerebro.superuser"} {
+		if IsKnownRole(role) {
+			t.Fatalf("IsKnownRole(%q) = true", role)
+		}
+	}
+}

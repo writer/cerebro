@@ -45,7 +45,8 @@ import {
   authorizeCurrentUser,
   type AuthorizationDecision,
 } from "@/lib/authorization";
-import { resolveCurrentUserFromHeadersWithFallback, type CurrentUser } from "@/lib/identity";
+import type { CurrentUser } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 import { currentUserServerAuditFields } from "@/lib/identity-server";
 import { headersWithTrace, startWebSpan, type WebSpan } from "@/lib/observability";
 

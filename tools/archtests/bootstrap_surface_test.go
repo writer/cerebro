@@ -182,7 +182,15 @@ import (
 // The asset risk model adds only route registration and scope policies.
 // Model validation, path traversal, and scoring stay in internal/assetrisk;
 // request mapping stays in sourcehttp/assetriskmodel.
-const bootstrapProductionGoLineBudget = 29823
+// Web console SSO adds only route registration, two scope constants, and
+// route policies. Connection, session, and SCIM rules stay in
+// internal/identitysso; request mapping stays in sourcehttp/identitysso; and
+// storage stays behind the IdentitySSOStore port. Stack-configured SSO
+// bootstrap adds one startup call; parsing and seeding stay in identitysso.
+// The identity SSO service scope adds route-policy rows, one scope constant,
+// and the SAML replay route registration; replay and session checks stay in
+// identitysso and the store.
+const bootstrapProductionGoLineBudget = 29888
 
 type bootstrapFileLineCount struct {
 	path  string

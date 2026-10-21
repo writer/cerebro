@@ -9,7 +9,7 @@ import {
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { authHeadersFor, buildCerebroUrl, CerebroProxyError } from "@/lib/cerebro-proxy";
 import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 import {
   headersWithTrace,
   responseHeadersWithTrace,

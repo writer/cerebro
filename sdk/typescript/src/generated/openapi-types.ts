@@ -2101,6 +2101,20 @@ export type DeviceTokenResponse = {
   token_type: "Bearer";
 };
 
+export type DirectoryUser = {
+  active: boolean;
+  connectionId: string;
+  email: string;
+  groups: string[];
+  id: string;
+  jitGroups: string[];
+  lastLoginAt?: string;
+  name: string;
+  scimGroups: string[];
+  source: "scim" | "jit";
+  userName: string;
+};
+
 export type EncryptedConnectorCredentialPayload = {
   algorithm: "RSA-OAEP-256+A256GCM";
   ciphertext: string;
@@ -4571,6 +4585,12 @@ export type IdentityOrganizationListResponse = {
   tenant_id?: string;
 };
 
+export type IdentitySSOError = {
+  code: string;
+  detail?: string;
+  error: string;
+};
+
 export type IdentityUser = {
   created_at?: string;
   display_name: string;
@@ -5275,6 +5295,161 @@ export type RuntimeResponseExecuteRequest = {
   target: string;
   tenant_id: string;
   trusted_scope?: boolean;
+};
+
+export type SAMLAssertionInput = {
+  assertionId: string;
+  connectionId: string;
+  notOnOrAfter: string;
+  requestId: string;
+};
+
+export type SCIMError = {
+  detail?: string;
+  schemas: string[];
+  scimType?: string;
+  status: string;
+};
+
+export type SCIMListResponse = {
+  Resources: SCIMResource[];
+  itemsPerPage: number;
+  schemas: string[];
+  startIndex: number;
+  totalResults: number;
+};
+
+export type SCIMPatchRequest = {
+  Operations: { op?: string; path?: string; value?: unknown }[];
+  schemas: string[];
+};
+
+/** SCIM 2.0 resource (RFC 7643). */
+export type SCIMResource = {
+  schemas: string[];
+  [key: string]: unknown;
+};
+
+export type SCIMTokenInfo = {
+  connectionId: string;
+  createdAt: string;
+  createdBy: string;
+  createdOnBehalfOf?: string;
+  id: string;
+  lastUsedAt?: string;
+  name: string;
+  prefix: string;
+};
+
+export type SSOConnection = {
+  createdAt: string;
+  defaultRoles: string[];
+  domains: string[];
+  id: string;
+  jitProvisioning: boolean;
+  lastTest?: { actor?: string; at?: string; detail?: string; ok?: boolean; onBehalfOf?: string };
+  managed: boolean;
+  name: string;
+  oidc?: SSOOIDCConfig;
+  protocol: "oidc" | "saml";
+  roleMappings: SSORoleMapping[];
+  saml?: SSOSAMLConfig;
+  status: "draft" | "tested" | "active" | "disabled";
+  updatedAt: string;
+  updatedBy: string;
+  updatedOnBehalfOf?: string;
+};
+
+export type SSOConnectionInput = {
+  defaultRoles?: string[];
+  domains?: string[];
+  jitProvisioning?: boolean;
+  name: string;
+  oidc?: SSOOIDCConfig;
+  protocol: "oidc" | "saml";
+  roleMappings?: SSORoleMapping[];
+  saml?: SSOSAMLConfig;
+  status?: "draft" | "tested" | "active" | "disabled";
+  updatedBy?: string;
+};
+
+export type SSOOIDCConfig = {
+  clientId: string;
+  clientSecretRef: string;
+  groupsClaim?: string;
+  issuer: string;
+  scopes?: string[];
+  trustEmailClaim?: boolean;
+};
+
+export type SSOPolicy = {
+  enforced: boolean;
+  sessionIdleTimeoutMinutes: number;
+  sessionMaxLifetimeMinutes: number;
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedOnBehalfOf?: string;
+};
+
+export type SSORoleMapping = {
+  group: string;
+  roles: string[];
+};
+
+export type SSOSAMLConfig = {
+  emailAttribute?: string;
+  groupsAttribute?: string;
+  idpCertificates: string[];
+  idpEntityId: string;
+  idpMetadataUrl?: string;
+  idpSsoUrl: string;
+  nameAttribute?: string;
+  nameIdFormat?: string;
+  wantAssertionsSigned?: boolean;
+};
+
+export type SSOSession = {
+  connectionId: string;
+  createdAt: string;
+  email: string;
+  expiresAt: string;
+  groups: string[];
+  id: string;
+  idleTimeoutMinutes: number;
+  lastSeenAt: string;
+  name: string;
+  roles: string[];
+  subject: string;
+};
+
+export type SSOSessionInput = {
+  connectionId: string;
+  email?: string;
+  expiresAt: string;
+  groups?: string[];
+  idleTimeoutMinutes: number;
+  ipHash?: string;
+  name?: string;
+  roles?: string[];
+  subject: string;
+  tokenHash: string;
+  userAgent?: string;
+};
+
+export type SSOSessionSummary = {
+  connectionId: string;
+  createdAt: string;
+  email: string;
+  expiresAt: string;
+  groups: string[];
+  id: string;
+  idleTimeoutMinutes: number;
+  lastSeenAt: string;
+  name: string;
+  roles: string[];
+  subject: string;
+  tokenHashPrefix: string;
+  userAgent?: string;
 };
 
 export type SecurityLifecycleAggregates = {

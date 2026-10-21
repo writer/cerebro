@@ -5,6 +5,8 @@ import {
   identityRequired,
   type CurrentUser,
 } from "@/lib/identity";
+import { ssoRequired } from "@/lib/sso/config";
+import { ssoEnforcementActive } from "@/lib/sso/enforcement-signal";
 import {
   hasExplicitCerebroRoleOrScope,
   userHasAuthorizationPermission,
@@ -50,6 +52,7 @@ const permissionEnvPrefix: Record<AuthorizationPermission, string> = {
   "sources:preview": "CEREBRO_AUTHZ_SOURCES_PREVIEW",
   "source-runtimes:write": "CEREBRO_AUTHZ_SOURCE_RUNTIMES_WRITE",
   "jobs:write": "CEREBRO_AUTHZ_JOBS_WRITE",
+  "identity:admin": "CEREBRO_AUTHZ_IDENTITY_ADMIN",
 };
 
 const splitEnvList = (value: string | undefined) =>
@@ -76,11 +79,22 @@ export const entitlementPolicyFor = (permission: AuthorizationPermission): Entit
   };
 };
 
+/**
+ * Identity is required when the deployment says so, and also whenever SSO is enforced: an enforced policy
+ * disables every other identity source, so an anonymous request must not fall through to "identity not
+ * required".
+ */
+export const effectiveIdentityRequired = () => identityRequired() || ssoRequired() || ssoEnforcementActive();
+
 const hasEntitlementPolicy = (policy: EntitlementPolicy) =>
   policy.groups.length > 0 || policy.roles.length > 0 || policy.scopes.length > 0;
 
+// SSO session roles are computed by Cerebro itself from connection role mappings, so they are always
+// enforced; otherwise a session with no mapped roles would pass every check in deployments without RBAC env.
 const builtinRbacRequired = (user: CurrentUser | null | undefined) =>
-  truthyEnv(process.env.CEREBRO_AUTHZ_BUILTIN_RBAC) || hasExplicitCerebroRoleOrScope(user);
+  truthyEnv(process.env.CEREBRO_AUTHZ_BUILTIN_RBAC) ||
+  user?.source === "sso-session" ||
+  hasExplicitCerebroRoleOrScope(user);
 
 const truthyEnv = (value: string | undefined) =>
   ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
@@ -122,9 +136,10 @@ export const authorizeCurrentUser = (
   const policy = entitlementPolicyFor(permission);
   const policyConfigured = hasEntitlementPolicy(policy);
   const builtinPolicyConfigured = builtinRbacRequired(user);
+  const requireIdentity = effectiveIdentityRequired();
 
   if (!user) {
-    if (identityRequired() || policyConfigured || builtinPolicyConfigured) {
+    if (requireIdentity || policyConfigured || builtinPolicyConfigured) {
       return denied(permission, user, 401, "identity_missing", "Current user identity is required.");
     }
     return {
@@ -141,15 +156,15 @@ export const authorizeCurrentUser = (
     return denied(permission, user, 409, "identity_conflict", "Conflicting identity signals were present.");
   }
 
-  if (identityRequired() && user.source === "local-fallback") {
+  if (requireIdentity && user.source === "local-fallback") {
     return denied(permission, user, 401, "identity_fallback", "Local fallback identity is not accepted in this deployment.");
   }
 
-  if ((identityRequired() || policyConfigured || builtinPolicyConfigured) && user.confidence === "unverified") {
+  if ((requireIdentity || policyConfigured || builtinPolicyConfigured) && user.confidence === "unverified") {
     return denied(permission, user, 401, "identity_unverified", "Identity claims are not verified enough for this action.");
   }
 
-  if (identityRequired() && user.warnings?.length) {
+  if (requireIdentity && user.warnings?.length) {
     return denied(permission, user, 401, "identity_warning", "Identity claims require attention.");
   }
 

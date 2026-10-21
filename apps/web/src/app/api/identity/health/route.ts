@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
-import { identityHealthFromHeaders, identityRuntimeConfig, resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { identityRuntimeConfig } from "@/lib/identity";
+import { identityHealthFromHeaders, resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 
 export async function GET(request: NextRequest) {
   if (isCerebroFixtureMode()) {

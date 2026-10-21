@@ -9,8 +9,7 @@ import {
   responseHeadersFor,
   rustOwnsWebAuthority,
 } from "@/lib/cerebro-proxy";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
-import { currentUserServerAuditFields } from "@/lib/identity-server";
+import { currentUserServerAuditFields, resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 
 export async function GET(request: NextRequest) {
   if (rustOwnsWebAuthority()) {

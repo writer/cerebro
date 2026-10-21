@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp/frameworksettings"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
+	identityssohttp "github.com/writer/cerebro/internal/sourcehttp/identitysso"
 	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
@@ -53,6 +54,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	identityHandler := identitydirectory.NewHandler(app.deps.StateStore, cfg.Auth, effectiveTenantFilter, authorizeTenantID)
 	registerHTTPRoute(mux, "GET /identity/orgs", routeSurfacePlatformHTTP, identityHandler.ListOrganizations)
 	registerHTTPRoute(mux, "GET /identity/users", routeSurfacePlatformHTTP, identityHandler.ListUsers)
+	app.registerIdentitySSORoutes(mux)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
 	app.registerPolicyCandidateRoutes(mux)
@@ -434,6 +436,47 @@ func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/telemetry/ingest", routeSurfacePlatformHTTP, handler.handleIngestTelemetry)
 	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP, handler.handleJWKS)
 }
+
+func (app *App) registerIdentitySSORoutes(mux *http.ServeMux) {
+	sso := identityssohttp.NewHandler(app.deps.StateStore, effectiveTenantFilter, userPreferenceActorID).WithBootstrap(app.cfg.IdentitySSO.Bootstrap)
+	registerHTTPRoute(mux, "GET /platform/identity/sso/connections", routeSurfacePlatformHTTP, sso.ListConnections)
+	registerHTTPRoute(mux, "POST /platform/identity/sso/connections", routeSurfacePlatformHTTP, sso.CreateConnection)
+	registerHTTPRoute(mux, "GET /platform/identity/sso/connections/{connectionID}", routeSurfacePlatformHTTP, sso.GetConnection)
+	registerHTTPRoute(mux, "PUT /platform/identity/sso/connections/{connectionID}", routeSurfacePlatformHTTP, sso.UpdateConnection)
+	registerHTTPRoute(mux, "DELETE /platform/identity/sso/connections/{connectionID}", routeSurfacePlatformHTTP, sso.DeleteConnection)
+	registerHTTPRoute(mux, "POST /platform/identity/sso/connections/{connectionID}/test-result", routeSurfacePlatformHTTP, sso.RecordTestResult)
+	registerHTTPRoute(mux, "GET /platform/identity/sso/policy", routeSurfacePlatformHTTP, sso.GetPolicy)
+	registerHTTPRoute(mux, "PUT /platform/identity/sso/policy", routeSurfacePlatformHTTP, sso.PutPolicy)
+	registerHTTPRoute(mux, "POST /platform/identity/sessions", routeSurfacePlatformHTTP, sso.CreateSession)
+	registerHTTPRoute(mux, "GET /platform/identity/sessions", routeSurfacePlatformHTTP, sso.ListSessions)
+	registerHTTPRoute(mux, "DELETE /platform/identity/sessions", routeSurfacePlatformHTTP, sso.RevokeSessions)
+	registerHTTPRoute(mux, "GET /platform/identity/sessions/{tokenHash}", routeSurfacePlatformHTTP, sso.GetSession)
+	registerHTTPRoute(mux, "DELETE /platform/identity/sessions/{tokenHash}", routeSurfacePlatformHTTP, sso.DeleteSession)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/tokens", routeSurfacePlatformHTTP, sso.ListSCIMTokens)
+	registerHTTPRoute(mux, "POST /platform/identity/scim/tokens", routeSurfacePlatformHTTP, sso.CreateSCIMToken)
+	registerHTTPRoute(mux, "DELETE /platform/identity/scim/tokens/{tokenID}", routeSurfacePlatformHTTP, sso.DeleteSCIMToken)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/ServiceProviderConfig", routeSurfacePlatformHTTP, sso.SCIMServiceProviderConfig)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/ResourceTypes", routeSurfacePlatformHTTP, sso.SCIMResourceTypes)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/Schemas", routeSurfacePlatformHTTP, sso.SCIMSchemas)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/Users", routeSurfacePlatformHTTP, sso.SCIMListUsers)
+	registerHTTPRoute(mux, "POST /platform/identity/scim/v2/Users", routeSurfacePlatformHTTP, sso.SCIMCreateUser)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/Users/{userID}", routeSurfacePlatformHTTP, sso.SCIMGetUser)
+	registerHTTPRoute(mux, "PUT /platform/identity/scim/v2/Users/{userID}", routeSurfacePlatformHTTP, sso.SCIMReplaceUser)
+	registerHTTPRoute(mux, "PATCH /platform/identity/scim/v2/Users/{userID}", routeSurfacePlatformHTTP, sso.SCIMPatchUser)
+	registerHTTPRoute(mux, "DELETE /platform/identity/scim/v2/Users/{userID}", routeSurfacePlatformHTTP, sso.SCIMDeleteUser)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/Groups", routeSurfacePlatformHTTP, sso.SCIMListGroups)
+	registerHTTPRoute(mux, "POST /platform/identity/scim/v2/Groups", routeSurfacePlatformHTTP, sso.SCIMCreateGroup)
+	registerHTTPRoute(mux, "GET /platform/identity/scim/v2/Groups/{groupID}", routeSurfacePlatformHTTP, sso.SCIMGetGroup)
+	registerHTTPRoute(mux, "PUT /platform/identity/scim/v2/Groups/{groupID}", routeSurfacePlatformHTTP, sso.SCIMReplaceGroup)
+	registerHTTPRoute(mux, "PATCH /platform/identity/scim/v2/Groups/{groupID}", routeSurfacePlatformHTTP, sso.SCIMPatchGroup)
+	registerHTTPRoute(mux, "DELETE /platform/identity/scim/v2/Groups/{groupID}", routeSurfacePlatformHTTP, sso.SCIMDeleteGroup)
+	registerHTTPRoute(mux, "GET /platform/identity/directory/users", routeSurfacePlatformHTTP, sso.ListDirectoryUsers)
+	registerHTTPRoute(mux, "GET /platform/identity/directory/users/lookup", routeSurfacePlatformHTTP, sso.LookupDirectoryUser)
+	registerHTTPRoute(mux, "POST /platform/identity/directory/users/jit", routeSurfacePlatformHTTP, sso.UpsertJITUser)
+	registerHTTPRoute(mux, "GET /platform/identity/directory/groups", routeSurfacePlatformHTTP, sso.ListDirectoryGroups)
+	registerHTTPRoute(mux, "POST /platform/identity/saml/assertions", routeSurfacePlatformHTTP, sso.ConsumeSAMLAssertion)
+}
+
 func registerHTTPRoute(mux *http.ServeMux, pattern string, _ bootstrapRouteSurface, handler http.HandlerFunc) {
 	mux.HandleFunc(pattern, handler)
 }

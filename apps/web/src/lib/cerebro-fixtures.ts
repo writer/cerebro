@@ -9,6 +9,7 @@ import type {
   GRCVendorDiscovery,
 } from "@/lib/grc";
 import { assetRiskFixtureResponse, resetAssetRiskFixturesForTests } from "@/lib/asset-risk-fixtures";
+import { isCerebroFixtureMode } from "@/lib/fixture-mode";
 import { findingRuleFixtureResponse, resetFindingRuleFixturesForTests } from "@/lib/finding-rule-fixtures";
 import { inventoryGroupFor, inventoryGroupForEntityType } from "@/lib/inventory-groups";
 
@@ -48,9 +49,6 @@ const vendorDiscoverySourceLabels: Record<string, string> = {
   okta: "Okta",
 };
 
-const truthy = (value: string | undefined) =>
-  ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
-
 const safeDecode = (value: string) => {
   try {
     return decodeURIComponent(value);
@@ -68,9 +66,7 @@ const normalizePath = (path: string) => {
   return trimmed.slice(start, end);
 };
 
-export const isCerebroFixtureMode = () =>
-  truthy(process.env.CEREBRO_WEB_FIXTURE_MODE) ||
-  process.env.CEREBRO_API_BASE?.trim() === "fixture://local";
+export { isCerebroFixtureMode };
 
 const jsonFixture = (payload: unknown, status = 200): FixtureResponse => ({
   body: JSON.stringify(payload),

@@ -4,7 +4,7 @@ import { parse } from "yaml";
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { authHeadersFor, buildCerebroUrl, fetchCerebro, proxyFetchError } from "@/lib/cerebro-proxy";
 import { cerebroFixtureResponseFor } from "@/lib/cerebro-fixtures";
-import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
+import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity-server";
 
 const OPENAPI_CACHE_TTL_MS = 5 * 60_000;
 let cachedOpenApi: { expiresAt: number; spec: Record<string, unknown> } | null = null;
