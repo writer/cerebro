@@ -20,7 +20,8 @@ jobs:
   review:
     name: deterministic-review-core
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Toolchain or Cargo.lock changes select the full Rust workspace and coverage gates on cold caches.
+    timeout-minutes: 60
     steps:
       - name: Checkout exact pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

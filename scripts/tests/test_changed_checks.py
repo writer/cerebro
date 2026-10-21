@@ -17,7 +17,17 @@ class ChangedChecksTests(unittest.TestCase):
                 full = root / path
                 full.parent.mkdir(parents=True, exist_ok=True)
                 full.write_text("package demo\n", encoding="utf-8")
-            return [command.name for command in changed.select_commands(files, root)]
+            return self.selected_targets(changed.select_commands(files, root))
+
+    @staticmethod
+    def selected_targets(commands):
+        """Command names plus every make goal, since workspace Rust targets share one make invocation."""
+        names = []
+        for command in commands:
+            names.append(command.name)
+            if command.argv[:1] == ["make"]:
+                names.extend(goal for goal in command.argv[1:] if goal not in names)
+        return names
 
     def test_sourcegen_paths_select_sourcegen_and_catalog_checks(self):
         names = self.command_names(["internal/connectorcatalog/catalog/devops-ci-cd.yaml"])
@@ -147,6 +157,26 @@ class ChangedChecksTests(unittest.TestCase):
         names = [plan.name for plan in selected]
         self.assertIn("rust-source-runtime-test", names)
         self.assertNotIn("rust-crate-test", names)
+
+    def test_workspace_rust_targets_share_one_make_invocation(self):
+        selected = changed.select_commands(["Cargo.lock"], Path("."))
+        workspace = [plan for plan in selected if "rust-wasm-check" in plan.argv]
+        self.assertEqual(len(workspace), 1)
+        self.assertEqual(workspace[0].argv, ["make", "graph-action-check", "rust-wasm-check"])
+        self.assertEqual(sum("graph-action-check" in plan.argv for plan in selected), 1)
+
+    def test_workspace_rust_targets_replace_package_scoped_rust_commands(self):
+        selected = changed.select_commands(["Cargo.lock", "crates/source-catalog/src/lib.rs"], Path("."))
+        names = [plan.name for plan in selected]
+        for package_command in ("rust-source-runtime-fmt", "rust-source-runtime-test", "rust-source-runtime-clippy"):
+            self.assertNotIn(package_command, names)
+        self.assertIn("graph-action-check+rust-wasm-check", names)
+        self.assertEqual(names.index("graph-action-check+rust-wasm-check"), 0)
+
+    def test_package_scoped_rust_commands_stay_without_a_workspace_target(self):
+        names = [plan.name for plan in changed.select_commands(["crates/source-catalog/src/lib.rs"], Path("."))]
+        self.assertIn("rust-source-runtime-test", names)
+        self.assertNotIn("graph-action-check", names)
 
     def test_unknown_or_missing_crate_manifest_selects_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
