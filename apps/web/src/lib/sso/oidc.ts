@@ -218,7 +218,11 @@ export const finishOidcLogin = async (
     }
   }
   if (!email) throw new LoginError("invalid_response", "The identity provider did not return an email address.");
-  if (emailVerified === false) throw new LoginError("access_denied", "The identity provider reports the email address as unverified.");
+  // The email routes the login and links it to a directory user, so only an explicit boolean true counts
+  // unless an admin has declared this IdP authoritative for email.
+  if (emailVerified !== true && oidc.trustEmailClaim !== true) {
+    throw new LoginError("access_denied", "The identity provider did not verify the email address.");
+  }
   if (!name) {
     name = [stringClaim(claims.given_name), stringClaim(claims.family_name)].filter(Boolean).join(" ") || email;
   }

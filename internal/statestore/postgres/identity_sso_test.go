@@ -68,6 +68,7 @@ func openIdentitySSOTestStore(t *testing.T) (*Store, string) {
 			`DELETE FROM identity_directory_users WHERE tenant_id IN ($1, $2)`,
 			`DELETE FROM identity_sso_connections WHERE tenant_id IN ($1, $2)`,
 			`DELETE FROM identity_sso_policies WHERE tenant_id IN ($1, $2)`,
+			`DELETE FROM identity_saml_assertions WHERE tenant_id IN ($1, $2)`,
 		} {
 			_, _ = store.db.ExecContext(ctx, statement, tenantID, tenantID+"-other")
 		}
@@ -95,7 +96,7 @@ func TestIdentitySSOConnectionsAndPolicyPersistence(t *testing.T) {
 		t.Fatalf("blank tenant = %v", err)
 	}
 	conn := ports.SSOConnection{
-		TenantID: tenantID, ID: "conn_a", Name: "Okta", Protocol: "oidc", Status: "draft",
+		TenantID: tenantID, ID: "conn_a", Name: "Okta", Protocol: "oidc", Status: "active",
 		Domains:      []string{"example.com"},
 		OIDC:         &ports.SSOOIDCConfig{Issuer: "https://example.okta.com", ClientID: "c", ClientSecretRef: "env:X", Scopes: []string{"openid"}, GroupsClaim: "groups"},
 		RoleMappings: []ports.SSORoleMapping{{Group: "admins", Roles: []string{"cerebro.admin"}}},
@@ -160,6 +161,7 @@ func TestIdentitySSOSessionsAndTokensPersistence(t *testing.T) {
 	store, tenantID := openIdentitySSOTestStore(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
+	putActiveIdentityConnection(t, store, tenantID, "conn_a", now)
 	hash := strings.Repeat("a", 63) + "1"
 	session := ports.SSOSession{
 		TenantID: tenantID, ID: "sess_1", TokenHash: hash, ConnectionID: "conn_a", Subject: "00u1", Email: "Alice@Example.com",
@@ -257,10 +259,7 @@ func TestIdentitySSODirectoryPersistence(t *testing.T) {
 	store, tenantID := openIdentitySSOTestStore(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	conn := ports.SSOConnection{TenantID: tenantID, ID: "conn_a", Name: "Okta", Protocol: "oidc", Status: "active", CreatedAt: now, UpdatedAt: now}
-	if err := store.PutSSOConnection(ctx, &conn, 20); err != nil {
-		t.Fatalf("PutSSOConnection() error = %v", err)
-	}
+	putActiveIdentityConnection(t, store, tenantID, "conn_a", now)
 	newUser := func(id string, userName string, source string) ports.DirectoryUser {
 		return ports.DirectoryUser{TenantID: tenantID, ID: id, ConnectionID: "conn_a", Source: source, UserName: userName, Email: userName, Active: true, CreatedAt: now, UpdatedAt: now}
 	}
@@ -278,13 +277,13 @@ func TestIdentitySSODirectoryPersistence(t *testing.T) {
 	if err := store.CreateDirectoryUser(ctx, &clash); !errors.Is(err, ports.ErrDirectoryConflict) {
 		t.Fatalf("duplicate userName = %v", err)
 	}
-	renamed := bob
-	renamed.UserName = "alice@example.com"
-	if err := store.UpdateDirectoryUser(ctx, &renamed); !errors.Is(err, ports.ErrDirectoryConflict) {
+	if _, err := store.MutateDirectoryUser(ctx, tenantID, "conn_a", "usr_bob", func(user *ports.DirectoryUser) error {
+		user.UserName = "alice@example.com"
+		return nil
+	}); !errors.Is(err, ports.ErrDirectoryConflict) {
 		t.Fatalf("rename onto existing userName = %v", err)
 	}
-	missing := newUser("usr_missing", "x@example.com", "scim")
-	if err := store.UpdateDirectoryUser(ctx, &missing); !errors.Is(err, ports.ErrDirectoryUserNotFound) {
+	if _, err := store.MutateDirectoryUser(ctx, tenantID, "conn_a", "usr_missing", func(*ports.DirectoryUser) error { return nil }); !errors.Is(err, ports.ErrDirectoryUserNotFound) {
 		t.Fatalf("update missing user = %v", err)
 	}
 
@@ -324,26 +323,30 @@ func TestIdentitySSODirectoryPersistence(t *testing.T) {
 	if err != nil || len(gotUser.Groups) != 1 || gotUser.Groups[0].DisplayName != "Engineering" {
 		t.Fatalf("GetDirectoryUser() groups = %+v %v", gotUser, err)
 	}
-	group.MemberIDs = []string{"usr_bob"}
-	if err := store.UpdateDirectoryGroup(ctx, &group); err != nil {
-		t.Fatalf("UpdateDirectoryGroup() error = %v", err)
+	if _, err := store.MutateDirectoryGroup(ctx, tenantID, "conn_a", "grp_eng", func(g *ports.DirectoryGroup) error {
+		g.MemberIDs = []string{"usr_bob"}
+		return nil
+	}); err != nil {
+		t.Fatalf("MutateDirectoryGroup() error = %v", err)
 	}
 	groups, total, err := store.ListDirectoryGroups(ctx, ports.DirectoryGroupQuery{TenantID: tenantID, DisplayName: "ENGINEERING", Limit: 10})
 	if err != nil || total != 1 || strings.Join(groups[0].MemberIDs, ",") != "usr_bob" || groups[0].MemberCount != 1 {
 		t.Fatalf("ListDirectoryGroups() = %+v %d %v", groups, total, err)
 	}
 
-	if err := store.DeleteDirectoryUser(ctx, tenantID, "conn_a", "usr_bob"); err != nil {
-		t.Fatalf("DeleteDirectoryUser() error = %v", err)
+	before, err := store.TombstoneDirectoryUser(ctx, tenantID, "conn_a", "usr_bob", now)
+	if err != nil || !before.Active || len(before.Groups) != 1 {
+		t.Fatalf("TombstoneDirectoryUser() = %+v %v", before, err)
 	}
 	if gotGroup, _ := store.GetDirectoryGroup(ctx, tenantID, "conn_a", "grp_eng"); gotGroup.MemberCount != 0 {
-		t.Fatalf("membership should cascade on user delete: %+v", gotGroup)
+		t.Fatalf("membership should be removed on tombstone: %+v", gotGroup)
 	}
-	if err := store.DeleteDirectoryUser(ctx, tenantID, "conn_a", "usr_bob"); !errors.Is(err, ports.ErrDirectoryUserNotFound) {
-		t.Fatalf("second DeleteDirectoryUser() = %v", err)
+	if _, err := store.TombstoneDirectoryUser(ctx, tenantID, "conn_a", "usr_bob", now); !errors.Is(err, ports.ErrDirectoryUserNotFound) {
+		t.Fatalf("second TombstoneDirectoryUser() = %v", err)
 	}
-	if err := store.DeleteDirectoryGroup(ctx, tenantID, "conn_a", "grp_eng"); err != nil {
-		t.Fatalf("DeleteDirectoryGroup() error = %v", err)
+	deleted, err := store.DeleteDirectoryGroup(ctx, tenantID, "conn_a", "grp_eng")
+	if err != nil || deleted.ID != "grp_eng" {
+		t.Fatalf("DeleteDirectoryGroup() = %+v %v", deleted, err)
 	}
 
 	if err := store.DeleteSSOConnection(ctx, tenantID, "conn_a"); err != nil {
@@ -351,5 +354,13 @@ func TestIdentitySSODirectoryPersistence(t *testing.T) {
 	}
 	if _, err := store.GetDirectoryUser(ctx, tenantID, "conn_a", "usr_alice"); !errors.Is(err, ports.ErrDirectoryUserNotFound) {
 		t.Fatalf("users should be removed with their connection: %v", err)
+	}
+}
+
+func putActiveIdentityConnection(t *testing.T, store *Store, tenantID string, id string, now time.Time) {
+	t.Helper()
+	conn := ports.SSOConnection{TenantID: tenantID, ID: id, Name: id, Protocol: "oidc", Status: ports.SSOStatusActive, CreatedAt: now, UpdatedAt: now}
+	if err := store.PutSSOConnection(context.Background(), &conn, 20); err != nil {
+		t.Fatalf("PutSSOConnection(%s) error = %v", id, err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -61,8 +62,10 @@ func ParseBootstrap(raw []byte) (*Bootstrap, error) {
 	if err := decoder.Decode(&doc); err != nil {
 		return nil, invalid("bootstrap must be a single JSON object: %v", err)
 	}
-	if decoder.More() {
-		return nil, invalid("bootstrap must be a single JSON object")
+	// More() reports false before a stray '}' or ']', so only a second Decode
+	// reaching EOF proves nothing follows the object.
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, invalid("bootstrap must be a single JSON object with no trailing data")
 	}
 	tenantID := strings.TrimSpace(doc.TenantID)
 	if err := checkToken("tenantId", tenantID, maxNameLength); err != nil {
@@ -82,11 +85,12 @@ func ParseBootstrap(raw []byte) (*Bootstrap, error) {
 	}
 	input := doc.Connection.ConnectionInput
 	input.Status = StatusActive
-	input.UpdatedBy = BootstrapActor
+	input.UpdatedBy = ""
 	conn, err := NormalizeConnectionInput(input)
 	if err != nil {
 		return nil, err
 	}
+	conn.UpdatedBy = BootstrapActor
 	conn.TenantID = tenantID
 	conn.ID = id
 	bootstrap := &Bootstrap{TenantID: tenantID, Connection: conn, Policy: doc.Policy}
@@ -132,6 +136,7 @@ func (b *Bootstrap) applyPolicy(current ports.SSOPolicy) (ports.SSOPolicy, error
 		}
 	}
 	next.UpdatedBy = BootstrapActor
+	next.UpdatedOnBehalfOf = ""
 	return NormalizePolicy(next)
 }
 
@@ -153,6 +158,7 @@ func SeedBootstrap(ctx context.Context, store ports.SSOConnectionStore, bootstra
 	desired.TenantID = bootstrap.TenantID
 	desired.Status = StatusActive
 	desired.UpdatedBy = BootstrapActor
+	desired.UpdatedOnBehalfOf = ""
 	desired.CreatedAt = now
 	desired.UpdatedAt = now
 	desired.LastTest = nil
@@ -170,8 +176,26 @@ func SeedBootstrap(ctx context.Context, store ports.SSOConnectionStore, bootstra
 		unchanged.UpdatedAt = existing.UpdatedAt
 		write = !reflect.DeepEqual(unchanged, *existing)
 	}
-	if write {
+	switch {
+	case !write:
+	case existing == nil:
 		if err := store.PutSSOConnection(ctx, &desired, MaxConnections); err != nil {
+			return bootstrapWriteError(desired.ID, err)
+		}
+	default:
+		_, err := store.UpdateSSOConnection(ctx, bootstrap.TenantID, desired.ID, MaxConnections, func(current ports.SSOConnection) (ports.SSOConnectionUpdate, error) {
+			next := desired
+			next.CreatedAt = current.CreatedAt
+			next.LastTest = nil
+			if !ProtocolChanged(current, next) {
+				next.LastTest = current.LastTest
+			}
+			return ports.SSOConnectionUpdate{Connection: next, RevokeSessions: ConnectionChangeRevokesSessions(current, next)}, nil
+		})
+		if errors.Is(err, ports.ErrSSOConnectionNotFound) {
+			err = store.PutSSOConnection(ctx, &desired, MaxConnections)
+		}
+		if err != nil {
 			return bootstrapWriteError(desired.ID, err)
 		}
 	}

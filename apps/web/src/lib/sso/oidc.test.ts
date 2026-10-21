@@ -142,6 +142,25 @@ describe("finishOidcLogin", () => {
     expect(await loginErrorCode(finishOidcLogin(connection, ORIGIN, "?code=abc&state=expected-state", checks))).toBe("access_denied");
   });
 
+  it.each([
+    ["absent", undefined],
+    ["null", null],
+    ["the string true", "true"],
+    ["the string false", "false"],
+    ["a number", 1],
+  ])("requires email_verified to be boolean true (%s)", async (_label, value) => {
+    idp.idToken = await issueIdToken({ email_verified: value });
+    expect(await loginErrorCode(finishOidcLogin(connection, ORIGIN, "?code=abc&state=expected-state", checks))).toBe("access_denied");
+  });
+
+  it("accepts an unverified email claim only when the connection trusts the IdP for email", async () => {
+    const trusting: SSOConnection = { ...connection, oidc: { ...connection.oidc!, trustEmailClaim: true } };
+    idp.idToken = await issueIdToken({ email_verified: undefined });
+    await expect(finishOidcLogin(trusting, ORIGIN, "?code=abc&state=expected-state", checks)).resolves.toMatchObject({
+      email: "jane.doe@example.com",
+    });
+  });
+
   it("maps an IdP access_denied error", async () => {
     expect(await loginErrorCode(finishOidcLogin(connection, ORIGIN, "?error=access_denied&state=expected-state", checks))).toBe("access_denied");
   });

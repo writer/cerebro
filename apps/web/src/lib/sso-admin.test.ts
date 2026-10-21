@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canActivate,
   connectionPayload,
+  connectionToInput,
   enforcementBlocker,
   identityAdminFetch,
   IdentityAdminError,
@@ -26,7 +27,7 @@ const connection = (overrides: Partial<SSOConnection> = {}): SSOConnection => ({
   protocol: "oidc",
   status: "tested",
   domains: ["example.com"],
-  oidc: { issuer: "https://example.okta.com", clientId: "abc", clientSecretRef: "env:OKTA_SECRET", scopes: ["openid"], groupsClaim: "groups" },
+  oidc: { issuer: "https://example.okta.com", clientId: "abc", clientSecretRef: "env:OKTA_SECRET", scopes: ["openid"], groupsClaim: "groups", trustEmailClaim: false },
   roleMappings: [],
   defaultRoles: [],
   jitProvisioning: true,
@@ -110,6 +111,15 @@ describe("connectionPayload", () => {
     expect(payload.saml).toBeUndefined();
   });
 
+  it("defaults trustEmailClaim off and sends it only as an explicit boolean", () => {
+    const draft = newConnectionDraft(okta, "oidc");
+    expect(draft.oidc?.trustEmailClaim).toBe(false);
+    expect(connectionPayload(draft).oidc?.trustEmailClaim).toBe(false);
+    expect(connectionPayload({ ...draft, oidc: { ...draft.oidc!, trustEmailClaim: true } }).oidc?.trustEmailClaim).toBe(true);
+    const legacy = connection({ oidc: { issuer: "https://example.okta.com", clientId: "abc", clientSecretRef: "env:X", scopes: ["openid"], groupsClaim: "groups" } as SSOConnection["oidc"] });
+    expect(connectionToInput(legacy).oidc?.trustEmailClaim).toBe(false);
+  });
+
   it("omits an empty SAML metadata URL", () => {
     const payload = connectionPayload(newConnectionDraft(okta, "saml"));
     expect(payload.saml && "idpMetadataUrl" in payload.saml).toBe(false);
@@ -174,6 +184,19 @@ describe("identityAdminFetch", () => {
     const error = await identityAdminFetch("/policy").catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(IdentityAdminError);
     expect((error as Error).message).toMatch(/identity:admin/);
+  });
+
+  it("sends JSON content type on every write, including bodiless DELETEs", async () => {
+    const inits: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    }));
+    await identityAdminFetch("/connections/x", { method: "DELETE" });
+    await identityAdminFetch("/connections");
+    const headersOf = (index: number) => inits[index].headers as Record<string, string>;
+    expect(headersOf(0)["content-type"]).toBe("application/json");
+    expect(headersOf(1)["content-type"]).toBeUndefined();
   });
 
   it("returns undefined for 204", async () => {

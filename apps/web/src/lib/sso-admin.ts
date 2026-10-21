@@ -7,6 +7,8 @@ export type SSOOidcSettings = {
   clientSecretRef: string;
   scopes: string[];
   groupsClaim: string;
+  /** Accept the email claim without email_verified=true. Only for IdPs whose email claim users cannot change. */
+  trustEmailClaim: boolean;
 };
 
 export type SSOSamlSettings = {
@@ -52,8 +54,12 @@ export type SSOPolicy = {
   updatedBy?: string;
 };
 
+export type SSOEnforcementState = "enforced" | "off" | "unavailable" | "unknown";
+
 export type SSOStatus = {
   enforced: boolean;
+  /** "unavailable": the web service has no identity API credential, or the API has no identity SSO store. */
+  state?: SSOEnforcementState;
   breakGlass: boolean;
   /** CEREBRO_SSO_REQUIRED: deployment forces SSO, so the policy toggle and break-glass do nothing. */
   required?: boolean;
@@ -89,6 +95,8 @@ export type DirectoryUser = {
   name: string;
   active: boolean;
   groups: string[];
+  scimGroups?: string[];
+  jitGroups?: string[];
   source: "scim" | "jit";
   connectionId: string;
   lastLoginAt?: string;
@@ -126,6 +134,7 @@ export const emptyOidcSettings = (groupsClaim = "groups"): SSOOidcSettings => ({
   clientSecretRef: "",
   scopes: [...DEFAULT_OIDC_SCOPES],
   groupsClaim,
+  trustEmailClaim: false,
 });
 
 export const emptySamlSettings = (): SSOSamlSettings => ({
@@ -156,7 +165,9 @@ export const connectionToInput = (connection: SSOConnection): SSOConnectionInput
   protocol: connection.protocol,
   status: connection.status,
   domains: [...connection.domains],
-  ...(connection.oidc ? { oidc: { ...connection.oidc, scopes: [...connection.oidc.scopes] } } : {}),
+  ...(connection.oidc
+    ? { oidc: { ...connection.oidc, scopes: [...connection.oidc.scopes], trustEmailClaim: connection.oidc.trustEmailClaim === true } }
+    : {}),
   ...(connection.saml ? { saml: { ...connection.saml, idpCertificates: [...connection.saml.idpCertificates] } } : {}),
   roleMappings: connection.roleMappings.map((mapping) => ({ group: mapping.group, roles: [...mapping.roles] })),
   defaultRoles: [...connection.defaultRoles],
@@ -255,6 +266,7 @@ export function connectionPayload(draft: SSOConnectionInput): SSOConnectionInput
         clientSecretRef: draft.oidc.clientSecretRef.trim(),
         groupsClaim: draft.oidc.groupsClaim.trim() || "groups",
         scopes: draft.oidc.scopes.length > 0 ? draft.oidc.scopes : [...DEFAULT_OIDC_SCOPES],
+        trustEmailClaim: draft.oidc.trustEmailClaim === true,
       },
     };
   }
@@ -341,13 +353,17 @@ const errorCopy: Record<string, string> = {
   connection_not_tested: "Test sign-in with this connection before turning it on.",
   no_active_connection: "Turn on at least one tested connection before requiring SSO.",
   domain_conflict: "Another connection already uses one of these domains.",
+  sso_session_required: "Sign in through SSO with an active connection before requiring SSO.",
 };
 
 export async function identityAdminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  // The server refuses non-JSON writes, including bodiless DELETEs.
+  const sendsJson = Boolean(init.body) || (method !== "GET" && method !== "HEAD");
   const response = await fetch(`/api/admin/identity${path}`, {
     cache: "no-store",
     ...init,
-    headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
+    headers: { ...(sendsJson ? { "content-type": "application/json" } : {}), ...init.headers },
   });
   if (response.status === 204) return undefined as T;
   const text = await response.text();

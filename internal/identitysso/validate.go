@@ -353,6 +353,10 @@ func NormalizePolicy(policy ports.SSOPolicy) (ports.SSOPolicy, error) {
 	if err := checkText("updatedBy", policy.UpdatedBy, maxShortTextLength, false); err != nil {
 		return policy, err
 	}
+	policy.UpdatedOnBehalfOf = strings.TrimSpace(policy.UpdatedOnBehalfOf)
+	if err := checkText("updatedOnBehalfOf", policy.UpdatedOnBehalfOf, maxShortTextLength, false); err != nil {
+		return policy, err
+	}
 	return policy, nil
 }
 

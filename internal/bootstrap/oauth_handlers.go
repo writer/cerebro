@@ -87,8 +87,6 @@ func supportedOAuthScopes() []string {
 		scopeGRCInventoryWrite,
 		scopeGRCPolicyLifecycleWrite,
 		scopeGraphActionsWrite,
-		scopeIdentitySSORead,
-		scopeIdentitySSOWrite,
 		scopeJobsWrite,
 		scopePolicyEvaluationDatasetsRead,
 		scopePolicyEvaluationDatasetsPropose,

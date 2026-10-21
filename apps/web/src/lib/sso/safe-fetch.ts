@@ -95,16 +95,31 @@ const resolveSafeTarget = async (input: string | URL): Promise<SafeTarget> => {
   return { url, address: addresses[0].address };
 };
 
-/** Rejects URLs that could reach internal infrastructure; see resolveSafeTarget. */
-export const assertSafeOutboundUrl = async (input: string | URL) => (await resolveSafeTarget(input)).url;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_BYTES = 1024 * 1024;
+
+const abortedError = () => new UnsafeUrlError("Identity provider request timed out or was aborted.");
+
+/** Settles with `work`, or rejects as soon as `signal` aborts (the work itself keeps running unobserved). */
+const untilAborted = <T>(work: Promise<T>, signal: AbortSignal): Promise<T> => {
+  if (signal.aborted) return Promise.reject(abortedError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortedError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+};
+
+/** Rejects URLs that could reach internal infrastructure; see resolveSafeTarget. DNS is bounded by timeoutMs. */
+export const assertSafeOutboundUrl = async (input: string | URL, timeoutMs = DEFAULT_TIMEOUT_MS) => {
+  const signal = AbortSignal.timeout(timeoutMs);
+  return (await untilAborted(resolveSafeTarget(input), signal)).url;
+};
 
 export type SafeFetchOptions = {
   timeoutMs?: number;
   maxBytes?: number;
 };
-
-const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_MAX_BYTES = 1024 * 1024;
 
 const requestBody = (body: RequestInit["body"]): Buffer | undefined => {
   if (body === undefined || body === null) return undefined;
@@ -156,22 +171,23 @@ export const safeFetch = async (
   init: RequestInit = {},
   { timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES }: SafeFetchOptions = {},
 ): Promise<Response> => {
-  const { url, address } = await resolveSafeTarget(input);
-  const body = requestBody(init.body);
-  const headers: Record<string, string> = {};
-  new Headers(init.headers).forEach((value, name) => {
-    headers[name] = value;
-  });
-  headers.host = url.host;
-  if (body) headers["content-length"] = String(body.byteLength);
-
+  const parentSignal = init.signal;
+  if (parentSignal?.aborted) throw abortedError();
+  // The deadline starts before DNS resolution so a slow resolver cannot stretch the bound.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const parentSignal = init.signal;
   const abort = () => controller.abort();
   parentSignal?.addEventListener("abort", abort, { once: true });
-  const send = url.protocol === "https:" ? httpsRequest : httpRequest;
   try {
+    const { url, address } = await untilAborted(resolveSafeTarget(input), controller.signal);
+    const body = requestBody(init.body);
+    const headers: Record<string, string> = {};
+    new Headers(init.headers).forEach((value, name) => {
+      headers[name] = value;
+    });
+    headers.host = url.host;
+    if (body) headers["content-length"] = String(body.byteLength);
+    const send = url.protocol === "https:" ? httpsRequest : httpRequest;
     const message = await new Promise<IncomingMessage>((resolve, reject) => {
       const request = send(
         {

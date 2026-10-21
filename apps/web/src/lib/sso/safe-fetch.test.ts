@@ -4,10 +4,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 const dns = vi.hoisted(() => ({
   answers: new Map<string, { address: string; family: number }[]>(),
+  hang: new Set<string>(),
+  lookups: [] as string[],
 }));
 
 vi.mock("dns/promises", () => ({
   lookup: vi.fn(async (hostname: string) => {
+    dns.lookups.push(hostname);
+    if (dns.hang.has(hostname)) return new Promise(() => undefined);
     const answer = dns.answers.get(hostname);
     if (!answer) throw new Error("ENOTFOUND");
     return answer;
@@ -52,6 +56,8 @@ afterAll(async () => {
 afterEach(() => {
   seen = [];
   dns.answers.clear();
+  dns.hang.clear();
+  dns.lookups = [];
   vi.unstubAllEnvs();
 });
 
@@ -115,6 +121,27 @@ describe("safeFetch", () => {
   it("does not send a request when the target fails the check", async () => {
     vi.stubEnv("NODE_ENV", "production");
     await expect(safeFetch(`http://127.0.0.1:${port}/meta`)).rejects.toBeInstanceOf(UnsafeUrlError);
+    expect(seen).toEqual([]);
+  });
+
+  it("bounds DNS resolution by the request deadline", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    dns.hang.add("slow-resolver.example.com");
+    const started = Date.now();
+    await expect(safeFetch("https://slow-resolver.example.com/metadata", {}, { timeoutMs: 50 })).rejects.toThrow(/timed out/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    await expect(assertSafeOutboundUrl("https://slow-resolver.example.com/", 50)).rejects.toBeInstanceOf(UnsafeUrlError);
+  });
+
+  it("refuses an already-aborted signal before any lookup or request", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(safeFetch(`http://127.0.0.1:${port}/meta`, { signal: controller.signal })).rejects.toBeInstanceOf(UnsafeUrlError);
+    vi.stubEnv("NODE_ENV", "production");
+    dns.answers.set("idp.example.com", [{ address: "93.184.216.34", family: 4 }]);
+    await expect(safeFetch("https://idp.example.com/meta", { signal: controller.signal })).rejects.toBeInstanceOf(UnsafeUrlError);
+    expect(dns.lookups).toEqual([]);
     expect(seen).toEqual([]);
   });
 });

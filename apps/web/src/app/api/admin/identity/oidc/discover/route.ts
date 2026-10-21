@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 
-import { authorizeIdentityRequest } from "@/lib/sso/admin-auth";
+import { authorizeIdentityRequest, rejectUnsafeIdentityWrite } from "@/lib/sso/admin-auth";
 import { jsonNoStore } from "@/lib/sso/http";
 import { discoverIssuer } from "@/lib/sso/oidc";
 import { assertSafeOutboundUrl, UnsafeUrlError } from "@/lib/sso/safe-fetch";
 
 export async function POST(request: NextRequest) {
+  const unsafe = rejectUnsafeIdentityWrite(request);
+  if (unsafe) return unsafe;
   const authorization = await authorizeIdentityRequest(request, "identity:admin");
   if (!authorization.ok) return authorization.response;
   let issuer = "";

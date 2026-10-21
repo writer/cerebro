@@ -474,6 +474,7 @@ func (app *App) registerIdentitySSORoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/identity/directory/users/lookup", routeSurfacePlatformHTTP, sso.LookupDirectoryUser)
 	registerHTTPRoute(mux, "POST /platform/identity/directory/users/jit", routeSurfacePlatformHTTP, sso.UpsertJITUser)
 	registerHTTPRoute(mux, "GET /platform/identity/directory/groups", routeSurfacePlatformHTTP, sso.ListDirectoryGroups)
+	registerHTTPRoute(mux, "POST /platform/identity/saml/assertions", routeSurfacePlatformHTTP, sso.ConsumeSAMLAssertion)
 }
 
 func registerHTTPRoute(mux *http.ServeMux, pattern string, _ bootstrapRouteSurface, handler http.HandlerFunc) {

@@ -4,6 +4,7 @@ import { keyedHash } from "./config";
 import { clearTxCookie, generateSessionToken, sessionTokenHash, setSessionCookie } from "./cookies";
 import {
   createSsoSession,
+  IdentityApiError,
   lookupDirectoryUser,
   postConnectionTestResult,
   upsertJitDirectoryUser,
@@ -13,7 +14,7 @@ import { sanitizeReturnTo } from "./return-to";
 import { computeSessionRoles, connectionAllowsEmail } from "./roles";
 import { clearSsoSessionCache } from "./session";
 import type { LoginTransaction } from "./tx";
-import { LoginError, type AssertedIdentity, type LoginErrorCode, type SSOConnection } from "./types";
+import { LoginError, type AssertedIdentity, type DirectoryUser, type LoginErrorCode, type SSOConnection } from "./types";
 
 const noStore = { "cache-control": "no-store" };
 
@@ -44,27 +45,56 @@ export type DirectoryDecision = {
   groups: string[];
 };
 
+const DIRECTORY_DENIAL_CODES = new Set(["subject_mismatch", "user_deprovisioned", "user_inactive"]);
+
+/** Directory refusals become one generic login failure; the specific reason is not shown to the browser. */
+const mapDirectoryError = (error: unknown): never => {
+  if (error instanceof IdentityApiError && (error.status === 403 || DIRECTORY_DENIAL_CODES.has(error.code))) {
+    throw new LoginError("access_denied", "Sign-in is not allowed for this account.");
+  }
+  throw error;
+};
+
+const recordLogin = async (connection: SSOConnection, identity: AssertedIdentity) => {
+  try {
+    return await upsertJitDirectoryUser({ connectionId: connection.id, ...identity });
+  } catch (error) {
+    return mapDirectoryError(error);
+  }
+};
+
+const cleanGroups = (values: unknown) =>
+  Array.isArray(values) ? values.filter((value): value is string => typeof value === "string" && value.trim() !== "") : [];
+
+/**
+ * Role-granting groups are the groups in this assertion plus SCIM-managed memberships. Stored JIT groups (and
+ * the combined `groups` list) are never used, so removing a user from an IdP group drops the role at the next
+ * sign-in.
+ */
+const sessionGroups = (identity: AssertedIdentity, user: DirectoryUser | null) =>
+  Array.from(new Set([...identity.groups, ...cleanGroups(user?.scimGroups)]));
+
 /**
  * A user must be known to the directory (SCIM-provisioned and active), or the connection must allow JIT
- * provisioning, in which case the user is upserted.
+ * provisioning, in which case the user is upserted. Every real login goes through the JIT endpoint, which
+ * binds the IdP subject to the directory user and refuses mismatched subjects and deprovisioned users.
  */
 export const checkDirectory = async (connection: SSOConnection, identity: AssertedIdentity, dryRun: boolean): Promise<DirectoryDecision> => {
-  const existing = await lookupDirectoryUser(connection.id, identity.email);
+  const existing = await lookupDirectoryUser(connection.id, identity.email, identity.subject);
   if (existing) {
     if (!existing.active) throw new LoginError("access_denied", "The directory user is deactivated.");
-    const groups = Array.from(new Set([...identity.groups, ...(existing.groups ?? [])]));
-    if (existing.source === "jit" && !dryRun) {
-      await upsertJitDirectoryUser({ connectionId: connection.id, ...identity });
-    }
-    return { groups };
+    if (dryRun) return { groups: sessionGroups(identity, existing) };
+    const recorded = await recordLogin(connection, identity);
+    if (!recorded.active) throw new LoginError("access_denied", "Sign-in is not allowed for this account.");
+    return { groups: sessionGroups(identity, recorded) };
   }
   if (!connection.jitProvisioning) {
     throw new LoginError("not_provisioned", "The user has not been provisioned for this connection.");
   }
-  if (!dryRun) {
-    await upsertJitDirectoryUser({ connectionId: connection.id, ...identity });
-  }
-  return { groups: identity.groups };
+  if (dryRun) return { groups: sessionGroups(identity, null) };
+  const created = await recordLogin(connection, identity);
+  if (!created.active) throw new LoginError("access_denied", "Sign-in is not allowed for this account.");
+  return { groups: sessionGroups(identity, created) };
 };
 
 export type FinishContext = {
@@ -125,7 +155,7 @@ export const finishLogin = async (
     const token = generateSessionToken();
     const tokenHash = sessionTokenHash(token);
     const maxLifetimeMs = policy.sessionMaxLifetimeMinutes * 60_000;
-    await createSsoSession({
+    const session = await createSsoSession({
       tokenHash,
       connectionId: connection.id,
       subject: identity.subject,
@@ -137,10 +167,13 @@ export const finishLogin = async (
       idleTimeoutMinutes: policy.sessionIdleTimeoutMinutes,
       ...(context.userAgent ? { userAgent: context.userAgent.slice(0, 512) } : {}),
       ...(context.clientIp ? { ipHash: keyedHash(context.clientIp) } : {}),
-    });
+    }).catch(mapDirectoryError);
     clearSsoSessionCache(tokenHash);
     const response = redirect(context.origin, sanitizeReturnTo(tx.returnTo));
-    setSessionCookie(response, token, maxLifetimeMs / 1000);
+    // Go may shorten the lifetime (admin sessions are capped), so the cookie follows the stored expiry.
+    const storedExpiryMs = Date.parse(session?.expiresAt ?? "");
+    const cookieLifetimeMs = Number.isFinite(storedExpiryMs) ? Math.min(maxLifetimeMs, storedExpiryMs - Date.now()) : maxLifetimeMs;
+    setSessionCookie(response, token, cookieLifetimeMs / 1000);
     clearTxCookie(response);
     return response;
   } catch (error) {
@@ -148,5 +181,25 @@ export const finishLogin = async (
   }
 };
 
-/** First address in X-Forwarded-For (set by the load balancer), used only for the hashed session audit field. */
-export const clientIpFrom = (headers: Headers) => headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+const DEFAULT_TRUSTED_PROXY_HOPS = 1;
+const MAX_TRUSTED_PROXY_HOPS = 10;
+
+const trustedProxyHops = () => {
+  const raw = (process.env.CEREBRO_WEB_TRUSTED_PROXY_HOPS ?? "").trim();
+  if (!/^\d+$/.test(raw)) return DEFAULT_TRUSTED_PROXY_HOPS;
+  const hops = Number.parseInt(raw, 10);
+  return hops >= 1 && hops <= MAX_TRUSTED_PROXY_HOPS ? hops : DEFAULT_TRUSTED_PROXY_HOPS;
+};
+
+/**
+ * Client address for the hashed session audit field. Proxies append to X-Forwarded-For, so entries left of
+ * the ones our CEREBRO_WEB_TRUSTED_PROXY_HOPS proxies added are client-supplied; the address is read that many
+ * entries from the right.
+ */
+export const clientIpFrom = (headers: Headers) => {
+  const hops = (headers.get("x-forwarded-for") ?? "").split(",").map((entry) => entry.trim());
+  if (hops.length === 1 && hops[0] === "") return null;
+  const hopCount = trustedProxyHops();
+  if (hops.length < hopCount) return null;
+  return hops[hops.length - hopCount] || null;
+};

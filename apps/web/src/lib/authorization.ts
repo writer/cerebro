@@ -5,6 +5,8 @@ import {
   identityRequired,
   type CurrentUser,
 } from "@/lib/identity";
+import { ssoRequired } from "@/lib/sso/config";
+import { ssoEnforcementActive } from "@/lib/sso/enforcement-signal";
 import {
   hasExplicitCerebroRoleOrScope,
   userHasAuthorizationPermission,
@@ -77,6 +79,13 @@ export const entitlementPolicyFor = (permission: AuthorizationPermission): Entit
   };
 };
 
+/**
+ * Identity is required when the deployment says so, and also whenever SSO is enforced: an enforced policy
+ * disables every other identity source, so an anonymous request must not fall through to "identity not
+ * required".
+ */
+export const effectiveIdentityRequired = () => identityRequired() || ssoRequired() || ssoEnforcementActive();
+
 const hasEntitlementPolicy = (policy: EntitlementPolicy) =>
   policy.groups.length > 0 || policy.roles.length > 0 || policy.scopes.length > 0;
 
@@ -127,9 +136,10 @@ export const authorizeCurrentUser = (
   const policy = entitlementPolicyFor(permission);
   const policyConfigured = hasEntitlementPolicy(policy);
   const builtinPolicyConfigured = builtinRbacRequired(user);
+  const requireIdentity = effectiveIdentityRequired();
 
   if (!user) {
-    if (identityRequired() || policyConfigured || builtinPolicyConfigured) {
+    if (requireIdentity || policyConfigured || builtinPolicyConfigured) {
       return denied(permission, user, 401, "identity_missing", "Current user identity is required.");
     }
     return {
@@ -146,15 +156,15 @@ export const authorizeCurrentUser = (
     return denied(permission, user, 409, "identity_conflict", "Conflicting identity signals were present.");
   }
 
-  if (identityRequired() && user.source === "local-fallback") {
+  if (requireIdentity && user.source === "local-fallback") {
     return denied(permission, user, 401, "identity_fallback", "Local fallback identity is not accepted in this deployment.");
   }
 
-  if ((identityRequired() || policyConfigured || builtinPolicyConfigured) && user.confidence === "unverified") {
+  if ((requireIdentity || policyConfigured || builtinPolicyConfigured) && user.confidence === "unverified") {
     return denied(permission, user, 401, "identity_unverified", "Identity claims are not verified enough for this action.");
   }
 
-  if (identityRequired() && user.warnings?.length) {
+  if (requireIdentity && user.warnings?.length) {
     return denied(permission, user, 401, "identity_warning", "Identity claims require attention.");
   }
 

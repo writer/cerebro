@@ -73,6 +73,7 @@ func newTestMux(handler Handler) *http.ServeMux {
 		"GET /platform/identity/directory/users/lookup":                      handler.LookupDirectoryUser,
 		"POST /platform/identity/directory/users/jit":                        handler.UpsertJITUser,
 		"GET /platform/identity/directory/groups":                            handler.ListDirectoryGroups,
+		"POST /platform/identity/saml/assertions":                            handler.ConsumeSAMLAssertion,
 	}
 	for pattern, fn := range routes {
 		mux.HandleFunc(pattern, fn)
@@ -128,6 +129,9 @@ func (h *harness) expectError(res response, status int, code string) {
 	h.expect(res, status)
 	if got, _ := res.body["error"].(string); got != code {
 		h.t.Fatalf("error = %q, want %q; body = %s", got, code, res.raw)
+	}
+	if got, _ := res.body["code"].(string); got != code {
+		h.t.Fatalf("code = %q, want %q; body = %s", got, code, res.raw)
 	}
 }
 
@@ -237,24 +241,35 @@ func TestConnectionLimit(t *testing.T) {
 
 func TestTenantResolution(t *testing.T) {
 	h := newHarness(t)
-	h.expectError(h.do(http.MethodGet, "/platform/identity/sso/connections?tenant_id=a", nil, TenantHeader, "b"), http.StatusForbidden, "tenant_forbidden")
-	h.expect(h.do(http.MethodPost, "/platform/identity/sso/connections?tenant_id=t1", oidcConnection("Okta", "example.com")), http.StatusCreated)
-	other := h.expect(h.do(http.MethodGet, "/platform/identity/sso/connections", nil, TenantHeader, "t2"), http.StatusOK)
-	if len(other.body["connections"].([]any)) != 0 {
-		t.Fatalf("tenant t2 sees t1 connections: %s", other.raw)
+	// Request selectors never change the partition: everything lands in the credential's own tenant.
+	h.expect(h.do(http.MethodPost, "/platform/identity/sso/connections?tenant_id=t1", oidcConnection("Okta", "example.com"), "X-Cerebro-Tenant", "t2"), http.StatusCreated)
+	for _, path := range []string{"/platform/identity/sso/connections", "/platform/identity/sso/connections?tenant_id=t1", "/platform/identity/sso/connections?tenant_id=t2"} {
+		got := h.expect(h.do(http.MethodGet, path, nil, "X-Cerebro-Tenant", "t3"), http.StatusOK)
+		if len(got.body["connections"].([]any)) != 1 {
+			t.Fatalf("%s list = %s", path, got.raw)
+		}
 	}
-	own := h.expect(h.do(http.MethodGet, "/platform/identity/sso/connections", nil, TenantHeader, "t1"), http.StatusOK)
-	if len(own.body["connections"].([]any)) != 1 {
-		t.Fatalf("tenant t1 list = %s", own.raw)
+	if conns, _ := h.store.ListSSOConnections(context.Background(), "t1"); len(conns) != 0 {
+		t.Fatalf("tenant_id query wrote to t1: %+v", conns)
 	}
-	defaults := h.expect(h.do(http.MethodGet, "/platform/identity/sso/connections", nil), http.StatusOK)
-	if len(defaults.body["connections"].([]any)) != 0 {
-		t.Fatalf("default tenant list = %s", defaults.raw)
+	if conns, _ := h.store.ListSSOConnections(context.Background(), DefaultTenantID); len(conns) != 1 {
+		t.Fatalf("default tenant connections = %+v", conns)
+	}
+
+	var requested []string
+	scoped := Handler{store: h.store, resolve: func(_ context.Context, req string) (string, error) {
+		requested = append(requested, req)
+		return "credential-tenant", nil
+	}}
+	rec := httptest.NewRecorder()
+	newTestMux(scoped).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platform/identity/sso/connections?tenant_id=x", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"connections":[]`) || len(requested) != 1 || requested[0] != "" {
+		t.Fatalf("scoped credential = %d %s requested=%q", rec.Code, rec.Body.String(), requested)
 	}
 
 	denied := Handler{store: h.store, resolve: func(context.Context, string) (string, error) { return "", errors.New("cross-tenant") }}
-	rec := httptest.NewRecorder()
-	newTestMux(denied).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platform/identity/sso/connections?tenant_id=x", nil))
+	rec = httptest.NewRecorder()
+	newTestMux(denied).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platform/identity/sso/connections", nil))
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("resolver rejection = %d", rec.Code)
 	}
@@ -262,12 +277,12 @@ func TestTenantResolution(t *testing.T) {
 	unavailable := NewHandler(nil, nil, nil)
 	rec = httptest.NewRecorder()
 	newTestMux(unavailable).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platform/identity/sso/policy", nil))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("missing store = %d", rec.Code)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"code":"identity_sso_unavailable"`) {
+		t.Fatalf("missing store = %d %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
 	newTestMux(unavailable).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platform/identity/scim/v2/Users", nil))
-	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Content-Type") != sso.SCIMContentType {
+	if rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != sso.SCIMContentType {
 		t.Fatalf("missing store on SCIM = %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }
@@ -401,8 +416,18 @@ func TestSCIMAuthentication(t *testing.T) {
 	}
 	h.expect(h.do(http.MethodGet, "/platform/identity/scim/v2/Schemas", nil, scimHeaders(token)...), http.StatusOK)
 
-	// The token is tenant-bound: the same token presented for another tenant fails.
-	h.expect(h.do(http.MethodGet, "/platform/identity/scim/v2/Users?tenant_id=other", nil, scimHeaders(token)...), http.StatusUnauthorized)
+	// The token is bound to its partition: a credential scoped elsewhere cannot use it.
+	elsewhere := Handler{store: h.store, resolve: func(context.Context, string) (string, error) { return "other", nil }, now: func() time.Time { return h.now }}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/platform/identity/scim/v2/Users", nil)
+	headers := scimHeaders(token)
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
+	newTestMux(elsewhere).ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("token from another partition = %d %s", rec.Code, rec.Body.String())
+	}
 
 	id := listed["id"].(string)
 	h.expect(h.do(http.MethodDelete, "/platform/identity/scim/tokens/"+id, nil), http.StatusNoContent)
@@ -571,10 +596,7 @@ func TestDirectoryJIT(t *testing.T) {
 	h.expect(h.do(http.MethodGet, "/platform/identity/directory/users/lookup?email=carol@example.com", nil), http.StatusBadRequest)
 
 	h.expect(h.do(http.MethodPatch, "/platform/identity/scim/v2/Users/"+jitID, `{"Operations":[{"op":"replace","path":"active","value":false}]}`, headers...), http.StatusOK)
-	inactive := h.expect(h.do(http.MethodPost, "/platform/identity/directory/users/jit", login), http.StatusOK)
-	if inactive.body["active"] != false {
-		t.Fatalf("deactivated users must stay inactive at login: %s", inactive.raw)
-	}
+	h.expectError(h.do(http.MethodPost, "/platform/identity/directory/users/jit", login), http.StatusForbidden, "user_inactive")
 
 	users := h.expect(h.do(http.MethodGet, "/platform/identity/directory/users?query=carol", nil), http.StatusOK)
 	if len(users.body["users"].([]any)) != 1 {

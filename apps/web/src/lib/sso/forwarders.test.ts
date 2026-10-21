@@ -7,6 +7,9 @@ const state = vi.hoisted(() => ({
   user: null as CurrentUser | null,
   calls: [] as { method: string; path: string; options: { search?: string; body?: string; headers?: Record<string, string> } }[],
   response: { status: 200, body: "{}", contentType: "application/json" },
+  currentPolicyEnforced: false,
+  session: null as null | { connectionId: string },
+  connectionStatus: "active" as string | null,
 }));
 
 vi.mock("@/lib/identity-server", () => ({
@@ -19,11 +22,21 @@ vi.mock("@/lib/sso/identity-api", () => ({
     state.calls.push({ method, path, options });
     return state.response;
   }),
+  fetchSsoPolicy: vi.fn(async () => ({ enforced: state.currentPolicyEnforced, sessionMaxLifetimeMinutes: 720, sessionIdleTimeoutMinutes: 60 })),
+  fetchSsoConnection: vi.fn(async (id: string) => (state.connectionStatus ? { id, status: state.connectionStatus } : null)),
+}));
+
+vi.mock("@/lib/sso/session", () => ({
+  resolveSsoSessionFromHeaders: vi.fn(async () =>
+    state.session ? { session: { id: "s1", connectionId: state.session.connectionId }, tokenHash: "h" } : null,
+  ),
 }));
 
 const { forwardAdminIdentityRequest } = await import("./admin-routes");
 const scimRoute = await import("@/app/scim/v2/[...path]/route");
 const spInfoRoute = await import("@/app/api/admin/identity/sp-info/route");
+const discoverRoute = await import("@/app/api/admin/identity/oidc/discover/route");
+const parseMetadataRoute = await import("@/app/api/admin/identity/saml/parse-metadata/route");
 
 const ssoUser = (roles: string[]): CurrentUser => ({
   actorId: "admin-subject",
@@ -41,11 +54,17 @@ const ssoUser = (roles: string[]): CurrentUser => ({
 const originalIdentityRequired = process.env.CEREBRO_IDENTITY_REQUIRED;
 const originalPublicUrl = process.env.CEREBRO_WEB_PUBLIC_URL;
 
+const PUBLIC_ORIGIN = "https://cerebro.example.com";
+
 beforeEach(() => {
   state.user = null;
   state.calls = [];
   state.response = { status: 200, body: "{}", contentType: "application/json" };
+  state.currentPolicyEnforced = false;
+  state.session = { connectionId: "conn-1" };
+  state.connectionStatus = "active";
   process.env.CEREBRO_IDENTITY_REQUIRED = "1";
+  process.env.CEREBRO_WEB_PUBLIC_URL = PUBLIC_ORIGIN;
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 
@@ -57,10 +76,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const adminRequest = (method: string, path: string, body?: unknown) =>
-  new Request(`http://localhost/api/admin/identity/${path}`, {
+const adminRequest = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+  new Request(`${PUBLIC_ORIGIN}/api/admin/identity/${path}`, {
     method,
-    ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "content-type": "application/json" } }),
+    headers: {
+      ...(method === "GET" ? {} : { origin: PUBLIC_ORIGIN, "content-type": "application/json" }),
+      ...headers,
+    },
+    ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
   });
 
 describe("admin identity forwarder", () => {
@@ -101,6 +124,92 @@ describe("admin identity forwarder", () => {
     );
     expect(forged.status).toBe(400);
     expect(state.calls).toHaveLength(0);
+  });
+});
+
+describe("admin identity write guards", () => {
+  it("refuses cross-origin writes and writes without an Origin or same-origin fetch metadata", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    const crossSite = await forwardAdminIdentityRequest(
+      adminRequest("PUT", "policy", { enforced: false }, { origin: "https://evil.example.com" }),
+      ["policy"],
+    );
+    expect(crossSite.status).toBe(403);
+    const noOrigin = new Request(`${PUBLIC_ORIGIN}/api/admin/identity/connections/conn-1`, { method: "DELETE" });
+    expect((await forwardAdminIdentityRequest(noOrigin, ["connections", "conn-1"])).status).toBe(403);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it("refuses non-JSON writes, which browsers send cross-site without a preflight", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    const plain = await forwardAdminIdentityRequest(
+      adminRequest("PUT", "policy", JSON.stringify({ enforced: false }), { "content-type": "text/plain" }),
+      ["policy"],
+    );
+    expect(plain.status).toBe(415);
+    const bodiless = await forwardAdminIdentityRequest(
+      new Request(`${PUBLIC_ORIGIN}/api/admin/identity/connections/conn-1`, { method: "DELETE", headers: { origin: PUBLIC_ORIGIN } }),
+      ["connections", "conn-1"],
+    );
+    expect(bodiless.status).toBe(415);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it("applies the same guards to discovery and metadata import", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    const crossSite = (path: string) =>
+      new NextRequest(`${PUBLIC_ORIGIN}/api/admin/identity/${path}`, {
+        method: "POST",
+        headers: { origin: "https://evil.example.com", "content-type": "application/json" },
+        body: JSON.stringify({ issuer: "https://idp.example.com", url: "https://idp.example.com/metadata" }),
+      });
+    expect((await discoverRoute.POST(crossSite("oidc/discover"))).status).toBe(403);
+    expect((await parseMetadataRoute.POST(crossSite("saml/parse-metadata"))).status).toBe(403);
+    const plain = new NextRequest(`${PUBLIC_ORIGIN}/api/admin/identity/oidc/discover`, {
+      method: "POST",
+      headers: { origin: PUBLIC_ORIGIN, "content-type": "text/plain" },
+      body: JSON.stringify({ issuer: "https://idp.example.com" }),
+    });
+    expect((await discoverRoute.POST(plain)).status).toBe(415);
+  });
+
+  it("refuses to turn on enforcement for an admin signed in through proxy headers", async () => {
+    state.user = { ...ssoUser(["cerebro.admin"]), source: "headers" };
+    const response = await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: true }), ["policy"]);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "sso_session_required" });
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it("refuses to turn on enforcement when the admin's session connection is no longer active", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    state.connectionStatus = "disabled";
+    expect((await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: true }), ["policy"])).status).toBe(409);
+    state.connectionStatus = null;
+    expect((await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: true }), ["policy"])).status).toBe(409);
+    state.connectionStatus = "active";
+    state.session = null;
+    expect((await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: true }), ["policy"])).status).toBe(409);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it("lets a header-authenticated admin edit an already enforced policy (break-glass recovery)", async () => {
+    state.user = { ...ssoUser(["cerebro.admin"]), source: "headers" };
+    state.currentPolicyEnforced = true;
+    expect((await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: true }), ["policy"])).status).toBe(200);
+    state.currentPolicyEnforced = false;
+    expect((await forwardAdminIdentityRequest(adminRequest("PUT", "policy", { enforced: false }), ["policy"])).status).toBe(200);
+  });
+
+  it("strips client-supplied tenant selectors from the body", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    await forwardAdminIdentityRequest(
+      adminRequest("POST", "connections", { name: "x", tenant_id: "other-tenant", tenantId: "other-tenant" }),
+      ["connections"],
+    );
+    const body = JSON.parse(state.calls[0].options.body ?? "{}");
+    expect(body).not.toHaveProperty("tenant_id");
+    expect(body).not.toHaveProperty("tenantId");
   });
 });
 

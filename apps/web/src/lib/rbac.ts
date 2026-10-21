@@ -259,12 +259,15 @@ export const knownAuthorizationRoles = (roles: Iterable<string>): string[] => {
 export const roleClaimMappings = (): RoleClaimMapping[] =>
   parseRoleClaimMappings(process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS);
 
-/** Roles a user earns from mapped claim values, on top of any role claim they already carry. */
+/**
+ * Roles a user earns from mapped claim values, on top of any role claim they already carry. SSO sessions are
+ * excluded: their roles come only from the signing-in connection's own role mappings.
+ */
 export const rolesFromClaimMappings = (
   user: CurrentUser | null | undefined,
   mappings: RoleClaimMapping[] = roleClaimMappings(),
 ): string[] => {
-  if (mappings.length === 0) return [];
+  if (mappings.length === 0 || user?.source === "sso-session") return [];
   const claimValues: Record<RoleClaimSource, string[]> = {
     groups: cleanList(user?.entitlements?.groups),
     roles: cleanList(user?.entitlements?.roles),

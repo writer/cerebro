@@ -2107,8 +2107,10 @@ export type DirectoryUser = {
   email: string;
   groups: string[];
   id: string;
+  jitGroups: string[];
   lastLoginAt?: string;
   name: string;
+  scimGroups: string[];
   source: "scim" | "jit";
   userName: string;
 };
@@ -4584,6 +4586,7 @@ export type IdentityOrganizationListResponse = {
 };
 
 export type IdentitySSOError = {
+  code: string;
   detail?: string;
   error: string;
 };
@@ -5294,6 +5297,13 @@ export type RuntimeResponseExecuteRequest = {
   trusted_scope?: boolean;
 };
 
+export type SAMLAssertionInput = {
+  assertionId: string;
+  connectionId: string;
+  notOnOrAfter: string;
+  requestId: string;
+};
+
 export type SCIMError = {
   detail?: string;
   schemas: string[];
@@ -5324,6 +5334,7 @@ export type SCIMTokenInfo = {
   connectionId: string;
   createdAt: string;
   createdBy: string;
+  createdOnBehalfOf?: string;
   id: string;
   lastUsedAt?: string;
   name: string;
@@ -5336,7 +5347,7 @@ export type SSOConnection = {
   domains: string[];
   id: string;
   jitProvisioning: boolean;
-  lastTest?: { actor?: string; at?: string; detail?: string; ok?: boolean };
+  lastTest?: { actor?: string; at?: string; detail?: string; ok?: boolean; onBehalfOf?: string };
   managed: boolean;
   name: string;
   oidc?: SSOOIDCConfig;
@@ -5346,6 +5357,7 @@ export type SSOConnection = {
   status: "draft" | "tested" | "active" | "disabled";
   updatedAt: string;
   updatedBy: string;
+  updatedOnBehalfOf?: string;
 };
 
 export type SSOConnectionInput = {
@@ -5367,6 +5379,7 @@ export type SSOOIDCConfig = {
   groupsClaim?: string;
   issuer: string;
   scopes?: string[];
+  trustEmailClaim?: boolean;
 };
 
 export type SSOPolicy = {
@@ -5375,6 +5388,7 @@ export type SSOPolicy = {
   sessionMaxLifetimeMinutes: number;
   updatedAt?: string;
   updatedBy?: string;
+  updatedOnBehalfOf?: string;
 };
 
 export type SSORoleMapping = {

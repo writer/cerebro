@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { authorizeCurrentUser } from "./authorization";
 import type { CurrentUser } from "./identity";
+import { decideIdentityPermission } from "./sso/admin-auth";
+import { noteSsoEnforcement } from "./sso/enforcement-signal";
 
 const identityEnvNames = [
   "CEREBRO_AUTHZ_REQUIRED_GROUPS",
@@ -15,6 +17,7 @@ const identityEnvNames = [
   "CEREBRO_AUTHZ_FINDINGS_WRITE_ROLES",
   "CEREBRO_AUTHZ_FINDINGS_WRITE_SCOPES",
   "CEREBRO_IDENTITY_REQUIRED",
+  "CEREBRO_SSO_REQUIRED",
 ];
 
 const originalIdentityEnv = new Map(identityEnvNames.map((name) => [name, process.env[name]]));
@@ -32,6 +35,7 @@ const user = (overrides: Partial<CurrentUser> = {}): CurrentUser => ({
 });
 
 afterEach(() => {
+  noteSsoEnforcement(false);
   for (const name of identityEnvNames) {
     const original = originalIdentityEnv.get(name);
     if (original === undefined) {
@@ -57,6 +61,26 @@ describe("identity authorization", () => {
       allowed: false,
       code: "identity_missing",
       status: 401,
+    });
+  });
+
+  it("treats CEREBRO_SSO_REQUIRED as requiring identity even when legacy identity is optional", () => {
+    process.env.CEREBRO_IDENTITY_REQUIRED = "false";
+    process.env.CEREBRO_SSO_REQUIRED = "true";
+
+    expect(authorizeCurrentUser(null, "identity:admin")).toMatchObject({ allowed: false, code: "identity_missing", status: 401 });
+    expect(decideIdentityPermission(null, "identity:admin")).toMatchObject({ allowed: false, status: 401 });
+  });
+
+  it("treats an enforced SSO policy as requiring identity", () => {
+    process.env.CEREBRO_IDENTITY_REQUIRED = "false";
+    noteSsoEnforcement(true);
+
+    expect(authorizeCurrentUser(null, "cerebro:read")).toMatchObject({ allowed: false, code: "identity_missing" });
+    expect(decideIdentityPermission(null, "identity:admin")).toMatchObject({ allowed: false });
+    expect(decideIdentityPermission(user({ entitlements: { roles: [] } }), "identity:admin")).toMatchObject({
+      allowed: false,
+      code: "permission_missing",
     });
   });
 

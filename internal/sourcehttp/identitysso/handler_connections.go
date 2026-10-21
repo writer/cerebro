@@ -77,7 +77,7 @@ func (h Handler) CreateConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.TenantID = tenantID
-	conn.UpdatedBy = h.actorFor(r.Context(), conn.UpdatedBy)
+	conn.UpdatedBy = h.principal(r.Context())
 	if err := h.store.PutSSOConnection(r.Context(), &conn, sso.MaxConnections); err != nil {
 		writeError(w, err)
 		return
@@ -101,18 +101,20 @@ func (h Handler) GetConnection(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateConnection serves PUT /platform/identity/sso/connections/{connectionID}.
+// The merge, the enforced-lockout check, and session revocation run in the
+// store under the tenant's connection lock.
 func (h Handler) UpdateConnection(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := h.tenant(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	previous, err := h.loadConnection(r.Context(), tenantID, r.PathValue("connectionID"))
+	connectionID, err := connectionIDFrom(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if err := h.refuseManaged(tenantID, previous.ID); err != nil {
+	if err := h.refuseManaged(tenantID, connectionID); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -121,27 +123,26 @@ func (h Handler) UpdateConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	next, err := sso.NormalizeConnectionInput(input)
+	normalized, err := sso.NormalizeConnectionInput(input)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if next, err = sso.PrepareUpdate(*previous, next, h.clock()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if previous.Status == sso.StatusActive && next.Status != sso.StatusActive {
-		if err := h.guardEnforcedLockout(r.Context(), tenantID, previous.ID, &next); err != nil {
-			writeError(w, err)
-			return
+	now := h.clock()
+	principal := h.principal(r.Context())
+	updated, err := h.store.UpdateSSOConnection(r.Context(), tenantID, connectionID, sso.MaxConnections, func(previous ports.SSOConnection) (ports.SSOConnectionUpdate, error) {
+		next, err := sso.PrepareUpdate(previous, normalized, now)
+		if err != nil {
+			return ports.SSOConnectionUpdate{}, err
 		}
-	}
-	next.UpdatedBy = h.actorFor(r.Context(), next.UpdatedBy)
-	if err := h.store.PutSSOConnection(r.Context(), &next, sso.MaxConnections); err != nil {
+		next.UpdatedBy = principal
+		return ports.SSOConnectionUpdate{Connection: next, RevokeSessions: sso.ConnectionChangeRevokesSessions(previous, next)}, nil
+	})
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.view(next))
+	writeJSON(w, http.StatusOK, h.view(*updated))
 }
 
 // DeleteConnection serves DELETE /platform/identity/sso/connections/{connectionID}.
@@ -151,22 +152,16 @@ func (h Handler) DeleteConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	conn, err := h.loadConnection(r.Context(), tenantID, r.PathValue("connectionID"))
+	connectionID, err := connectionIDFrom(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if err := h.refuseManaged(tenantID, conn.ID); err != nil {
+	if err := h.refuseManaged(tenantID, connectionID); err != nil {
 		writeError(w, err)
 		return
 	}
-	if conn.Status == sso.StatusActive {
-		if err := h.guardEnforcedLockout(r.Context(), tenantID, conn.ID, nil); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if err := h.store.DeleteSSOConnection(r.Context(), tenantID, conn.ID); err != nil {
+	if err := h.store.DeleteSSOConnection(r.Context(), tenantID, connectionID); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -180,7 +175,7 @@ func (h Handler) RecordTestResult(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	conn, err := h.loadConnection(r.Context(), tenantID, r.PathValue("connectionID"))
+	connectionID, err := connectionIDFrom(r)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -190,17 +185,17 @@ func (h Handler) RecordTestResult(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	input.Actor = h.actorFor(r.Context(), input.Actor)
-	next, err := sso.ApplyTestResult(*conn, input, h.clock())
+	now := h.clock()
+	principal := h.principal(r.Context())
+	updated, err := h.store.UpdateSSOConnection(r.Context(), tenantID, connectionID, sso.MaxConnections, func(current ports.SSOConnection) (ports.SSOConnectionUpdate, error) {
+		next, err := sso.ApplyTestResult(current, input, principal, now)
+		return ports.SSOConnectionUpdate{Connection: next}, err
+	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if err := h.store.PutSSOConnection(r.Context(), &next, sso.MaxConnections); err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, h.view(next))
+	writeJSON(w, http.StatusOK, h.view(*updated))
 }
 
 // GetPolicy serves GET /platform/identity/sso/policy.
@@ -218,7 +213,8 @@ func (h Handler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, policy)
 }
 
-// PutPolicy serves PUT /platform/identity/sso/policy.
+// PutPolicy serves PUT /platform/identity/sso/policy. The store refuses to
+// enforce SSO without an active connection inside the tenant's lock.
 func (h Handler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := h.tenant(r)
 	if err != nil {
@@ -230,6 +226,8 @@ func (h Handler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	input.UpdatedOnBehalfOf = input.UpdatedBy
+	input.UpdatedBy = h.principal(r.Context())
 	policy, err := sso.NormalizePolicy(input)
 	if err != nil {
 		writeError(w, err)
@@ -239,25 +237,21 @@ func (h Handler) PutPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, sso.ErrBootstrapManaged)
 		return
 	}
-	if policy.Enforced {
-		active, err := h.hasActiveConnection(r.Context(), tenantID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if !active {
-			writeError(w, sso.ErrNoActiveConnection)
-			return
-		}
-	}
 	policy.TenantID = tenantID
 	policy.UpdatedAt = h.clock()
-	policy.UpdatedBy = h.actorFor(r.Context(), policy.UpdatedBy)
 	if err := h.store.PutSSOPolicy(r.Context(), &policy); err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
+}
+
+func connectionIDFrom(r *http.Request) (string, error) {
+	id := strings.TrimSpace(r.PathValue("connectionID"))
+	if !sso.ValidResourceID(id) {
+		return "", ports.ErrSSOConnectionNotFound
+	}
+	return id, nil
 }
 
 func (h Handler) loadConnection(ctx context.Context, tenantID string, rawID string) (*ports.SSOConnection, error) {
@@ -277,35 +271,4 @@ func (h Handler) effectivePolicy(ctx context.Context, tenantID string) (ports.SS
 		return ports.SSOPolicy{}, err
 	}
 	return *policy, nil
-}
-
-func (h Handler) hasActiveConnection(ctx context.Context, tenantID string) (bool, error) {
-	connections, err := h.store.ListSSOConnections(ctx, tenantID)
-	if err != nil {
-		return false, err
-	}
-	for _, conn := range connections {
-		if conn.Status == sso.StatusActive {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// guardEnforcedLockout refuses a change that would leave an enforced tenant
-// with no active connection, which would lock every console user out until
-// break-glass is used.
-func (h Handler) guardEnforcedLockout(ctx context.Context, tenantID string, connectionID string, next *ports.SSOConnection) error {
-	policy, err := h.effectivePolicy(ctx, tenantID)
-	if err != nil || !policy.Enforced {
-		return err
-	}
-	connections, err := h.store.ListSSOConnections(ctx, tenantID)
-	if err != nil {
-		return err
-	}
-	if sso.LeavesNoActiveConnection(connections, connectionID, next) {
-		return sso.ErrLastActiveEnforced
-	}
-	return nil
 }

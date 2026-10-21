@@ -262,21 +262,24 @@ func TestConnectionLifecycle(t *testing.T) {
 		t.Fatalf("activate untested = %v, want ErrConnectionNotTested", err)
 	}
 
-	failed, err := ApplyTestResult(created, TestResultInput{OK: false, Actor: "admin@example.com"}, testNow)
+	failed, err := ApplyTestResult(created, TestResultInput{OK: false, Actor: "admin@example.com"}, "svc-web", testNow)
 	if err != nil || failed.Status != StatusDraft || failed.LastTest == nil || failed.LastTest.OK {
 		t.Fatalf("failed test: status=%q lastTest=%+v err=%v", failed.Status, failed.LastTest, err)
 	}
-	tested, err := ApplyTestResult(created, TestResultInput{OK: true, Actor: "admin@example.com", Detail: strings.Repeat("x", 3000)}, testNow)
+	tested, err := ApplyTestResult(created, TestResultInput{OK: true, Actor: "admin@example.com", Detail: strings.Repeat("x", 3000)}, "svc-web", testNow)
 	if err != nil || tested.Status != StatusTested {
 		t.Fatalf("passing test: status=%q err=%v", tested.Status, err)
 	}
 	if len(tested.LastTest.Detail) != maxDetailLength {
 		t.Errorf("detail should be truncated to %d, got %d", maxDetailLength, len(tested.LastTest.Detail))
 	}
-	if tested.UpdatedBy != "admin@example.com" {
-		t.Errorf("updatedBy = %q", tested.UpdatedBy)
+	if tested.UpdatedBy != "svc-web" || tested.UpdatedOnBehalfOf != "admin@example.com" {
+		t.Errorf("updatedBy = %q onBehalfOf = %q", tested.UpdatedBy, tested.UpdatedOnBehalfOf)
 	}
-	demoted, _ := ApplyTestResult(tested, TestResultInput{OK: false}, testNow)
+	if tested.LastTest.Actor != "svc-web" || tested.LastTest.OnBehalfOf != "admin@example.com" {
+		t.Errorf("lastTest actor = %q onBehalfOf = %q", tested.LastTest.Actor, tested.LastTest.OnBehalfOf)
+	}
+	demoted, _ := ApplyTestResult(tested, TestResultInput{OK: false}, "svc-web", testNow)
 	if demoted.Status != StatusDraft {
 		t.Errorf("failing test on tested connection: status=%q, want draft", demoted.Status)
 	}
@@ -287,7 +290,7 @@ func TestConnectionLifecycle(t *testing.T) {
 	if err != nil || activated.Status != StatusActive || activated.CreatedAt != testNow {
 		t.Fatalf("activate tested: %+v err=%v", activated, err)
 	}
-	stillActive, _ := ApplyTestResult(activated, TestResultInput{OK: false}, testNow)
+	stillActive, _ := ApplyTestResult(activated, TestResultInput{OK: false}, "svc-web", testNow)
 	if stillActive.Status != StatusActive {
 		t.Errorf("a failing test must not change an active connection, got %q", stillActive.Status)
 	}
@@ -637,13 +640,19 @@ func TestDirectoryHelpers(t *testing.T) {
 		t.Fatalf("jit user = %+v", user)
 	}
 	later := testNow.Add(time.Hour)
-	updated := ApplyJITLogin(user, JITUserInput{Subject: "sub", Email: "bob2@example.com", Name: "Bob", Groups: []string{"b"}}, later)
-	if updated.Email != "bob2@example.com" || updated.DisplayName != "Bob" || !updated.LastLoginAt.Equal(later) {
-		t.Errorf("jit login update = %+v", updated)
+	updated := user
+	if err := ApplyJITLogin(&updated, JITUserInput{Subject: "sub", Email: "bob2@example.com", Name: "Bob", Groups: []string{"b"}}, later); err != nil {
+		t.Fatalf("ApplyJITLogin: %v", err)
 	}
-	scimUser := ports.DirectoryUser{Source: DirectorySourceSCIM, Email: "carol@example.com", UserName: "carol@example.com", ExternalID: "ext-1"}
-	scimUpdated := ApplyJITLogin(scimUser, JITUserInput{Subject: "sub-c", Email: "other@example.com", Name: "X"}, later)
-	if scimUpdated.Email != "carol@example.com" || scimUpdated.Subject != "sub-c" {
+	if updated.Email != "bob@example.com" || updated.DisplayName != "" || !updated.LastLoginAt.Equal(later) || strings.Join(updated.JITGroups, ",") != "b" {
+		t.Errorf("jit login must write only last-login, subject, and replaced jitGroups: %+v", updated)
+	}
+	scimUser := ports.DirectoryUser{Source: DirectorySourceSCIM, Active: true, Email: "carol@example.com", UserName: "carol@example.com", ExternalID: "ext-1"}
+	scimUpdated := scimUser
+	if err := ApplyJITLogin(&scimUpdated, JITUserInput{Subject: "sub-c", Email: "other@example.com", Name: "X", Groups: []string{"g"}}, later); err != nil {
+		t.Fatalf("ApplyJITLogin scim: %v", err)
+	}
+	if scimUpdated.Email != "carol@example.com" || scimUpdated.Subject != "sub-c" || len(scimUpdated.JITGroups) != 0 {
 		t.Errorf("SCIM-managed attributes must not change at login: %+v", scimUpdated)
 	}
 	match := SessionMatchForUser(scimUpdated)

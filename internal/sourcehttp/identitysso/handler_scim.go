@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	sso "github.com/writer/cerebro/internal/identitysso"
@@ -155,7 +156,8 @@ func (h Handler) scimListUsers(w http.ResponseWriter, r *http.Request, caller sc
 }
 
 // SCIMCreateUser serves POST .../scim/v2/Users. A just-in-time user with the
-// same userName is adopted as SCIM-managed instead of conflicting.
+// same userName is adopted as SCIM-managed instead of conflicting, and a
+// deprovisioned tombstone with the same userName is revived.
 func (h Handler) SCIMCreateUser(w http.ResponseWriter, r *http.Request) {
 	h.scimRoute(h.scimCreateUser)(w, r)
 }
@@ -176,22 +178,12 @@ func (h Handler) scimCreateUser(w http.ResponseWriter, r *http.Request, caller s
 		writeSCIMError(w, err)
 		return
 	}
-	existing, _, err := h.store.ListDirectoryUsers(r.Context(), ports.DirectoryUserQuery{TenantID: caller.tenantID, ConnectionID: caller.connectionID, UserName: user.UserName, Limit: 1})
+	existing, _, err := h.store.ListDirectoryUsers(r.Context(), ports.DirectoryUserQuery{TenantID: caller.tenantID, ConnectionID: caller.connectionID, UserName: user.UserName, IncludeDeleted: true, Limit: 1})
 	if err != nil {
 		writeSCIMError(w, err)
 		return
 	}
-	if len(existing) > 0 {
-		if existing[0].Source != sso.DirectorySourceJIT {
-			writeSCIMError(w, ports.ErrDirectoryConflict)
-			return
-		}
-		user.ID, user.CreatedAt, user.Subject, user.LastLoginAt = existing[0].ID, existing[0].CreatedAt, existing[0].Subject, existing[0].LastLoginAt
-		if err := h.store.UpdateDirectoryUser(r.Context(), &user); err != nil {
-			writeSCIMError(w, err)
-			return
-		}
-	} else {
+	if len(existing) == 0 {
 		if user.ID, err = sso.NewID("usr"); err != nil {
 			writeSCIMError(w, err)
 			return
@@ -200,8 +192,34 @@ func (h Handler) scimCreateUser(w http.ResponseWriter, r *http.Request, caller s
 			writeSCIMError(w, err)
 			return
 		}
+		h.writeSCIMUser(w, r, caller, user.ID, http.StatusCreated)
+		return
 	}
-	h.writeSCIMUser(w, r, caller, user.ID, http.StatusCreated)
+	var before ports.DirectoryUser
+	adopted, err := h.store.MutateDirectoryUser(r.Context(), caller.tenantID, caller.connectionID, existing[0].ID, func(current *ports.DirectoryUser) error {
+		if current.DeletedAt == nil && current.Source != sso.DirectorySourceJIT {
+			return ports.ErrDirectoryConflict
+		}
+		before = *current
+		next, err := sso.ApplySCIMUser(*current, in)
+		if err != nil {
+			return err
+		}
+		sso.AdoptSCIMUser(&next, now)
+		*current = next
+		return nil
+	})
+	if err != nil {
+		writeSCIMError(w, err)
+		return
+	}
+	if !adopted.Active {
+		if err := h.revokeUserSessions(r.Context(), caller, before, *adopted); err != nil {
+			writeSCIMError(w, err)
+			return
+		}
+	}
+	h.writeSCIMUser(w, r, caller, adopted.ID, http.StatusCreated)
 }
 
 // SCIMGetUser serves GET .../scim/v2/Users/{userID}.
@@ -239,29 +257,35 @@ func (h Handler) SCIMPatchUser(w http.ResponseWriter, r *http.Request) {
 	})(w, r)
 }
 
+// mutateSCIMUser applies a SCIM change to the locked current user, so a stale
+// read can never reactivate a user that was deactivated concurrently.
 func (h Handler) mutateSCIMUser(w http.ResponseWriter, r *http.Request, caller scimCaller, mutate func(ports.DirectoryUser) (ports.DirectoryUser, error)) {
-	current, err := h.scimUser(r.Context(), caller, r.PathValue("userID"))
-	if err != nil {
-		writeSCIMError(w, err)
+	id := strings.TrimSpace(r.PathValue("userID"))
+	if !sso.ValidResourceID(id) {
+		writeSCIMError(w, ports.ErrDirectoryUserNotFound)
 		return
 	}
-	next, err := mutate(*current)
+	now := h.clock()
+	var before ports.DirectoryUser
+	next, err := h.store.MutateDirectoryUser(r.Context(), caller.tenantID, caller.connectionID, id, func(current *ports.DirectoryUser) error {
+		if current.DeletedAt != nil {
+			return ports.ErrDirectoryUserNotFound
+		}
+		before = *current
+		updated, err := mutate(*current)
+		if err != nil {
+			return err
+		}
+		sso.AdoptSCIMUser(&updated, now)
+		*current = updated
+		return nil
+	})
 	if err != nil {
-		writeSCIMError(w, err)
-		return
-	}
-	next.Source = sso.DirectorySourceSCIM
-	next.UpdatedAt = h.clock()
-	if err := h.store.UpdateDirectoryUser(r.Context(), &next); err != nil {
 		writeSCIMError(w, err)
 		return
 	}
 	if !next.Active {
-		match := sso.SessionMatchForUser(*current)
-		extra := sso.SessionMatchForUser(next)
-		match.Subjects = append(match.Subjects, extra.Subjects...)
-		match.Emails = append(match.Emails, extra.Emails...)
-		if _, err := h.store.RevokeSSOSessions(r.Context(), caller.tenantID, match, h.clock()); err != nil {
+		if err := h.revokeUserSessions(r.Context(), caller, before, *next); err != nil {
 			writeSCIMError(w, err)
 			return
 		}
@@ -269,25 +293,54 @@ func (h Handler) mutateSCIMUser(w http.ResponseWriter, r *http.Request, caller s
 	h.writeSCIMUser(w, r, caller, next.ID, http.StatusOK)
 }
 
-// SCIMDeleteUser serves DELETE .../scim/v2/Users/{userID} and revokes the
-// user's sessions.
+// SCIMDeleteUser serves DELETE .../scim/v2/Users/{userID}. The user is kept as
+// an inactive tombstone, hidden from SCIM, so a later just-in-time login
+// cannot recreate it, and its sessions on the connection are revoked.
 func (h Handler) SCIMDeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.scimRoute(func(w http.ResponseWriter, r *http.Request, caller scimCaller) {
-		user, err := h.scimUser(r.Context(), caller, r.PathValue("userID"))
+		id := strings.TrimSpace(r.PathValue("userID"))
+		if !sso.ValidResourceID(id) {
+			writeSCIMError(w, ports.ErrDirectoryUserNotFound)
+			return
+		}
+		before, err := h.store.TombstoneDirectoryUser(r.Context(), caller.tenantID, caller.connectionID, id, h.clock())
 		if err != nil {
 			writeSCIMError(w, err)
 			return
 		}
-		if _, err := h.store.RevokeSSOSessions(r.Context(), caller.tenantID, sso.SessionMatchForUser(*user), h.clock()); err != nil {
-			writeSCIMError(w, err)
-			return
-		}
-		if err := h.store.DeleteDirectoryUser(r.Context(), caller.tenantID, caller.connectionID, user.ID); err != nil {
+		if err := h.revokeUserSessions(r.Context(), caller, *before); err != nil {
 			writeSCIMError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})(w, r)
+}
+
+// revokeUserSessions revokes the sessions on the caller's connection that
+// belong to any version of a user.
+func (h Handler) revokeUserSessions(ctx context.Context, caller scimCaller, users ...ports.DirectoryUser) error {
+	match := ports.SSOSessionMatch{ConnectionID: caller.connectionID}
+	for _, user := range users {
+		match = sso.AddUserToSessionMatch(match, user)
+	}
+	if len(match.Subjects) == 0 && len(match.Emails) == 0 {
+		return nil
+	}
+	_, err := h.store.RevokeSSOSessions(ctx, caller.tenantID, match, h.clock())
+	return err
+}
+
+// revokeMemberSessions revokes the sessions of group members whose roles may
+// have changed.
+func (h Handler) revokeMemberSessions(ctx context.Context, caller scimCaller, userIDs []string) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	users, _, err := h.store.ListDirectoryUsers(ctx, ports.DirectoryUserQuery{TenantID: caller.tenantID, ConnectionID: caller.connectionID, IDs: userIDs, IncludeDeleted: true, Limit: len(userIDs)})
+	if err != nil {
+		return err
+	}
+	return h.revokeUserSessions(ctx, caller, users...)
 }
 
 func (h Handler) scimUser(ctx context.Context, caller scimCaller, rawID string) (*ports.DirectoryUser, error) {
@@ -370,6 +423,10 @@ func (h Handler) SCIMCreateGroup(w http.ResponseWriter, r *http.Request) {
 			writeSCIMError(w, err)
 			return
 		}
+		if err := h.revokeMemberSessions(r.Context(), caller, group.MemberIDs); err != nil {
+			writeSCIMError(w, err)
+			return
+		}
 		h.writeSCIMGroup(w, r, caller, group.ID, http.StatusCreated)
 	})(w, r)
 }
@@ -409,34 +466,54 @@ func (h Handler) SCIMPatchGroup(w http.ResponseWriter, r *http.Request) {
 	})(w, r)
 }
 
+// mutateSCIMGroup applies a SCIM change to the locked current group, so a
+// stale read can never restore a removed member, and revokes the sessions of
+// members whose roles may have changed.
 func (h Handler) mutateSCIMGroup(w http.ResponseWriter, r *http.Request, caller scimCaller, mutate func(ports.DirectoryGroup) (ports.DirectoryGroup, error)) {
-	current, err := h.scimGroup(r.Context(), caller, r.PathValue("groupID"))
+	id := strings.TrimSpace(r.PathValue("groupID"))
+	if !sso.ValidResourceID(id) {
+		writeSCIMError(w, ports.ErrDirectoryGroupNotFound)
+		return
+	}
+	now := h.clock()
+	var before ports.DirectoryGroup
+	next, err := h.store.MutateDirectoryGroup(r.Context(), caller.tenantID, caller.connectionID, id, func(current *ports.DirectoryGroup) error {
+		before = *current
+		before.MemberIDs = slices.Clone(current.MemberIDs)
+		updated, err := mutate(*current)
+		if err != nil {
+			return err
+		}
+		updated.UpdatedAt = now
+		*current = updated
+		return nil
+	})
 	if err != nil {
 		writeSCIMError(w, err)
 		return
 	}
-	next, err := mutate(*current)
-	if err != nil {
-		writeSCIMError(w, err)
-		return
-	}
-	next.UpdatedAt = h.clock()
-	if err := h.store.UpdateDirectoryGroup(r.Context(), &next); err != nil {
+	if err := h.revokeMemberSessions(r.Context(), caller, sso.AffectedGroupMembers(before, *next)); err != nil {
 		writeSCIMError(w, err)
 		return
 	}
 	h.writeSCIMGroup(w, r, caller, next.ID, http.StatusOK)
 }
 
-// SCIMDeleteGroup serves DELETE .../scim/v2/Groups/{groupID}.
+// SCIMDeleteGroup serves DELETE .../scim/v2/Groups/{groupID} and revokes the
+// sessions of its members.
 func (h Handler) SCIMDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	h.scimRoute(func(w http.ResponseWriter, r *http.Request, caller scimCaller) {
-		group, err := h.scimGroup(r.Context(), caller, r.PathValue("groupID"))
+		id := strings.TrimSpace(r.PathValue("groupID"))
+		if !sso.ValidResourceID(id) {
+			writeSCIMError(w, ports.ErrDirectoryGroupNotFound)
+			return
+		}
+		deleted, err := h.store.DeleteDirectoryGroup(r.Context(), caller.tenantID, caller.connectionID, id)
 		if err != nil {
 			writeSCIMError(w, err)
 			return
 		}
-		if err := h.store.DeleteDirectoryGroup(r.Context(), caller.tenantID, caller.connectionID, group.ID); err != nil {
+		if err := h.revokeMemberSessions(r.Context(), caller, deleted.MemberIDs); err != nil {
 			writeSCIMError(w, err)
 			return
 		}

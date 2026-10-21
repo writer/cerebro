@@ -187,7 +187,10 @@ import (
 // internal/identitysso; request mapping stays in sourcehttp/identitysso; and
 // storage stays behind the IdentitySSOStore port. Stack-configured SSO
 // bootstrap adds one startup call; parsing and seeding stay in identitysso.
-const bootstrapProductionGoLineBudget = 29878
+// The identity SSO service scope adds route-policy rows, one scope constant,
+// and the SAML replay route registration; replay and session checks stay in
+// identitysso and the store.
+const bootstrapProductionGoLineBudget = 29888
 
 type bootstrapFileLineCount struct {
 	path  string

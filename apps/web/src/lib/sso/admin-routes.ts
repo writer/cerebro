@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import { CerebroProxyError } from "@/lib/cerebro-proxy";
 import { currentUserActor, type CurrentUser } from "@/lib/identity";
 
-import { authorizeIdentityRequest } from "./admin-auth";
-import { identityApiRequest } from "./identity-api";
+import { authorizeIdentityRequest, rejectUnsafeIdentityWrite } from "./admin-auth";
+import { fetchSsoConnection, fetchSsoPolicy, identityApiRequest } from "./identity-api";
 import { clearSsoPolicyCache } from "./policy";
+import { resolveSsoSessionFromHeaders } from "./session";
 
 const ID = "[A-Za-z0-9_-]{1,128}";
 
@@ -66,8 +67,37 @@ const stampedBody = (raw: string, field: AdminRoute["actorField"], user: Current
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const body = { ...(parsed as Record<string, unknown>) };
+  // Go scopes identity writes to the web credential's own partition; a body field must not suggest otherwise.
+  delete body.tenant_id;
+  delete body.tenantId;
   if (field) body[field] = currentUserActor(user) || "unknown";
   return JSON.stringify(body);
+};
+
+const ENFORCEMENT_REQUIRES_SSO =
+  "Sign in through SSO with an active connection before requiring SSO, so you know the connection lets you back in.";
+
+/**
+ * Server-side half of the "can't lock yourself out" rule: turning enforcement on requires the acting admin to
+ * hold an SSO session whose connection is active right now. Go keeps the "some connection is active" check.
+ */
+const enforcementLockoutError = async (request: Request, user: CurrentUser | null, body: string) => {
+  if ((JSON.parse(body) as { enforced?: unknown }).enforced !== true) return null;
+  try {
+    if ((await fetchSsoPolicy()).enforced) return null;
+  } catch {
+    // Unknown current state: apply the guard.
+  }
+  const refusal = json({ error: ENFORCEMENT_REQUIRES_SSO, code: "sso_session_required" }, 409);
+  if (user?.source !== "sso-session") return refusal;
+  try {
+    const resolved = await resolveSsoSessionFromHeaders(request.headers);
+    if (!resolved) return refusal;
+    const connection = await fetchSsoConnection(resolved.session.connectionId);
+    return connection?.status === "active" ? null : refusal;
+  } catch {
+    return refusal;
+  }
 };
 
 /** Forwards an Access Control request to Go after authorizing it (reads: admin:read, writes: identity:admin). */
@@ -77,6 +107,8 @@ export const forwardAdminIdentityRequest = async (request: Request, segments: st
   const resolved = matchAdminRoute(path, method);
   if (!resolved) return json({ error: "Not found." }, 404);
   if (!resolved.allowed) return json({ error: "Method not allowed." }, 405);
+  const unsafe = rejectUnsafeIdentityWrite(request);
+  if (unsafe) return unsafe;
 
   const authorization = await authorizeIdentityRequest(request, method === "GET" ? "admin:read" : "identity:admin");
   if (!authorization.ok) return authorization.response;
@@ -91,6 +123,10 @@ export const forwardAdminIdentityRequest = async (request: Request, segments: st
     // (/api/auth/sso/test) may record one.
     if (path.endsWith("/test-result") && (JSON.parse(stamped) as { ok?: unknown }).ok !== false) {
       return json({ error: "Successful tests are recorded only by the SSO test sign-in." }, 400);
+    }
+    if (path === "policy") {
+      const lockout = await enforcementLockoutError(request, authorization.user, stamped);
+      if (lockout) return lockout;
     }
     body = stamped;
   }

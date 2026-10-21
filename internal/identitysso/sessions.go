@@ -20,6 +20,9 @@ const (
 	SCIMTokenTouchInterval = time.Minute
 	// SCIMTokenPrefix marks Cerebro SCIM bearer tokens.
 	SCIMTokenPrefix = "cscim_"
+	// AdminSessionMaxLifetime caps sessions that carry an admin role,
+	// regardless of the tenant policy lifetime.
+	AdminSessionMaxLifetime = 12 * time.Hour
 
 	scimTokenDisplayPrefixLength = len(SCIMTokenPrefix) + 6
 	sessionHashPrefixLength      = 8
@@ -128,6 +131,21 @@ func NormalizeSessionInput(input SessionInput, now time.Time) (ports.SSOSession,
 	session.CreatedAt = now
 	session.LastSeenAt = now
 	return session, nil
+}
+
+// CapSessionLifetime shortens a session that carries an admin role to at most
+// min(policy lifetime, AdminSessionMaxLifetime) from its creation.
+func CapSessionLifetime(session *ports.SSOSession, policy ports.SSOPolicy) {
+	if !authz.HasAdminRole(session.Roles) {
+		return
+	}
+	limit := AdminSessionMaxLifetime
+	if policyLimit := time.Duration(policy.SessionMaxLifetimeMinutes) * time.Minute; policyLimit > 0 && policyLimit < limit {
+		limit = policyLimit
+	}
+	if latest := session.CreatedAt.Add(limit).UTC(); session.ExpiresAt.After(latest) {
+		session.ExpiresAt = latest
+	}
 }
 
 // SessionActive reports whether a session still authenticates at now.

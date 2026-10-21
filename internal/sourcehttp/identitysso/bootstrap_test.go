@@ -84,9 +84,7 @@ func TestSeedBootstrapOverwritesConfigButKeepsCreatedAt(t *testing.T) {
 	stale, _ := store.GetSSOConnection(context.Background(), "default", "okta")
 	stale.Status = sso.StatusDisabled
 	stale.Domains = []string{"stale.example.com"}
-	if err := store.PutSSOConnection(context.Background(), stale, sso.MaxConnections); err != nil {
-		t.Fatalf("tamper: %v", err)
-	}
+	store.connections[key("default", "okta")] = *stale
 
 	updated := strings.Replace(bootstrapDoc, `"name": "Okta"`, `"name": "Okta SSO"`, 1)
 	second := first.Add(time.Hour)

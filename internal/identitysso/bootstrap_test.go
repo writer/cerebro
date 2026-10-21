@@ -36,6 +36,9 @@ func TestParseBootstrapRejects(t *testing.T) {
 	cases := map[string]string{
 		"not json":           `{`,
 		"two documents":      validBootstrap + validBootstrap,
+		"trailing brace":     validBootstrap + `}`,
+		"trailing bracket":   validBootstrap + `]`,
+		"trailing garbage":   validBootstrap + ` garbage`,
 		"missing tenant":     strings.Replace(validBootstrap, `"tenantId":"tenant-a",`, ``, 1),
 		"missing connection": `{"tenantId":"tenant-a"}`,
 		"bad id":             strings.Replace(validBootstrap, `"id":"okta"`, `"id":"../okta"`, 1),

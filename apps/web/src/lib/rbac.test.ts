@@ -199,6 +199,19 @@ describe("claim to role mappings", () => {
     }
   });
 
+  it("does not apply claim mappings to SSO session users", () => {
+    process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS = JSON.stringify({
+      groups: { "Security Team": ["cerebro.admin"] },
+    });
+    try {
+      const ssoUser: CurrentUser = { ...groupUser(["Security Team"]), source: "sso-session" };
+      expect(rolesFromClaimMappings(ssoUser)).toEqual([]);
+      expect(effectiveAuthorizationPermissionsForUser(ssoUser)).toEqual([]);
+    } finally {
+      delete process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS;
+    }
+  });
+
   it("resolves no permissions from a group claim when mappings are absent", () => {
     expect(effectiveAuthorizationPermissionsForUser(groupUser(["Security Team"]))).toEqual([]);
   });

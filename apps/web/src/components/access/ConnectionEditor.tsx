@@ -294,6 +294,21 @@ export function ConnectionEditor({
                   autoComplete="off"
                 />
               </Field>
+              <Toggle
+                label="Trust email without email_verified"
+                description={
+                  draft.oidc?.trustEmailClaim ? (
+                    <span className="text-amber-700 dark:text-amber-300" role="alert">
+                      Warning: sign-ins are linked to directory users by email. Turn this on only if users cannot set or change their own
+                      email address at this provider, or someone could sign in as another person.
+                    </span>
+                  ) : (
+                    "Off: sign-in requires the provider to mark the email address as verified (email_verified = true)."
+                  )
+                }
+                checked={draft.oidc?.trustEmailClaim === true}
+                onChange={(trustEmailClaim) => updateOidc({ trustEmailClaim })}
+              />
             </>
           ) : (
             <>

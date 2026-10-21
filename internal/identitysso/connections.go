@@ -3,6 +3,7 @@ package identitysso
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,12 +13,23 @@ import (
 // Conflict errors map to HTTP 409 with the error code as the body.
 var (
 	ErrConnectionNotTested = errors.New("connection_not_tested")
-	ErrNoActiveConnection  = errors.New("no_active_connection")
+	ErrNoActiveConnection  = ports.ErrSSONoActiveConnection
 	ErrConnectionInactive  = errors.New("connection_not_active")
-	ErrLastActiveEnforced  = errors.New("last_active_connection")
+	ErrLastActiveEnforced  = ports.ErrSSOLastActiveConnection
 	// ErrJITDisabled means a login-time upsert found no directory user and the
 	// connection does not allow just-in-time provisioning.
 	ErrJITDisabled = errors.New("jit_disabled")
+	// ErrSubjectMismatch means the directory user is bound to a different IdP
+	// subject on this connection.
+	ErrSubjectMismatch = errors.New("subject_mismatch")
+)
+
+// Forbidden errors map to HTTP 403 with the error code as the body.
+var (
+	// ErrUserInactive means the directory user is deactivated.
+	ErrUserInactive = errors.New("user_inactive")
+	// ErrUserDeprovisioned means the directory user was deleted through SCIM.
+	ErrUserDeprovisioned = errors.New("user_deprovisioned")
 )
 
 // ConnectionInput is the writable shape of an SSO connection.
@@ -31,7 +43,9 @@ type ConnectionInput struct {
 	RoleMappings    []ports.SSORoleMapping `json:"roleMappings"`
 	DefaultRoles    []string               `json:"defaultRoles"`
 	JITProvisioning bool                   `json:"jitProvisioning"`
-	UpdatedBy       string                 `json:"updatedBy"`
+	// UpdatedBy is the caller-asserted end user. It is stored as the
+	// connection's updatedOnBehalfOf; updatedBy is always the principal.
+	UpdatedBy string `json:"updatedBy"`
 }
 
 // OIDCInput is the writable OIDC block.
@@ -41,6 +55,7 @@ type OIDCInput struct {
 	ClientSecretRef string   `json:"clientSecretRef"`
 	Scopes          []string `json:"scopes"`
 	GroupsClaim     string   `json:"groupsClaim"`
+	TrustEmailClaim bool     `json:"trustEmailClaim"`
 }
 
 // SAMLInput is the writable SAML block. WantAssertionsSigned is a pointer so
@@ -57,7 +72,8 @@ type SAMLInput struct {
 	NameIDFormat         string   `json:"nameIdFormat"`
 }
 
-// TestResultInput records the outcome of an admin test login.
+// TestResultInput records the outcome of an admin test login. Actor is the
+// caller-asserted admin who ran the test.
 type TestResultInput struct {
 	OK     bool   `json:"ok"`
 	Actor  string `json:"actor"`
@@ -137,8 +153,8 @@ func NormalizeConnectionInput(input ConnectionInput) (ports.SSOConnection, error
 		return conn, err
 	}
 	conn.JITProvisioning = input.JITProvisioning
-	conn.UpdatedBy = strings.TrimSpace(input.UpdatedBy)
-	if err := checkText("updatedBy", conn.UpdatedBy, maxShortTextLength, false); err != nil {
+	conn.UpdatedOnBehalfOf = strings.TrimSpace(input.UpdatedBy)
+	if err := checkText("updatedBy", conn.UpdatedOnBehalfOf, maxShortTextLength, false); err != nil {
 		return conn, err
 	}
 	return conn, nil
@@ -183,6 +199,7 @@ func normalizeOIDC(input OIDCInput) (ports.SSOOIDCConfig, error) {
 	if err := checkToken("oidc.groupsClaim", oidc.GroupsClaim, maxNameLength); err != nil {
 		return oidc, err
 	}
+	oidc.TrustEmailClaim = input.TrustEmailClaim
 	return oidc, nil
 }
 
@@ -279,17 +296,19 @@ func PrepareUpdate(previous ports.SSOConnection, next ports.SSOConnection, now t
 
 // ApplyTestResult records a test login. A passing test promotes a draft to
 // tested; a failing test demotes tested back to draft. Active and disabled
-// connections keep their status.
-func ApplyTestResult(conn ports.SSOConnection, input TestResultInput, now time.Time) (ports.SSOConnection, error) {
-	actor := strings.TrimSpace(input.Actor)
-	if err := checkText("actor", actor, maxShortTextLength, false); err != nil {
+// connections keep their status. principal is the authenticated caller; the
+// body actor is kept separately as the on-behalf-of admin.
+func ApplyTestResult(conn ports.SSOConnection, input TestResultInput, principal string, now time.Time) (ports.SSOConnection, error) {
+	onBehalfOf := strings.TrimSpace(input.Actor)
+	if err := checkText("actor", onBehalfOf, maxShortTextLength, false); err != nil {
 		return conn, err
 	}
+	principal = strings.TrimSpace(principal)
 	detail := strings.TrimSpace(input.Detail)
 	if len(detail) > maxDetailLength {
 		detail = detail[:maxDetailLength]
 	}
-	conn.LastTest = &ports.SSOConnectionRun{At: now, OK: input.OK, Actor: actor, Detail: detail}
+	conn.LastTest = &ports.SSOConnectionRun{At: now, OK: input.OK, Actor: principal, OnBehalfOf: onBehalfOf, Detail: detail}
 	switch {
 	case input.OK && conn.Status == StatusDraft:
 		conn.Status = StatusTested
@@ -297,10 +316,29 @@ func ApplyTestResult(conn ports.SSOConnection, input TestResultInput, now time.T
 		conn.Status = StatusDraft
 	}
 	conn.UpdatedAt = now
-	if actor != "" {
-		conn.UpdatedBy = actor
-	}
+	conn.UpdatedBy = principal
+	conn.UpdatedOnBehalfOf = onBehalfOf
 	return conn, nil
+}
+
+// ConnectionChangeRevokesSessions reports whether replacing previous with next
+// invalidates the connection's existing sessions: the connection stops being
+// active, or the settings sessions were authorized from (role mappings,
+// default roles, or routed domains) change.
+func ConnectionChangeRevokesSessions(previous ports.SSOConnection, next ports.SSOConnection) bool {
+	if previous.Status == StatusActive && next.Status != StatusActive {
+		return true
+	}
+	return !reflect.DeepEqual(nonNilMappings(previous.RoleMappings), nonNilMappings(next.RoleMappings)) ||
+		!slices.Equal(previous.DefaultRoles, next.DefaultRoles) ||
+		!slices.Equal(previous.Domains, next.Domains)
+}
+
+func nonNilMappings(mappings []ports.SSORoleMapping) []ports.SSORoleMapping {
+	if mappings == nil {
+		return []ports.SSORoleMapping{}
+	}
+	return mappings
 }
 
 // LeavesNoActiveConnection reports whether replacing (or deleting, when next is

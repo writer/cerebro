@@ -18,7 +18,10 @@ type revokedResponse struct {
 	Revoked int `json:"revoked"`
 }
 
-// CreateSession serves POST /platform/identity/sessions.
+// CreateSession serves POST /platform/identity/sessions. The connection must be
+// active, and a matching directory user must be active, not deprovisioned, and
+// bound to the session subject. Sessions carrying an admin role are capped at
+// sso.AdminSessionMaxLifetime.
 func (h Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := h.tenant(r)
 	if err != nil {
@@ -45,6 +48,23 @@ func (h Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, sso.ErrConnectionInactive)
 		return
 	}
+	user, err := h.matchDirectoryUser(r.Context(), tenantID, conn.ID, session.Subject, session.Email)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if user != nil {
+		if err := sso.CheckLoginUser(*user, session.Subject); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	policy, err := h.effectivePolicy(r.Context(), tenantID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	sso.CapSessionLifetime(&session, policy)
 	if session.ID, err = sso.NewID("sess"); err != nil {
 		writeError(w, err)
 		return
@@ -58,7 +78,9 @@ func (h Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetSession serves GET /platform/identity/sessions/{tokenHash}. Missing,
-// expired, revoked, and idle-expired sessions all return 404.
+// expired, revoked, and idle-expired sessions all return 404, as do sessions
+// whose connection is no longer active or whose directory user is inactive or
+// deprovisioned.
 func (h Handler) GetSession(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := h.tenant(r)
 	if err != nil {
@@ -181,13 +203,14 @@ func (h Handler) RevokeSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 type scimTokenView struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	Prefix       string     `json:"prefix"`
-	ConnectionID string     `json:"connectionId"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	CreatedBy    string     `json:"createdBy"`
-	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	Prefix            string     `json:"prefix"`
+	ConnectionID      string     `json:"connectionId"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	CreatedBy         string     `json:"createdBy"`
+	CreatedOnBehalfOf string     `json:"createdOnBehalfOf,omitempty"`
+	LastUsedAt        *time.Time `json:"lastUsedAt,omitempty"`
 }
 
 type scimTokenCreated struct {
@@ -207,13 +230,14 @@ type scimTokenInput struct {
 
 func newSCIMTokenView(token ports.SCIMToken) scimTokenView {
 	return scimTokenView{
-		ID:           token.ID,
-		Name:         token.Name,
-		Prefix:       token.Prefix,
-		ConnectionID: token.ConnectionID,
-		CreatedAt:    token.CreatedAt.UTC(),
-		CreatedBy:    token.CreatedBy,
-		LastUsedAt:   token.LastUsedAt,
+		ID:                token.ID,
+		Name:              token.Name,
+		Prefix:            token.Prefix,
+		ConnectionID:      token.ConnectionID,
+		CreatedAt:         token.CreatedAt.UTC(),
+		CreatedBy:         token.CreatedBy,
+		CreatedOnBehalfOf: token.CreatedOnBehalfOf,
+		LastUsedAt:        token.LastUsedAt,
 	}
 }
 
@@ -254,8 +278,8 @@ func (h Handler) CreateSCIMToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	createdBy := h.actorFor(r.Context(), input.CreatedBy)
-	if err := sso.CheckText("createdBy", createdBy, sso.MaxShortTextLength, false); err != nil {
+	onBehalfOf := strings.TrimSpace(input.CreatedBy)
+	if err := sso.CheckText("createdBy", onBehalfOf, sso.MaxShortTextLength, false); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -279,14 +303,15 @@ func (h Handler) CreateSCIMToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := ports.SCIMToken{
-		TenantID:     tenantID,
-		ID:           id,
-		ConnectionID: conn.ID,
-		Name:         name,
-		Prefix:       prefix,
-		TokenHash:    hash,
-		CreatedAt:    h.clock(),
-		CreatedBy:    createdBy,
+		TenantID:          tenantID,
+		ID:                id,
+		ConnectionID:      conn.ID,
+		Name:              name,
+		Prefix:            prefix,
+		TokenHash:         hash,
+		CreatedAt:         h.clock(),
+		CreatedBy:         h.principal(r.Context()),
+		CreatedOnBehalfOf: onBehalfOf,
 	}
 	if err := h.store.CreateSCIMToken(r.Context(), &token); err != nil {
 		writeError(w, err)
@@ -312,4 +337,36 @@ func (h Handler) DeleteSCIMToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type samlAssertionConsumed struct {
+	Consumed bool `json:"consumed"`
+}
+
+// ConsumeSAMLAssertion serves POST /platform/identity/saml/assertions. It
+// records a verified assertion once; a second use of the same assertion ID on
+// the connection, or of the same request ID in the tenant, returns 409
+// assertion_replayed.
+func (h Handler) ConsumeSAMLAssertion(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := h.tenant(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var input sso.SAMLAssertionInput
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, err)
+		return
+	}
+	use, err := sso.NormalizeSAMLAssertion(input, h.clock())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	use.TenantID = tenantID
+	if err := h.store.ConsumeSAMLAssertion(r.Context(), use); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, samlAssertionConsumed{Consumed: true})
 }

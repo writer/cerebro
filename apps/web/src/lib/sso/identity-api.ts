@@ -28,12 +28,29 @@ export type IdentityApiRequest = {
 
 export class IdentityApiError extends Error {
   status: number;
+  /** Machine-readable `code` from the Go error body, when present. */
+  code: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code = "") {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
+
+const TENANT_HEADER = "x-cerebro-tenant";
+
+/**
+ * Drops browser-supplied partition selectors. Go also ignores them on identity routes and always uses the
+ * web service credential's own partition; stripping here keeps the forwarded request honest.
+ */
+export const stripTenantSelector = (search: string) => {
+  if (!search) return "";
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  params.delete("tenant_id");
+  const rest = params.toString();
+  return rest ? `?${rest}` : "";
+};
 
 const json = (payload: unknown, status = 200): IdentityApiResponse => ({
   status,
@@ -78,12 +95,12 @@ export const identityApiRequest = async (
 ): Promise<IdentityApiResponse> => {
   const upperMethod = method.toUpperCase();
   if (isCerebroFixtureMode()) return identityFixtureResponse(upperMethod, path);
-  const target = buildCerebroUrl(`${IDENTITY_PREFIX}/${path.replace(/^\/+/, "")}`, search);
-  const requestHeaders: Record<string, string> = {
-    Accept: "application/json",
-    ...headers,
-    ...serviceAuthHeaders(),
-  };
+  const target = buildCerebroUrl(`${IDENTITY_PREFIX}/${path.replace(/^\/+/, "")}`, stripTenantSelector(search));
+  const requestHeaders: Record<string, string> = { Accept: "application/json" };
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() !== TENANT_HEADER) requestHeaders[name] = value;
+  }
+  Object.assign(requestHeaders, serviceAuthHeaders());
   if (body !== undefined && !Object.keys(requestHeaders).some((name) => name.toLowerCase() === "content-type")) {
     requestHeaders["Content-Type"] = "application/json";
   }
@@ -109,9 +126,19 @@ const parseJson = <T>(response: IdentityApiResponse): T => {
   }
 };
 
+const errorCode = (response: IdentityApiResponse) => {
+  try {
+    const payload = JSON.parse(response.body) as { code?: unknown; error?: unknown };
+    if (typeof payload?.code === "string") return payload.code;
+    return typeof payload?.error === "string" && /^[a-z_]{1,64}$/.test(payload.error) ? payload.error : "";
+  } catch {
+    return "";
+  }
+};
+
 const expectStatus = <T>(response: IdentityApiResponse, ...statuses: number[]): T => {
   if (!statuses.includes(response.status)) {
-    throw new IdentityApiError(`Identity API request failed with status ${response.status}.`, response.status);
+    throw new IdentityApiError(`Identity API request failed with status ${response.status}.`, response.status, errorCode(response));
   }
   return response.body ? parseJson<T>(response) : (undefined as T);
 };
@@ -158,8 +185,10 @@ export const deleteSsoSession = async (tokenHash: string) => {
   }
 };
 
-export const lookupDirectoryUser = async (connectionId: string, email: string): Promise<DirectoryUser | null> => {
-  const search = `?${new URLSearchParams({ connectionId, email }).toString()}`;
+export const lookupDirectoryUser = async (connectionId: string, email: string, subject = ""): Promise<DirectoryUser | null> => {
+  const params = new URLSearchParams({ connectionId, email });
+  if (subject) params.set("subject", subject);
+  const search = `?${params.toString()}`;
   const response = await identityApiRequest("GET", "directory/users/lookup", { search });
   if (response.status === 404) return null;
   return expectStatus<DirectoryUser>(response, 200);
@@ -174,4 +203,23 @@ export const upsertJitDirectoryUser = async (input: {
 }): Promise<DirectoryUser> => {
   const response = await identityApiRequest("POST", "directory/users/jit", { body: JSON.stringify(input) });
   return expectStatus<DirectoryUser>(response, 200, 201);
+};
+
+export class AssertionReplayedError extends Error {}
+
+/**
+ * Records a SAML assertion (and the request it answers) as consumed. Go refuses a second use of either id
+ * with 409, which makes each assertion and each AuthnRequest single-use across all web replicas.
+ */
+export const consumeSamlAssertion = async (input: {
+  connectionId: string;
+  assertionId: string;
+  requestId: string;
+  notOnOrAfter: string;
+}) => {
+  const response = await identityApiRequest("POST", "saml/assertions", { body: JSON.stringify(input) });
+  if (response.status === 409 && errorCode(response) === "assertion_replayed") {
+    throw new AssertionReplayedError("SAML assertion was already used.");
+  }
+  expectStatus<unknown>(response, 200, 201);
 };

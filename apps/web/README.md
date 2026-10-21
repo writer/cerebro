@@ -59,3 +59,12 @@ Every document is served with a nonce-based `Content-Security-Policy` (`script-s
 The app accepts public Cerebro API and identity configuration. Environment deployment adapters, network configuration, secret addresses, and rollout policy live outside this workspace.
 
 This application retains its MIT license in [LICENSE](LICENSE). The rest of the repository remains under the root Apache 2.0 license unless a nested license states otherwise.
+
+## Native SSO settings
+
+These web-service settings apply to the console's built-in SSO (Access Control > SSO):
+
+| Variable | Guidance |
+| --- | --- |
+| `CEREBRO_WEB_TRUSTED_PROXY_HOPS` | Number of proxies in front of the web service that append to `X-Forwarded-For` (default `1`). The client address recorded (hashed) with each session is read this many entries from the right, so client-supplied entries are ignored. |
+| `CEREBRO_SSO_REQUIRED` | Set when nothing in front of the console authenticates users. SSO is then enforced regardless of the stored policy, anonymous requests are always denied, and break-glass is refused. |

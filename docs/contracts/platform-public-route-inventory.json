@@ -9,29 +9,29 @@
     "gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go"
   ],
   "summary": {
-    "http_routes": 323,
+    "http_routes": 324,
     "connect_mounts": 1,
     "connect_rpcs": 47,
     "by_surface": {
       "bridged-to-rust-authority": 22,
-      "protected": 331,
+      "protected": 332,
       "public-exempt": 15,
       "rust-authority": 3
     },
     "by_authority_owner": {
       "bridged-to-rust-authority": 22,
-      "go-compatibility": 346,
+      "go-compatibility": 347,
       "rust-authority": 3
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
-      "api-key-or-bearer": 306,
+      "api-key-or-bearer": 307,
       "connect-api-key-or-bearer": 48,
       "public-exempt": 15
     },
     "by_contract_source": {
       "MCP schema": 2,
-      "OpenAPI": 321,
+      "OpenAPI": 322,
       "proto": 48
     },
     "deprecated_surfaces": 0
@@ -3988,6 +3988,18 @@
       "kind": "http",
       "method": "POST",
       "path": "/platform/identity/directory/users/jit",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /platform/identity/saml/assertions",
+      "kind": "http",
+      "method": "POST",
+      "path": "/platform/identity/saml/assertions",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "platform",

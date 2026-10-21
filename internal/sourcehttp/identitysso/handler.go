@@ -19,11 +19,9 @@ import (
 )
 
 const (
-	// TenantHeader optionally selects the tenant when tenant_id is not in the query.
-	TenantHeader = "X-Cerebro-Tenant"
 	// SCIMTokenHeader carries the raw SCIM bearer token forwarded by the web server.
 	SCIMTokenHeader = "X-Cerebro-SCIM-Token" //nolint:gosec // Header name, not a credential value.
-	// DefaultTenantID is used when neither the request nor the principal selects a tenant.
+	// DefaultTenantID is used when the calling credential carries no tenant.
 	DefaultTenantID = "default"
 
 	maxBodyBytes      = 1 << 20
@@ -35,7 +33,9 @@ const (
 )
 
 var (
-	errStoreUnavailable = errors.New("identity_store_unavailable")
+	// errStoreUnavailable maps to 404 so callers can tell a deployment without
+	// identity SSO apart from a transient outage.
+	errStoreUnavailable = errors.New("identity_sso_unavailable")
 	errTenantForbidden  = errors.New("tenant_forbidden")
 )
 
@@ -56,7 +56,7 @@ type Handler struct {
 }
 
 // NewHandler builds a handler from the optional IdentitySSOStore capability.
-// A missing capability returns 503 from every route.
+// A missing capability returns 404 identity_sso_unavailable from every route.
 func NewHandler(store ports.StateStore, resolve TenantResolver, actor ActorResolver) Handler {
 	ssoStore, _ := store.(ports.IdentitySSOStore)
 	if ssoStore != nil {
@@ -85,17 +85,13 @@ func (h Handler) tenant(r *http.Request) (string, error) {
 	if h.store == nil {
 		return "", errStoreUnavailable
 	}
-	requested := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
-	header := strings.TrimSpace(r.Header.Get(TenantHeader))
-	if requested != "" && header != "" && requested != header {
-		return "", errTenantForbidden
-	}
-	if requested == "" {
-		requested = header
-	}
-	tenantID := requested
+	// The identity API always acts on the calling credential's own tenant.
+	// Request selectors (tenant_id, X-Cerebro-Tenant) are ignored so a value
+	// forwarded from a browser or IdP cannot point admin, session, or SCIM
+	// calls at a different store partition.
+	tenantID := ""
 	if h.resolve != nil {
-		resolved, err := h.resolve(r.Context(), requested)
+		resolved, err := h.resolve(r.Context(), "")
 		if err != nil {
 			return "", fmt.Errorf("%w: %w", errTenantForbidden, err)
 		}
@@ -107,14 +103,13 @@ func (h Handler) tenant(r *http.Request) (string, error) {
 	return tenantID, nil
 }
 
-func (h Handler) actorFor(ctx context.Context, fallback string) string {
-	if fallback = strings.TrimSpace(fallback); fallback != "" {
-		return fallback
+// principal returns the authenticated caller. Body-supplied actors are kept
+// separately as on-behalf-of values and never replace it.
+func (h Handler) principal(ctx context.Context) string {
+	if h.actor == nil {
+		return ""
 	}
-	if h.actor != nil {
-		return strings.TrimSpace(h.actor(ctx))
-	}
-	return ""
+	return strings.TrimSpace(h.actor(ctx))
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
@@ -128,9 +123,16 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	return nil
 }
 
+// errorBody carries a stable machine code in Code. Error repeats the code,
+// except for 400 responses where it holds the validation message.
 type errorBody struct {
 	Error  string `json:"error"`
+	Code   string `json:"code"`
 	Detail string `json:"detail,omitempty"`
+}
+
+func codeBody(code string) errorBody {
+	return errorBody{Error: code, Code: code}
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -138,43 +140,54 @@ func writeError(w http.ResponseWriter, err error) {
 	writeJSON(w, status, body)
 }
 
+// codedErrors map to their own Error() text as the response code.
+var codedErrors = []struct {
+	err    error
+	status int
+}{
+	{sso.ErrConnectionNotTested, http.StatusConflict},
+	{sso.ErrNoActiveConnection, http.StatusConflict},
+	{sso.ErrConnectionInactive, http.StatusConflict},
+	{sso.ErrLastActiveEnforced, http.StatusConflict},
+	{sso.ErrJITDisabled, http.StatusConflict},
+	{sso.ErrSubjectMismatch, http.StatusConflict},
+	{ports.ErrSAMLAssertionReplayed, http.StatusConflict},
+	{sso.ErrUserInactive, http.StatusForbidden},
+	{sso.ErrUserDeprovisioned, http.StatusForbidden},
+	{errTenantForbidden, http.StatusForbidden},
+	{errStoreUnavailable, http.StatusNotFound},
+}
+
 func errorResponse(err error) (int, errorBody) {
+	for _, coded := range codedErrors {
+		if errors.Is(err, coded.err) {
+			return coded.status, codeBody(coded.err.Error())
+		}
+	}
 	switch {
 	case errors.Is(err, sso.ErrInvalid):
-		return http.StatusBadRequest, errorBody{Error: strings.TrimPrefix(err.Error(), sso.ErrInvalid.Error()+": ")}
+		return http.StatusBadRequest, errorBody{Error: strings.TrimPrefix(err.Error(), sso.ErrInvalid.Error()+": "), Code: "invalid_request"}
 	case errors.Is(err, ports.ErrSSOConnectionLimit):
-		return http.StatusBadRequest, errorBody{Error: fmt.Sprintf("at most %d connections are allowed", sso.MaxConnections)}
-	case errors.Is(err, errTenantForbidden):
-		return http.StatusForbidden, errorBody{Error: errTenantForbidden.Error()}
+		return http.StatusBadRequest, errorBody{Error: fmt.Sprintf("at most %d connections are allowed", sso.MaxConnections), Code: "connection_limit"}
 	case errors.Is(err, ports.ErrSSOConnectionNotFound), errors.Is(err, ports.ErrSSOSessionNotFound),
 		errors.Is(err, ports.ErrSCIMTokenNotFound), errors.Is(err, ports.ErrDirectoryUserNotFound),
 		errors.Is(err, ports.ErrDirectoryGroupNotFound):
-		return http.StatusNotFound, errorBody{Error: errorCodeNotFound}
+		return http.StatusNotFound, codeBody(errorCodeNotFound)
 	case errors.Is(err, ports.ErrSSODomainConflict):
-		return http.StatusConflict, errorBody{Error: "domain_in_use", Detail: strings.TrimPrefix(err.Error(), ports.ErrSSODomainConflict.Error()+": ")}
-	case errors.Is(err, sso.ErrConnectionNotTested), errors.Is(err, sso.ErrNoActiveConnection),
-		errors.Is(err, sso.ErrConnectionInactive), errors.Is(err, sso.ErrLastActiveEnforced), errors.Is(err, sso.ErrJITDisabled):
-		return http.StatusConflict, errorBody{Error: conflictCode(err)}
+		body := codeBody("domain_in_use")
+		body.Detail = strings.TrimPrefix(err.Error(), ports.ErrSSODomainConflict.Error()+": ")
+		return http.StatusConflict, body
 	case errors.Is(err, sso.ErrBootstrapManaged):
-		return http.StatusConflict, errorBody{Error: sso.ErrBootstrapManaged.Error(), Detail: "managed by stack configuration"}
+		body := codeBody(sso.ErrBootstrapManaged.Error())
+		body.Detail = "managed by stack configuration"
+		return http.StatusConflict, body
 	case errors.Is(err, ports.ErrSSOSessionExists):
-		return http.StatusConflict, errorBody{Error: "session_exists"}
+		return http.StatusConflict, codeBody("session_exists")
 	case errors.Is(err, ports.ErrDirectoryConflict):
-		return http.StatusConflict, errorBody{Error: "directory_conflict"}
-	case errors.Is(err, errStoreUnavailable):
-		return http.StatusServiceUnavailable, errorBody{Error: errStoreUnavailable.Error()}
+		return http.StatusConflict, codeBody("directory_conflict")
 	default:
-		return http.StatusInternalServerError, errorBody{Error: "internal_error"}
+		return http.StatusInternalServerError, codeBody("internal_error")
 	}
-}
-
-func conflictCode(err error) string {
-	for _, candidate := range []error{sso.ErrConnectionNotTested, sso.ErrNoActiveConnection, sso.ErrConnectionInactive, sso.ErrLastActiveEnforced, sso.ErrJITDisabled} {
-		if errors.Is(err, candidate) {
-			return candidate.Error()
-		}
-	}
-	return "conflict"
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

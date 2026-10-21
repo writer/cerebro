@@ -106,6 +106,20 @@ var ensureIdentitySSOStatements = []string{
   FOREIGN KEY (tenant_id, user_id) REFERENCES identity_directory_users (tenant_id, user_id) ON DELETE CASCADE
 )`,
 	`CREATE INDEX IF NOT EXISTS identity_directory_memberships_user_idx ON identity_directory_memberships (tenant_id, user_id)`,
+	`ALTER TABLE identity_directory_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS identity_directory_users_subject_idx ON identity_directory_users (tenant_id, connection_id, subject) WHERE subject <> ''`,
+	`ALTER TABLE identity_scim_tokens ADD COLUMN IF NOT EXISTS created_on_behalf_of TEXT NOT NULL DEFAULT ''`,
+	`CREATE TABLE IF NOT EXISTS identity_saml_assertions (
+  tenant_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  assertion_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (tenant_id, connection_id, assertion_id)
+)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS identity_saml_assertions_request_idx ON identity_saml_assertions (tenant_id, request_id)`,
+	`CREATE INDEX IF NOT EXISTS identity_saml_assertions_expiry_idx ON identity_saml_assertions (tenant_id, expires_at)`,
 }
 
 // identitySessionRetention keeps expired and revoked session rows briefly so
@@ -271,8 +285,8 @@ func (s *Store) PutSSOConnection(ctx context.Context, connection *ports.SSOConne
 		return fmt.Errorf("begin sso connection write: %w", err)
 	}
 	defer identityRollback(tx)
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('identity_sso_connections:' || $1, 0))`, tenantID); err != nil {
-		return fmt.Errorf("lock sso connections: %w", err)
+	if err := lockSSOConnections(ctx, tx, tenantID); err != nil {
+		return err
 	}
 	existing, err := listSSOConnections(ctx, tx, tenantID)
 	if err != nil {
@@ -281,6 +295,45 @@ func (s *Store) PutSSOConnection(ctx context.Context, connection *ports.SSOConne
 	if err := checkSSOConnectionPut(existing, *connection, maxConnections); err != nil {
 		return err
 	}
+	if err := upsertSSOConnection(ctx, tx, tenantID, connection, payload); err != nil {
+		return err
+	}
+	if err := checkSSOLockout(ctx, tx, tenantID, ports.ErrSSOLastActiveConnection); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sso connection: %w", err)
+	}
+	return nil
+}
+
+// lockSSOConnections takes the per-tenant transaction lock every connection
+// and policy write holds, so the enforced-lockout invariant is checked against
+// a state no concurrent writer can change before commit.
+func lockSSOConnections(ctx context.Context, tx *sql.Tx, tenantID string) error {
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('identity_sso_connections:' || $1, 0))`, tenantID); err != nil {
+		return fmt.Errorf("lock sso connections: %w", err)
+	}
+	return nil
+}
+
+// checkSSOLockout returns violation when the tenant policy is enforced and the
+// transaction's view has no active connection left.
+func checkSSOLockout(ctx context.Context, tx *sql.Tx, tenantID string, violation error) error {
+	var lockedOut bool
+	if err := tx.QueryRowContext(ctx, `SELECT
+  COALESCE((SELECT (policy_json->>'enforced')::boolean FROM identity_sso_policies WHERE tenant_id = $1), FALSE)
+  AND NOT EXISTS (SELECT 1 FROM identity_sso_connections WHERE tenant_id = $1 AND connection_json->>'status' = $2)`,
+		tenantID, ports.SSOStatusActive).Scan(&lockedOut); err != nil {
+		return fmt.Errorf("check sso lockout: %w", err)
+	}
+	if lockedOut {
+		return violation
+	}
+	return nil
+}
+
+func upsertSSOConnection(ctx context.Context, tx *sql.Tx, tenantID string, connection *ports.SSOConnection, payload []byte) error {
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO identity_sso_connections (tenant_id, connection_id, connection_json, created_at, updated_at)
 VALUES ($1, $2, $3::jsonb, $4, $5)
@@ -290,10 +343,69 @@ ON CONFLICT (tenant_id, connection_id) DO UPDATE SET
   updated_at = EXCLUDED.updated_at`, tenantID, connection.ID, string(payload), connection.CreatedAt.UTC(), connection.UpdatedAt.UTC()); err != nil {
 		return fmt.Errorf("upsert sso connection: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit sso connection: %w", err)
-	}
 	return nil
+}
+
+// UpdateSSOConnection applies mutate to the stored connection under the
+// tenant connection lock and writes the result, revoking the connection's
+// sessions in the same transaction when the update asks for it.
+func (s *Store) UpdateSSOConnection(ctx context.Context, tenantID string, connectionID string, maxConnections int, mutate func(ports.SSOConnection) (ports.SSOConnectionUpdate, error)) (*ports.SSOConnection, error) {
+	if mutate == nil {
+		return nil, errors.New("sso connection mutation is required")
+	}
+	tenantID, err := s.identityTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	connectionID = strings.TrimSpace(connectionID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin sso connection update: %w", err)
+	}
+	defer identityRollback(tx)
+	if err := lockSSOConnections(ctx, tx, tenantID); err != nil {
+		return nil, err
+	}
+	existing, err := listSSOConnections(ctx, tx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	index := slices.IndexFunc(existing, func(conn ports.SSOConnection) bool { return conn.ID == connectionID })
+	if index < 0 {
+		return nil, ports.ErrSSOConnectionNotFound
+	}
+	update, err := mutate(existing[index])
+	if err != nil {
+		return nil, err
+	}
+	next := update.Connection
+	next.TenantID, next.ID = tenantID, connectionID
+	if err := checkSSOConnectionPut(existing, next, maxConnections); err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(next)
+	if err != nil {
+		return nil, fmt.Errorf("encode sso connection: %w", err)
+	}
+	if err := upsertSSOConnection(ctx, tx, tenantID, &next, payload); err != nil {
+		return nil, err
+	}
+	if err := checkSSOLockout(ctx, tx, tenantID, ports.ErrSSOLastActiveConnection); err != nil {
+		return nil, err
+	}
+	if update.RevokeSessions {
+		revokedAt := next.UpdatedAt
+		if revokedAt.IsZero() {
+			revokedAt = time.Now()
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE identity_sso_sessions SET revoked_at = $3 WHERE tenant_id = $1 AND connection_id = $2 AND revoked_at IS NULL`, tenantID, connectionID, revokedAt.UTC()); err != nil {
+			return nil, fmt.Errorf("revoke sso connection sessions: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit sso connection update: %w", err)
+	}
+	return &next, nil
 }
 
 func checkSSOConnectionPut(existing []ports.SSOConnection, next ports.SSOConnection, maxConnections int) error {
@@ -328,12 +440,18 @@ func (s *Store) DeleteSSOConnection(ctx context.Context, tenantID string, connec
 		return fmt.Errorf("begin sso connection delete: %w", err)
 	}
 	defer identityRollback(tx)
+	if err := lockSSOConnections(ctx, tx, tenantID); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM identity_sso_connections WHERE tenant_id = $1 AND connection_id = $2`, tenantID, connectionID)
 	if err != nil {
 		return fmt.Errorf("delete sso connection: %w", err)
 	}
 	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
 		return ports.ErrSSOConnectionNotFound
+	}
+	if err := checkSSOLockout(ctx, tx, tenantID, ports.ErrSSOLastActiveConnection); err != nil {
+		return err
 	}
 	for _, statement := range []string{
 		`DELETE FROM identity_sso_sessions WHERE tenant_id = $1 AND connection_id = $2`,
@@ -373,7 +491,8 @@ func (s *Store) GetSSOPolicy(ctx context.Context, tenantID string) (*ports.SSOPo
 	return &policy, nil
 }
 
-// PutSSOPolicy upserts the tenant SSO policy.
+// PutSSOPolicy upserts the tenant SSO policy. Enforcing a policy for a tenant
+// without an active connection returns ErrSSONoActiveConnection.
 func (s *Store) PutSSOPolicy(ctx context.Context, policy *ports.SSOPolicy) error {
 	if policy == nil {
 		return errors.New("sso policy is required")
@@ -386,11 +505,25 @@ func (s *Store) PutSSOPolicy(ctx context.Context, policy *ports.SSOPolicy) error
 	if err != nil {
 		return fmt.Errorf("encode sso policy: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sso policy write: %w", err)
+	}
+	defer identityRollback(tx)
+	if err := lockSSOConnections(ctx, tx, tenantID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
 INSERT INTO identity_sso_policies (tenant_id, policy_json, updated_at)
 VALUES ($1, $2::jsonb, NOW())
 ON CONFLICT (tenant_id) DO UPDATE SET policy_json = EXCLUDED.policy_json, updated_at = NOW()`, tenantID, string(payload)); err != nil {
 		return fmt.Errorf("upsert sso policy: %w", err)
+	}
+	if err := checkSSOLockout(ctx, tx, tenantID, ports.ErrSSONoActiveConnection); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sso policy: %w", err)
 	}
 	return nil
 }
@@ -447,13 +580,33 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $1
 	return nil
 }
 
-// GetSSOSession loads a session by token hash, including expired or revoked rows.
+// identitySessionLookup loads a session only while its connection is active
+// and the directory user it belongs to, if any, is active and not deleted. The
+// user is chosen in the same order as identitysso.MatchDirectoryUser: live
+// before deleted, subject match before email match, SCIM before JIT, then ID.
+const identitySessionLookup = `SELECT s.tenant_id, s.session_id, s.token_hash, s.connection_id, s.subject, s.email, s.name, s.groups_json::text, s.roles_json::text,
+  s.user_agent, s.ip_hash, s.created_at, s.last_seen_at, s.expires_at, s.idle_timeout_minutes, s.revoked_at
+FROM identity_sso_sessions s
+JOIN identity_sso_connections c ON c.tenant_id = s.tenant_id AND c.connection_id = s.connection_id AND c.connection_json->>'status' = $3
+LEFT JOIN LATERAL (
+  SELECT u.active, u.deleted_at FROM identity_directory_users u
+  WHERE u.tenant_id = s.tenant_id AND u.connection_id = s.connection_id
+    AND ((s.subject <> '' AND u.subject = s.subject)
+      OR (s.email <> '' AND (lower(u.email) = lower(s.email) OR lower(u.user_name) = lower(s.email))))
+  ORDER BY (u.deleted_at IS NOT NULL), NOT (s.subject <> '' AND u.subject = s.subject), (u.source <> 'scim'), u.user_id
+  LIMIT 1
+) du ON TRUE
+WHERE s.tenant_id = $1 AND s.token_hash = $2 AND (du.active IS NULL OR (du.active AND du.deleted_at IS NULL))`
+
+// GetSSOSession loads a session by token hash, including expired or revoked
+// rows, unless its connection is not active or its directory user is inactive
+// or deleted.
 func (s *Store) GetSSOSession(ctx context.Context, tenantID string, tokenHash string) (*ports.SSOSession, error) {
 	tenantID, err := s.identityTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT `+identitySessionColumns+` FROM identity_sso_sessions WHERE tenant_id = $1 AND token_hash = $2`, tenantID, tokenHash)
+	row := s.db.QueryRowContext(ctx, identitySessionLookup, tenantID, tokenHash, ports.SSOStatusActive)
 	session, err := scanSSOSession(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ports.ErrSSOSessionNotFound
@@ -518,7 +671,8 @@ LIMIT $4`, tenantID, now.UTC(), strings.TrimSpace(subject), max(limit, 1))
 	return sessions, nil
 }
 
-// RevokeSSOSessions revokes every live session that matches a subject or email.
+// RevokeSSOSessions revokes every live session that matches a subject or
+// email, restricted to one connection when match.ConnectionID is set.
 func (s *Store) RevokeSSOSessions(ctx context.Context, tenantID string, match ports.SSOSessionMatch, revokedAt time.Time) (int, error) {
 	tenantID, err := s.identityTenant(ctx, tenantID)
 	if err != nil {
@@ -540,9 +694,9 @@ func (s *Store) RevokeSSOSessions(ctx context.Context, tenantID string, match po
 		return 0, nil
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE identity_sso_sessions SET revoked_at = $2
-WHERE tenant_id = $1 AND revoked_at IS NULL
+WHERE tenant_id = $1 AND revoked_at IS NULL AND ($5 = '' OR connection_id = $5)
   AND (subject IN (SELECT jsonb_array_elements_text($3::jsonb)) OR lower(email) IN (SELECT jsonb_array_elements_text($4::jsonb)))`,
-		tenantID, revokedAt.UTC(), identityJSONList(subjects), identityJSONList(emails))
+		tenantID, revokedAt.UTC(), identityJSONList(subjects), identityJSONList(emails), strings.TrimSpace(match.ConnectionID))
 	if err != nil {
 		return 0, fmt.Errorf("revoke sso sessions: %w", err)
 	}
@@ -551,4 +705,32 @@ WHERE tenant_id = $1 AND revoked_at IS NULL
 		return 0, fmt.Errorf("revoke sso sessions: %w", err)
 	}
 	return int(affected), nil
+}
+
+// ConsumeSAMLAssertion records a consumed assertion. The insert relies on the
+// table's unique keys, so two concurrent consumers of one assertion or request
+// cannot both succeed. Expired rows for the tenant are pruned first so their
+// IDs do not block forever.
+func (s *Store) ConsumeSAMLAssertion(ctx context.Context, use ports.SAMLAssertionUse) error {
+	tenantID, err := s.identityTenant(ctx, use.TenantID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM identity_saml_assertions WHERE tenant_id = $1 AND expires_at <= $2`, tenantID, use.ConsumedAt.UTC()); err != nil {
+		return fmt.Errorf("prune saml assertions: %w", err)
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO identity_saml_assertions (tenant_id, connection_id, assertion_id, request_id, consumed_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+		tenantID, use.ConnectionID, use.AssertionID, use.RequestID, use.ConsumedAt.UTC(), use.ExpiresAt.UTC())
+	if err != nil {
+		return fmt.Errorf("record saml assertion: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("record saml assertion: %w", err)
+	}
+	if affected == 0 {
+		return ports.ErrSAMLAssertionReplayed
+	}
+	return nil
 }

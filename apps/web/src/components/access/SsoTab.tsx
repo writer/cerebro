@@ -103,6 +103,12 @@ export function SsoTab({ roles, testedConnectionId, testOk, testReason }: { role
           Break-glass is on (CEREBRO_SSO_BREAK_GLASS). SSO is not required right now, and proxy or local sign-in works. Turn it off once access is restored.
         </AttentionBanner>
       )}
+      {status?.state === "unavailable" && (
+        <AttentionBanner>
+          SSO is unavailable: the web service has no Cerebro API credential, or the API has no identity store configured. The stored
+          sign-in policy cannot be read or enforced.
+        </AttentionBanner>
+      )}
       {status && !status.sessionSecretConfigured && (
         <AttentionBanner>Set CEREBRO_WEB_SESSION_SECRET (32+ random bytes) on the web service before anyone can sign in with SSO.</AttentionBanner>
       )}
@@ -346,7 +352,13 @@ function PolicyForm({
     <Panel
       title="Sign-in policy"
       description="How people sign in to this console and how long a session lasts."
-      action={<StatusDot tone={enforced ? "success" : "warning"} label={enforced ? "SSO required" : "SSO optional"} />}
+      action={
+        status?.state === "unavailable" ? (
+          <StatusDot tone="warning" label="SSO unavailable" />
+        ) : (
+          <StatusDot tone={enforced ? "success" : "warning"} label={enforced ? "SSO required" : "SSO optional"} />
+        )
+      }
     >
       <div className="space-y-5">
         <Toggle

@@ -10,6 +10,7 @@ import {
 import { parseDomFromString, xpath } from "@node-saml/node-saml/lib/xml";
 
 import { ssoRoutes } from "./config";
+import { AssertionReplayedError, consumeSamlAssertion } from "./identity-api";
 import { LoginError, type AssertedIdentity, type SSOConnection, type SSOSamlConfig } from "./types";
 
 const CLOCK_SKEW_MS = 120_000;
@@ -132,6 +133,58 @@ const assertResponseShape = async (samlResponse: string, acsUrl: string) => {
   }
 };
 
+const BEARER_METHOD = "urn:oasis:names:tc:SAML:2.0:cm:bearer";
+
+export type VerifiedBearerAssertion = {
+  assertionId: string;
+  notOnOrAfter: string;
+};
+
+/**
+ * SAML Profiles §4.1.4.3: checks the bearer SubjectConfirmationData inside the signature-verified assertion.
+ * node-saml reads InResponseTo from the outer Response (unsigned when only the assertion is signed) and skips
+ * the assertion-level comparison when the assertion omits it, so this is the binding that actually counts.
+ */
+export const verifyBearerConfirmation = async (
+  assertionXml: string,
+  requestId: string,
+  acsUrl: string,
+  nowMs = Date.now(),
+): Promise<VerifiedBearerAssertion> => {
+  let doc: Document;
+  try {
+    doc = await parseDomFromString(assertionXml);
+  } catch {
+    throw new LoginError("invalid_response", "The verified SAML assertion could not be parsed.");
+  }
+  const assertion = doc.documentElement;
+  if (!assertion || assertion.localName !== "Assertion") {
+    throw new LoginError("invalid_response", "The verified SAML data is not an assertion.");
+  }
+  const assertionId = assertion.getAttribute("ID")?.trim() ?? "";
+  if (!assertionId) throw new LoginError("invalid_response", "The SAML assertion has no ID.");
+  const confirmations = xpath
+    .selectElements(assertion, "./*[local-name()='Subject']/*[local-name()='SubjectConfirmation']")
+    .filter((confirmation) => confirmation.getAttribute("Method") === BEARER_METHOD)
+    .flatMap((confirmation) => xpath.selectElements(confirmation, "./*[local-name()='SubjectConfirmationData']"));
+  const matching = confirmations.filter((data) => {
+    const notOnOrAfterMs = Date.parse(data.getAttribute("NotOnOrAfter") ?? "");
+    return (
+      data.getAttribute("InResponseTo") === requestId &&
+      data.getAttribute("Recipient") === acsUrl &&
+      Number.isFinite(notOnOrAfterMs) &&
+      notOnOrAfterMs > nowMs
+    );
+  });
+  if (matching.length !== 1) {
+    throw new LoginError("invalid_response", "The SAML assertion is not a bearer assertion for this browser's request.");
+  }
+  return {
+    assertionId,
+    notOnOrAfter: new Date(Date.parse(matching[0].getAttribute("NotOnOrAfter") ?? "")).toISOString(),
+  };
+};
+
 const mapSamlError = (error: unknown): never => {
   if (error instanceof LoginError) throw error;
   if (error instanceof SamlStatusError) {
@@ -143,8 +196,9 @@ const mapSamlError = (error: unknown): never => {
 };
 
 /**
- * Validates an HTTP-POST SAMLResponse: IdP signature, issuer, audience, time window, and InResponseTo bound to
- * the transaction cookie. Unsolicited (IdP-initiated) responses have no InResponseTo and are rejected.
+ * Validates an HTTP-POST SAMLResponse: IdP signature, issuer, audience, time window, the signed bearer
+ * confirmation (InResponseTo bound to the transaction cookie, Recipient, NotOnOrAfter), and one-time use of
+ * the assertion. Unsolicited (IdP-initiated) responses have no InResponseTo and are rejected.
  */
 export const finishSamlLogin = async (
   connection: SSOConnection,
@@ -172,5 +226,22 @@ export const finishSamlLogin = async (
   if (saml.idpEntityId && profile.issuer !== saml.idpEntityId) {
     throw new LoginError("invalid_response", "SAML assertion issuer does not match the configured IdP entity ID.");
   }
-  return identityFromSamlProfile(profile, saml);
+  const assertionXml = typeof profile.getAssertionXml === "function" ? profile.getAssertionXml() : "";
+  if (!assertionXml) throw new LoginError("invalid_response", "The SAML response did not contain a verified assertion.");
+  const bearer = await verifyBearerConfirmation(assertionXml, tx.samlRequestId, samlServiceProvider(origin).acsUrl);
+  const identity = identityFromSamlProfile(profile, saml);
+  try {
+    await consumeSamlAssertion({
+      connectionId: connection.id,
+      assertionId: bearer.assertionId,
+      requestId: tx.samlRequestId,
+      notOnOrAfter: bearer.notOnOrAfter,
+    });
+  } catch (error) {
+    if (error instanceof AssertionReplayedError) {
+      throw new LoginError("invalid_response", "This SAML assertion or request was already used.");
+    }
+    throw error;
+  }
+  return identity;
 };

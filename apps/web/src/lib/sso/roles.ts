@@ -1,33 +1,22 @@
-import { knownAuthorizationRoles, roleClaimMappings, rolesFromClaimMappings, type RoleClaimMapping } from "@/lib/rbac";
+import { knownAuthorizationRoles } from "@/lib/rbac";
 
 import type { SSOConnection } from "./types";
 
 /**
- * roles = defaultRoles ∪ connection group mappings ∪ CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS (groups), restricted
- * to role names that have a built-in permission bundle.
+ * roles = defaultRoles ∪ this connection's group mappings, restricted to role names that have a built-in
+ * permission bundle. CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS is deliberately not applied: every connected IdP (and
+ * its SCIM client) controls its own group names, so a global name-based mapping would let any of them mint
+ * roles meant for another.
  */
 export const computeSessionRoles = (
   connection: Pick<SSOConnection, "defaultRoles" | "roleMappings">,
   groups: string[],
-  envMappings: RoleClaimMapping[] = roleClaimMappings(),
 ): string[] => {
   const normalizedGroups = new Set(groups.map((group) => group.trim().toLowerCase()).filter(Boolean));
   const mapped = (connection.roleMappings ?? [])
     .filter((mapping) => normalizedGroups.has((mapping.group ?? "").trim().toLowerCase()))
     .flatMap((mapping) => mapping.roles ?? []);
-  const fromEnv = rolesFromClaimMappings(
-    {
-      actorId: "",
-      actorLabel: "",
-      confidence: "signature-verified",
-      displayName: "",
-      initials: "",
-      source: "sso-session",
-      entitlements: { groups: Array.from(normalizedGroups) },
-    },
-    envMappings.filter((mapping) => mapping.claim === "groups"),
-  );
-  return knownAuthorizationRoles([...(connection.defaultRoles ?? []), ...mapped, ...fromEnv]);
+  return knownAuthorizationRoles([...(connection.defaultRoles ?? []), ...mapped]);
 };
 
 export const emailDomain = (email: string) => {

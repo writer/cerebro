@@ -27,6 +27,10 @@ const (
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
 	scopeIdentitySSORead           = "cerebro.identity.sso.read"
 	scopeIdentitySSOWrite          = "cerebro.identity.sso.write"
+	// scopeIdentitySSOService guards the login-internal identity routes used by
+	// the web console's service credential. No role grants it and it is not an
+	// OAuth scope, so admin users and delegated clients cannot mint sessions.
+	scopeIdentitySSOService = "cerebro.identity.sso.service"
 
 	scopePolicyEvaluationDatasetsRead    = "cerebro.policy_evaluation_datasets.read"
 	scopePolicyEvaluationDatasetsPropose = "cerebro.policy_evaluation_datasets.propose"

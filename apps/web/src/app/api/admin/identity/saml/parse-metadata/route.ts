@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 
-import { authorizeIdentityRequest } from "@/lib/sso/admin-auth";
+import { authorizeIdentityRequest, rejectUnsafeIdentityWrite } from "@/lib/sso/admin-auth";
 import { jsonNoStore } from "@/lib/sso/http";
 import { UnsafeUrlError } from "@/lib/sso/safe-fetch";
 import { fetchIdpMetadata, MAX_METADATA_BYTES, MetadataError, parseIdpMetadata } from "@/lib/sso/saml-metadata";
 
 export async function POST(request: NextRequest) {
+  const unsafe = rejectUnsafeIdentityWrite(request);
+  if (unsafe) return unsafe;
   const authorization = await authorizeIdentityRequest(request, "identity:admin");
   if (!authorization.ok) return authorization.response;
   const raw = await request.text();

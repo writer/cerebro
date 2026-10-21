@@ -7,6 +7,8 @@ export type SSOOidcConfig = {
   clientSecretRef: string;
   scopes: string[];
   groupsClaim: string;
+  /** The IdP is authoritative for the email claim, so a missing or non-boolean email_verified is accepted. */
+  trustEmailClaim?: boolean;
 };
 
 export type SSOSamlConfig = {
@@ -88,6 +90,10 @@ export type DirectoryUser = {
   name: string;
   active: boolean;
   groups: string[];
+  /** SCIM-managed group memberships; the only stored groups that may grant roles. */
+  scimGroups?: string[];
+  /** Groups from the last JIT login, for display only. */
+  jitGroups?: string[];
   source: "scim" | "jit";
   connectionId: string;
   lastLoginAt?: string;

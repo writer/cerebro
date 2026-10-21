@@ -7,7 +7,7 @@ import { computeSessionRoles, connectionAllowsEmail, connectionForEmail, emailDo
 import { parseSecretRef, resolveSecretRef, SecretRefError, setSecretsManagerFetcherForTests } from "./secret-ref";
 import { openTransaction, sealTransaction, TransactionError, TX_TTL_SECONDS, type LoginTransaction } from "./tx";
 
-const envNames = ["CEREBRO_WEB_PUBLIC_URL", "CEREBRO_SSO_TEST_SECRET", "OTHER_SECRET", "CEREBRO_SSO_SECRET_ENV_ALLOWLIST", "CEREBRO_SSO_AWS_SECRET_PREFIXES", "CEREBRO_SSO_OIDC_CALLBACK_PATH", "CEREBRO_SSO_BREAK_GLASS", "CEREBRO_SSO_REQUIRED"];
+const envNames = ["CEREBRO_WEB_PUBLIC_URL", "CEREBRO_SSO_TEST_SECRET", "OTHER_SECRET", "CEREBRO_SSO_SECRET_ENV_ALLOWLIST", "CEREBRO_SSO_AWS_SECRET_PREFIXES", "CEREBRO_SSO_OIDC_CALLBACK_PATH", "CEREBRO_SSO_BREAK_GLASS", "CEREBRO_SSO_REQUIRED", "CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS"];
 const originalEnv = new Map(envNames.map((name) => [name, process.env[name]]));
 
 afterEach(() => {
@@ -148,20 +148,24 @@ describe("login transaction cookie", () => {
 });
 
 describe("session roles and domain routing", () => {
-  it("unions default, group-mapped, and env-mapped roles and drops unknown names", () => {
+  it("unions default and group-mapped roles and drops unknown names", () => {
     const roles = computeSessionRoles(
       {
         defaultRoles: ["viewer", "not-a-real-role"],
         roleMappings: [{ group: "Security-Admins", roles: ["admin"] }, { group: "other", roles: ["cerebro.responder"] }],
       },
       ["security-admins"],
-      [{ claim: "groups", value: "security-admins", roles: ["analyst"] }],
     );
     expect(roles).toContain("viewer");
     expect(roles).toContain("admin");
-    expect(roles).toContain("analyst");
     expect(roles).not.toContain("cerebro.responder");
     expect(roles).not.toContain("not-a-real-role");
+  });
+
+  it("never applies CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS to SSO session roles", () => {
+    process.env.CEREBRO_AUTHZ_ROLE_CLAIM_MAPPINGS = JSON.stringify({ groups: { "security-admins": ["cerebro.admin"] } });
+    const roles = computeSessionRoles({ defaultRoles: [], roleMappings: [] }, ["security-admins"]);
+    expect(roles).toEqual([]);
   });
 
   it("matches exact email domains only", () => {

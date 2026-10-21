@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	sso "github.com/writer/cerebro/internal/identitysso"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -21,6 +22,7 @@ type fakeStore struct {
 	tokens      map[string]ports.SCIMToken
 	users       map[string]ports.DirectoryUser
 	groups      map[string]ports.DirectoryGroup
+	assertions  []ports.SAMLAssertionUse
 	touches     int
 }
 
@@ -80,8 +82,71 @@ func (s *fakeStore) PutSSOConnection(_ context.Context, conn *ports.SSOConnectio
 	if count >= maxConnections {
 		return ports.ErrSSOConnectionLimit
 	}
+	if s.locksOut(conn.TenantID, conn.ID, conn) {
+		return ports.ErrSSOLastActiveConnection
+	}
 	s.connections[key(conn.TenantID, conn.ID)] = *conn
 	return nil
+}
+
+// locksOut reports whether replacing connection id with next (nil deletes it)
+// would leave an enforced tenant without an active connection.
+func (s *fakeStore) locksOut(tenantID string, id string, next *ports.SSOConnection) bool {
+	policy, ok := s.policies[tenantID]
+	if !ok || !policy.Enforced {
+		return false
+	}
+	if next != nil && next.Status == ports.SSOStatusActive {
+		return false
+	}
+	for _, other := range s.connections {
+		if other.TenantID == tenantID && other.ID != id && other.Status == ports.SSOStatusActive {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *fakeStore) UpdateSSOConnection(_ context.Context, tenantID string, id string, maxConnections int, mutate func(ports.SSOConnection) (ports.SSOConnectionUpdate, error)) (*ports.SSOConnection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.connections[key(tenantID, id)]
+	if !ok {
+		return nil, ports.ErrSSOConnectionNotFound
+	}
+	update, err := mutate(current)
+	if err != nil {
+		return nil, err
+	}
+	next := update.Connection
+	for _, other := range s.connections {
+		if other.TenantID != tenantID || other.ID == id {
+			continue
+		}
+		for _, domain := range next.Domains {
+			if slices.Contains(other.Domains, domain) {
+				return nil, ports.ErrSSODomainConflict
+			}
+		}
+	}
+	if s.locksOut(tenantID, id, &next) {
+		return nil, ports.ErrSSOLastActiveConnection
+	}
+	s.connections[key(tenantID, id)] = next
+	if update.RevokeSessions {
+		s.revokeConnectionSessions(tenantID, id, next.UpdatedAt)
+	}
+	return &next, nil
+}
+
+func (s *fakeStore) revokeConnectionSessions(tenantID string, connectionID string, at time.Time) {
+	for k, session := range s.sessions {
+		if session.TenantID == tenantID && session.ConnectionID == connectionID && session.RevokedAt == nil {
+			revokedAt := at
+			session.RevokedAt = &revokedAt
+			s.sessions[k] = session
+		}
+	}
 }
 
 func (s *fakeStore) DeleteSSOConnection(_ context.Context, tenantID string, id string) error {
@@ -89,6 +154,9 @@ func (s *fakeStore) DeleteSSOConnection(_ context.Context, tenantID string, id s
 	defer s.mu.Unlock()
 	if _, ok := s.connections[key(tenantID, id)]; !ok {
 		return ports.ErrSSOConnectionNotFound
+	}
+	if s.locksOut(tenantID, id, nil) {
+		return ports.ErrSSOLastActiveConnection
 	}
 	delete(s.connections, key(tenantID, id))
 	for k, v := range s.sessions {
@@ -127,6 +195,15 @@ func (s *fakeStore) GetSSOPolicy(_ context.Context, tenantID string) (*ports.SSO
 func (s *fakeStore) PutSSOPolicy(_ context.Context, policy *ports.SSOPolicy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if policy.Enforced {
+		active := false
+		for _, conn := range s.connections {
+			active = active || (conn.TenantID == policy.TenantID && conn.Status == ports.SSOStatusActive)
+		}
+		if !active {
+			return ports.ErrSSONoActiveConnection
+		}
+	}
 	s.policies[policy.TenantID] = *policy
 	return nil
 }
@@ -146,6 +223,19 @@ func (s *fakeStore) GetSSOSession(_ context.Context, tenantID string, tokenHash 
 	defer s.mu.Unlock()
 	session, ok := s.sessions[tokenHash]
 	if !ok || session.TenantID != tenantID {
+		return nil, ports.ErrSSOSessionNotFound
+	}
+	conn, ok := s.connections[key(tenantID, session.ConnectionID)]
+	if !ok || conn.Status != ports.SSOStatusActive {
+		return nil, ports.ErrSSOSessionNotFound
+	}
+	candidates := []ports.DirectoryUser{}
+	for _, user := range s.users {
+		if user.TenantID == tenantID && user.ConnectionID == session.ConnectionID {
+			candidates = append(candidates, user)
+		}
+	}
+	if user := sso.MatchDirectoryUser(candidates, session.Subject, session.Email); user != nil && (!user.Active || user.DeletedAt != nil) {
 		return nil, ports.ErrSSOSessionNotFound
 	}
 	return &session, nil
@@ -199,6 +289,9 @@ func (s *fakeStore) RevokeSSOSessions(_ context.Context, tenantID string, match 
 	count := 0
 	for k, session := range s.sessions {
 		if session.TenantID != tenantID || session.RevokedAt != nil {
+			continue
+		}
+		if match.ConnectionID != "" && session.ConnectionID != match.ConnectionID {
 			continue
 		}
 		if slices.Contains(match.Subjects, session.Subject) || (session.Email != "" && slices.Contains(match.Emails, strings.ToLower(session.Email))) {
@@ -281,6 +374,9 @@ func (s *fakeStore) ListDirectoryUsers(_ context.Context, query ports.DirectoryU
 	for _, user := range s.users {
 		switch {
 		case user.TenantID != query.TenantID:
+		case user.DeletedAt != nil && !query.IncludeDeleted:
+		case len(query.IDs) > 0 && !slices.Contains(query.IDs, user.ID):
+		case query.Subject != "" && user.Subject != query.Subject:
 		case query.ConnectionID != "" && user.ConnectionID != query.ConnectionID:
 		case query.UserName != "" && !strings.EqualFold(user.UserName, query.UserName):
 		case query.Email != "" && !strings.EqualFold(user.Email, query.Email) && !strings.EqualFold(user.UserName, query.Email):
@@ -303,7 +399,7 @@ func (s *fakeStore) GetDirectoryUser(_ context.Context, tenantID string, connect
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key(tenantID, userID)]
-	if !ok || user.ConnectionID != connectionID {
+	if !ok || user.ConnectionID != connectionID || user.DeletedAt != nil {
 		return nil, ports.ErrDirectoryUserNotFound
 	}
 	user.Groups = s.userGroups(user)
@@ -312,7 +408,10 @@ func (s *fakeStore) GetDirectoryUser(_ context.Context, tenantID string, connect
 
 func (s *fakeStore) userNameTaken(user ports.DirectoryUser) bool {
 	for _, other := range s.users {
-		if other.TenantID == user.TenantID && other.ConnectionID == user.ConnectionID && other.ID != user.ID && strings.EqualFold(other.UserName, user.UserName) {
+		if other.TenantID != user.TenantID || other.ConnectionID != user.ConnectionID || other.ID == user.ID {
+			continue
+		}
+		if strings.EqualFold(other.UserName, user.UserName) || (user.Subject != "" && other.Subject == user.Subject) {
 			return true
 		}
 	}
@@ -331,34 +430,44 @@ func (s *fakeStore) CreateDirectoryUser(_ context.Context, user *ports.Directory
 	return nil
 }
 
-func (s *fakeStore) UpdateDirectoryUser(_ context.Context, user *ports.DirectoryUser) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.users[key(user.TenantID, user.ID)]; !ok {
-		return ports.ErrDirectoryUserNotFound
-	}
-	if s.userNameTaken(*user) {
-		return ports.ErrDirectoryConflict
-	}
-	stored := *user
-	stored.Groups = nil
-	s.users[key(user.TenantID, user.ID)] = stored
-	return nil
-}
-
-func (s *fakeStore) DeleteDirectoryUser(_ context.Context, tenantID string, connectionID string, userID string) error {
+func (s *fakeStore) MutateDirectoryUser(_ context.Context, tenantID string, connectionID string, userID string, mutate func(*ports.DirectoryUser) error) (*ports.DirectoryUser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.users[key(tenantID, userID)]
 	if !ok || user.ConnectionID != connectionID {
-		return ports.ErrDirectoryUserNotFound
+		return nil, ports.ErrDirectoryUserNotFound
 	}
-	delete(s.users, key(tenantID, userID))
+	user.Groups = s.userGroups(user)
+	if err := mutate(&user); err != nil {
+		return nil, err
+	}
+	if s.userNameTaken(user) {
+		return nil, ports.ErrDirectoryConflict
+	}
+	stored := user
+	stored.Groups = nil
+	s.users[key(tenantID, userID)] = stored
+	user.Groups = s.userGroups(user)
+	return &user, nil
+}
+
+func (s *fakeStore) TombstoneDirectoryUser(_ context.Context, tenantID string, connectionID string, userID string, deletedAt time.Time) (*ports.DirectoryUser, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[key(tenantID, userID)]
+	if !ok || user.ConnectionID != connectionID || user.DeletedAt != nil {
+		return nil, ports.ErrDirectoryUserNotFound
+	}
+	before := user
+	before.Groups = s.userGroups(user)
+	at := deletedAt
+	user.DeletedAt, user.Active, user.UpdatedAt = &at, false, deletedAt
+	s.users[key(tenantID, userID)] = user
 	for k, group := range s.groups {
 		group.MemberIDs = slices.DeleteFunc(group.MemberIDs, func(id string) bool { return id == userID })
 		s.groups[k] = group
 	}
-	return nil
+	return &before, nil
 }
 
 func (s *fakeStore) withCount(group ports.DirectoryGroup) ports.DirectoryGroup {
@@ -405,7 +514,7 @@ func (s *fakeStore) writeGroup(group ports.DirectoryGroup) error {
 	}
 	members := []string{}
 	for _, id := range group.MemberIDs {
-		if user, ok := s.users[key(group.TenantID, id)]; ok && user.ConnectionID == group.ConnectionID {
+		if user, ok := s.users[key(group.TenantID, id)]; ok && user.ConnectionID == group.ConnectionID && user.DeletedAt == nil {
 			members = append(members, id)
 		}
 	}
@@ -420,22 +529,46 @@ func (s *fakeStore) CreateDirectoryGroup(_ context.Context, group *ports.Directo
 	return s.writeGroup(*group)
 }
 
-func (s *fakeStore) UpdateDirectoryGroup(_ context.Context, group *ports.DirectoryGroup) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.groups[key(group.TenantID, group.ID)]; !ok {
-		return ports.ErrDirectoryGroupNotFound
-	}
-	return s.writeGroup(*group)
-}
-
-func (s *fakeStore) DeleteDirectoryGroup(_ context.Context, tenantID string, connectionID string, groupID string) error {
+func (s *fakeStore) MutateDirectoryGroup(_ context.Context, tenantID string, connectionID string, groupID string, mutate func(*ports.DirectoryGroup) error) (*ports.DirectoryGroup, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	group, ok := s.groups[key(tenantID, groupID)]
 	if !ok || group.ConnectionID != connectionID {
-		return ports.ErrDirectoryGroupNotFound
+		return nil, ports.ErrDirectoryGroupNotFound
+	}
+	group.MemberIDs = slices.Clone(group.MemberIDs)
+	if err := mutate(&group); err != nil {
+		return nil, err
+	}
+	if err := s.writeGroup(group); err != nil {
+		return nil, err
+	}
+	stored := s.withCount(s.groups[key(tenantID, groupID)])
+	return &stored, nil
+}
+
+func (s *fakeStore) DeleteDirectoryGroup(_ context.Context, tenantID string, connectionID string, groupID string) (*ports.DirectoryGroup, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	group, ok := s.groups[key(tenantID, groupID)]
+	if !ok || group.ConnectionID != connectionID {
+		return nil, ports.ErrDirectoryGroupNotFound
 	}
 	delete(s.groups, key(tenantID, groupID))
+	return &group, nil
+}
+
+func (s *fakeStore) ConsumeSAMLAssertion(_ context.Context, use ports.SAMLAssertionUse) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, prior := range s.assertions {
+		if prior.TenantID != use.TenantID || !prior.ExpiresAt.After(use.ConsumedAt) {
+			continue
+		}
+		if prior.RequestID == use.RequestID || (prior.ConnectionID == use.ConnectionID && prior.AssertionID == use.AssertionID) {
+			return ports.ErrSAMLAssertionReplayed
+		}
+	}
+	s.assertions = append(s.assertions, use)
 	return nil
 }
