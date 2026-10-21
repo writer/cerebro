@@ -7,7 +7,6 @@ import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
 import {
   authorizationPermissionCatalog,
   authorizationRoleCatalog,
-  effectiveAuthorizationPermissionsForUser,
   roleClaimMappings,
   rolesFromClaimMappings,
   type RoleClaimMapping,
@@ -32,7 +31,9 @@ export async function GET(request: NextRequest) {
       requiredScopes: policy.scopes,
       // An unconfigured permission is open to anyone who clears the global gate.
       restricted: policy.groups.length > 0 || policy.roles.length > 0 || policy.scopes.length > 0,
-      granted: effectiveAuthorizationPermissionsForUser(user).includes(permission),
+      // Ask the enforcement path itself: role bundles alone say "denied" for
+      // every permission when built-in RBAC is off, even though the action is allowed.
+      granted: authorizeCurrentUser(user, permission).allowed,
     };
   });
 
@@ -49,11 +50,12 @@ export async function GET(request: NextRequest) {
       permissions,
       roleClaimMappings: mappings,
       roles: authorizationRoleCatalog(),
+      sampleMappings: false,
       viewer: {
         confidence: user?.confidence ?? "none",
         entitlements: user?.entitlements ?? {},
         mappedRoles: rolesFromClaimMappings(user, mappings),
-        permissions: effectiveAuthorizationPermissionsForUser(user),
+        permissions: permissions.filter((row) => row.granted).map((row) => row.permission),
         provider: user?.provider ?? "none",
       },
     },
@@ -97,6 +99,7 @@ function fixtureAccessControlResponse() {
       permissions,
       roleClaimMappings: mappings,
       roles,
+      sampleMappings: configured.length === 0,
       viewer: {
         confidence: "fallback" as const,
         entitlements: {

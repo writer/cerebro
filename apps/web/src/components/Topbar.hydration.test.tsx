@@ -106,7 +106,8 @@ describe("Topbar hydration", () => {
 
   it("keeps the server identity posture until the Topbar hydrates", async () => {
     container.innerHTML = renderToString(<Topbar />);
-    expect(container.textContent).toContain("No API key · Resolving identity");
+    expect(container.querySelector('[aria-label^="Current user"]')?.getAttribute("aria-label")).toBe("Current user: Loading identity");
+    expect(container.textContent).not.toContain("No API key");
 
     providerState.currentUser = {
       actor: "local-developer",
@@ -133,6 +134,7 @@ describe("Topbar hydration", () => {
     });
 
     expect(recoverableErrors).toEqual([]);
-    expect(container.textContent).toContain("No API key · Local identity");
+    expect(container.querySelector('[aria-label^="Current user"]')?.getAttribute("aria-label")).toBe("Current user: Local developer");
+    expect(container.textContent).not.toContain("No API key");
   });
 });

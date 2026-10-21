@@ -64,8 +64,8 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 var catalogRuntimeGoRetirementInventory string
 
 const (
-	catalogRuntimeGoRetirementCount  = 758
-	catalogRuntimeGoRetirementSHA256 = "8fe6562af550c2c164db03cecd719f80dc5595db2a4d3f4dd34e82c6cec80133"
+	catalogRuntimeGoRetirementCount  = 759
+	catalogRuntimeGoRetirementSHA256 = "e998d65c20bb9bd76d1a904c06994b467b3c4a6ebecfeb8f757b10c9a8ceafdc"
 )
 
 var catalogRuntimeOnlySourcePackages = catalogRuntimeOnlyPackages()

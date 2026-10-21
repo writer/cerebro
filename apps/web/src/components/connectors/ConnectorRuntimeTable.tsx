@@ -37,7 +37,7 @@ export default function ConnectorRuntimeTable({
             <tr key={runtime.runtime_id}>
               {showSource && (
                 <td>
-                  <Link href={`/connectors/${encodeURIComponent(runtime.source_id || "unknown")}`} className="font-semibold text-[var(--text-primary)] hover:text-[var(--primary)]">
+                  <Link href={`/integrations/${encodeURIComponent(runtime.source_id || "unknown")}`} className="font-semibold text-[var(--text-primary)] hover:text-[var(--primary)]">
                     {runtime.source_id || "Unknown"}
                   </Link>
                 </td>
@@ -57,7 +57,7 @@ export default function ConnectorRuntimeTable({
               </td>
               <td>
                 <Link
-                  href={`/connectors/${encodeURIComponent(runtime.source_id || "unknown")}?tab=connections&runtime_id=${encodeURIComponent(runtime.runtime_id)}`}
+                  href={`/integrations/${encodeURIComponent(runtime.source_id || "unknown")}?tab=connections&runtime_id=${encodeURIComponent(runtime.runtime_id)}`}
                   className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]"
                 >
                   Inspect

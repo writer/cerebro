@@ -1,12 +1,11 @@
 "use client";
 
-import { CalendarClock, Copy, Download, FileDown, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { CalendarClock, Copy, Download, FileDown, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import { type TableColumn, WorklistTable } from "@/components/grc/DataTable";
-import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { AppliedFilterChips, Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel, RiskBadge, RiskBreakdown } from "@/components/grc/Primitives";
 import { countLabel } from "@/lib/format";
 import {
@@ -24,7 +23,6 @@ import { findingMatchesFrameworkSegment, frameworkOptionLabel, isUpcomingGRCFram
 import { grcPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
 import { GRC_PICKER_LIMIT, GRC_WORKLIST_LIMIT, grcBoundedRows, grcLoadedRowsCopy } from "@/lib/grc-list";
 import {
-  redactReportGraph,
   redactReportIdentifier,
   redactReportText,
   reportReadinessIntent,
@@ -308,10 +306,6 @@ export default function ReportsPage() {
               onCopy={() => void copyReport()}
               onDownload={downloadReport}
             />
-            <Link href={`/reports/packages?profile=${encodeURIComponent(selectedProfileID)}${framework ? `&framework=${encodeURIComponent(framework)}` : ""}${controlID ? `&control=${encodeURIComponent(controlID)}` : ""}`} className={buttonClass}>
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Review packets
-            </Link>
             <Link href="/reports/schedules" className={buttonClass}>
               <CalendarClock className="h-3.5 w-3.5" />
               Schedules
@@ -416,9 +410,6 @@ export default function ReportsPage() {
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Link href={`/reports?report_type=control&profile=${encodeURIComponent(DEFAULT_CONTROL_PROFILE_ID)}`} className="rounded-md border border-slate-200 bg-indigo-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-600">
                 Open control packet
-              </Link>
-              <Link href="/controls/builder" className={buttonClass}>
-                Build custom pack
               </Link>
             </div>
           </div>
@@ -709,7 +700,6 @@ function FindingPacketView({
   state: RuntimeState;
 }) {
   const readiness = packet.metadata?.readiness;
-  const graph = useMemo(() => redactReportGraph(packet.graph, redactionMode), [packet.graph, redactionMode]);
   return (
     <>
       <div className="grid gap-4 md:grid-cols-4">
@@ -730,10 +720,6 @@ function FindingPacketView({
       />
 
       <ScopePanel metadata={packet.metadata} redactionMode={redactionMode} />
-
-      <Panel title="Impact Path">
-        <GraphViewer graph={graph} />
-      </Panel>
     </>
   );
 }

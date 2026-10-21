@@ -132,10 +132,10 @@ describe("portable web fixture route bug bash", () => {
     const webRoot = path.resolve(import.meta.dirname, "..");
     const routes = await discoverPageRoutes(webRoot);
     expect(routes).toContain("/verified/fixture-operation");
-    expect(routes).toContain("/connectors/okta/setup");
+    expect(routes).toContain("/integrations/okta/setup");
     expect(routes).toContain("/findings/demo-finding-critical");
     expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");
-    expect(routes).toContain("/vendors/urn%3Acerebro%3Ademo-tenant%3Avendor%3Acore-sso");
+    expect(routes).toContain("/frameworks/soc2");
     expect(routes).not.toContain(expect.stringMatching(/\[[^\]]+\]/));
   });
 
@@ -230,11 +230,11 @@ describe("portable web fixture route bug bash", () => {
       body: "Ready",
       consoleErrors: [],
       documentStatus: 200,
-      finalURL: "http://127.0.0.1:43123/connectors/activation?tenant_id=tenant-a",
+      finalURL: "http://127.0.0.1:43123/integrations/activation?tenant_id=tenant-a",
       pageErrors: [],
-      route: "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a",
+      route: "/integrations/cdk?tenant_id=tenant-a&workspace_id=workspace-a",
     })).toEqual([
-      "/connectors/cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
+      "/integrations/cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
     ]);
   });
 });
@@ -288,7 +288,7 @@ describe("portable web fixture E2E contracts", () => {
   it("checks public config before every declared route", async () => {
     const contracts = [
       { heading: "Overview", pageId: "overview", route: "/" },
-      { heading: "Controls", pageId: "controls", route: "/controls" },
+      { heading: "Compliance", pageId: "grc", route: "/grc" },
     ];
     const fetchPage = vi.fn(async (url) => {
       const pathname = new URL(url).pathname;
@@ -310,7 +310,7 @@ describe("portable web fixture E2E contracts", () => {
     await expect(validateHttpContracts("http://127.0.0.1:43123", { contracts, fetchPage }))
       .resolves.toEqual(contracts);
     expect(fetchPage.mock.calls.map(([url]) => new URL(url).pathname))
-      .toEqual(["/api/config", "/", "/controls"]);
+      .toEqual(["/api/config", "/", "/grc"]);
   });
 });
 

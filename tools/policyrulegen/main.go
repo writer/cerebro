@@ -536,6 +536,12 @@ func writePolicyRuleConfig(buf *bytes.Buffer, policy policyFile, extension polic
 	fmt.Fprintf(buf, "},\n")
 	writeStringSlice(buf, "Conditions", trimStrings(policy.Conditions))
 	fmt.Fprintf(buf, "Query: %s,\n", quote(strings.TrimSpace(policy.Query)))
+	fmt.Fprintf(buf, "Summary: %s,\n", quote(strings.TrimSpace(policy.Description)))
+	if summary := strings.TrimSpace(policy.Remediation); summary != "" {
+		fmt.Fprintf(buf, "Remediation: %s,\n", quote(summary))
+	}
+	writeStringSlice(buf, "RemediationSteps", trimStrings(policy.RemediationSteps))
+	fmt.Fprintf(buf, "RelPath: %s,\n", quote(policy.relPath))
 	fmt.Fprintf(buf, "Resource: %s,\n", quote(firstNonEmpty(policy.Resource, policy.ResourceType)))
 	fmt.Fprintf(buf, "ResourceType: %s,\n", quote(firstNonEmpty(policy.ResourceType, policy.Resource)))
 	fmt.Fprintf(buf, "Category: %s,\n", quote(firstNonEmpty(policy.Category, policy.domain)))

@@ -2,9 +2,9 @@
   "schema_version": "cerebro.source-operation-authority/v3",
   "revision": 6,
   "inventory": {
-    "digest_sha256": "e32ebd3f3e5c8aeb63488a042c1ac33d3f738cbd100e85d0a9c6160944051fa8",
-    "family_count": 4399,
-    "pull_family_count": 4389,
+    "digest_sha256": "d4f18929087a17201207c1a364791d238837d32487bbaebeaf6245dfbaae083d",
+    "family_count": 4401,
+    "pull_family_count": 4391,
     "push_family_count": 10
   },
   "runtime_implementation": {

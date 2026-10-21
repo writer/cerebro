@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 
 import { useCerebroAgent } from "@/components/agent/CerebroAgentProvider";
 import { useCommandPalette } from "@/components/providers";
-import { findSupportedGRCFramework, frameworkRouteSegment } from "@/lib/grc-frameworks";
+import { frameworkDetailHref } from "@/lib/compliance-links";
+import { findSupportedGRCFramework } from "@/lib/grc-frameworks";
 import { LiveSearchCommand, useLiveSearchCommands } from "@/lib/live-search";
 import { NavigationEntry, navigationEntries } from "@/lib/navigation";
 
@@ -37,28 +38,16 @@ const searchCommands = (query: string, askGraph: (question: string) => void): Co
   const inventoryHref = frameworkMatch
     ? `/inventory?framework=${encodeURIComponent(frameworkMatch.name)}`
     : `/inventory?q=${encoded}`;
-  const controlsHref = frameworkMatch
-    ? `/controls?framework=${encodeURIComponent(frameworkMatch.name)}`
-    : `/controls?control=${encoded}`;
-  const frameworkHref = frameworkMatch
-    ? `/frameworks/${frameworkRouteSegment(frameworkMatch)}`
-    : "/frameworks";
-  const controlsLabel = frameworkMatch
-    ? frameworkMatch.lifecycle === "upcoming"
-      ? `Plan for upcoming framework ${frameworkMatch.name}`
-      : `Filter controls by ${frameworkMatch.name}`
-    : `Filter controls by "${trimmed}"`;
+  const frameworkHref = frameworkMatch ? frameworkDetailHref(frameworkMatch) : "/grc";
   return [
     { id: "ask", label: `Ask: "${trimmed}"`, href: `/?ask_q=${encoded}`, description: "Ask about risk, owners, or assets.", section: "Operator", keywords: ["ask", "question", "owner", "evidence"], onRun: () => askGraph(trimmed) },
     { id: "search-risks", label: `Search risks for "${trimmed}"`, href: risksHref, description: "Filter findings by any field.", section: "Operator", keywords: ["search", "findings", "risk", "framework"] },
-    { id: "open-framework", label: frameworkMatch ? `Open ${frameworkMatch.name} framework tracking` : `Open framework catalog for "${trimmed}"`, href: frameworkHref, description: "Maturity, gaps, and exports.", section: "Operator", keywords: ["framework", "catalog", "maturity", "soc2"] },
+    { id: "open-framework", label: frameworkMatch ? `Open ${frameworkMatch.name} controls` : "Open compliance frameworks", href: frameworkHref, description: "Controls violated by open findings.", section: "Operator", keywords: ["framework", "compliance", "controls", "soc2"] },
     { id: "open-finding", label: `Open finding "${trimmed}"`, href: `/findings/${encoded}`, description: "Jump to a finding detail page by ID.", section: "Operator", keywords: ["finding", "detail"] },
     { id: "open-graph", label: `Open graph connections for "${trimmed}"`, href: `/explore?root_urn=${encoded}`, description: "Use as entity URN or graph root.", section: "Operator", keywords: ["graph", "connections", "impact", "affected"] },
     { id: "search-inventory", label: `Search inventory for "${trimmed}"`, href: inventoryHref, description: "Filter assets by type, owner, or URN.", section: "Operator", keywords: ["inventory", "assets", "resources", "framework", "scope"] },
-    { id: "search-controls", label: controlsLabel, href: controlsHref, description: "Framework names, control IDs, and findings.", section: "Operator", keywords: ["controls", "framework"] },
     { id: "open-report", label: `Build audit packet for "${trimmed}"`, href: `/reports?finding_id=${encoded}`, description: "Use as a finding ID for an audit packet.", section: "Operator", keywords: ["reports", "audit"] },
-    { id: "open-evidence", label: `Find evidence for "${trimmed}"`, href: `/evidence?finding_id=${encoded}`, description: "Use as a finding ID in the evidence register.", section: "Operator", keywords: ["evidence", "proof"] },
-    { id: "open-connectors", label: `Filter connectors by "${trimmed}"`, href: `/connectors?q=${encoded}`, description: "Search connector sources and runtimes.", section: "Operator", keywords: ["connectors", "runtimes"] },
+    { id: "open-connectors", label: `Filter integrations by "${trimmed}"`, href: `/integrations?q=${encoded}`, description: "Search connected and available integrations.", section: "Operator", keywords: ["integrations", "connectors", "runtimes"] },
   ];
 };
 
@@ -135,7 +124,7 @@ export default function CommandPalette() {
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
             onKeyDown={onInputKeyDown}
-            placeholder="Search risks, controls, evidence, assets, sources..."
+            placeholder="Search risks, controls, evidence, assets, integrations..."
             className="flex-1 border-0 bg-transparent text-[15px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
           <kbd className="rounded border border-[color:var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">ESC</kbd>

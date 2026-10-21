@@ -125,12 +125,7 @@ describe("product UI contract", () => {
     const queryParamSource = readProjectFile("src/lib/query-params.ts");
     const primitivesSource = readProjectFile("src/components/grc/Primitives.tsx");
     const bannerPages = [
-      "src/app/evidence/page.tsx",
-      "src/app/controls/page.tsx",
       "src/app/risks/page.tsx",
-    ];
-    const runtimePages = [
-      "src/app/connectors/page.tsx",
     ];
 
     expect(layoutSource).toContain("NuqsAdapter");
@@ -148,13 +143,6 @@ describe("product UI contract", () => {
       expect(source).toContain("DataStateBanner");
       expect(source).toContain("queryState");
       expect(source).toContain("lastSuccessfulAt");
-      expect(source).toMatch(/state(?:=\{|:)\s*metricState/);
-    }
-
-    for (const page of runtimePages) {
-      const source = readProjectFile(page);
-      expect(source).toContain("AppliedFilterChips");
-      expect(source).toContain("runtimeStateForError");
       expect(source).toMatch(/state(?:=\{|:)\s*metricState/);
     }
 
@@ -186,28 +174,30 @@ describe("product UI contract", () => {
     expect(reportsSource).not.toContain("applyScope");
   });
 
-  it("keeps integration setup and source health ahead of operator diagnostics", () => {
-    const source = readProjectFile("src/app/connectors/page.tsx");
-    const page = source.slice(source.indexOf("export default function ConnectorsPage"));
+  it("keeps integration tiles ahead of operator diagnostics", () => {
+    const source = readProjectFile("src/app/integrations/page.tsx");
+    const page = source.slice(source.indexOf("export default function IntegrationsPage"));
     const advancedTools = page.indexOf("Advanced integration tools");
 
     expect(page).toContain("Add Integration");
-    expect(page).toContain("Connected sources");
-    expect(page).toContain("Available to connect");
-    expect(page).toContain("Search Integrations");
-    expect(page).toContain("Filter by tenant or source ID");
-    expect(advancedTools).toBeGreaterThan(0);
+    expect(page).toContain("Search integrations");
+    expect(page).toContain("runtimeStateForError");
+    expect(page.indexOf("IntegrationTile")).toBeGreaterThan(0);
+    expect(page.indexOf("IntegrationTile")).toBeLessThan(advancedTools);
     expect(page.indexOf("ProviderAPIProofPanel")).toBeGreaterThan(advancedTools);
-    expect(page.indexOf("CustomConnectorPanel")).toBeGreaterThan(advancedTools);
-    expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
+    expect(page.indexOf("CustomIntegrationsPanel")).toBeGreaterThan(advancedTools);
+    // A single-team console: no tenant filter, no request-access path, and the
+    // product word is "integration", not "source".
+    expect(source).not.toContain("tenant_id");
+    expect(source).not.toMatch(/Request access|request_access_url/i);
+    expect(source).not.toMatch(/>[^<{]*\bsources?\b[^<{]*</i);
   });
 
-  it("uses the Rust source-runtime readiness contract for the connector presentation", () => {
-    const page = readProjectFile("src/app/connectors/page.tsx");
+  it("uses the Rust source-runtime readiness contract for the integration presentation", () => {
+    const page = readProjectFile("src/app/integrations/page.tsx");
     const runtime = readProjectFile("src/lib/connector-runtime.ts");
 
     expect(page).toContain('withQuery("/v1/source-runtimes/health"');
-    expect(page).toContain("tenant_id: debouncedTenantID");
     expect(page).toContain("normalizeSourceRuntimeSummary");
     expect(page).not.toContain("sourceHealthBreakdown");
     expect(runtime).toContain('stringField(runtime, ["readiness"])');
@@ -274,84 +264,18 @@ describe("product UI contract", () => {
     }
   });
 
-  it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
-    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
-    const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");
-    const page = vendorSource.slice(vendorSource.indexOf("export default function VendorsPage"));
-
-    expect(page.indexOf("<DiscoveryQueue")).toBeGreaterThan(0);
-    expect(page.indexOf("<DiscoverySourceSummary")).toBeGreaterThan(page.indexOf("<DiscoveryQueue"));
-    expect(vendorSource).not.toContain("function DuplicateQueue");
-    expect(vendorDetailSource).toContain("Review questionnaire");
-    expect(vendorDetailSource).not.toContain("Open review");
-  });
-
-  it("keeps policy work ahead of optional setup and secondary metrics", () => {
-    const source = readProjectFile("src/app/policies/page.tsx");
-    const page = source.slice(source.indexOf("export default function PoliciesPage"));
-
-    expect(page).toContain('const [showUpload, setShowUpload] = useState(false)');
-    expect(page).toContain("{showUpload && <Panel");
-    expect(page).toContain("More filters");
-    expect(page).toContain("data-policy-status-summary");
-    expect(page).toContain("data-policy-sections");
-    expect(page).not.toContain("<MetricCard");
-    expect(page.indexOf("data-policy-status-summary")).toBeLessThan(page.indexOf("data-policy-sections"));
-  });
-
-  it("keeps vendor navigation and filters out of standalone card shells", () => {
-    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
-    const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");
-    const page = vendorSource.slice(vendorSource.indexOf("export default function VendorsPage"));
-
-    expect(vendorSource).toContain("data-vendor-sections");
-    expect(vendorSource).toContain("border-b-2 px-0 py-2.5");
-    expect(page).toContain('className="border-b border-[color:var(--border)] pb-4" data-vendor-filters');
-    expect(page).not.toContain('className="surface-panel p-4"');
-    expect(vendorDetailSource).toContain("data-vendor-summary");
-    expect(vendorDetailSource).toContain("data-questionnaire-summary");
-    expect(vendorDetailSource).toContain("data-questionnaire-answer-summary");
-    expect(vendorDetailSource).not.toContain("<MetricCard");
-    expect(vendorDetailSource).not.toContain("function ConsoleStatCard");
-  });
-
-  it("keeps vendor source coverage on the supported scoped read path", () => {
-    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
-
-    expect(vendorSource).toContain('grcPath("/grc/vendor-discoveries"');
-    expect(vendorSource).toContain("grcScopeQuery(debouncedScope)");
-    expect(vendorSource).toContain("Refresh sources");
-    expect(vendorSource).not.toContain("/grc/vendor-discoveries/sync");
-    expect(vendorSource).not.toContain("Run discovery");
-  });
-
-  it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
-    const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
-
-    expect(lifecycleSource).toContain('role="dialog"');
-    expect(lifecycleSource).toContain('aria-modal="true"');
-    expect(lifecycleSource).toContain('event.key === "Escape"');
-    expect(lifecycleSource).toContain("data-lifecycle-mobile-records");
-    expect(lifecycleSource).toContain("space-y-3 md:hidden");
-    expect(lifecycleSource).toContain("data-lifecycle-desktop-table");
-    expect(lifecycleSource).toContain("hidden overflow-auto md:block");
-    expect(lifecycleSource).toContain("Open lifecycle details");
-    expect(lifecycleSource).toContain("opaque finding references");
-    expect(lifecycleSource).toContain("opaque claim references");
-    expect(lifecycleSource).toContain('label="Finding reference"');
-    expect(lifecycleSource).toContain('label="Evidence claim reference"');
-    expect(lifecycleSource).not.toContain("/findings/");
-    expect(lifecycleSource).not.toContain("/evidence?finding_id=");
-    expect(lifecycleSource).toContain("aggregates?.policy_state_counts");
-    expect(lifecycleSource).not.toContain("aggregates?.state_counts");
-    expect(lifecycleSource).toContain('coverageReason === "graph_changed"');
-    expect(lifecycleSource).toContain("setFallbackPreviousTokens([])");
-    expect(lifecycleSource).toContain("otherPagesAvailable");
-    expect(lifecycleSource).not.toContain('completeness.pageTruncated ? "Other pages available"');
-    expect(lifecycleSource).toContain("if (pageToken || pageParam)");
-    expect(lifecycleSource).toMatch(/if \(pageToken \|\| pageParam\)[\s\S]*?return;[\s\S]*?void query\.reload\(\);/);
-    for (const label of ["Expires", "Owner", "Finding", "Route", "Revision"]) {
-      expect(lifecycleSource).toContain(`>${label}<`);
+  it("keeps compliance limited to framework mapping", () => {
+    for (const page of [
+      "src/app/controls/builder/page.tsx",
+      "src/app/controls/detail/page.tsx",
+      "src/app/evidence/page.tsx",
+      "src/app/policies/page.tsx",
+      "src/app/questionnaires/page.tsx",
+      "src/app/reports/packages/page.tsx",
+      "src/app/vendors/page.tsx",
+      "src/app/vendors/[urn]/page.tsx",
+    ]) {
+      expect(existsSync(projectPath(page)), page).toBe(false);
     }
   });
 
@@ -375,15 +299,19 @@ describe("product UI contract", () => {
     expect(source).toContain("Page actions are ready. Searching live data...");
   });
 
-  it("keeps compliance readiness scoped to explicit framework control counts", () => {
+  // Pass/fail posture needs per-control evaluation the API does not expose yet,
+  // so compliance pages must only claim violations they can see in open findings.
+  it("keeps compliance pages scoped to enabled frameworks and finding violations", () => {
     const complianceSource = readProjectFile("src/app/grc/page.tsx");
     const frameworkSource = readProjectFile("src/app/frameworks/[frameworkID]/page.tsx");
 
-    expect(complianceSource).toContain("framework.passing_controls");
-    expect(complianceSource).toContain("framework.controls");
-    expect(frameworkSource).toContain("deriveFrameworkReadiness");
-    expect(complianceSource).not.toContain("sampled dashboard values");
-    expect(complianceSource).not.toContain("sampled total");
+    expect(complianceSource).toContain("FRAMEWORK_SETTINGS_PATH");
+    expect(complianceSource).toContain("enabledFrameworks(");
+    for (const source of [complianceSource, frameworkSource]) {
+      expect(source).toContain("controlViolations(");
+      expect(source).not.toContain("passing_controls");
+      expect(source).not.toContain("deriveFrameworkReadiness");
+    }
   });
 
   // Compliance reporting is owned by a dedicated tool, so the operator home

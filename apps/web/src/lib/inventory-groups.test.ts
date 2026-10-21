@@ -76,7 +76,7 @@ describe("inventory groups", () => {
     expect(inventoryGroupForEntityType("github.user")).toBe("iam");
     expect(inventoryGroupForEntityType("github.code.repository")).toBe("code");
     expect(inventoryGroupForEntityType("aws.ec2.instance")).toBe("cloud");
-    expect(inventoryGroupForEntityType("runtime.secret")).toBe("secrets");
+    expect(inventoryGroupForEntityType("runtime.secret")).toBeUndefined();
     // Several projectors join the parts with an underscore for the same concept.
     expect(inventoryGroupForEntityType("identity_user")).toBe("iam");
     expect(inventoryGroupForEntityType("storage_bucket")).toBe("cloud");
@@ -89,7 +89,8 @@ describe("inventory groups", () => {
     expect(inventoryGroupFor("iam")?.label).toBe("IAM");
     expect(inventoryGroupFor("compute-instances")).toBeUndefined();
     expect(inventoryGroupFor(undefined)).toBeUndefined();
-    expect(isInventoryGroupID("secrets")).toBe(true);
+    expect(isInventoryGroupID("devices")).toBe(true);
+    expect(isInventoryGroupID("secrets")).toBe(false);
     expect(isInventoryGroupID("not-a-group")).toBe(false);
   });
 });

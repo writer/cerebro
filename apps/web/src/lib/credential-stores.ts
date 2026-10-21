@@ -88,160 +88,70 @@ export type CredentialStoreListResponse = {
   issues?: CredentialStoreIssue[];
 };
 
-export type CredentialStoreUsageTotals = {
-  storesInUse: number;
-  readyStores: number;
-  credentials: number;
-  bindings: number;
-  fieldReferences: number;
+export type SourceCredentialState = "failing" | "attention" | "ok";
+
+export type SourceCredentialHealth = {
+  state: SourceCredentialState;
+  stores: string[];
+  lastValidatedAt?: string;
+  detail?: string;
   issues: number;
+  // True when every binding points at a secret Cerebro does not hold, such as
+  // an environment variable, so there is no stored credential to call valid.
+  referenceOnly: boolean;
 };
 
-export function credentialStoreUsageTotals(stores: CredentialStoreOperational[]): CredentialStoreUsageTotals {
-  return stores.reduce<CredentialStoreUsageTotals>((totals, item) => {
-    totals.readyStores += item.store.available ? 1 : 0;
-    totals.storesInUse += item.usage.connections > 0 || item.usage.credentials > 0 ? 1 : 0;
-    totals.credentials += item.usage.credentials;
-    totals.bindings += item.usage.bindings;
-    totals.fieldReferences += item.usage.field_references;
-    totals.issues += item.usage.issues;
-    return totals;
-  }, { storesInUse: 0, readyStores: 0, credentials: 0, bindings: 0, fieldReferences: 0, issues: 0 });
-}
+const failingCredentialStatuses = new Set(["invalid", "revoked"]);
+const pendingCredentialStatuses = new Set(["pending", "rotating"]);
+const credentialStateRank: Record<SourceCredentialState, number> = { ok: 0, attention: 1, failing: 2 };
 
-export function credentialStoreIntent(status?: string): "neutral" | "danger" | "warning" | "success" {
-  switch ((status || "").toLowerCase()) {
-    case "in_use":
-    case "ready":
-      return "success";
-    case "needs_attention":
-    case "blocked":
-    case "unavailable":
-      return "danger";
-    case "warning":
-    case "needs_configuration":
-      return "warning";
-    default:
-      return "neutral";
+// Only issues tied to a source count against it. Store-level issues, such as an
+// optional resolver nobody has configured, are not a problem with any integration.
+export function sourceCredentialHealth(response?: CredentialStoreListResponse | null): Map<string, SourceCredentialHealth> {
+  const health = new Map<string, SourceCredentialHealth>();
+  if (!response) return health;
+
+  const entryFor = (sourceID: string) => {
+    let entry = health.get(sourceID);
+    if (!entry) {
+      entry = { issues: 0, referenceOnly: true, state: "ok", stores: [] };
+      health.set(sourceID, entry);
+    }
+    return entry;
+  };
+  const raise = (entry: SourceCredentialHealth, state: SourceCredentialState, detail?: string) => {
+    if (credentialStateRank[state] > credentialStateRank[entry.state]) {
+      entry.state = state;
+      entry.detail = detail || entry.detail;
+    } else if (state === entry.state && !entry.detail) {
+      entry.detail = detail;
+    }
+  };
+
+  for (const item of response.stores ?? []) {
+    for (const binding of item.bindings ?? []) {
+      if (!binding.source_id) continue;
+      const entry = entryFor(binding.source_id);
+      if (!entry.stores.includes(item.store.label)) entry.stores.push(item.store.label);
+      if (binding.credential_id) entry.referenceOnly = false;
+      if (binding.last_validated_at && (!entry.lastValidatedAt || binding.last_validated_at < entry.lastValidatedAt)) {
+        entry.lastValidatedAt = binding.last_validated_at;
+      }
+      const status = (binding.credential_status || "").toLowerCase();
+      if (failingCredentialStatuses.has(status)) raise(entry, "failing", `Credential is ${status}.`);
+      else if (pendingCredentialStatuses.has(status)) raise(entry, "attention", `Credential is ${status}.`);
+    }
   }
-}
 
-export function credentialStoreActionLabel(action?: string) {
-  switch ((action || "").trim()) {
-    case "configure_store":
-      return "Configure store";
-    case "connect_source":
-      return "Connect source";
-    case "fix_credential_reference":
-      return "Fix reference";
-    case "fix_credential_store_issues":
-      return "Fix issues";
-    case "monitor_rotation":
-      return "Monitor rotation";
-    case "replace_with_credential_reference":
-      return "Replace value";
-    case "review_credential_store_warnings":
-      return "Review warnings";
-    case "rotate_credential":
-      return "Rotate credential";
-    case "run_connector_preflight":
-      return "Run preflight";
-    case "run_source_check":
-      return "Run check";
-    default:
-      return action ? action.replaceAll("_", " ") : "Review";
+  const issues = [...(response.issues ?? []), ...(response.stores ?? []).flatMap((item) => item.issues ?? [])];
+  const seen = new Set<string>();
+  for (const issue of issues) {
+    if (!issue.source_id || seen.has(issue.id)) continue;
+    seen.add(issue.id);
+    const entry = entryFor(issue.source_id);
+    entry.issues += 1;
+    raise(entry, issue.severity === "error" || issue.status === "blocked" ? "failing" : "attention", issue.detail);
   }
-}
 
-export function credentialStoreModeLabel(mode?: string) {
-  if (mode === "encrypted_submission") return "Encrypted submission";
-  if (mode === "environment_managed") return "Environment managed";
-  return "Reference";
-}
-
-export function credentialStoreResolverLabel(resolver?: string) {
-  switch ((resolver || "").trim()) {
-    case "cerebro_vault":
-      return "Cerebro Vault";
-    case "environment":
-      return "Environment";
-    case "environment_projection":
-      return "Environment projection";
-    case "native":
-      return "Native resolver";
-    case "native_reference":
-      return "Native reference";
-    default:
-      return resolver ? resolver.replaceAll("_", " ") : "Not bound";
-  }
-}
-
-export function credentialStoreMatchesQuery(item: CredentialStoreOperational, query: string) {
-  return credentialStoreMetadataMatchesQuery(item, query)
-    || (item.bindings ?? []).some((binding) => credentialStoreBindingMatchesQuery(binding, query))
-    || (item.issues ?? []).some((issue) => credentialStoreIssueMatchesQuery(issue, query));
-}
-
-export function credentialStoreMetadataMatchesQuery(item: CredentialStoreOperational, query: string) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  const values = [
-    item.store.id,
-    item.store.label,
-    item.store.provider,
-    item.store.mode,
-    item.store.status,
-    item.store.detail,
-    item.health.status,
-    item.health.detail,
-    item.health.next_action,
-    ...(item.store.reference_prefixes ?? []),
-  ];
-  return values.filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized));
-}
-
-export function credentialStoreBindingMatchesQuery(binding: CredentialStoreBinding, query: string) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return [
-    binding.credential_store_id,
-    binding.source_id,
-    binding.source_name,
-    binding.runtime_id,
-    binding.tenant_id,
-    binding.auth_method,
-    binding.resolver,
-    binding.credential_id,
-    binding.credential_status,
-    ...(binding.fields ?? []),
-    ...(binding.reference_prefixes ?? []),
-  ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized));
-}
-
-export function credentialStoreBindingsMatchingQuery(stores: CredentialStoreOperational[], query: string) {
-  return stores.flatMap((item) => {
-    const includeAllBindings = credentialStoreMetadataMatchesQuery(item, query);
-    return (item.bindings ?? [])
-      .filter((binding) => includeAllBindings || credentialStoreBindingMatchesQuery(binding, query))
-      .map((binding) => ({
-        ...binding,
-        credential_store_label: item.store.label,
-      }));
-  });
-}
-
-export function credentialStoreIssueMatchesQuery(issue: CredentialStoreIssue, query: string) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return [
-    issue.credential_store_id,
-    issue.source_id,
-    issue.runtime_id,
-    issue.credential_id,
-    issue.field,
-    issue.detail,
-    issue.next_action,
-    issue.status,
-    issue.severity,
-  ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized));
+  return health;
 }

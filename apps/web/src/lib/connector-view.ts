@@ -563,5 +563,5 @@ export function connectorPath(sourceID: string, params: Record<string, string | 
     if (value && value.trim()) query.set(key, value.trim());
   });
   const queryString = query.toString();
-  return `/connectors/${encodeURIComponent(sourceID)}${queryString ? `?${queryString}` : ""}`;
+  return `/integrations/${encodeURIComponent(sourceID)}${queryString ? `?${queryString}` : ""}`;
 }

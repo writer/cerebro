@@ -120,6 +120,15 @@ describe("Cerebro proxy route permissions", () => {
     expect(permissionForCerebroProxyRequest("POST", "grc/dashboards/dashboard-1/clone")).toBe("dashboards:write");
     expect(permissionForCerebroProxyRequest("POST", "platform/runtime-response/actions")).toBe("runtime-response:write");
     expect(permissionForCerebroProxyRequest("PUT", "user/preferences")).toBe("preferences:write");
+    expect(permissionForCerebroProxyRequest("PUT", "grc/framework-settings")).toBe("grc:inventory:write");
+  });
+
+  it("maps finding rule authoring to read for drafts and findings:write for saved rules", () => {
+    expect(permissionForCerebroProxyRequest("GET", "finding-rules/catalog")).toBe("cerebro:read");
+    expect(permissionForCerebroProxyRequest("POST", "finding-rules/validate")).toBe("cerebro:read");
+    expect(permissionForCerebroProxyRequest("POST", "finding-rules/test")).toBe("cerebro:read");
+    expect(permissionForCerebroProxyRequest("PUT", "finding-rules/custom/custom-rule")).toBe("findings:write");
+    expect(permissionForCerebroProxyRequest("DELETE", "finding-rules/custom/custom-rule")).toBe("findings:write");
   });
 });
 

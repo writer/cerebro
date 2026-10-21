@@ -177,6 +177,8 @@ const readOnlyPostPaths = new Set([
   "grc/control-packets/export",
   "grc/control-packs",
   "grc/control-packs/preview",
+  "finding-rules/validate",
+  "finding-rules/test",
   `${ORGANIZATIONAL_GRAPH_SERVICE}/ListCloudAttackPaths`,
   `${ORGANIZATIONAL_GRAPH_SERVICE}/ListCrownJewelPaths`,
   `${ORGANIZATIONAL_GRAPH_SERVICE}/ListEffectiveAccessPaths`,
@@ -362,11 +364,14 @@ export const permissionForCerebroProxyRequest = (
     if (normalizedPath.startsWith("connector-definitions/")) return "connector-definitions:write";
     if (normalizedPath.startsWith("source-runtimes/")) return "source-runtimes:write";
     if (matchesFindingLifecyclePath(normalizedPath)) return "findings:write";
+    if (normalizedPath.startsWith("finding-rules/custom/")) return "findings:write";
+    if (normalizedPath === "grc/framework-settings") return "grc:inventory:write";
     return "cerebro:write";
   }
 
   if (normalizedMethod === "DELETE") {
     if (normalizedPath.startsWith("grc/dashboards/")) return "dashboards:write";
+    if (normalizedPath.startsWith("finding-rules/custom/")) return "findings:write";
     return "cerebro:write";
   }
 

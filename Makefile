@@ -45,7 +45,7 @@ GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 # go/packages loader shells out to `go list`, and it refuses to process
 # sources when the ambient go is newer than the analysis packages it was
 # built against.
-GO_TOOLCHAIN := go1.26.9
+GO_TOOLCHAIN := go1.26.10
 PINNED_GO := GOFLAGS= GOTOOLCHAIN=$(GO_TOOLCHAIN)
 BUF := $(PINNED_GO) go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 CONNECTRPC_CODEGEN_REV := 8b3c3b05d3b54af547477a9e3b3a77d62f68e229

@@ -988,7 +988,7 @@ export const sourceActivationPlanPath = (definitionID?: string, tenantID?: strin
   if (definitionID) query.set("definition_id", definitionID);
   if (tenantID) query.set("tenant_id", tenantID);
   const queryString = query.toString();
-  return `/connectors/activation${queryString ? `?${queryString}` : ""}`;
+  return `/integrations/activation${queryString ? `?${queryString}` : ""}`;
 };
 
 export const sourceActivationPlanCategoryCounts = (plan?: Pick<SourceActivationPromotionPlan, "checklist"> | null) =>
@@ -1354,7 +1354,7 @@ export const connectorDisplayMetadata = (
   const emittedPrefix = connector.emitted_kinds?.[0]?.split(".")[0];
   return {
     logoText: connectorLogoText(connector),
-    category: categoryMetadata?.category || (emittedPrefix ? `${humanizeConnectorToken(emittedPrefix)} source` : "Connector"),
+    category: categoryMetadata?.category || (emittedPrefix ? humanizeConnectorToken(emittedPrefix) : "Integration"),
     provider: connectorLabelText(connector),
     accentClass: categoryMetadata?.accentClass || "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-100 dark:ring-slate-500/25",
   };

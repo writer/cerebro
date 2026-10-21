@@ -2356,6 +2356,146 @@ paths:
       responses:
         '200':
           description: Finding rule catalog.
+  /finding-rules/catalog:
+    get:
+      summary: List the classified detection rule catalog
+      description: Returns built-in policy rules, compiled detections, correlation patterns, and the tenant's saved custom rules, each classified by domain (paas, saas, identity, correlation), posture (cspm, sspm, ispm, correlation), and provider.
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Rule catalog entries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleCatalogResponse'
+  /finding-rules/catalog/{ruleID}:
+    get:
+      summary: Get one detection rule with guidance and its document
+      tags:
+        - Findings
+      parameters:
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Rule detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleCatalogDetail'
+        '404':
+          description: Rule not found.
+  /finding-rules/validate:
+    post:
+      summary: Validate a custom PolicyFindingRule document
+      description: Parses a YAML or JSON PolicyFindingRule, applies DSL validation and lint, and returns canonical YAML and JSON forms. Nothing is saved.
+      tags:
+        - Findings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDocumentRequest'
+      responses:
+        '200':
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleValidationResult'
+        '400':
+          description: Malformed request body.
+  /finding-rules/test:
+    post:
+      summary: Evaluate a custom rule against a sample resource
+      description: Evaluates CEL match conditions against the supplied resource. Graph and SQL rules are validated but not evaluated.
+      tags:
+        - Findings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDocumentRequest'
+      responses:
+        '200':
+          description: Test result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResult'
+        '400':
+          description: Malformed request body.
+  /finding-rules/custom/{ruleID}:
+    put:
+      summary: Save a custom detection rule
+      description: Validates and stores the document as canonical YAML. metadata.id must match ruleID and must not reuse a built-in rule id.
+      tags:
+        - Findings
+      parameters:
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDocumentRequest'
+      responses:
+        '200':
+          description: Saved rule detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleCatalogDetail'
+        '400':
+          description: Malformed request or rule id mismatch.
+        '422':
+          description: Document failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleValidationResult'
+        '503':
+          description: Custom rule store unavailable.
+    delete:
+      summary: Delete a custom detection rule
+      tags:
+        - Findings
+      parameters:
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Rule deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+        '404':
+          description: Rule not found.
+        '503':
+          description: Custom rule store unavailable.
   /finding-evaluation-runs/{runID}:
     get:
       summary: Get finding evaluation run
@@ -3909,6 +4049,94 @@ paths:
                 $ref: '#/components/schemas/RiskScoringConfigResponse'
         '503':
           description: Risk scoring config store unavailable.
+  /grc/asset-risk-model:
+    get:
+      summary: Get the effective asset and attack path risk model
+      description: Returns the saved model, or the built-in model when the tenant has not saved one.
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Effective tenant asset risk model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetRiskModelResponse'
+    put:
+      summary: Save the asset and attack path risk model
+      description: Sections omitted from the body keep their built-in defaults. A section that is present replaces the default section.
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetRiskModelRequest'
+      responses:
+        '200':
+          description: Persisted tenant asset risk model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetRiskModelResponse'
+        '400':
+          description: Invalid asset risk model.
+        '503':
+          description: Asset risk model store unavailable.
+    delete:
+      summary: Reset the asset risk model to defaults
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Built-in asset risk model after reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetRiskModelResponse'
+        '503':
+          description: Asset risk model store unavailable.
+  /grc/framework-settings:
+    get:
+      summary: Get the compliance frameworks enabled for a tenant
+      description: Returns the saved selection, or the default selection (SOC 2, ISO 27001:2022, CIS AWS Foundations Benchmark v2.0) when the tenant has not saved one.
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+      responses:
+        '200':
+          description: Effective tenant framework selection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworkSettingsResponse'
+    put:
+      summary: Replace the compliance frameworks enabled for a tenant
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FrameworkSettingsRequest'
+      responses:
+        '200':
+          description: Persisted tenant framework selection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworkSettingsResponse'
+        '400':
+          description: Unknown or upcoming framework, or missing enabled_frameworks.
+        '503':
+          description: Framework settings store unavailable.
   /grc/findings:
     get:
       summary: GRC risk inbox findings
@@ -5872,6 +6100,49 @@ paths:
       responses:
         '200':
           description: Cloud attack paths.
+  /platform/graph/risk-paths:
+    get:
+      summary: Score attack paths from one entity
+      description: Explores the graph from a root entity, most probable routes first, and scores the best route to each reachable entity as compromise probability times asset value under the tenant asset risk model.
+      tags:
+        - Graph
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: root_urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: assume_compromised
+          in: query
+          description: Score paths as if the root were already compromised.
+          schema:
+            type: boolean
+        - name: max_depth
+          in: query
+          description: Lower the model's maximum path length for this request.
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Lower the model's maximum number of returned paths for this request.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Scored attack paths.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetRiskPathsResponse'
+        '400':
+          description: Missing root_urn or invalid parameters.
+        '404':
+          description: Root entity not found.
+        '503':
+          description: Graph catalog unavailable.
   /platform/graph/person-access-paths:
     get:
       summary: Query person access paths
@@ -15595,6 +15866,535 @@ components:
           $ref: '#/components/schemas/RiskScoringConfig'
         persisted:
           type: boolean
+    AssetRiskValueModel:
+      type: object
+      properties:
+        default:
+          type: number
+        crown_jewel:
+          type: number
+        production_boost:
+          type: number
+        classification_attributes:
+          type: array
+          items:
+            type: string
+        classifications:
+          type: object
+          additionalProperties:
+            type: number
+        kind_values:
+          type: object
+          additionalProperties:
+            type: number
+    AssetRiskVulnerabilityModel:
+      type: object
+      properties:
+        relations:
+          type: array
+          items:
+            type: string
+        base:
+          type: number
+        no_known_vulnerability:
+          type: number
+        epss_weight:
+          type: number
+        known_exploited:
+          type: number
+        ransomware_use:
+          type: number
+        cvss_critical:
+          type: number
+        cvss_high:
+          type: number
+        cvss_critical_probability:
+          type: number
+        cvss_high_probability:
+          type: number
+        max_per_asset:
+          type: integer
+    AssetRiskExposureModel:
+      type: object
+      properties:
+        entry_probability:
+          type: number
+        internet:
+          type: number
+        internal:
+          type: number
+        internet_attributes:
+          type: array
+          items:
+            type: string
+    AssetRiskCountermeasure:
+      type: object
+      required: [key, attributes, reduction]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        attributes:
+          type: array
+          items:
+            type: string
+        values:
+          type: array
+          items:
+            type: string
+        applies_to:
+          type: array
+          items:
+            type: string
+        reduction:
+          type: number
+    AssetRiskRelation:
+      type: object
+      required: [probability]
+      properties:
+        probability:
+          type: number
+        direction:
+          type: string
+          enum: [outgoing, incoming, both]
+        requires_exploit:
+          type: boolean
+    AssetRiskTraversal:
+      type: object
+      properties:
+        max_depth:
+          type: integer
+        max_paths:
+          type: integer
+        max_expansions:
+          type: integer
+        min_probability:
+          type: number
+    AssetRiskModelRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        asset_value:
+          $ref: '#/components/schemas/AssetRiskValueModel'
+        vulnerability:
+          $ref: '#/components/schemas/AssetRiskVulnerabilityModel'
+        exposure:
+          $ref: '#/components/schemas/AssetRiskExposureModel'
+        countermeasures:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetRiskCountermeasure'
+        relations:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AssetRiskRelation'
+        traversal:
+          $ref: '#/components/schemas/AssetRiskTraversal'
+        thresholds:
+          $ref: '#/components/schemas/RiskScoringLevelThresholds'
+    AssetRiskModel:
+      allOf:
+        - $ref: '#/components/schemas/AssetRiskModelRequest'
+        - type: object
+          required: [tenant_id, model_version]
+          properties:
+            model_version:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    AssetRiskModelResponse:
+      type: object
+      required: [model, persisted]
+      properties:
+        model:
+          $ref: '#/components/schemas/AssetRiskModel'
+        persisted:
+          type: boolean
+    AssetRiskNodeAssessment:
+      type: object
+      properties:
+        urn:
+          type: string
+        entity_type:
+          type: string
+        label:
+          type: string
+        value:
+          type: number
+        value_drivers:
+          type: array
+          items:
+            type: string
+        exposure:
+          type: string
+          enum: [internet, internal]
+        exploit_probability:
+          type: number
+        vulnerabilities_checked:
+          type: boolean
+        vulnerability_count:
+          type: integer
+        vulnerabilities:
+          type: array
+          items:
+            type: object
+            properties:
+              urn:
+                type: string
+              label:
+                type: string
+              cve:
+                type: string
+              epss:
+                type: number
+              cvss:
+                type: number
+              known_exploited:
+                type: boolean
+              ransomware_use:
+                type: boolean
+              probability:
+                type: number
+              drivers:
+                type: array
+                items:
+                  type: string
+        countermeasures:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              reduction:
+                type: number
+        countermeasure_factor:
+          type: number
+    AssetRiskPathsResponse:
+      type: object
+      properties:
+        model_version:
+          type: string
+        tenant_id:
+          type: string
+        root_urn:
+          type: string
+        root_probability:
+          type: number
+        assume_compromised:
+          type: boolean
+        root:
+          $ref: '#/components/schemas/AssetRiskNodeAssessment'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetRiskNodeAssessment'
+        paths:
+          type: array
+          items:
+            type: object
+            properties:
+              target_urn:
+                type: string
+              probability:
+                type: number
+              value:
+                type: number
+              score:
+                type: integer
+              level:
+                type: string
+                enum: [critical, high, medium, low]
+              steps:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    from:
+                      type: string
+                    to:
+                      type: string
+                    relation:
+                      type: string
+                    direction:
+                      type: string
+                    requires_exploit:
+                      type: boolean
+                    probability:
+                      type: number
+                    cumulative:
+                      type: number
+        summary:
+          type: object
+          properties:
+            reached:
+              type: integer
+            expansions:
+              type: integer
+            truncated:
+              type: boolean
+            max_score:
+              type: integer
+            max_level:
+              type: string
+            value_at_risk:
+              type: number
+        graph_revision:
+          type: integer
+    FrameworkSettingsRequest:
+      type: object
+      required: [enabled_frameworks]
+      properties:
+        tenant_id:
+          type: string
+        enabled_frameworks:
+          type: array
+          description: Framework names or ids from GET /grc/frameworks. Stored as canonical catalog names in catalog order.
+          items:
+            type: string
+    FrameworkSettings:
+      type: object
+      required: [tenant_id, enabled_frameworks]
+      properties:
+        tenant_id:
+          type: string
+        enabled_frameworks:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    FrameworkSettingsResponse:
+      type: object
+      required: [settings, persisted]
+      properties:
+        settings:
+          $ref: '#/components/schemas/FrameworkSettings'
+        persisted:
+          type: boolean
+    RuleCatalogEntry:
+      type: object
+      required: [id, name, summary, severity, origin, domain, posture, provider, evaluation, detection, enabled]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        summary:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        origin:
+          type: string
+          enum: [builtin_policy, builtin_detection, correlation_pattern, custom]
+        domain:
+          type: string
+          enum: [paas, saas, identity, correlation]
+        posture:
+          type: string
+          enum: [cspm, sspm, ispm, correlation]
+        provider:
+          type: string
+        category:
+          type: string
+        resource_type:
+          type: string
+        evaluation:
+          type: string
+          enum: [cel, sql, graph, event, correlation]
+        detection:
+          type: string
+          enum: [posture, event, correlation]
+        enabled:
+          type: boolean
+        maturity:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        frameworks:
+          type: array
+          items:
+            type: string
+        mitre_techniques:
+          type: array
+          items:
+            type: string
+        updated_at:
+          type: string
+          format: date-time
+    RuleCatalogResponse:
+      type: object
+      required: [rules, total, custom_rules_ready]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleCatalogEntry'
+        total:
+          type: integer
+        custom_rules_ready:
+          type: boolean
+    RuleCatalogDetail:
+      allOf:
+        - $ref: '#/components/schemas/RuleCatalogEntry'
+        - type: object
+          required: [description, attack_description, remediation, editable, testable]
+          properties:
+            description:
+              type: string
+            attack_description:
+              type: string
+            remediation:
+              type: string
+            remediation_steps:
+              type: array
+              items:
+                type: string
+            runbook:
+              type: string
+            false_positives:
+              type: array
+              items:
+                type: string
+            references:
+              type: array
+              items:
+                type: string
+            control_refs:
+              type: array
+              items:
+                type: object
+                properties:
+                  framework:
+                    type: string
+                  control:
+                    type: string
+            mitre_attack:
+              type: array
+              items:
+                type: object
+                properties:
+                  tactic:
+                    type: string
+                  technique:
+                    type: string
+            conditions:
+              type: array
+              items:
+                type: string
+            query:
+              type: string
+            graph_query:
+              type: string
+            graph_source_kinds:
+              type: array
+              items:
+                type: string
+            correlated_rule_ids:
+              type: array
+              items:
+                type: string
+            correlation_dimensions:
+              type: array
+              items:
+                type: string
+            correlation_window:
+              type: string
+            fingerprint_fields:
+              type: array
+              items:
+                type: string
+            lifecycle:
+              type: string
+            source_path:
+              type: string
+            document:
+              type: string
+              description: PolicyFindingRule YAML for declarative rules.
+            editable:
+              type: boolean
+            testable:
+              type: boolean
+            created_by:
+              type: string
+            updated_by:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+    RuleDocumentRequest:
+      type: object
+      required: [content]
+      properties:
+        tenant_id:
+          type: string
+        format:
+          type: string
+          enum: [yaml, json]
+          default: yaml
+        content:
+          type: string
+          description: One PolicyFindingRule document, at most 256 KiB.
+        resource:
+          type: object
+          additionalProperties: true
+          description: Sample normalized resource for POST /finding-rules/test.
+    RuleAuthoringIssue:
+      type: object
+      required: [severity, message]
+      properties:
+        severity:
+          type: string
+          enum: [error, warning]
+        message:
+          type: string
+    RuleValidationResult:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleAuthoringIssue'
+        yaml:
+          type: string
+        json:
+          type: string
+        preview:
+          $ref: '#/components/schemas/RuleCatalogDetail'
+    RuleTestResult:
+      type: object
+      required: [valid, issues, evaluated, matched, message]
+      properties:
+        valid:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleAuthoringIssue'
+        evaluated:
+          type: boolean
+        matched:
+          type: boolean
+        message:
+          type: string
     PutSourceRuntimeRequest:
       type: object
       required: [runtime]

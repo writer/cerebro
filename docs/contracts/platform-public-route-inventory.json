@@ -9,29 +9,29 @@
     "gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go"
   ],
   "summary": {
-    "http_routes": 276,
+    "http_routes": 288,
     "connect_mounts": 1,
     "connect_rpcs": 47,
     "by_surface": {
-      "bridged-to-rust-authority": 21,
-      "protected": 285,
+      "bridged-to-rust-authority": 22,
+      "protected": 296,
       "public-exempt": 15,
       "rust-authority": 3
     },
     "by_authority_owner": {
-      "bridged-to-rust-authority": 21,
-      "go-compatibility": 300,
+      "bridged-to-rust-authority": 22,
+      "go-compatibility": 311,
       "rust-authority": 3
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
-      "api-key-or-bearer": 259,
+      "api-key-or-bearer": 271,
       "connect-api-key-or-bearer": 48,
       "public-exempt": 15
     },
     "by_contract_source": {
       "MCP schema": 2,
-      "OpenAPI": 274,
+      "OpenAPI": 286,
       "proto": 48
     },
     "deprecated_surfaces": 0
@@ -672,6 +672,30 @@
       "contract_source": "OpenAPI"
     },
     {
+      "identity": "DELETE /finding-rules/custom/{ruleID}",
+      "kind": "http",
+      "method": "DELETE",
+      "path": "/finding-rules/custom/{ruleID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "DELETE /grc/asset-risk-model",
+      "kind": "http",
+      "method": "DELETE",
+      "path": "/grc/asset-risk-model",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
       "identity": "DELETE /grc/dashboards/{dashboardID}",
       "kind": "http",
       "method": "DELETE",
@@ -1128,6 +1152,30 @@
       "contract_source": "OpenAPI"
     },
     {
+      "identity": "GET /finding-rules/catalog",
+      "kind": "http",
+      "method": "GET",
+      "path": "/finding-rules/catalog",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /finding-rules/catalog/{ruleID}",
+      "kind": "http",
+      "method": "GET",
+      "path": "/finding-rules/catalog/{ruleID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
       "identity": "GET /findings/{findingID}",
       "kind": "http",
       "method": "GET",
@@ -1204,6 +1252,18 @@
       "kind": "http",
       "method": "GET",
       "path": "/grc/assessment-snapshots/{snapshotID}/lenses/{audience}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /grc/asset-risk-model",
+      "kind": "http",
+      "method": "GET",
+      "path": "/grc/asset-risk-model",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "grc",
@@ -1492,6 +1552,18 @@
       "kind": "http",
       "method": "GET",
       "path": "/grc/findings/{findingID}/audit-preview",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /grc/framework-settings",
+      "kind": "http",
+      "method": "GET",
+      "path": "/grc/framework-settings",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "grc",
@@ -2070,6 +2142,18 @@
       "path": "/platform/graph/provenance",
       "surface": "rust-authority",
       "authority_owner": "rust-authority",
+      "owner": "graph",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /platform/graph/risk-paths",
+      "kind": "http",
+      "method": "GET",
+      "path": "/platform/graph/risk-paths",
+      "surface": "bridged-to-rust-authority",
+      "authority_owner": "bridged-to-rust-authority",
       "owner": "graph",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",
@@ -2860,6 +2944,30 @@
       "kind": "http",
       "method": "POST",
       "path": "/finding-candidates/{candidateID}/reject",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /finding-rules/test",
+      "kind": "http",
+      "method": "POST",
+      "path": "/finding-rules/test",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /finding-rules/validate",
+      "kind": "http",
+      "method": "POST",
+      "path": "/finding-rules/validate",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "finding",
@@ -3900,6 +4008,18 @@
       "contract_source": "OpenAPI"
     },
     {
+      "identity": "PUT /finding-rules/custom/{ruleID}",
+      "kind": "http",
+      "method": "PUT",
+      "path": "/finding-rules/custom/{ruleID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "finding",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
       "identity": "PUT /findings/{findingID}/assign",
       "kind": "http",
       "method": "PUT",
@@ -3924,10 +4044,34 @@
       "contract_source": "OpenAPI"
     },
     {
+      "identity": "PUT /grc/asset-risk-model",
+      "kind": "http",
+      "method": "PUT",
+      "path": "/grc/asset-risk-model",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
       "identity": "PUT /grc/compliance-monitors/{monitorID}",
       "kind": "http",
       "method": "PUT",
       "path": "/grc/compliance-monitors/{monitorID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "PUT /grc/framework-settings",
+      "kind": "http",
+      "method": "PUT",
+      "path": "/grc/framework-settings",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "grc",

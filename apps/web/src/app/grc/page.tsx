@@ -2,553 +2,257 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import { AttentionBanner, Badge, DataStateBanner, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
-import { countLabel } from "@/lib/format";
+import { Badge, DataStateBanner, EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Panel } from "@/components/grc/Primitives";
 import {
-  displayDate,
-  GRCDashboard,
-  GRCControl,
-  GRCProgramFramework,
-  GRCProgramProofBundle,
-  GRCProgramReadiness,
-  GRCProgramReadinessSummary,
-  GRCProgramWorkItem,
-  humanize,
-} from "@/lib/grc";
-import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
-import { frameworkRouteSegment } from "@/lib/grc-frameworks";
-import { normalizeLegacyControlHref } from "@/lib/navigation";
-import type { RuntimeState } from "@/lib/runtime-state";
+  controlViolations,
+  enabledFrameworks,
+  frameworkDetailHref,
+  frameworkFindingsPath,
+  FRAMEWORK_SETTINGS_PATH,
+  type FrameworkSettingsResponse,
+  frameworkViolationSummary,
+  selectableFrameworks,
+  toggleFrameworkName,
+} from "@/lib/compliance-frameworks";
+import { countLabel } from "@/lib/format";
+import type { GRCFinding, GRCFramework, GRCFrameworksResponse, GRCListMeta } from "@/lib/grc";
+import { grcPath, useGRCMutation, useGRCQuery } from "@/lib/grc-client";
 
-type GRCScope = {
-  tenantID: string;
-  workspaceID: string;
-};
+type FindingsResponse = { findings: GRCFinding[]; meta?: GRCListMeta };
 
-type IssueQueueItem = {
-  action: string;
-  assignee: string;
-  dueLabel: string;
-  detail: string;
-  href: string;
-  id: string;
-  owner: string;
-  severity?: string;
-  slaStatus: string;
-  source: string;
-  status: string;
-  title: string;
-  type: string;
-};
+function FrameworkCard({ framework, tenantID }: { framework: GRCFramework; tenantID: string }) {
+  const findingsQuery = useGRCQuery<FindingsResponse>(frameworkFindingsPath(framework, tenantID));
+  const violations = useMemo(
+    () => controlViolations(findingsQuery.data?.findings ?? [], framework),
+    [findingsQuery.data?.findings, framework],
+  );
+  const summary = frameworkViolationSummary(violations);
+  const truncated = Boolean(findingsQuery.data?.meta?.truncated);
+  const href = frameworkDetailHref(framework, tenantID);
 
-type ReadinessCheck = {
-  action: string;
-  detail: string;
-  href: string;
-  label: string;
-  status: string;
-  tone: "danger" | "warning" | "success" | "neutral";
-  value: string;
-};
-
-export const grcOverviewPaths = (scope: GRCScope) => {
-  const tenantID = scope.tenantID.trim();
-  const workspaceID = scope.workspaceID.trim();
-  const query = {
-    tenant_id: tenantID || undefined,
-    workspace_id: workspaceID || undefined,
-  };
-  if (query.workspace_id && !query.tenant_id) {
-    return { dashboard: null, readiness: null };
-  }
-  return {
-    dashboard: grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT, enrichments: "deferred", ...query }),
-    readiness: grcProgramReadinessPath({ enrichments: "deferred", ...query }),
-  };
-};
-
-const controlHref = (control: GRCControl) =>
-  `/controls?framework=${encodeURIComponent(control.framework_name)}&control=${encodeURIComponent(control.control_id)}`;
-
-const workItemHref = (item: GRCProgramWorkItem) => {
-  if (item.href) return normalizeLegacyControlHref(item.href);
-  if (item.framework_name && item.control_id) {
-    return `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}`;
-  }
-  return "/controls";
-};
-
-const workItemDetail = (item: GRCProgramWorkItem) => {
-  if (item.reasons?.[0]) return item.reasons[0];
-  const parts = [
-    item.open_findings ? countLabel(item.open_findings, "open finding") : "",
-    item.missing_evidence_items ? countLabel(item.missing_evidence_items, "missing evidence item") : "",
-    item.stale_evidence_items ? countLabel(item.stale_evidence_items, "stale evidence item") : "",
-  ].filter(Boolean);
-  return parts.join(", ") || item.action || "Review required";
-};
-
-const compactDate = (value?: string) => {
-  if (!value) return "No due date";
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return value;
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(timestamp));
-};
-
-const dueCopy = (dueLabel: string) => dueLabel === "No due date" ? dueLabel : `Due ${dueLabel}`;
-
-const workItemType = (item: GRCProgramWorkItem) => {
-  if (item.kind === "finding") return "Issue";
-  if (item.kind === "control") return "Control";
-  return humanize(item.kind || "work item");
-};
-
-const fallbackQueueItem = (control: GRCControl): IssueQueueItem => ({
-  action: control.status === "failing" ? "Open control" : "Review evidence",
-  assignee: "Unassigned",
-  dueLabel: "No due date",
-  detail: [
-    control.open_findings ? countLabel(control.open_findings, "open finding") : "",
-    control.missing_evidence_items ? countLabel(control.missing_evidence_items, "missing evidence item") : "",
-    control.stale_evidence_items ? countLabel(control.stale_evidence_items, "stale evidence item") : "",
-  ].filter(Boolean).join(", ") || control.audit_summary || "Control needs review",
-  href: controlHref(control),
-  id: `${control.framework_name}:${control.control_id}`,
-  owner: control.owner_domain || "Unassigned",
-  slaStatus: "not_set",
-  source: control.framework_name,
-  status: control.status,
-  title: `${control.framework_name} ${control.control_id}`,
-  type: "Control",
-});
-
-const fallbackControlRank = (control: GRCControl) => {
-  const statusWeight: Record<string, number> = {
-    failing: 0,
-    missing_evidence: 1,
-    stale_evidence: 2,
-    manual_review: 3,
-    exception: 4,
-    passing: 8,
-  };
-  return [
-    statusWeight[control.status] ?? 5,
-    -(control.critical_findings * 100 + control.open_findings * 10 + (control.missing_evidence_items ?? 0) + (control.stale_evidence_items ?? 0)),
-    `${control.framework_name}:${control.control_id}`,
-  ] as const;
-};
-
-export const buildIssueQueue = (readinessData: GRCProgramReadiness | null | undefined, controls: GRCControl[]) => {
-  const readinessItems = readinessData?.work_items ?? [];
-  if (readinessItems.length > 0) {
-    return readinessItems.slice(0, 10).map((item): IssueQueueItem => ({
-      action: item.action || "Open item",
-      assignee: item.assignee || "Unassigned",
-      dueLabel: compactDate(item.due_at),
-      detail: workItemDetail(item),
-      href: workItemHref(item),
-      id: item.id,
-      owner: item.owner_domain || "Unassigned",
-      severity: item.severity,
-      slaStatus: item.sla_status || "not_set",
-      source: item.source_id || item.framework_name || "No source",
-      status: item.status,
-      title: item.title,
-      type: workItemType(item),
-    }));
-  }
-
-  return controls
-    .filter((control) => control.status !== "passing" || (control.missing_evidence_items ?? 0) > 0 || (control.stale_evidence_items ?? 0) > 0)
-    .slice()
-    .sort((left, right) => {
-      const leftRank = fallbackControlRank(left);
-      const rightRank = fallbackControlRank(right);
-      for (let index = 0; index < leftRank.length; index += 1) {
-        const diff = typeof leftRank[index] === "number"
-          ? Number(leftRank[index]) - Number(rightRank[index])
-          : String(leftRank[index]).localeCompare(String(rightRank[index]));
-        if (diff !== 0) return diff;
-      }
-      return 0;
-    })
-    .slice(0, 10)
-    .map(fallbackQueueItem);
-};
-
-const controlSummaryFromDashboard = (controls: GRCControl[]): GRCProgramReadinessSummary => {
-  const summary = controls.reduce((acc, control) => {
-    acc.controls += 1;
-    if (control.status === "passing") acc.passing_controls += 1;
-    if (control.status === "failing") acc.failing_controls += 1;
-    if ((control.missing_evidence_items ?? 0) > 0) acc.missing_evidence_controls += 1;
-    if ((control.stale_evidence_items ?? 0) > 0) acc.stale_evidence_controls += 1;
-    if (control.status === "manual_review") acc.manual_review_controls += 1;
-    acc.evidence_items += control.evidence_items;
-    acc.missing_evidence_items += control.missing_evidence_items ?? 0;
-    acc.stale_evidence_items += control.stale_evidence_items ?? 0;
-    acc.open_findings += control.open_findings;
-    acc.critical_findings += control.critical_findings;
-    acc.high_findings += control.high_findings;
-    return acc;
-  }, {
-    connectors: 0,
-    controls: 0,
-    coverage_blind_spots: 0,
-    critical_findings: 0,
-    evidence_items: 0,
-    failing_controls: 0,
-    high_findings: 0,
-    manual_review_controls: 0,
-    missing_evidence_controls: 0,
-    missing_evidence_items: 0,
-    open_findings: 0,
-    passing_controls: 0,
-    score: 0,
-    stale_connectors: 0,
-    stale_evidence_controls: 0,
-    stale_evidence_items: 0,
-    status: "current_counts",
-  });
-  summary.score = summary.controls === 0 ? 100 : Math.round((summary.passing_controls / summary.controls) * 100);
-  return summary;
-};
-
-const appRouteOrFallback = (href: string | undefined, fallback: string) => {
-  if (!href || href.startsWith("/grc/")) return fallback;
-  return href;
-};
-
-const stepToneClass: Record<ReadinessCheck["tone"], string> = {
-  danger: "bg-red-500",
-  warning: "bg-amber-500",
-  success: "bg-emerald-500",
-  neutral: "bg-[var(--border-strong)]",
-};
-
-const metricIntent = (count: number) => count > 0 ? "warning" : "success";
-
-export const buildReadinessChecks = ({
-  summary,
-}: {
-  summary: GRCProgramReadinessSummary;
-}): ReadinessCheck[] => {
-  const evidenceIssues = summary.missing_evidence_items + summary.stale_evidence_items;
-  const sourceIssues = summary.stale_connectors + summary.coverage_blind_spots;
-  const checks: ReadinessCheck[] = [];
-
-  if (sourceIssues > 0) {
-    checks.push({
-      action: "Refresh sources",
-      detail: `${countLabel(summary.coverage_blind_spots, "coverage gap")}, ${countLabel(summary.stale_connectors, "stale source")}`,
-      href: "/reports/packages#source-freshness",
-      label: "Source gaps",
-      status: "needs_attention",
-      tone: "warning",
-      value: sourceIssues.toLocaleString(),
-    });
-  }
-
-  if (summary.failing_controls > 0 || summary.manual_review_controls > 0) {
-    checks.push({
-      action: "Resolve controls",
-      detail: `${countLabel(summary.failing_controls, "failing control")}, ${countLabel(summary.manual_review_controls, "manual review")}`,
-      href: "/reports/packages#control-owner-queue",
-      label: "Failing controls",
-      status: "needs_attention",
-      tone: "warning",
-      value: summary.failing_controls.toLocaleString(),
-    });
-  }
-
-  if (evidenceIssues > 0) {
-    checks.push({
-      action: "Collect evidence",
-      detail: `${summary.missing_evidence_items.toLocaleString()} missing, ${summary.stale_evidence_items.toLocaleString()} stale`,
-      href: "/reports/packages#evidence-review",
-      label: "Evidence gaps",
-      status: "needs_attention",
-      tone: "warning",
-      value: evidenceIssues.toLocaleString(),
-    });
-  }
-
-  if (checks.length === 0) {
-    checks.push({
-      action: "Open packet",
-      detail: "No failing controls, missing evidence, stale evidence, or source gaps.",
-      href: "/reports/packages",
-      label: "Packet ready",
-      status: "ready",
-      tone: "success",
-      value: "Clear",
-    });
-  }
-
-  return checks;
-};
-
-function ReadinessChecksPanel({ checks }: { checks: ReadinessCheck[] }) {
   return (
-    <Panel title="Packet Blockers">
-      <div className="divide-y divide-[color:var(--border)]">
-        {checks.map((step) => (
-          <Link key={step.label} href={step.href} className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] sm:grid-cols-[minmax(0,1fr)_92px_132px]">
-            <div className="flex min-w-0 gap-3">
-              <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${stepToneClass[step.tone]}`} aria-hidden="true" />
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-[var(--text-primary)]">{step.label}</div>
-                <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--text-muted)]">{step.detail}</div>
-              </div>
-            </div>
-            <div className="text-[13px] font-semibold text-[var(--text-primary)]">{step.value}</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] font-medium text-[var(--primary)]">{step.action}</span>
-              <Badge value={step.status} />
-            </div>
+    <div className="surface-panel flex flex-col gap-4 p-5" data-compliance-framework={framework.name}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link href={href} className="text-[16px] font-semibold text-[var(--text-primary)] hover:text-[var(--primary)]">
+            {framework.name}
           </Link>
-        ))}
+          <div className="mt-1 text-[12px] text-[var(--text-muted)]">
+            {countLabel(framework.control_count, "control")}
+            {framework.coverage?.mapped_rules ? ` · ${countLabel(framework.coverage.mapped_rules, "mapped rule")}` : ""}
+          </div>
+        </div>
+        {findingsQuery.data && (
+          <Badge value={summary.controls > 0 ? "failing" : "passing"} />
+        )}
       </div>
-    </Panel>
-  );
-}
 
-function IssueQueuePanel({ items }: { items: IssueQueueItem[] }) {
-  return (
-    <Panel title="Open Control Issues" action={<Link href="/risks" className="secondary-button px-3 py-1.5 text-[12px]">View issue queue</Link>}>
-      {items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[color:var(--border-strong)] px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">
-          No control, evidence, or source issues are blocking the packet.
-        </div>
-      ) : (
-        <div className="divide-y divide-[color:var(--border)]">
-          {items.map((item) => (
-            <Link key={item.id} href={normalizeLegacyControlHref(item.href)} className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] md:grid-cols-[minmax(0,1fr)_150px_132px_80px]">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge value={item.type} />
-                  {item.severity && <Badge value={item.severity} tone="severity" />}
-                  <div className="text-[13px] font-semibold text-[var(--text-primary)]">{item.title}</div>
-                </div>
-                <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--text-muted)]">
-                  {item.detail}
-                </div>
-              </div>
-              <div className="min-w-0 text-[12px]">
-                <div className="truncate font-medium text-[var(--text-primary)]">{item.owner}</div>
-                <div className="mt-1 truncate text-[var(--text-muted)]">Assignee: {item.assignee}</div>
-              </div>
-              <div className="min-w-0 text-[12px]">
-                <div className="font-medium text-[var(--text-primary)]">{dueCopy(item.dueLabel)}</div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  <Badge value={item.slaStatus} />
-                  <span className="truncate text-[var(--text-muted)]">{item.source}</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--primary)] md:justify-end">
-                <span className="sr-only">{item.action}</span>
-                <span aria-hidden="true">Open</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </Panel>
-  );
-}
+      {findingsQuery.loading && !findingsQuery.data && <LoadingBlock label="Loading violations..." />}
+      {findingsQuery.error && !findingsQuery.data && <ErrorBlock error={findingsQuery.error} onRetry={findingsQuery.reload} />}
 
-function AuditPacketPanel({
-  proofBundle,
-  summary,
-}: {
-  proofBundle?: GRCProgramProofBundle;
-  summary: GRCProgramReadinessSummary;
-}) {
-  const blockers = proofBundle?.readiness.blockers ?? summary.readiness_blockers ?? [];
-
-  return (
-    <Panel title="Control Evidence Packet">
-      {proofBundle ? (
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">{proofBundle.title}</h2>
-              <Badge value={proofBundle.status} />
-            </div>
-            <p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">
-              {proofBundle.description || `${countLabel(summary.missing_evidence_items, "missing evidence item")}, ${countLabel(summary.stale_evidence_items, "stale evidence item")}.`}
-            </p>
+      {findingsQuery.data && (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Controls violated", value: summary.controls },
+              { label: "Open findings", value: summary.findings },
+              { label: "Failing rules", value: summary.rules },
+            ].map((metric) => (
+              <div key={metric.label} className="rounded-lg bg-[var(--surface-muted)] p-3">
+                <div className="text-xl font-semibold text-[var(--text-primary)]">
+                  {metric.value.toLocaleString()}{truncated ? "+" : ""}
+                </div>
+                <div className="mt-1 text-[11px] text-[var(--text-muted)]">{metric.label}</div>
+              </div>
+            ))}
           </div>
-          <div className="grid gap-3 text-[12px] sm:grid-cols-2">
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Packet status</div>
-              <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{proofBundle.score}/100</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Generated</div>
-              <div className="mt-1 font-medium text-[var(--text-primary)]">{displayDate(proofBundle.generated_at)}</div>
-            </div>
-          </div>
-          {blockers.length > 0 && (
-            <div className="rounded-lg border border-[color:var(--border)] px-3 py-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Packet blockers</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {blockers.slice(0, 4).map((blocker) => (
-                  <span key={`${blocker.code}:${blocker.label}`} className="rounded-md bg-[var(--surface-muted)] px-2 py-1 text-[12px] text-[var(--text-secondary)]">
-                    {blocker.count ? `${blocker.count} ` : ""}{blocker.label}
+
+          {violations.length > 0 ? (
+            <ul className="space-y-1.5 text-[13px]">
+              {violations.slice(0, 3).map((violation) => (
+                <li key={violation.controlID} className="flex items-center justify-between gap-3">
+                  <Link
+                    href={frameworkDetailHref(framework, tenantID, violation.controlID)}
+                    className="font-mono text-[12px] font-medium text-[var(--text-primary)] hover:text-[var(--primary)]"
+                  >
+                    {violation.controlID}
+                  </Link>
+                  <span className="text-[12px] text-[var(--text-muted)]">
+                    {countLabel(violation.findings.length, "finding")}
+                    {violation.critical > 0 ? ` · ${violation.critical} critical` : ""}
                   </span>
-                ))}
-              </div>
-            </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-[13px] text-[var(--text-muted)]">No open findings map to this framework&apos;s controls.</div>
           )}
-          <div className="flex flex-wrap gap-2">
-            <Link href={appRouteOrFallback(proofBundle.export_path, "/reports")} className="primary-button px-3 py-1.5 text-[12px]">Export packet</Link>
-            <Link href={appRouteOrFallback(proofBundle.reports_path, "/reports")} className="secondary-button px-3 py-1.5 text-[12px]">Open packet</Link>
-          </div>
-        </div>
-      ) : (
-        <div className="text-[13px] leading-5 text-[var(--text-muted)]">
-          Loading packet status.
-        </div>
+
+          <Link href={href} className="mt-auto text-[13px] font-medium text-[var(--primary)]">
+            View controls
+          </Link>
+        </>
       )}
-    </Panel>
+    </div>
   );
 }
 
-function FrameworkPosturePanel({ frameworks }: { frameworks: GRCProgramFramework[] }) {
-  const sorted = frameworks
-    .slice()
-    .filter((framework) => framework.status !== "ready" || framework.failing_controls > 0 || framework.missing_evidence_controls > 0 || framework.stale_evidence_controls > 0)
-    .sort((left, right) => left.score - right.score || right.failing_controls - left.failing_controls)
-    .slice(0, 6);
+function FrameworkPicker({
+  catalog,
+  enabledNames,
+  onCancel,
+  onSaved,
+  tenantID,
+}: {
+  catalog: GRCFramework[];
+  enabledNames: string[];
+  onCancel: () => void;
+  onSaved: () => void;
+  tenantID: string;
+}) {
+  const [selected, setSelected] = useState(enabledNames);
+  const [filter, setFilter] = useState("");
+  const { mutate, saving, error } = useGRCMutation<FrameworkSettingsResponse>();
+  const options = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    return selectableFrameworks(catalog).filter((framework) => !query || framework.name.toLowerCase().includes(query));
+  }, [catalog, filter]);
+  const isSelected = (name: string) => selected.some((value) => value.toLowerCase() === name.toLowerCase());
 
-  if (sorted.length === 0) return null;
+  const save = async () => {
+    try {
+      await mutate(FRAMEWORK_SETTINGS_PATH, { ...(tenantID ? { tenant_id: tenantID } : {}), enabled_frameworks: selected }, "PUT");
+      onSaved();
+    } catch {
+      // useGRCMutation surfaces the message through `error`.
+    }
+  };
 
   return (
-    <Panel title="Frameworks Needing Attention" action={<Link href="/frameworks" className="secondary-button px-3 py-1.5 text-[12px]">Open frameworks</Link>}>
-      <div className="divide-y divide-[color:var(--border)]">
-        {sorted.map((framework) => (
-          <Link
-            key={`${framework.framework_name}:${framework.framework_id ?? ""}`}
-            href={`/frameworks/${frameworkRouteSegment({ id: framework.framework_id, name: framework.framework_name })}`}
-            className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] sm:grid-cols-[minmax(0,1fr)_92px_160px]"
+    <Panel title="Enabled Frameworks">
+      <p className="mb-3 text-[13px] text-[var(--text-muted)]">
+        Pick the frameworks to measure. Findings from CSPM and SSPM rules are mapped to each enabled framework&apos;s controls. This applies to everyone in the tenant.
+      </p>
+      <input
+        type="search"
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+        placeholder="Filter frameworks"
+        aria-label="Filter frameworks"
+        className="mb-3 w-full max-w-sm rounded-md border border-[color:var(--border)] bg-[var(--surface)] px-3 py-1.5 text-[13px]"
+      />
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {options.map((framework) => (
+          <label
+            key={framework.name}
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-[13px] transition ${isSelected(framework.name) ? "border-[color:var(--primary)] bg-[var(--surface-muted)]" : "border-[color:var(--border)]"}`}
           >
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{framework.framework_name}</div>
-              <div className="mt-1 text-[12px] text-[var(--text-muted)]">
-                {framework.passing_controls.toLocaleString()} of {framework.controls.toLocaleString()} controls passing
-              </div>
-            </div>
-            <div className="text-[13px] font-semibold text-[var(--text-primary)]">{Math.round(framework.score)}%</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge value={framework.status} />
-              {framework.failing_controls > 0 && (
-                <span className="text-[12px] text-[var(--text-muted)]">{framework.failing_controls} failing</span>
-              )}
-            </div>
-          </Link>
+            <input
+              type="checkbox"
+              checked={isSelected(framework.name)}
+              onChange={() => setSelected((current) => toggleFrameworkName(current, framework.name))}
+              className="mt-0.5"
+            />
+            <span className="min-w-0">
+              <span className="block font-medium text-[var(--text-primary)]">{framework.name}</span>
+              <span className="block text-[12px] text-[var(--text-muted)]">
+                {countLabel(framework.control_count, "control")} · {countLabel(framework.coverage?.mapped_rules ?? 0, "mapped rule")}
+              </span>
+            </span>
+          </label>
         ))}
+      </div>
+      {options.length === 0 && <div className="text-[13px] text-[var(--text-muted)]">No frameworks match that filter.</div>}
+      {error && <div className="mt-3 text-[12px] text-red-600">{error}</div>}
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving}
+          className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--primary-hover)] disabled:opacity-60"
+        >
+          {saving ? "Saving..." : `Save ${countLabel(selected.length, "framework")}`}
+        </button>
+        <button type="button" onClick={onCancel} disabled={saving} className="secondary-button px-3 py-1.5 text-[13px]">
+          Cancel
+        </button>
       </div>
     </Panel>
   );
 }
 
-export default function GRCPage() {
+export default function CompliancePage() {
   const searchParams = useSearchParams();
-  const tenantID = searchParams.get("tenant_id") ?? "";
-  const workspaceID = searchParams.get("workspace_id") ?? "";
-  const paths = grcOverviewPaths({ tenantID, workspaceID });
-  const invalidWorkspaceScope = Boolean(workspaceID.trim() && !tenantID.trim());
-  const dashboard = useGRCQuery<GRCDashboard>(paths.dashboard);
-  const readinessQuery = useGRCQuery<GRCProgramReadiness>(paths.readiness);
-  const dashboardControls = useMemo(() => dashboard.data?.controls ?? [], [dashboard.data?.controls]);
-  const fallbackSummary = useMemo(() => controlSummaryFromDashboard(dashboardControls), [dashboardControls]);
-  const summary = readinessQuery.data?.summary ?? fallbackSummary;
-  const frameworks = useMemo(() => readinessQuery.data?.frameworks ?? [], [readinessQuery.data?.frameworks]);
-  const issueItems = useMemo(() => buildIssueQueue(readinessQuery.data, dashboardControls), [dashboardControls, readinessQuery.data]);
-  const readinessChecks = useMemo(() => buildReadinessChecks({ summary }), [summary]);
-  const metricState: RuntimeState = dashboard.state === "stale" || dashboard.state === "empty" ? "ready" : dashboard.state;
-  const evidenceIssues = summary.missing_evidence_items + summary.stale_evidence_items;
-  const sourceIssues = summary.stale_connectors + summary.coverage_blind_spots;
-  const packetBlockers = summary.readiness_blockers?.reduce((total, blocker) => total + (blocker.count ?? 1), 0) ?? issueItems.length;
-  const packetBlockerVerb = packetBlockers === 1 ? "affects" : "affect";
-  const readinessSource = readinessQuery.data ? humanize(summary.status) : "current counts";
-  const pageDescription = dashboard.data
-    ? `${countLabel(packetBlockers, "blocker")} ${packetBlockerVerb} packet export. ${countLabel(summary.failing_controls, "failing control")}, ${countLabel(evidenceIssues, "evidence issue")}, ${countLabel(sourceIssues, "source issue")}.`
-    : "Control gaps from open posture findings.";
-
-  const reload = () => {
-    if (invalidWorkspaceScope) return;
-    void dashboard.reload();
-    void readinessQuery.reload();
-  };
+  const tenantID = (searchParams.get("tenant_id") ?? "").trim();
+  const [managing, setManaging] = useState(false);
+  const settingsQuery = useGRCQuery<FrameworkSettingsResponse>(grcPath(FRAMEWORK_SETTINGS_PATH, { tenant_id: tenantID }));
+  const catalogQuery = useGRCQuery<GRCFrameworksResponse>(grcPath("/grc/frameworks"));
+  const catalog = useMemo(() => catalogQuery.data?.frameworks ?? [], [catalogQuery.data?.frameworks]);
+  const enabledNames = useMemo(() => settingsQuery.data?.settings.enabled_frameworks ?? [], [settingsQuery.data?.settings.enabled_frameworks]);
+  const enabled = useMemo(() => enabledFrameworks(catalog, enabledNames), [catalog, enabledNames]);
+  const loading = (settingsQuery.loading && !settingsQuery.data) || (catalogQuery.loading && !catalogQuery.data);
+  const error = settingsQuery.error ?? catalogQuery.error;
+  const ready = Boolean(settingsQuery.data && catalogQuery.data);
 
   return (
     <div className="space-y-6">
       <PageHeader
         contractId="grc"
         title="Compliance"
-        description={pageDescription}
-        action={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={reload}
-              disabled={invalidWorkspaceScope}
-              className="secondary-button px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Refresh
-            </button>
-          </div>
-        }
+        description="Open CSPM and SSPM findings mapped to the controls of each framework you enable."
+        action={ready && !managing ? (
+          <button type="button" onClick={() => setManaging(true)} className="secondary-button px-3 py-1.5 text-[13px]">
+            Manage frameworks
+          </button>
+        ) : undefined}
       />
 
       <DataStateBanner
-        state={invalidWorkspaceScope ? "permission-denied" : dashboard.state}
-        subject="Compliance data"
-        error={dashboard.error}
-        lastSuccessfulAt={dashboard.lastSuccessfulAt}
-        onRetry={invalidWorkspaceScope ? undefined : () => void dashboard.reload()}
-        detail={invalidWorkspaceScope
-          ? "Select a tenant before loading a workspace."
-          : dashboard.state === "loading" ? "Loading controls, findings, evidence, and sources." : undefined}
+        state={error ? "error" : loading ? "loading" : "ready"}
+        subject="Compliance frameworks"
+        error={error}
+        onRetry={() => {
+          void settingsQuery.reload();
+          void catalogQuery.reload();
+        }}
       />
 
-      {readinessQuery.error && dashboard.data && (
-        <AttentionBanner
-          action={
-            <button
-              type="button"
-              onClick={() => void readinessQuery.reload()}
-              className="rounded-md border border-amber-300 bg-white px-3 py-1 text-[12px] font-medium text-amber-900 hover:bg-amber-50"
-            >
-              Retry
-            </button>
-          }
-        >
-          Packet status is unavailable; showing current control counts.
-        </AttentionBanner>
+      {ready && managing && (
+        <FrameworkPicker
+          catalog={catalog}
+          enabledNames={enabled.map((framework) => framework.name)}
+          tenantID={tenantID}
+          onCancel={() => setManaging(false)}
+          onSaved={() => {
+            setManaging(false);
+            void settingsQuery.reload();
+          }}
+        />
       )}
 
-      {dashboard.data && (
+      {ready && !managing && enabled.length === 0 && (
+        <Panel title="No Frameworks Enabled">
+          <EmptyBlock label="Enable a framework such as SOC 2, ISO 27001, or the CIS AWS Foundations Benchmark to see which controls your open findings violate." />
+          <button type="button" onClick={() => setManaging(true)} className="mt-3 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-white">
+            Enable frameworks
+          </button>
+        </Panel>
+      )}
+
+      {ready && enabled.length > 0 && (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <MetricCard label="Packet score" value={`${Math.round(summary.score)}%`} detail={readinessSource} intent={summary.score >= 80 ? "success" : summary.score >= 50 ? "warning" : "danger"} state={metricState} />
-            <MetricCard label="Open issues" value={issueItems.length} detail={`${summary.critical_findings} critical, ${summary.high_findings} high`} intent={issueItems.length > 0 ? "warning" : "success"} state={metricState} />
-            <MetricCard label="Evidence issues" value={evidenceIssues} detail={`${summary.missing_evidence_items} missing, ${summary.stale_evidence_items} stale`} intent={metricIntent(evidenceIssues)} state={metricState} />
-            <MetricCard label="Source issues" value={sourceIssues} detail={`${summary.stale_connectors} stale, ${summary.coverage_blind_spots} coverage gaps`} intent={metricIntent(sourceIssues)} state={metricState} />
+          {!settingsQuery.data?.persisted && (
+            <div className="text-[12px] text-[var(--text-muted)]">
+              Showing the default frameworks. Use Manage frameworks to choose your own.
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {enabled.map((framework) => (
+              <FrameworkCard key={framework.name} framework={framework} tenantID={tenantID} />
+            ))}
           </div>
-
-          <IssueQueuePanel items={issueItems} />
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <ReadinessChecksPanel checks={readinessChecks} />
-            <AuditPacketPanel proofBundle={readinessQuery.data?.proof_bundle} summary={summary} />
-          </div>
-
-          <FrameworkPosturePanel frameworks={frameworks} />
         </>
       )}
     </div>

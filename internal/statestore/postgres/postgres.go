@@ -39,6 +39,7 @@ type findingIntelReady struct {
 	policyDataset     bool
 	memory            bool
 	riskScoringConfig bool
+	assetRiskModel    bool
 	remediation       bool
 }
 
@@ -118,7 +119,13 @@ type Store struct {
 	platform                  platformTablesReady
 	connector                 connectorTablesReady
 	appendLog                 appendLogTablesReady
-	userPreferencesReady      bool
+	settings                  settingsTablesReady
+}
+
+type settingsTablesReady struct {
+	userPreferences             bool
+	complianceFrameworkSettings bool
+	customFindingRules          bool
 }
 
 // Open opens a Postgres-backed current-state store.

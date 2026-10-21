@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   PlugZap,
   Radar,
+  RefreshCw,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
@@ -302,26 +303,26 @@ export function SignalCoveragePanel({
     <section className="surface-panel p-6">
       <SectionHeader
         icon={Radar}
-        title="Source Health"
+        title="Integration Health"
         description="Freshness of the data behind each finding."
       />
       <div className="mt-4 space-y-1">
         <CoverageRow
-          href="/connectors"
+          href="/integrations"
           icon={PlugZap}
-          label="Sources Reporting"
+          label="Integrations Reporting"
           value={`${healthySources}/${summary.connectors}`}
-          detail={countLabel(summary.stale_connectors, "stale source")}
+          detail={countLabel(summary.stale_connectors, "stale integration")}
           tone={summary.stale_connectors > 0 ? "warning" : "success"}
         />
         <CoverageRow
-          href="/connectors"
+          href="/integrations"
           icon={ScanSearch}
           label="Blind Spots"
           value={coveragePending ? "—" : coverageBlindSpotCount}
           detail={coveragePending
-            ? "Loading source coverage."
-            : `${countLabel(coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "source")}`}
+            ? "Loading integration coverage."
+            : `${countLabel(coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "integration")}`}
           tone={coveragePending ? "neutral" : coverageBlindSpotCount > 0 ? "warning" : "success"}
         />
         <CoverageRow
@@ -399,9 +400,17 @@ export default function Home() {
         description="Exposure, attack paths, and owners."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh</button>
-            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Add Source</Link>
-            <Link href="/risks" className="primary-button px-3 py-2 text-[13px]">Review Findings</Link>
+            <button
+              type="button"
+              onClick={reload}
+              className="secondary-button inline-flex h-9 w-9 items-center justify-center p-0"
+              aria-label="Refresh dashboard data"
+              title="Refresh dashboard data"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <Link href="/integrations?tab=available" className="secondary-button inline-flex h-9 items-center px-3 text-[13px]">Add Integration</Link>
+            <Link href="/risks" className="primary-button inline-flex h-9 items-center px-3 text-[13px]">Review Findings</Link>
           </div>
         }
       />
@@ -414,7 +423,7 @@ export default function Home() {
         onRetry={invalidWorkspaceScope ? undefined : () => void dashboard.reload()}
         detail={invalidWorkspaceScope
           ? "Select a tenant before loading a workspace."
-          : dashboard.state === "loading" ? "Loading findings, assets, and source health." : undefined}
+          : dashboard.state === "loading" ? "Loading findings, assets, and integration health." : undefined}
       />
 
       {data && summary && (
@@ -439,12 +448,12 @@ export default function Home() {
               tone="neutral"
             />
             <OverviewTile
-              href="/connectors"
+              href="/integrations"
               icon={PlugZap}
-              hint="Stale sources mean stale findings."
-              label="Sources Connected"
+              hint="Stale integrations mean stale findings."
+              label="Integrations Connected"
               value={summary.connectors}
-              detail={countLabel(summary.stale_connectors, "stale source")}
+              detail={countLabel(summary.stale_connectors, "stale integration")}
               tone={summary.stale_connectors > 0 ? "warning" : "success"}
             />
             <OverviewTile

@@ -13,6 +13,7 @@ import { Badge, DataStateBanner, MetricCard, PageHeader, Panel, ResultLimitNotic
 import { fetchCerebro } from "@/lib/cerebro-client";
 import { runFindingMutation } from "@/lib/finding-actions";
 import { securityProducerContextForFinding } from "@/lib/security-producer-response";
+import { complianceControlHref } from "@/lib/compliance-links";
 import { pluralize } from "@/lib/format";
 import { displayDate, GRCAuditPacket, GRCEntityImpact, humanize, shortEntity } from "@/lib/grc";
 import { grcEntityImpactPath, grcPath, useGRCQuery } from "@/lib/grc-client";
@@ -180,7 +181,7 @@ function AuditContextPanel({ finding }: { finding: GRCAuditPacket["finding"] }) 
               {boundedSourceCoverage.rows.map((coverage, index) => (
                 <Link
                   key={`${coverage.source_id}-${coverage.dimension_id}-${index}`}
-                  href={coverage.source_id ? `/connectors/${encodeURIComponent(coverage.source_id)}?tab=scope` : "/connectors"}
+                  href={coverage.source_id ? `/integrations/${encodeURIComponent(coverage.source_id)}?tab=scope` : "/integrations"}
                   className="rounded-md border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40"
                 >
                   <div className="mb-2 flex items-start justify-between gap-3">
@@ -744,7 +745,7 @@ export default function FindingDetailPage() {
                     {controls.map((c) => (
                       <Link
                         key={`${c.framework_name}-${c.control_id}`}
-                        href={`/controls?framework=${encodeURIComponent(c.framework_name)}&control=${encodeURIComponent(c.control_id)}`}
+                        href={complianceControlHref(c.framework_name, c.control_id)}
                         className="rounded-md border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600"
                       >
                         {c.framework_name} {c.control_id}

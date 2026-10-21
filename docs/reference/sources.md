@@ -784,6 +784,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `visiblethread` | Visiblethread source | visiblethread.document, visiblethread.document_2, visiblethread.webscan, visiblethread.weburl |
 | `vitally` | Vitally source | vitally.accounts, vitally.audit_events, vitally.policies, vitally.records, vitally.users |
 | `vulncheck` | Vulncheck source | vulncheck.assets, vulncheck.audit_events, vulncheck.findings, vulncheck.policies, vulncheck.vulnerabilities |
+| `vulnerability_intel` | Vulnerability Intel source | vulnerability_intel.kev, vulnerability_intel.epss |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 | `webex` | Webex source | webex.audit_events, webex.documents, webex.groups, webex.users, webex.workspaces |
 | `whatsapp` | Whatsapp source | whatsapp.group, whatsapp.group_2, whatsapp.invite, whatsapp.user |

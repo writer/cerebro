@@ -715,6 +715,7 @@ virustotal
 visiblethread
 vitally
 vulncheck
+vulnerability_intel
 webex
 whatsapp
 whereby

@@ -523,7 +523,6 @@ export default function GraphViewer({
   const selectedExpanding = selectedNode ? expandingURN === selectedNode.urn : false;
   const inventoryHref = selectedNode ? withQueryParams(`/inventory/${encodeURIComponent(selectedNode.urn)}`, { tenant_id: tenantID }) : "/inventory";
 
-  const evidenceHref = selectedNode ? withQueryParams("/evidence", { graph_root_urn: selectedNode.urn, tenant_id: tenantID }) : "/evidence";
   const exploreHref = selectedNode ? withQueryParams("/explore", { root_urn: selectedNode.urn, tenant_id: tenantID }) : "/explore";
 
   const styledElements = useMemo(() => {
@@ -727,7 +726,6 @@ export default function GraphViewer({
               </div>
               <div className="flex flex-wrap gap-2">
                 <ActionLink href={inventoryHref}>Inventory</ActionLink>
-                <ActionLink href={evidenceHref}>Evidence</ActionLink>
                 <AskAboutLink
                   question={`Explain affected entities and compliance impact for ${selectedNode.urn}.`}
                   scopeUrn={selectedNode.urn}
@@ -845,7 +843,6 @@ export default function GraphViewer({
                         {!onExpandNode && (
                           <ActionLink href={withQueryParams("/explore", { root_urn: node.urn, tenant_id: tenantID })}>Graph</ActionLink>
                         )}
-                        <ActionLink href={withQueryParams("/evidence", { graph_root_urn: node.urn, tenant_id: tenantID })}>Evidence</ActionLink>
                         {onExpandNode && (
                           <button
                             type="button"

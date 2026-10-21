@@ -2,7 +2,7 @@ module github.com/writer/cerebro
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 replace github.com/WriterInternal/event-registry/clients/go => ./internal/eventregistry
 

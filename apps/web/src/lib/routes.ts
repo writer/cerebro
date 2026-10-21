@@ -32,18 +32,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["verified", "validated", "findings", "evidence", "agent", "remediation", "actions", "approval", "execution", "verification", "rollback"],
   },
   {
-    label: "Credential Health",
-    href: "/security/lifecycle",
-    description: "Key and certificate rotation.",
-    section: "Operator",
-    keywords: ["credential", "certificate", "expiry", "rotation", "revocation", "owner"],
-  },
-  {
     label: "Compliance",
     href: "/grc",
-    description: "Control gaps, evidence, and packets.",
+    description: "Framework controls violated by open findings.",
     section: "Operator",
-    keywords: ["grc", "compliance", "packet", "audit", "framework", "control", "test", "evidence", "policy", "questionnaire", "report", ...supportedGRCFrameworkNames],
+    keywords: ["grc", "compliance", "framework", "frameworks", "control", "controls", "violations", "benchmark", "cspm", "sspm", ...supportedGRCFrameworkNames],
   },
   {
     label: "Trends",
@@ -60,48 +53,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["custom dashboard", "dashboards", "trends", "widgets", "workspace", "saved views"],
   },
   {
-    label: "Controls",
-    href: "/controls",
-    description: "Control status and mapped findings.",
-    section: "Operator",
-    keywords: ["soc2", "iso", "framework", "control", "audit", "builder", "custom", ...supportedGRCFrameworkNames],
-  },
-  {
-    // "Policies" alone reads as detection rules to a cloud security engineer;
-    // this page is written governance documents.
-    label: "Policy Documents",
-    href: "/policies",
-    description: "Policy versions, approvals, and attestations.",
-    section: "Operator",
-    keywords: ["policy", "policies", "policy documents", "templates", "approvals", "attestations", "exceptions", "reminders", "review", "owner", ...supportedGRCFrameworkNames],
-  },
-  {
-    label: "Frameworks",
-    href: "/frameworks",
-    description: "Framework status and gaps.",
-    section: "Operator",
-    keywords: ["soc2", "iso", "framework", "catalog", "coverage", "gap", "planning", "export", ...supportedGRCFrameworkNames],
-  },
-  {
-    label: "Evidence",
-    href: "/evidence",
-    description: "Proof linked to findings and assets.",
-    section: "Operator",
-    keywords: ["claims", "events", "evidence", "audit"],
-  },
-  {
-    label: "Questionnaires",
-    href: "/questionnaires",
-    description: "Customer and vendor questionnaires.",
-    section: "Operator",
-    keywords: ["questionnaires", "security review", "customer review", "vendor review", "answers", "evidence gaps", "approvals", "owners"],
-  },
-  {
     label: "Rules",
     href: "/rules",
-    description: "Rules that turn evidence into findings.",
+    description: "CSPM, SSPM, ISPM, and correlation rules, plus custom rules in YAML or JSON.",
     section: "Operator",
-    keywords: ["rules", "finding rules", "checks", "catalog", "policy rules", "signatures", "streams"],
+    keywords: ["rules", "finding rules", "checks", "catalog", "policy rules", "signatures", "cspm", "sspm", "ispm", "correlation", "custom rule", "yaml"],
   },
   {
     label: "Inventory",
@@ -120,18 +76,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: group.keywords,
   })),
   {
-    label: "Vendors",
-    href: "/vendors",
-    description: "Vendors, reviews, and assurance.",
-    section: "Operator",
-    keywords: ["vendors", "third party", "vendor risk", "vendor discoveries", "contracts", "security review", "questionnaire", "assurance", "owner"],
-  },
-  {
-    label: "Graph",
+    label: "Attack Graphs",
     href: "/explore",
-    description: "Trace paths around any entity.",
+    description: "Trace attack paths and simulate fixes.",
     section: "Operator",
-    keywords: ["graph", "relationships", "expand", "neighbors", "pivot", "entity", "impact", "affected assets", "blast radius"],
+    keywords: ["attack graphs", "attack paths", "graph", "relationships", "expand", "neighbors", "pivot", "entity", "impact", "affected assets", "blast radius", "simulate", "simulation", "what if"],
   },
   {
     label: "Reports",
@@ -141,25 +90,11 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["audit packet", "export", "report", "evidence"],
   },
   {
-    label: "Audit Workspace",
-    href: "/reports/packages",
-    description: "Clear blockers before sharing a packet.",
-    section: "Operator",
-    keywords: ["audit package", "packet review", "evidence review", "control owners", "snapshot", "scope", "exceptions"],
-  },
-  {
     label: "Integrations",
-    href: "/connectors",
-    description: "Source setup and health.",
+    href: "/integrations",
+    description: "Connected tools, their health, and credentials.",
     section: "Operator",
-    keywords: ["runtimes", "sources", "connectors", "freshness", "scope"],
-  },
-  {
-    label: "Credential Stores",
-    href: "/credentials",
-    description: "Secret store setup and status.",
-    section: "Operator",
-    keywords: ["credential stores", "credentials", "secret stores", "vault", "secrets", "resolver"],
+    keywords: ["runtimes", "sources", "integrations", "connectors", "freshness", "scope", "credentials", "secrets", "credential stores", "vault"],
   },
 ];
 
@@ -179,25 +114,18 @@ const commandOnlyNavLinks: NavigationEntry[] = [
     keywords: ["schedule", "scheduled", "recurring", "interval", "report", "delivery", "runs", "cron"],
   },
   {
-    label: "Risk Scoring",
+    label: "Risk Model",
     href: "/developer/scoring",
-    description: "How findings are ranked.",
+    description: "How assets and attack paths are scored.",
     section: "Advanced",
-    keywords: ["risk", "scoring", "threshold", "cvss", "epss", "weights", "configuration"],
+    keywords: ["risk", "scoring", "model", "attack path", "asset value", "classification", "countermeasure", "exposure", "cvss", "epss", "kev"],
   },
   {
-    label: "Control Builder",
-    href: "/controls/builder",
-    description: "Compose custom control packs.",
+    label: "Integration Activation",
+    href: "/integrations/activation",
+    description: "Preview what an integration collects before you rely on it.",
     section: "Operator",
-    keywords: ["builder", "custom framework", "control pack", "yaml", "audit", ...supportedGRCFrameworkNames],
-  },
-  {
-    label: "Source Activation",
-    href: "/connectors/activation",
-    description: "Preview what a source collects before you rely on it.",
-    section: "Operator",
-    keywords: ["source", "activation", "connector", "coverage", "access", "trust", "onboarding"],
+    keywords: ["integration", "source", "activation", "connector", "coverage", "access", "trust", "onboarding"],
   },
 ];
 
@@ -247,15 +175,14 @@ const routeLabels: Record<string, string> = Object.fromEntries(
 );
 
 routeLabels["/"] = "Home";
-routeLabels["/evidence"] = "Evidence";
 routeLabels["/findings"] = "Finding detail";
 routeLabels["/identity"] = "Members";
-routeLabels["/connectors/builder"] = "Connector builder";
+routeLabels["/integrations/builder"] = "Integration builder";
 routeLabels["/developer/agents"] = "Agent platform";
 routeLabels["/developer/audit"] = "Audit Events";
 routeLabels["/developer/evals"] = "Ask evals";
 routeLabels["/developer/producers"] = "Security producers";
-routeLabels["/controls/builder"] = "Control Builder";
+routeLabels["/frameworks"] = "Frameworks";
 routeLabels["/reports/shared"] = "Shared Snapshot";
 
 const matchesRoute = (pathname: string, route: string) =>

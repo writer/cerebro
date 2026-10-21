@@ -1037,6 +1037,116 @@ export type AssessmentSnapshotResultChunkRef = {
   sequence: number;
 };
 
+export type AssetRiskCountermeasure = {
+  applies_to?: string[];
+  attributes: string[];
+  key: string;
+  label?: string;
+  reduction: number;
+  values?: string[];
+};
+
+export type AssetRiskExposureModel = {
+  entry_probability?: number;
+  internal?: number;
+  internet?: number;
+  internet_attributes?: string[];
+};
+
+export type AssetRiskModel = {
+  asset_value?: AssetRiskValueModel;
+  countermeasures?: AssetRiskCountermeasure[];
+  created_at?: string;
+  exposure?: AssetRiskExposureModel;
+  model_version: string;
+  relations?: Record<string, unknown>;
+  tenant_id: string;
+  thresholds?: RiskScoringLevelThresholds;
+  traversal?: AssetRiskTraversal;
+  updated_at?: string;
+  vulnerability?: AssetRiskVulnerabilityModel;
+};
+
+export type AssetRiskModelRequest = {
+  asset_value?: AssetRiskValueModel;
+  countermeasures?: AssetRiskCountermeasure[];
+  exposure?: AssetRiskExposureModel;
+  relations?: Record<string, unknown>;
+  tenant_id?: string;
+  thresholds?: RiskScoringLevelThresholds;
+  traversal?: AssetRiskTraversal;
+  vulnerability?: AssetRiskVulnerabilityModel;
+};
+
+export type AssetRiskModelResponse = {
+  model: AssetRiskModel;
+  persisted: boolean;
+};
+
+export type AssetRiskNodeAssessment = {
+  countermeasure_factor?: number;
+  countermeasures?: { key?: string; label?: string; reduction?: number }[];
+  entity_type?: string;
+  exploit_probability?: number;
+  exposure?: "internet" | "internal";
+  label?: string;
+  urn?: string;
+  value?: number;
+  value_drivers?: string[];
+  vulnerabilities?: { cve?: string; cvss?: number; drivers?: string[]; epss?: number; known_exploited?: boolean; label?: string; probability?: number; ransomware_use?: boolean; urn?: string }[];
+  vulnerabilities_checked?: boolean;
+  vulnerability_count?: number;
+};
+
+export type AssetRiskPathsResponse = {
+  assume_compromised?: boolean;
+  graph_revision?: number;
+  model_version?: string;
+  nodes?: AssetRiskNodeAssessment[];
+  paths?: ({ level?: "critical" | "high" | "medium" | "low"; probability?: number; score?: number; steps?: { cumulative?: number; direction?: string; from?: string; probability?: number; relation?: string; requires_exploit?: boolean; to?: string }[]; target_urn?: string; value?: number })[];
+  root?: AssetRiskNodeAssessment;
+  root_probability?: number;
+  root_urn?: string;
+  summary?: { expansions?: number; max_level?: string; max_score?: number; reached?: number; truncated?: boolean; value_at_risk?: number };
+  tenant_id?: string;
+};
+
+export type AssetRiskRelation = {
+  direction?: "outgoing" | "incoming" | "both";
+  probability: number;
+  requires_exploit?: boolean;
+};
+
+export type AssetRiskTraversal = {
+  max_depth?: number;
+  max_expansions?: number;
+  max_paths?: number;
+  min_probability?: number;
+};
+
+export type AssetRiskValueModel = {
+  classification_attributes?: string[];
+  classifications?: Record<string, number>;
+  crown_jewel?: number;
+  default?: number;
+  kind_values?: Record<string, number>;
+  production_boost?: number;
+};
+
+export type AssetRiskVulnerabilityModel = {
+  base?: number;
+  cvss_critical?: number;
+  cvss_critical_probability?: number;
+  cvss_high?: number;
+  cvss_high_probability?: number;
+  epss_weight?: number;
+  known_exploited?: number;
+  max_per_asset?: number;
+  no_known_vulnerability?: number;
+  ransomware_use?: number;
+  relations?: string[];
+};
+
 export type AssuranceDecision = {
   decision: QualifiedAssuranceDecision;
   id: string;
@@ -2506,6 +2616,23 @@ export type FindingRiskFactor = {
   severity_contribution?: "high" | "medium" | "low" | "reduces_risk" | "none";
   suppression_scope?: string;
   weight?: number;
+};
+
+export type FrameworkSettings = {
+  created_at?: string;
+  enabled_frameworks: string[];
+  tenant_id: string;
+  updated_at?: string;
+};
+
+export type FrameworkSettingsRequest = {
+  enabled_frameworks: string[];
+  tenant_id?: string;
+};
+
+export type FrameworkSettingsResponse = {
+  persisted: boolean;
+  settings: FrameworkSettings;
 };
 
 export type GRCAccessEvidenceConfidence = {
@@ -4936,6 +5063,107 @@ export type RiskScoringSignalThresholds = {
   epss_elevated?: number;
   epss_high?: number;
   private_network_likelihood_cap?: number;
+};
+
+export type RuleAuthoringIssue = {
+  message: string;
+  severity: "error" | "warning";
+};
+
+export type RuleCatalogDetail = {
+  attack_description: string;
+  category?: string;
+  conditions?: string[];
+  control_refs?: { control?: string; framework?: string }[];
+  correlated_rule_ids?: string[];
+  correlation_dimensions?: string[];
+  correlation_window?: string;
+  created_at?: string;
+  created_by?: string;
+  description: string;
+  detection: "posture" | "event" | "correlation";
+  document?: string;
+  domain: "paas" | "saas" | "identity" | "correlation";
+  editable: boolean;
+  enabled: boolean;
+  evaluation: "cel" | "sql" | "graph" | "event" | "correlation";
+  false_positives?: string[];
+  fingerprint_fields?: string[];
+  frameworks?: string[];
+  graph_query?: string;
+  graph_source_kinds?: string[];
+  id: string;
+  lifecycle?: string;
+  maturity?: string;
+  mitre_attack?: { tactic?: string; technique?: string }[];
+  mitre_techniques?: string[];
+  name: string;
+  origin: "builtin_policy" | "builtin_detection" | "correlation_pattern" | "custom";
+  posture: "cspm" | "sspm" | "ispm" | "correlation";
+  provider: string;
+  query?: string;
+  references?: string[];
+  remediation: string;
+  remediation_steps?: string[];
+  resource_type?: string;
+  runbook?: string;
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  source_path?: string;
+  summary: string;
+  tags?: string[];
+  testable: boolean;
+  updated_at?: string;
+  updated_by?: string;
+};
+
+export type RuleCatalogEntry = {
+  category?: string;
+  detection: "posture" | "event" | "correlation";
+  domain: "paas" | "saas" | "identity" | "correlation";
+  enabled: boolean;
+  evaluation: "cel" | "sql" | "graph" | "event" | "correlation";
+  frameworks?: string[];
+  id: string;
+  maturity?: string;
+  mitre_techniques?: string[];
+  name: string;
+  origin: "builtin_policy" | "builtin_detection" | "correlation_pattern" | "custom";
+  posture: "cspm" | "sspm" | "ispm" | "correlation";
+  provider: string;
+  resource_type?: string;
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  summary: string;
+  tags?: string[];
+  updated_at?: string;
+};
+
+export type RuleCatalogResponse = {
+  custom_rules_ready: boolean;
+  rules: RuleCatalogEntry[];
+  total: number;
+};
+
+export type RuleDocumentRequest = {
+  content: string;
+  format?: "yaml" | "json";
+  resource?: Record<string, unknown>;
+  tenant_id?: string;
+};
+
+export type RuleTestResult = {
+  evaluated: boolean;
+  issues: RuleAuthoringIssue[];
+  matched: boolean;
+  message: string;
+  valid: boolean;
+};
+
+export type RuleValidationResult = {
+  issues: RuleAuthoringIssue[];
+  json?: string;
+  preview?: RuleCatalogDetail;
+  valid: boolean;
+  yaml?: string;
 };
 
 export type RunGraphIngestRuntimeResponse = {

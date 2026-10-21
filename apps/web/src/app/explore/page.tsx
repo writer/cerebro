@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import FindingTable from "@/components/grc/FindingTable";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
+import { AttackSimulationPanel } from "@/components/graph/AttackSimulationPanel";
 import { DataStateBanner, EmptyBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { useApiKey, useCurrentUser } from "@/components/providers";
 import { fetchCerebro } from "@/lib/cerebro-client";
@@ -47,6 +48,7 @@ import {
 } from "@/lib/graph-explore";
 import { grcScopeQuery, useGRCScopeQueryState } from "@/lib/grc-scope";
 import { useQueryParamState } from "@/lib/query-params";
+import { type AttackSimulationScenarioID, simulationTargetForPath } from "@/lib/attack-simulation";
 import { runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
 type FindingsResponse = { findings: GRCFinding[]; generated_at: string };
@@ -65,6 +67,15 @@ const neighborhoodPath = (urn: string, tenantID = "", workspaceID = "") =>
   });
 
 const isLikelyEntityURN = (value: string) => /^urn:[^\s:]+:.+/.test(value.trim());
+
+// The scenario a path viewpoint's "Simulate" action opens with: exposure paths
+// are broken at the entry point, access paths by removing the privilege.
+const viewpointSimulationScenario: Record<string, AttackSimulationScenarioID> = {
+  "attack-paths": "remove_public_exposure",
+  "sensitive-assets": "remove_public_exposure",
+  "effective-access": "remove_privilege",
+  "human-access": "remove_privilege",
+};
 
 const graphNodeURNs = (graph: GRCGraph | undefined) =>
   [graph?.root?.urn, ...(graph?.neighbors ?? []).map((node) => node.urn)].filter((urn): urn is string => Boolean(urn?.trim()));
@@ -91,6 +102,7 @@ export default function ExplorePage() {
   const needsFallbackRoot = debouncedRootURN === "";
 
   const [viewpointParam, setViewpointParam] = useQueryParamState("view");
+  const [simulationScenario, setSimulationScenario] = useQueryParamState("simulate");
   const viewpoint = graphViewpointFor(viewpointParam);
   const isPathViewpoint = viewpoint.method !== null;
   const [pathQuery, setPathQuery] = useQueryParamState("path_q");
@@ -365,6 +377,11 @@ export default function ExplorePage() {
     if (selectedSeed) next.add(selectedSeed);
     return next;
   }, [expandedURNs, recentlyDiscoveredURNs, selectedSeed]);
+  const simulationTargets = useMemo(
+    () => [graph?.root, ...(graph?.neighbors ?? [])].flatMap((node) =>
+      node?.urn ? [{ urn: node.urn, label: `${node.label || shortEntity(node.urn)} (${node.entity_type})` }] : []),
+    [graph],
+  );
   const nodeCount = scopedState ? exploreNodeCount(scopedState) : 0;
   const relationCount = scopedState ? exploreRelationCount(scopedState) : 0;
   const expandedCount = scopedState ? exploreExpandedCount(scopedState) : 0;
@@ -415,7 +432,7 @@ export default function ExplorePage() {
       <div className="space-y-6">
         <PageHeader
           contractId="graph-explorer"
-          title="Graph"
+          title="Attack Graphs"
           description={viewpoint.question}
           action={
             <AskAboutLink
@@ -477,7 +494,10 @@ export default function ExplorePage() {
         {pathRows && pathRows.length > 0 && (
           <Panel title="Paths">
             <div className="space-y-3">
-              {pathRows.map((row) => (
+              {pathRows.map((row) => {
+                const pathScenario = viewpointSimulationScenario[viewpoint.id] ?? "remove_public_exposure";
+                const pathTarget = simulationTargetForPath(row.nodes, pathScenario);
+                return (
                 <div key={row.id} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
                     {row.nodes.map((node, index) => (
@@ -497,7 +517,21 @@ export default function ExplorePage() {
                       </span>
                     ))}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+                    {pathTarget && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimulationScenario(pathScenario);
+                          setViewpointParam("");
+                          setRootURN(pathTarget.urn);
+                        }}
+                        className="secondary-button px-2 py-0.5 text-[11px]"
+                        title={`Simulate breaking this path at ${pathTarget.label}`}
+                      >
+                        Simulate
+                      </button>
+                    )}
                     {row.detail && <span>{row.detail}</span>}
                     {row.owners.length > 0 && <span>Owner: {row.owners.map((owner) => owner.label).join(", ")}</span>}
                     <span>
@@ -507,7 +541,8 @@ export default function ExplorePage() {
                     </span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </Panel>
         )}
@@ -519,7 +554,7 @@ export default function ExplorePage() {
     <div className="space-y-6">
       <PageHeader
         contractId="graph-explorer"
-        title="Graph"
+        title="Attack Graphs"
         description={viewpoint.question}
         action={
           <div className="flex items-center gap-2">
@@ -631,6 +666,17 @@ export default function ExplorePage() {
             pinnedURNs={pinnedURNs}
           />
         </Panel>
+      )}
+
+      {selectedSeed && (
+        <AttackSimulationPanel
+          key={selectedSeed}
+          defaultTargetURN={selectedSeed}
+          initialScenario={simulationScenario}
+          onScenarioChange={setSimulationScenario}
+          targets={simulationTargets}
+          tenantID={normalizedTenantID}
+        />
       )}
 
       {/* Findings come from the impact read, so this panel must not wait on the neighborhood graph. */}

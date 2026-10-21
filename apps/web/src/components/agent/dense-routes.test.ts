@@ -7,12 +7,8 @@ import { denseAgentRouteLabels, isDenseAgentRouteLabel } from "./dense-routes";
 // Every dense label paired with a path that resolves to it.
 const denseRoutes: Record<string, string> = {
   "/grc": "Compliance",
-  "/controls": "Controls",
-  "/evidence": "Evidence",
-  "/frameworks": "Frameworks",
-  "/policies": "Policy Documents",
+  "/frameworks/soc-2": "Frameworks",
   "/reports": "Reports",
-  "/reports/packages": "Audit Workspace",
   "/reports/shared/fixture-snapshot-1": "Shared Snapshot",
 };
 

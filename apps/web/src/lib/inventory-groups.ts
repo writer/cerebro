@@ -1,7 +1,7 @@
 // Inventory groups are the console's top-level inventory sub-menus. The
 // membership rules live in the Go service; this module only mirrors the ids and
 // the copy, and inventory-groups.test.ts fails if the two drift apart.
-export type InventoryGroupID = "iam" | "cloud" | "saas" | "code" | "devices" | "secrets";
+export type InventoryGroupID = "iam" | "cloud" | "saas" | "code" | "devices";
 
 export type InventoryGroup = {
   description: string;
@@ -53,14 +53,6 @@ export const INVENTORY_GROUPS: InventoryGroup[] = [
     summary: "Managed endpoints and their agents",
     description: "Endpoints and agent coverage.",
   },
-  {
-    id: "secrets",
-    label: "Secrets",
-    href: "/inventory/secrets",
-    keywords: ["secrets", "credentials", "keys", "api keys", "tokens", "certificates", "expiry", "rotation"],
-    summary: "Credentials, keys, and certificates",
-    description: "Keys, tokens, and certificates.",
-  },
 ];
 
 type InventoryGroupRule = {
@@ -74,7 +66,6 @@ type InventoryGroupRule = {
 // held in step by the parity assertion in inventory-groups.test.ts. Order is
 // load-bearing: the first rule that matches wins.
 export const INVENTORY_GROUP_RULES: InventoryGroupRule[] = [
-  { id: "secrets", exact: ["secret", "certificate"], prefixes: [], suffixes: [".secret", ".credential", ".certificate"] },
   {
     id: "devices",
     exact: ["device"],

@@ -15,6 +15,7 @@ import { displayDate, GRCFinding, GRCListMeta, humanize, shortEntity } from "@/l
 import { downloadGRCExport, grcExportFilename, grcPath, useDebouncedValue, useGRCMutation, useGRCQuery } from "@/lib/grc-client";
 import { GRC_FILTERED_EXPORT_LIMIT, GRC_WORKLIST_LIMIT, grcBoundedRows } from "@/lib/grc-list";
 import { useApiKey } from "@/components/providers";
+import { complianceControlHref } from "@/lib/compliance-links";
 import { frameworkOptionLabel, isUpcomingGRCFramework, supportedGRCFrameworkNames } from "@/lib/grc-frameworks";
 import { useQueryParamState } from "@/lib/query-params";
 import {
@@ -629,7 +630,7 @@ function FindingReviewDrawer({
                 {controls.slice(0, 8).map((control) => (
                   <Link
                     key={`${control.framework_name}:${control.control_id}`}
-                    href={`/controls?framework=${encodeURIComponent(control.framework_name)}&control=${encodeURIComponent(control.control_id)}`}
+                    href={complianceControlHref(control.framework_name, control.control_id)}
                     className="rounded-md border border-[color:var(--border)] px-2 py-1 text-[12px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]"
                   >
                     {control.framework_name} {control.control_id}

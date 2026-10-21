@@ -121,6 +121,57 @@ def add_command(commands: list[CommandPlan], seen: set[str], name: str, argv: li
     commands.append(CommandPlan(name, argv, reason))
 
 
+# Make targets whose prerequisites include the workspace-wide rust-fmt-check, rust-clippy, and rust-test.
+WORKSPACE_RUST_MAKE_TARGETS = frozenset(
+    {"graph-action-check", "rust-wasm-check", *(module.check_target for module in EMBEDDED_WASM_MODULES)}
+)
+# Package-scoped Rust commands that the workspace-wide prerequisites already cover.
+PACKAGE_RUST_COMMANDS = frozenset(
+    {
+        "rust-source-runtime-fmt",
+        "rust-source-runtime-test",
+        "rust-source-runtime-clippy",
+        "rust-crate-fmt",
+        "rust-crate-test",
+        "rust-crate-clippy",
+    }
+)
+
+
+def is_workspace_rust_command(command: CommandPlan) -> bool:
+    return len(command.argv) == 2 and command.argv[0] == "make" and command.argv[1] in WORKSPACE_RUST_MAKE_TARGETS
+
+
+def consolidate_workspace_rust_commands(commands: list[CommandPlan]) -> list[CommandPlan]:
+    """Run workspace-wide Rust targets in one make invocation so shared prerequisites run once.
+
+    Each separate `make` call reruns rust-fmt-check, rust-clippy, and rust-test, and the package-scoped
+    cargo commands are subsets of those workspace runs.
+    """
+    workspace = [command for command in commands if is_workspace_rust_command(command)]
+    if not workspace:
+        return commands
+    if len(workspace) == 1:
+        merged = workspace[0]
+    else:
+        reasons = list(dict.fromkeys(command.reason for command in workspace))
+        merged = CommandPlan(
+            "+".join(command.name for command in workspace),
+            ["make", *(command.argv[1] for command in workspace)],
+            " ".join(reasons),
+        )
+    consolidated: list[CommandPlan] = []
+    emitted = False
+    for command in commands:
+        if is_workspace_rust_command(command) or command.name in PACKAGE_RUST_COMMANDS:
+            if not emitted:
+                consolidated.append(merged)
+                emitted = True
+            continue
+        consolidated.append(command)
+    return consolidated
+
+
 def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     commands: list[CommandPlan] = []
     seen: set[str] = set()
@@ -357,7 +408,7 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
 
     if not commands:
         add_command(commands, seen, "no-focused-checks", ["true"], "No focused validation mapped to changed paths.")
-    return commands
+    return consolidate_workspace_rust_commands(commands)
 
 
 def run_commands(commands: list[CommandPlan], repo: Path) -> int:

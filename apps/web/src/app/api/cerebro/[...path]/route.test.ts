@@ -341,13 +341,13 @@ describe("Cerebro proxy route", () => {
     }));
 
     const response = await GET(
-      new NextRequest("http://localhost/api/cerebro/v1/security/lifecycle", {
+      new NextRequest("http://localhost/api/cerebro/v1/actions/operation-1", {
         headers: {
           authorization: "Bearer signed-browser-token",
           "x-cerebro-api-key": "legacy-server-identity",
         },
       }),
-      { params: Promise.resolve({ path: ["v1", "security", "lifecycle"] }) },
+      { params: Promise.resolve({ path: ["v1", "actions", "operation-1"] }) },
     );
 
     expect(response.status).toBe(200);

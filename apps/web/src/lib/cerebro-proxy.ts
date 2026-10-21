@@ -18,7 +18,6 @@ const RUST_RUNTIME_HEALTH_PATH = "v1/source-runtimes/health";
 const RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH = "platform/graph/neighborhood";
 const RUST_PRODUCT_GRAPH_PROVENANCE_PATH = "platform/graph/provenance";
 const RUST_ORGANIZATIONAL_GRAPH_SERVICE = "cerebro.graph.v1.OrganizationalGraphService";
-const RUST_SECURITY_LIFECYCLE_PATH = "v1/security/lifecycle";
 const RUST_TENANT_AUTH_CONTEXT = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
   "utf8",
@@ -123,7 +122,6 @@ export const isOrganizationalGraphMethodPath = (path: string) =>
 const isRustPlatformPath = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
   return normalizedPath === RUST_RUNTIME_HEALTH_PATH
-    || normalizedPath === RUST_SECURITY_LIFECYCLE_PATH
     || normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH
     || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH
     || isOrganizationalGraphMethodPath(normalizedPath);
