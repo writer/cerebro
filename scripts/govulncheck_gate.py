@@ -22,7 +22,7 @@ DEFAULT_GO_MAX_PROCS = "2"
 def govulncheck_environment(source: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(os.environ if source is None else source)
     env["GOFLAGS"] = ""
-    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.9")
+    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.10")
     env["GOMEMLIMIT"] = DEFAULT_GO_MEMORY_LIMIT
     env["GOMAXPROCS"] = DEFAULT_GO_MAX_PROCS
     return env

@@ -9,7 +9,7 @@
 
 ## Cloud & Application Stack Summary
 
-- **Go Runtime**: Go 1.26 (toolchain go1.26.9), ConnectRPC over HTTP, CLI/HTTP/MCP surfaces, DPoP auth (Ed25519), Okta OIDC for web
+- **Go Runtime**: Go 1.26 (toolchain go1.26.10), ConnectRPC over HTTP, CLI/HTTP/MCP surfaces, DPoP auth (Ed25519), Okta OIDC for web
 - **Rust Platform**: Rust 1.93 (edition 2024), 30+ workspace crates, organizational graph, source runtime, action engine, WASM modules, cargo-deny supply chain
 - **Web Console**: Next.js 15 (Node 22, standalone), ALB OIDC, built-in RBAC, CSP with nonce, server-side API proxy
 - **Durable Stack**: NATS JetStream (append log), Postgres 16.4 (state), Neo4j/Aura (graph)
