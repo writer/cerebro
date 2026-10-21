@@ -565,7 +565,8 @@ func TestDirectoryJIT(t *testing.T) {
 	noJITID := h.expect(h.do(http.MethodPost, "/platform/identity/sso/connections", noJIT), http.StatusCreated).body["id"].(string)
 
 	login := map[string]any{"connectionId": noJITID, "subject": "s1", "email": "carol@example.net", "name": "Carol", "groups": []string{"eng"}}
-	h.expectError(h.do(http.MethodPost, "/platform/identity/directory/users/jit", login), http.StatusConflict, "jit_disabled")
+	// Draft connections never record logins; JIT-disabled active connections are covered in security_test.go.
+	h.expectError(h.do(http.MethodPost, "/platform/identity/directory/users/jit", login), http.StatusConflict, "connection_not_active")
 	h.expect(h.do(http.MethodPost, "/platform/identity/directory/users/jit", map[string]any{"connectionId": conn, "subject": "s1", "email": "nope"}), http.StatusBadRequest)
 
 	login["connectionId"] = conn

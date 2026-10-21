@@ -3,6 +3,7 @@ package identitysso
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -190,8 +191,8 @@ func TestNormalizeSAMLAssertion(t *testing.T) {
 	}
 	far := valid
 	far.NotOnOrAfter = testNow.Add(30 * 24 * time.Hour)
-	if use, err := NormalizeSAMLAssertion(far, testNow); err != nil || !use.ExpiresAt.Equal(testNow.Add(MaxSAMLReplayWindow)) {
-		t.Fatalf("far expiry not clamped: %+v %v", use, err)
+	if _, err := NormalizeSAMLAssertion(far, testNow); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("assertion valid past the replay window must be refused, got %v", err)
 	}
 	bad := map[string]SAMLAssertionInput{
 		"missing connection": {AssertionID: "_a", RequestID: "_r", NotOnOrAfter: valid.NotOnOrAfter},
@@ -204,5 +205,24 @@ func TestNormalizeSAMLAssertion(t *testing.T) {
 		if _, err := NormalizeSAMLAssertion(input, testNow); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
 		}
+	}
+}
+
+func TestSCIMGroupMembersAreCappedWhileParsing(t *testing.T) {
+	members := make([]SCIMRef, 0, SCIMMaxGroupMembers+1)
+	for i := 0; i <= SCIMMaxGroupMembers; i++ {
+		members = append(members, SCIMRef{Value: "u" + strconv.Itoa(i)})
+	}
+	if _, err := ApplySCIMGroup(ports.DirectoryGroup{}, SCIMGroup{DisplayName: "big", Members: members}); err == nil {
+		t.Fatal("group over the member cap must be refused")
+	}
+	dupes := []SCIMRef{{Value: "a"}, {Value: " a "}, {Value: "b"}, {Value: ""}, {Value: "a"}}
+	group, err := ApplySCIMGroup(ports.DirectoryGroup{}, SCIMGroup{DisplayName: "small", Members: dupes})
+	if err != nil || !slices.Equal(group.MemberIDs, []string{"a", "b"}) {
+		t.Fatalf("members = %v err = %v", group.MemberIDs, err)
+	}
+	patched, err := ApplySCIMGroupPatch(group, SCIMPatchRequest{Operations: []SCIMPatchOperation{{Op: "remove", Path: "members", Value: []byte(`[{"value":"a"}]`)}}})
+	if err != nil || !slices.Equal(patched.MemberIDs, []string{"b"}) {
+		t.Fatalf("after remove = %v err = %v", patched.MemberIDs, err)
 	}
 }

@@ -4,6 +4,7 @@ import { keyedHash } from "./config";
 import { clearTxCookie, generateSessionToken, sessionTokenHash, setSessionCookie } from "./cookies";
 import {
   createSsoSession,
+  deleteSsoSession,
   IdentityApiError,
   lookupDirectoryUser,
   postConnectionTestResult,
@@ -101,6 +102,8 @@ export type FinishContext = {
   origin: string;
   userAgent?: string | null;
   clientIp?: string | null;
+  /** Session cookie the browser already held; revoked once the new session exists. */
+  previousSessionToken?: string | null;
 };
 
 const describeOutcome = (identity: AssertedIdentity, roles: string[]) =>
@@ -123,6 +126,19 @@ export const loginFailureResponse = async (origin: string, tx: LoginTransaction,
     return testResultRedirect(origin, tx.connectionId, false, code);
   }
   return loginErrorRedirect(origin, code, tx.returnTo);
+};
+
+/** A copied earlier cookie must not outlive a fresh sign-in. Best effort: the new login still succeeds. */
+const revokePreviousSession = async (previousToken: string | null | undefined, newHash: string) => {
+  if (!previousToken) return;
+  const previousHash = sessionTokenHash(previousToken);
+  if (previousHash === newHash) return;
+  clearSsoSessionCache(previousHash);
+  try {
+    await deleteSsoSession(previousHash);
+  } catch {
+    // Go still expires the old session on its own lifetime and idle timeout.
+  }
 };
 
 /**
@@ -169,6 +185,7 @@ export const finishLogin = async (
       ...(context.clientIp ? { ipHash: keyedHash(context.clientIp) } : {}),
     }).catch(mapDirectoryError);
     clearSsoSessionCache(tokenHash);
+    await revokePreviousSession(context.previousSessionToken, tokenHash);
     const response = redirect(context.origin, sanitizeReturnTo(tx.returnTo));
     // Go may shorten the lifetime (admin sessions are capped), so the cookie follows the stored expiry.
     const storedExpiryMs = Date.parse(session?.expiresAt ?? "");

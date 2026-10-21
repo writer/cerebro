@@ -142,6 +142,15 @@ func (h Handler) UpsertJITUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	// Admin test logins never reach JIT, so only real sign-ins on active connections record logins.
+	if conn.Status != sso.StatusActive {
+		writeError(w, sso.ErrConnectionInactive)
+		return
+	}
+	if !sso.ConnectionAllowsEmail(*conn, input.Email) {
+		writeError(w, sso.ErrDomainNotAllowed)
+		return
+	}
 	user, status, err := h.upsertJIT(r.Context(), *conn, input)
 	if err != nil {
 		writeError(w, err)

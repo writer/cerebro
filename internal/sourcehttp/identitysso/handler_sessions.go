@@ -48,16 +48,24 @@ func (h Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, sso.ErrConnectionInactive)
 		return
 	}
+	if !sso.ConnectionAllowsEmail(*conn, session.Email) {
+		writeError(w, sso.ErrDomainNotAllowed)
+		return
+	}
 	user, err := h.matchDirectoryUser(r.Context(), tenantID, conn.ID, session.Subject, session.Email)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if user != nil {
+	switch {
+	case user != nil:
 		if err := sso.CheckLoginUser(*user, session.Subject); err != nil {
 			writeError(w, err)
 			return
 		}
+	case !conn.JITProvisioning:
+		writeError(w, sso.ErrJITDisabled)
+		return
 	}
 	policy, err := h.effectivePolicy(r.Context(), tenantID)
 	if err != nil {

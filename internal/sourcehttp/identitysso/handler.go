@@ -154,6 +154,7 @@ var codedErrors = []struct {
 	{ports.ErrSAMLAssertionReplayed, http.StatusConflict},
 	{sso.ErrUserInactive, http.StatusForbidden},
 	{sso.ErrUserDeprovisioned, http.StatusForbidden},
+	{sso.ErrDomainNotAllowed, http.StatusForbidden},
 	{errTenantForbidden, http.StatusForbidden},
 	{errStoreUnavailable, http.StatusNotFound},
 }

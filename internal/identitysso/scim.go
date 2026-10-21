@@ -464,9 +464,13 @@ func scimString(raw json.RawMessage, field string) (string, error) {
 func ApplySCIMGroup(group ports.DirectoryGroup, in SCIMGroup) (ports.DirectoryGroup, error) {
 	group.DisplayName = strings.TrimSpace(in.DisplayName)
 	group.ExternalID = strings.TrimSpace(in.ExternalID)
-	group.MemberIDs = nil
+	ids := make([]string, 0, len(in.Members))
 	for _, member := range in.Members {
-		group.MemberIDs = appendMember(group.MemberIDs, member.Value)
+		ids = append(ids, member.Value)
+	}
+	var err error
+	if group.MemberIDs, err = mergeMembers(nil, ids); err != nil {
+		return group, err
 	}
 	return group, validateDirectoryGroup(group)
 }
@@ -484,12 +488,29 @@ func validateDirectoryGroup(group ports.DirectoryGroup) error {
 	return nil
 }
 
-func appendMember(members []string, id string) []string {
-	id = strings.TrimSpace(id)
-	if id == "" || containsString(members, id) {
-		return members
+// mergeMembers appends new, non-empty member IDs in order. It dedupes with a
+// set and stops at SCIMMaxGroupMembers so a large body cannot cost quadratic
+// time before the size check.
+func mergeMembers(members []string, ids []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(members)+len(ids))
+	for _, id := range members {
+		seen[id] = struct{}{}
 	}
-	return append(members, id)
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		if len(members) >= SCIMMaxGroupMembers {
+			return members, scimBadRequest(SCIMTypeInvalidValue, "groups allow at most %d members", SCIMMaxGroupMembers)
+		}
+		seen[id] = struct{}{}
+		members = append(members, id)
+	}
+	return members, nil
 }
 
 var memberFilterPathPattern = regexp.MustCompile(`(?i)^members\[\s*value\s+eq\s+("(?:[^"\\]|\\.)*")\s*\]$`)
@@ -556,8 +577,8 @@ func setGroupPath(group ports.DirectoryGroup, op string, path string, raw json.R
 		if op == "replace" {
 			group.MemberIDs = nil
 		}
-		for _, id := range members {
-			group.MemberIDs = appendMember(group.MemberIDs, id)
+		if group.MemberIDs, err = mergeMembers(group.MemberIDs, members); err != nil {
+			return group, err
 		}
 	default:
 		return group, scimBadRequest(SCIMTypeInvalidPath, "unsupported group attribute %q", path)
@@ -619,9 +640,13 @@ func scimMemberValues(raw json.RawMessage) ([]string, error) {
 }
 
 func removeMembers(members []string, remove []string) []string {
+	drop := make(map[string]struct{}, len(remove))
+	for _, id := range remove {
+		drop[id] = struct{}{}
+	}
 	kept := members[:0:0]
 	for _, id := range members {
-		if !containsString(remove, id) {
+		if _, removed := drop[id]; !removed {
 			kept = append(kept, id)
 		}
 	}

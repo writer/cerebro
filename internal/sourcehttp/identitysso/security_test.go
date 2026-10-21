@@ -37,11 +37,39 @@ func TestSAMLAssertionReplayIsRejected(t *testing.T) {
 		}
 	}
 
-	h.expect(h.do(http.MethodPost, "/platform/identity/saml/assertions", samlUse("okta", "_a4", "_r5", h.now.Add(90*24*time.Hour))), http.StatusCreated)
-	stored := h.store.assertions[len(h.store.assertions)-1]
-	if !stored.ExpiresAt.Equal(h.now.Add(sso.MaxSAMLReplayWindow)) {
-		t.Fatalf("expiry = %s, want clamped to %s", stored.ExpiresAt, h.now.Add(sso.MaxSAMLReplayWindow))
+	// The record must outlive the assertion, so validity past the replay window is refused, not clamped.
+	h.expect(h.do(http.MethodPost, "/platform/identity/saml/assertions", samlUse("okta", "_a4", "_r5", h.now.Add(sso.MaxSAMLReplayWindow+time.Minute))), http.StatusBadRequest)
+}
+
+func TestSessionCreationIsBoundByConnectionAndPolicy(t *testing.T) {
+	h := newHarness(t)
+	conn := h.activeConnection("Okta", "example.com")
+	other := h.activeConnection("Entra", "example.org")
+
+	// Another connection's IdP cannot sign in an address routed to this one.
+	h.expectError(h.do(http.MethodPost, "/platform/identity/sessions", sessionBody(other, "x-1", "sub-x", "x@example.com")), http.StatusForbidden, "domain_not_allowed")
+	h.expectError(h.do(http.MethodPost, "/platform/identity/directory/users/jit", jitLogin(other, "sub-x", "x@example.com")), http.StatusForbidden, "domain_not_allowed")
+
+	// Caller-supplied lifetime and idle timeout never exceed the policy.
+	h.expect(h.do(http.MethodPut, "/platform/identity/sso/policy", map[string]any{"sessionMaxLifetimeMinutes": 60, "sessionIdleTimeoutMinutes": 15}), http.StatusOK)
+	body := sessionBody(conn, "v-1", "sub-v", "v@example.com")
+	body["expiresAt"] = h.now.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+	body["idleTimeoutMinutes"] = 600
+	created := h.expect(h.do(http.MethodPost, "/platform/identity/sessions", body), http.StatusCreated)
+	stored := h.store.sessions[sso.HashToken("v-1")]
+	if !stored.ExpiresAt.Equal(h.now.Add(time.Hour)) || stored.IdleTimeoutMinutes != 15 {
+		t.Fatalf("session not clamped to policy: expiresAt=%s idle=%d (%s)", stored.ExpiresAt, stored.IdleTimeoutMinutes, created.raw)
 	}
+
+	// Without JIT, only a provisioned directory user can get a session.
+	noJIT := oidcConnection("NoJIT", "example.net")
+	noJIT["jitProvisioning"] = false
+	noJITID := h.expect(h.do(http.MethodPost, "/platform/identity/sso/connections", noJIT), http.StatusCreated).body["id"].(string)
+	h.expect(h.do(http.MethodPost, "/platform/identity/sso/connections/"+noJITID+"/test-result", map[string]any{"ok": true}), http.StatusOK)
+	noJIT["status"] = "active"
+	h.expect(h.do(http.MethodPut, "/platform/identity/sso/connections/"+noJITID, noJIT), http.StatusOK)
+	h.expectError(h.do(http.MethodPost, "/platform/identity/sessions", sessionBody(noJITID, "n-1", "sub-n", "n@example.net")), http.StatusConflict, "jit_disabled")
+	h.expectError(h.do(http.MethodPost, "/platform/identity/directory/users/jit", jitLogin(noJITID, "sub-n", "n@example.net")), http.StatusConflict, "jit_disabled")
 }
 
 func jitLogin(connectionID string, subject string, email string, groups ...string) map[string]any {
@@ -224,7 +252,7 @@ func TestSCIMRevocationsAreConnectionScoped(t *testing.T) {
 	headers := scimHeaders(h.scimToken(conn))
 	id := h.expect(h.do(http.MethodPost, "/platform/identity/scim/v2/Users", map[string]any{"userName": "jo@example.com"}, headers...), http.StatusCreated).body["id"].(string)
 	h.expect(h.do(http.MethodPost, "/platform/identity/sessions", sessionBody(conn, "jo-okta", "sub-j", "jo@example.com")), http.StatusCreated)
-	h.expect(h.do(http.MethodPost, "/platform/identity/sessions", sessionBody(other, "jo-entra", "sub-j", "jo@example.com")), http.StatusCreated)
+	h.expect(h.do(http.MethodPost, "/platform/identity/sessions", sessionBody(other, "jo-entra", "sub-j", "jo@example.org")), http.StatusCreated)
 
 	h.expect(h.do(http.MethodPatch, "/platform/identity/scim/v2/Users/"+id, `{"Operations":[{"op":"replace","path":"active","value":false}]}`, headers...), http.StatusOK)
 	if h.store.sessions[sso.HashToken("jo-okta")].RevokedAt == nil {

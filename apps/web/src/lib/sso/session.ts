@@ -5,7 +5,9 @@ import { lookupSsoSession } from "./identity-api";
 import { getCachedSsoConnections } from "./policy";
 import type { SSOConnection, SSOSession } from "./types";
 
-const SESSION_CACHE_TTL_MS = 15_000;
+// Bounds how long a Go-side revocation (admin revoke, SCIM deactivation, connection change) takes to reach
+// every web replica, since only the replica handling a login or logout clears its own cache.
+const SESSION_CACHE_TTL_MS = 5_000;
 const SESSION_CACHE_MAX_ENTRIES = 5_000;
 
 type CachedSession = { session: SSOSession | null; fetchedAt: number };

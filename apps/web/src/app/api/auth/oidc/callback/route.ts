@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { publicOrigin, sessionSecretBytes } from "@/lib/sso/config";
-import { readTxCookie } from "@/lib/sso/cookies";
+import { readSessionToken, readTxCookie } from "@/lib/sso/cookies";
 import { clientIpFrom, finishLogin, loginErrorRedirect, loginFailureResponse } from "@/lib/sso/finish";
 import { relativeRedirect } from "@/lib/sso/http";
 import { fetchSsoConnection } from "@/lib/sso/identity-api";
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       origin,
       userAgent: request.headers.get("user-agent"),
       clientIp: clientIpFrom(request.headers),
+      previousSessionToken: readSessionToken(request.headers),
     });
   } catch (error) {
     if (!(error instanceof LoginError)) {

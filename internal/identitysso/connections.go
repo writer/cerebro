@@ -30,7 +30,26 @@ var (
 	ErrUserInactive = errors.New("user_inactive")
 	// ErrUserDeprovisioned means the directory user was deleted through SCIM.
 	ErrUserDeprovisioned = errors.New("user_deprovisioned")
+	// ErrDomainNotAllowed means the email's domain is not routed to the connection.
+	ErrDomainNotAllowed = errors.New("domain_not_allowed")
 )
+
+// ConnectionAllowsEmail reports whether the email's domain is one of the
+// connection's routed domains. A connection's IdP may only sign in its own
+// domains, so another IdP cannot assert an address that belongs elsewhere.
+func ConnectionAllowsEmail(conn ports.SSOConnection, email string) bool {
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return false
+	}
+	domain := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(email[at+1:])), ".")
+	for _, candidate := range conn.Domains {
+		if strings.EqualFold(strings.TrimSpace(candidate), domain) {
+			return true
+		}
+	}
+	return false
+}
 
 // ConnectionInput is the writable shape of an SSO connection.
 type ConnectionInput struct {

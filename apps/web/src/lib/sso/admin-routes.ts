@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { CerebroProxyError } from "@/lib/cerebro-proxy";
 import { currentUserActor, type CurrentUser } from "@/lib/identity";
+import { currentUserServerAuditFields } from "@/lib/identity-server";
 
 import { authorizeIdentityRequest, rejectUnsafeIdentityWrite } from "./admin-auth";
 import { fetchSsoConnection, fetchSsoPolicy, identityApiRequest } from "./identity-api";
@@ -16,18 +17,28 @@ type AdminRoute = {
   /** Go path under /platform/identity for the matched UI path. */
   upstream: (match: RegExpExecArray) => string;
   /** Field stamped with the acting admin on writes. */
-  actorField?: "updatedBy" | "actor";
+  actorField?: "updatedBy" | "actor" | "createdBy";
+  /** Reads that expose sessions, directory users, credentials metadata, or role mappings need identity:admin. */
+  sensitiveRead?: true;
   invalidatesPolicy?: boolean;
 };
 
 const ADMIN_ROUTES: AdminRoute[] = [
-  { pattern: /^connections$/, methods: ["GET", "POST"], upstream: () => "sso/connections", actorField: "updatedBy", invalidatesPolicy: true },
+  {
+    pattern: /^connections$/,
+    methods: ["GET", "POST"],
+    upstream: () => "sso/connections",
+    actorField: "updatedBy",
+    invalidatesPolicy: true,
+    sensitiveRead: true,
+  },
   {
     pattern: new RegExp(`^connections/(${ID})$`),
     methods: ["GET", "PUT", "DELETE"],
     upstream: (match) => `sso/connections/${match[1]}`,
     actorField: "updatedBy",
     invalidatesPolicy: true,
+    sensitiveRead: true,
   },
   {
     pattern: new RegExp(`^connections/(${ID})/test-result$`),
@@ -37,11 +48,11 @@ const ADMIN_ROUTES: AdminRoute[] = [
     invalidatesPolicy: true,
   },
   { pattern: /^policy$/, methods: ["GET", "PUT"], upstream: () => "sso/policy", actorField: "updatedBy", invalidatesPolicy: true },
-  { pattern: /^scim\/tokens$/, methods: ["GET", "POST"], upstream: () => "scim/tokens" },
+  { pattern: /^scim\/tokens$/, methods: ["GET", "POST"], upstream: () => "scim/tokens", actorField: "createdBy", sensitiveRead: true },
   { pattern: new RegExp(`^scim/tokens/(${ID})$`), methods: ["DELETE"], upstream: (match) => `scim/tokens/${match[1]}` },
-  { pattern: /^directory\/users$/, methods: ["GET"], upstream: () => "directory/users" },
-  { pattern: /^directory\/groups$/, methods: ["GET"], upstream: () => "directory/groups" },
-  { pattern: /^sessions$/, methods: ["GET", "DELETE"], upstream: () => "sessions" },
+  { pattern: /^directory\/users$/, methods: ["GET"], upstream: () => "directory/users", sensitiveRead: true },
+  { pattern: /^directory\/groups$/, methods: ["GET"], upstream: () => "directory/groups", sensitiveRead: true },
+  { pattern: /^sessions$/, methods: ["GET", "DELETE"], upstream: () => "sessions", sensitiveRead: true },
 ];
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -100,7 +111,10 @@ const enforcementLockoutError = async (request: Request, user: CurrentUser | nul
   }
 };
 
-/** Forwards an Access Control request to Go after authorizing it (reads: admin:read, writes: identity:admin). */
+/**
+ * Forwards an Access Control request to Go after authorizing it. Writes and sensitive reads need
+ * identity:admin; only the SSO policy is readable with admin:read.
+ */
 export const forwardAdminIdentityRequest = async (request: Request, segments: string[] | undefined) => {
   const method = request.method.toUpperCase();
   const path = (segments ?? []).join("/");
@@ -110,7 +124,8 @@ export const forwardAdminIdentityRequest = async (request: Request, segments: st
   const unsafe = rejectUnsafeIdentityWrite(request);
   if (unsafe) return unsafe;
 
-  const authorization = await authorizeIdentityRequest(request, method === "GET" ? "admin:read" : "identity:admin");
+  const permission = method === "GET" && !resolved.route.sensitiveRead ? "admin:read" : "identity:admin";
+  const authorization = await authorizeIdentityRequest(request, permission);
   if (!authorization.ok) return authorization.response;
 
   let body: string | undefined;
@@ -133,7 +148,16 @@ export const forwardAdminIdentityRequest = async (request: Request, segments: st
   const search = method === "GET" || method === "DELETE" ? new URL(request.url).search : "";
   try {
     const upstream = await identityApiRequest(method, resolved.route.upstream(resolved.match), { search, body });
-    if (method !== "GET" && resolved.route.invalidatesPolicy && upstream.status < 400) clearSsoPolicyCache();
+    if (method !== "GET") {
+      // Go sees only the web service principal, so this line is the record of which person made the change.
+      console.info("identity admin write", {
+        ...currentUserServerAuditFields(authorization.user),
+        method,
+        path: resolved.route.upstream(resolved.match),
+        status: upstream.status,
+      });
+      if (resolved.route.invalidatesPolicy && upstream.status < 400) clearSsoPolicyCache();
+    }
     return new NextResponse(upstream.status === 204 ? null : upstream.body, {
       status: upstream.status,
       headers: {

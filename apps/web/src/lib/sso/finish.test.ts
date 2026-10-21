@@ -28,6 +28,7 @@ vi.mock("./identity-api", async (importOriginal) => {
       return input;
     }),
     postConnectionTestResult: vi.fn(async () => ({})),
+    deleteSsoSession: vi.fn(async () => undefined),
   };
 });
 
@@ -155,6 +156,23 @@ describe("session cookie lifetime", () => {
 
   it("uses the policy lifetime when Go keeps it", async () => {
     expect(cookieMaxAge(await finish(identity()))).toBe(DEFAULT_SSO_POLICY.sessionMaxLifetimeMinutes * 60);
+  });
+});
+
+describe("signing in again", () => {
+  it("revokes the session cookie the browser already held", async () => {
+    const { deleteSsoSession } = await import("./identity-api");
+    const { sessionTokenHash } = await import("./cookies");
+    const previous = "p".repeat(43);
+    await finishLogin(connection, identity(), tx, { origin: ORIGIN, previousSessionToken: previous });
+    expect(vi.mocked(deleteSsoSession)).toHaveBeenCalledWith(sessionTokenHash(previous));
+  });
+
+  it("still signs in when revoking the old session fails", async () => {
+    const { deleteSsoSession } = await import("./identity-api");
+    vi.mocked(deleteSsoSession).mockRejectedValueOnce(new Error("down"));
+    const response = await finishLogin(connection, identity(), tx, { origin: ORIGIN, previousSessionToken: "q".repeat(43) });
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/cerebro_session=[^;]/);
   });
 });
 

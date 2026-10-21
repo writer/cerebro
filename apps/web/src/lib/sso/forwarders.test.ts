@@ -113,6 +113,34 @@ describe("admin identity forwarder", () => {
     expect(JSON.parse(state.calls[0].options.body ?? "{}")).toEqual({ enforced: true, updatedBy: "admin-subject" });
   });
 
+  it("stamps the SCIM token creator server-side", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    const response = await forwardAdminIdentityRequest(
+      adminRequest("POST", "scim/tokens", { name: "okta", connectionId: "conn-1", createdBy: "alice@example.com" }),
+      ["scim", "tokens"],
+    );
+    expect(response.status).toBe(200);
+    expect(JSON.parse(state.calls[0].options.body ?? "{}").createdBy).toBe("admin-subject");
+  });
+
+  it.each([["sessions"], ["directory/users"], ["directory/groups"], ["scim/tokens"], ["connections"], ["connections/conn-1"]])(
+    "requires identity:admin to read %s",
+    async (path) => {
+      state.user = ssoUser(["cerebro.analyst"]);
+      const response = await forwardAdminIdentityRequest(adminRequest("GET", path), path.split("/"));
+      expect(response.status).toBe(403);
+      expect(state.calls).toHaveLength(0);
+    },
+  );
+
+  it("records the acting person for allowed writes, including deletes", async () => {
+    state.user = ssoUser(["cerebro.admin"]);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    state.response = { status: 204, body: "", contentType: "application/json" };
+    await forwardAdminIdentityRequest(adminRequest("DELETE", "connections/conn-1"), ["connections", "conn-1"]);
+    expect(info).toHaveBeenCalledWith("identity admin write", expect.objectContaining({ method: "DELETE", path: "sso/connections/conn-1", status: 204 }));
+  });
+
   it("refuses unknown paths, wrong methods, and admin-posted successful tests", async () => {
     state.user = ssoUser(["cerebro.admin"]);
     expect((await forwardAdminIdentityRequest(adminRequest("GET", "sessions/lookup"), ["sessions", "lookup"])).status).toBe(404);

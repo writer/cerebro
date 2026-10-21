@@ -7,8 +7,9 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-// MaxSAMLReplayWindow bounds how long a consumed assertion is remembered, so
-// an IdP-supplied NotOnOrAfter far in the future cannot grow the cache.
+// MaxSAMLReplayWindow is the longest assertion validity accepted. Assertions
+// valid for longer are refused rather than clamped: a clamped record would be
+// pruned while the assertion could still be presented.
 const MaxSAMLReplayWindow = 24 * time.Hour
 
 const maxSAMLIDLength = 256
@@ -22,7 +23,7 @@ type SAMLAssertionInput struct {
 }
 
 // NormalizeSAMLAssertion validates an assertion use. NotOnOrAfter must be in
-// the future; the stored expiry is clamped to MaxSAMLReplayWindow from now.
+// the future and no more than MaxSAMLReplayWindow from now.
 func NormalizeSAMLAssertion(input SAMLAssertionInput, now time.Time) (ports.SAMLAssertionUse, error) {
 	var use ports.SAMLAssertionUse
 	use.ConnectionID = strings.TrimSpace(input.ConnectionID)
@@ -45,8 +46,8 @@ func NormalizeSAMLAssertion(input SAMLAssertionInput, now time.Time) (ports.SAML
 	}
 	use.ConsumedAt = now.UTC()
 	use.ExpiresAt = input.NotOnOrAfter.UTC()
-	if latest := now.Add(MaxSAMLReplayWindow).UTC(); use.ExpiresAt.After(latest) {
-		use.ExpiresAt = latest
+	if use.ExpiresAt.After(now.Add(MaxSAMLReplayWindow)) {
+		return use, invalid("notOnOrAfter must be within %s", MaxSAMLReplayWindow)
 	}
 	return use, nil
 }

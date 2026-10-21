@@ -7993,7 +7993,7 @@ paths:
   /platform/identity/sessions:
     post:
       summary: Create a web console session
-      description: The caller sends only the SHA-256 hash of the opaque cookie token. Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route. Sessions whose roles include cerebro.admin expire after at most min(policy sessionMaxLifetimeMinutes, 12h).
+      description: The caller sends only the SHA-256 hash of the opaque cookie token. Requires cerebro.identity.sso.service; cerebro.identity.sso.read and cerebro.identity.sso.write do not grant this route. expiresAt and idleTimeoutMinutes are capped at the policy values, and sessions whose roles include cerebro.admin expire after at most min(policy sessionMaxLifetimeMinutes, 12h). The email domain must be one of the connection's domains, and without jitProvisioning a matching directory user must exist.
       tags:
         - Identity
       requestBody:
@@ -8016,7 +8016,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/IdentitySSOError'
         '403':
-          description: user_inactive when the matching directory user is inactive, or user_deprovisioned when it was deleted through SCIM.
+          description: user_inactive when the matching directory user is inactive, user_deprovisioned when it was deleted through SCIM, or domain_not_allowed when the email domain is not routed to the connection.
           content:
             application/json:
               schema:
@@ -8124,7 +8124,7 @@ paths:
   /platform/identity/saml/assertions:
     post:
       summary: Consume a verified SAML assertion once
-      description: The web console calls this after verifying a SAML response and before creating a session. The insert is atomic, so a replayed assertion ID on the connection or a reused request ID is rejected. Expired records are pruned opportunistically, and stored expiry is clamped to at most 24 hours from now. Requires cerebro.identity.sso.service.
+      description: The web console calls this after verifying a SAML response and before creating a session. The insert is atomic, so a replayed assertion ID on the connection or a reused request ID is rejected. Expired records are pruned opportunistically. Assertions valid for more than 24 hours are refused with 400. Requires cerebro.identity.sso.service.
       tags:
         - Identity
       requestBody:
@@ -8643,7 +8643,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirectoryUser'
         '403':
-          description: user_inactive when the user is inactive, or user_deprovisioned when it was deleted through SCIM.
+          description: user_inactive when the user is inactive, user_deprovisioned when it was deleted through SCIM, or domain_not_allowed when the email domain is not routed to the connection.
           content:
             application/json:
               schema:
@@ -8655,7 +8655,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/IdentitySSOError'
         '409':
-          description: jit_disabled, or subject_mismatch when the user is bound to a different subject on the connection.
+          description: connection_not_active, jit_disabled, or subject_mismatch when the user is bound to a different subject on the connection.
           content:
             application/json:
               schema:
@@ -8876,7 +8876,7 @@ components:
           description: Validation message for 400 responses; otherwise the same value as code.
         code:
           type: string
-          description: Stable machine code such as invalid_request, connection_limit, domain_in_use, connection_not_tested, no_active_connection, connection_not_active, last_active_connection, bootstrap_managed, jit_disabled, subject_mismatch, user_inactive, user_deprovisioned, assertion_replayed, session_exists, directory_conflict, not_found, tenant_forbidden, identity_sso_unavailable, internal_error.
+          description: Stable machine code such as invalid_request, connection_limit, domain_in_use, connection_not_tested, no_active_connection, connection_not_active, last_active_connection, bootstrap_managed, jit_disabled, subject_mismatch, user_inactive, user_deprovisioned, domain_not_allowed, assertion_replayed, session_exists, directory_conflict, not_found, tenant_forbidden, identity_sso_unavailable, internal_error.
         detail:
           type: string
     SAMLAssertionInput:
@@ -8894,7 +8894,7 @@ components:
         notOnOrAfter:
           type: string
           format: date-time
-          description: Must be in the future. Stored expiry is clamped to at most 24 hours from now.
+          description: Must be in the future and at most 24 hours from now.
     SSOOIDCConfig:
       type: object
       required: [issuer, clientId, clientSecretRef]

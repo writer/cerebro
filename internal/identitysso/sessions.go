@@ -133,15 +133,20 @@ func NormalizeSessionInput(input SessionInput, now time.Time) (ports.SSOSession,
 	return session, nil
 }
 
-// CapSessionLifetime shortens a session that carries an admin role to at most
-// min(policy lifetime, AdminSessionMaxLifetime) from its creation.
+// CapSessionLifetime limits a session to the policy lifetime and idle timeout
+// from its creation, and a session that carries an admin role to at most
+// min(policy lifetime, AdminSessionMaxLifetime). The caller's values can only
+// shorten a session, never extend it past policy.
 func CapSessionLifetime(session *ports.SSOSession, policy ports.SSOPolicy) {
-	if !authz.HasAdminRole(session.Roles) {
-		return
+	if policy.SessionIdleTimeoutMinutes > 0 && session.IdleTimeoutMinutes > policy.SessionIdleTimeoutMinutes {
+		session.IdleTimeoutMinutes = policy.SessionIdleTimeoutMinutes
 	}
-	limit := AdminSessionMaxLifetime
-	if policyLimit := time.Duration(policy.SessionMaxLifetimeMinutes) * time.Minute; policyLimit > 0 && policyLimit < limit {
-		limit = policyLimit
+	limit := time.Duration(policy.SessionMaxLifetimeMinutes) * time.Minute
+	if authz.HasAdminRole(session.Roles) && (limit <= 0 || limit > AdminSessionMaxLifetime) {
+		limit = AdminSessionMaxLifetime
+	}
+	if limit <= 0 {
+		return
 	}
 	if latest := session.CreatedAt.Add(limit).UTC(); session.ExpiresAt.After(latest) {
 		session.ExpiresAt = latest
