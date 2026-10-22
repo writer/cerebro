@@ -101,6 +101,10 @@ class CIDeliveryControlTests(unittest.TestCase):
                         index = action.index(line)
                         guard = action[action.rindex("if:", 0, index):index]
                         self.assertIn("github.ref == 'refs/heads/main'", guard)
+        codeql = self.security_workflows["CodeQL"]
+        self.assertIn("uses: actions/cache/restore@", codeql)
+        self.assertIn("if: matrix.language == 'go' && github.ref == 'refs/heads/main'", codeql)
+        self.assertIn("if: github.ref == 'refs/heads/main'\n        uses: actions/cache@", self.ephemeral)
         workflows = {
             "ci": self.ci,
             "deterministic-review": self.deterministic,
@@ -113,13 +117,19 @@ class CIDeliveryControlTests(unittest.TestCase):
                 self.assertNotIn("cache-scope: test-shard-", workflow)
                 self.assertNotIn("cache-scope: deterministic-review", workflow)
         self.assertIn("save-cache: ${{ matrix.save_rust_cache == true }}", self.ci)
-        # Every split Rust job saves its own family; two savers on one key would race.
-        scopes = [
+        # Each Rust cache family has exactly one saver; two savers on one key would race.
+        lines = [line.strip() for line in self.ci.splitlines()]
+        saved_scopes = [
             line.split(":", 1)[1].strip()
-            for line in self.ci.splitlines()
-            if line.strip().startswith("rust_cache_scope:")
+            for index, line in enumerate(lines)
+            if line.startswith("rust_cache_scope:") and lines[index + 1] == "save_rust_cache: true"
         ]
-        self.assertEqual(sorted(scopes), ["rust-coverage", "rust-lint", "workspace"])
+        self.assertEqual(sorted(saved_scopes), ["rust-coverage", "rust-lint", "workspace"])
+        web_integration = self.ci.split("\n  web-integration:\n", 1)[1].split("\n  web-rust-integration:\n", 1)[0]
+        self.assertIn("cache-scope: rust-release", web_integration)
+        self.assertIn('save-cache: "true"', web_integration)
+        self.assertEqual(self.ci.count("cache-scope: rust-release"), 1)
+        self.assertNotIn("--cache-to type=gha,mode=max,ignore-error=true'", self.ci.split("\n  docker-smoke:\n", 1)[1].split("\n  go-lint-shard:", 1)[0])
         self.assertIn("go-cache-warm", self.ci)
 
     def test_codegen_registry_does_not_rerun_the_rust_workspace_gate(self):

@@ -31,6 +31,7 @@ jobs:
       web: ${{ steps.select.outputs.web }}
       web_image: ${{ steps.select.outputs.web_image }}
       web_integration: ${{ steps.select.outputs.web_integration }}
+      runtime_image: ${{ steps.select.outputs.runtime_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -125,6 +126,11 @@ jobs:
       - uses: ./.github/actions/setup-go-cached
 
       - uses: ./.github/actions/setup-rust-cached
+        with:
+          # The real-service run builds release binaries, which the debug
+          # workspace family never contains.
+          cache-scope: rust-release
+          save-cache: "true"
 
       - uses: ./.github/actions/setup-javascript-workspaces
 
@@ -250,6 +256,8 @@ jobs:
         include:
           - name: build
             command: make build
+            setup_rust: true
+            rust_cache_scope: rust-release
           - name: coverage
             command: make cover
           - name: sdk
@@ -260,6 +268,8 @@ jobs:
             command: make script-test
           - name: mcp
             command: make mcp-contract-check mcp-sdk-compat
+            setup_rust: true
+            rust_cache_scope: rust-release
           - name: proto
             command: make proto-lint proto-generate-check proto-breaking
             checkout_fetch_depth: '0'
@@ -303,8 +313,6 @@ jobs:
             command: make govulncheck
           - name: release-smoke
             command: make release-smoke
-          - name: docker-smoke
-            command: DOCKER_BUILD='docker buildx build --load' DOCKER_BUILD_CACHE_ARGS="--cache-from type=gha ${DOCKER_CACHE_TO}" make docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
@@ -327,16 +335,31 @@ jobs:
           save-cache: ${{ matrix.save_rust_cache == true }}
           components: clippy,rustfmt,llvm-tools-preview
           target: wasm32-unknown-unknown
-          install-policy-tools: "true"
-
-      - name: Set up Docker Buildx
-        if: matrix.name == 'docker-smoke'
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+          install-policy-tools: ${{ matrix.rust_cache_scope != 'rust-release' }}
 
       - name: Run ${{ matrix.name }}
-        env:
-          DOCKER_CACHE_TO: ${{ github.ref == 'refs/heads/main' && '--cache-to type=gha,mode=max,ignore-error=true' || '' }}
         run: ${{ matrix.command }}
+
+  # The image's Rust layer copies internal/, sources/, and tools/, so almost any
+  # change invalidates it and a layer cache never paid for its multi-GB size.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.runtime_image == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-go-cached
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Run docker-smoke
+        run: DOCKER_BUILD='docker buildx build --load' make docker-smoke
 
   go-lint-shard:
     name: lint-${{ matrix.name }}
@@ -615,7 +638,7 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    needs: [ci-scope, app-workspace-contract, practice-registry, web, web-image, web-integration, web-rust-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
+    needs: [ci-scope, app-workspace-contract, practice-registry, web, web-image, web-integration, web-rust-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, docker-smoke, catalog, test, race, lint]
     if: always()
     steps:
       - name: Check selected CI scopes
@@ -627,6 +650,7 @@ jobs:
           CI_SCOPE_WEB: ${{ needs.ci-scope.outputs.web }}
           CI_SCOPE_WEB_IMAGE: ${{ needs.ci-scope.outputs.web_image }}
           CI_SCOPE_WEB_INTEGRATION: ${{ needs.ci-scope.outputs.web_integration }}
+          CI_SCOPE_RUNTIME_IMAGE: ${{ needs.ci-scope.outputs.runtime_image }}
         run: |
           if [ "${{ needs.ci-scope.result }}" != "success" ]; then
             echo "CI scope selection failed"
@@ -656,6 +680,10 @@ jobs:
           fi
           if [ "${CI_SCOPE_WEB_INTEGRATION}" = "true" ] && [ "${{ needs.web-rust-integration.result }}" != "success" ]; then
             echo "Rust authority web integration failed"
+            exit 1
+          fi
+          if [ "${CI_SCOPE_RUNTIME_IMAGE}" = "true" ] && [ "${{ needs.docker-smoke.result }}" != "success" ]; then
+            echo "Runtime image smoke failed"
             exit 1
           fi
           if [ "${CI_SCOPE_SLACK}" = "true" ] && [ "${{ needs.slack-companion.result }}" != "success" ]; then
