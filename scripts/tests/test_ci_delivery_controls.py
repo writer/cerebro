@@ -85,7 +85,8 @@ class CIDeliveryControlTests(unittest.TestCase):
 
     def test_shared_actions_own_go_and_rust_cache_keys(self):
         self.assertIn("go-v4-${{ inputs.cache-scope }}", self.go_setup)
-        self.assertIn("rust-v3-${{ inputs.cache-scope }}", self.rust_setup)
+        self.assertIn("rust-v4-${{ inputs.cache-scope }}", self.rust_setup)
+        self.assertIn('CARGO_INCREMENTAL=0', self.rust_setup)
         self.assertGreaterEqual(self.ci.count("uses: ./.github/actions/setup-go-cached"), 7)
         self.assertGreaterEqual(self.ci.count("uses: ./.github/actions/setup-rust-cached"), 3)
         self.assertNotIn("name: Cache Go build data", self.ci)
@@ -100,6 +101,10 @@ class CIDeliveryControlTests(unittest.TestCase):
                         index = action.index(line)
                         guard = action[action.rindex("if:", 0, index):index]
                         self.assertIn("github.ref == 'refs/heads/main'", guard)
+        codeql = self.security_workflows["CodeQL"]
+        self.assertIn("uses: actions/cache/restore@", codeql)
+        self.assertIn("if: matrix.language == 'go' && github.ref == 'refs/heads/main'", codeql)
+        self.assertIn("if: github.ref == 'refs/heads/main'\n        uses: actions/cache@", self.ephemeral)
         workflows = {
             "ci": self.ci,
             "deterministic-review": self.deterministic,
@@ -111,7 +116,20 @@ class CIDeliveryControlTests(unittest.TestCase):
                 self.assertNotIn("cache-scope: verify-", workflow)
                 self.assertNotIn("cache-scope: test-shard-", workflow)
                 self.assertNotIn("cache-scope: deterministic-review", workflow)
-        self.assertIn("save-cache: ${{ matrix.name == 'graph-actions' }}", self.ci)
+        self.assertIn("save-cache: ${{ matrix.save_rust_cache == true }}", self.ci)
+        # Each Rust cache family has exactly one saver; two savers on one key would race.
+        lines = [line.strip() for line in self.ci.splitlines()]
+        saved_scopes = [
+            line.split(":", 1)[1].strip()
+            for index, line in enumerate(lines)
+            if line.startswith("rust_cache_scope:") and lines[index + 1] == "save_rust_cache: true"
+        ]
+        self.assertEqual(sorted(saved_scopes), ["rust-coverage", "rust-lint", "workspace"])
+        web_integration = self.ci.split("\n  web-integration:\n", 1)[1].split("\n  web-rust-integration:\n", 1)[0]
+        self.assertIn("cache-scope: rust-release", web_integration)
+        self.assertIn('save-cache: "true"', web_integration)
+        self.assertEqual(self.ci.count("cache-scope: rust-release"), 1)
+        self.assertNotIn("--cache-to type=gha,mode=max,ignore-error=true'", self.ci.split("\n  docker-smoke:\n", 1)[1].split("\n  go-lint-shard:", 1)[0])
         self.assertIn("go-cache-warm", self.ci)
 
     def test_codegen_registry_does_not_rerun_the_rust_workspace_gate(self):
@@ -123,6 +141,51 @@ class CIDeliveryControlTests(unittest.TestCase):
         ]
         self.assertIn(["make", "graph-action-generated-check"], commands)
         self.assertNotIn(["make", "graph-action-check"], commands)
+
+    def test_codegen_job_skips_only_checks_another_ci_job_runs(self):
+        registry = json.loads((ROOT / "devex" / "codegen_catalog.json").read_text(encoding="utf-8"))
+        targets = {
+            check["key"]: check["make_target"]
+            for family in registry["families"]
+            for check in family.get("checks", [])
+        }
+        codegen_lines = [line for line in self.ci.splitlines() if "CODEGEN_CHECK_SKIP=" in line]
+        self.assertEqual(len(codegen_lines), 1)
+        skipped = codegen_lines[0].split("CODEGEN_CHECK_SKIP=", 1)[1].strip().split(",")
+        other_commands = "\n".join(
+            line.split("command:", 1)[1]
+            for line in self.ci.splitlines()
+            if line.strip().startswith("command:") and "CODEGEN_CHECK_SKIP=" not in line
+        )
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        for key in skipped:
+            with self.subTest(check=key):
+                self.assertIn(key, targets)
+                target = targets[key]
+                recipe = makefile.split(f"\n{target}:", 1)[1].split("\n\n", 1)[0]
+                commands = [line.strip() for line in recipe.splitlines()[1:] if line.startswith("\t")]
+                go_tests_only = bool(commands) and all(command.startswith("go test ./") for command in commands)
+                runs_elsewhere = any(
+                    f" {name} " in f" {other_commands} ".replace("\n", " ")
+                    for name in (target, *self._make_parents(makefile, target))
+                )
+                # Plain package tests run in the sharded `make test` jobs over ./...
+                self.assertTrue(
+                    go_tests_only or runs_elsewhere,
+                    f"{key} is skipped by codegen but no other CI job runs {target}",
+                )
+
+    @staticmethod
+    def _make_parents(makefile, target):
+        parents = []
+        for line in makefile.splitlines():
+            if ":" not in line or line.startswith(("\t", "#", ".")):
+                continue
+            name, _, rest = line.partition(":")
+            prerequisites = rest.split("##", 1)[0].split()
+            if target in prerequisites:
+                parents.append(name.strip())
+        return parents
 
     def test_deterministic_review_reuses_dedicated_security_scanners(self):
         self.assertIn("uses: ./.github/actions/setup-go-cached", self.deterministic)

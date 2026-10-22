@@ -33,7 +33,7 @@ SAFE_ONLY_CRATE_ROOTS = {
     "tools/graphactiongen/src/lib.rs": "tools/graphactiongen",
     "tools/graphactiongen/src/main.rs": "tools/graphactiongen",
 }
-RAW_STRING_START = r'(?:br|rb|cr|rc|r)(?P<hashes>#{0,255})"'
+RAW_STRING_START = re.compile(r'(?:br|rb|cr|rc|r)(?P<hashes>#{0,255})"')
 THIN_CRATE_ROOTS = {
     "crates/finding-rule-kernel/src/lib.rs": ("mod evaluation;", "mod model;"),
     "crates/security-path-kernel/src/lib.rs": ("mod evaluation;", "mod model;"),
@@ -98,10 +98,11 @@ def rust_tokens(source: str) -> list[str]:
                     index += 1
             continue
 
-        raw_string = re.match(RAW_STRING_START, source[index:])
+        # Match in place: slicing the remaining source here made tokenizing quadratic.
+        raw_string = RAW_STRING_START.match(source, index)
         if raw_string:
             terminator = '"' + raw_string.group("hashes")
-            end = source.find(terminator, index + raw_string.end())
+            end = source.find(terminator, raw_string.end())
             index = len(source) if end < 0 else end + len(terminator)
             continue
 

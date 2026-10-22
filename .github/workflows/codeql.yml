@@ -49,8 +49,23 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # Pull requests only restore: per-PR saves evict the main caches every PR
+      # restores from under the repository cache cap.
+      - name: Restore Go build data
+        if: matrix.language == 'go' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ runner.arch }}-go-v2-codeql-go-${{ hashFiles('go.sum', 'internal/eventregistry/go.sum', 'sdk/go/cerebroapi/go.sum', 'tools/linters/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-codeql-go-${{ hashFiles('go.sum', 'internal/eventregistry/go.sum', 'sdk/go/cerebroapi/go.sum', 'tools/linters/go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-codeql-go-
+            ${{ runner.os }}-${{ runner.arch }}-go-v2-
+
       - name: Cache Go build data
-        if: matrix.language == 'go'
+        if: matrix.language == 'go' && github.ref == 'refs/heads/main'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
