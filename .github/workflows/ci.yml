@@ -265,14 +265,30 @@ jobs:
             checkout_fetch_depth: '0'
           - name: openapi
             command: make openapi-check openapi-lint
+          # graph-action-check plus rust-wasm-check, split so the instrumented
+          # coverage run does not wait behind the plain test run.
           - name: graph-actions
-            command: make rust-deny graph-action-check rust-wasm-check
+            command: make rust-deny rust-workspace-policy rust-fmt-check rust-clippy rust-doc-check graph-action-generated-check rust-benchmark-smoke rust-wasm-artifact-check
             setup_rust: true
+            rust_cache_scope: rust-lint
+            save_rust_cache: true
+          - name: rust-test
+            command: make rust-test
+            setup_rust: true
+            rust_cache_scope: workspace
+            save_rust_cache: true
+          - name: rust-coverage
+            command: make rust-coverage
+            setup_rust: true
+            rust_cache_scope: rust-coverage
+            save_rust_cache: true
           - name: slack-agent-rust-eval
             command: make slack-agent-rust-eval
             setup_rust: true
+          # Skipped checks already run in the openapi, proto, graph-actions,
+          # sdk, catalog, and Go test jobs of this workflow.
           - name: codegen
-            command: make codegen-check
+            command: make codegen-check CODEGEN_CHECK_SKIP=openapi-check,openapi-lint,proto-lint,proto-generate-check,proto-breaking,graph-action-generated-check,detection-catalog-check,catalog-check,sdk-typescript-check,sourcegen-test,openapi-definition-gen-test,finding-rule-scaffold-test,finding-rule-test
             checkout_fetch_depth: '0'
           - name: docs-drift
             command: make docs-drift-check
@@ -305,9 +321,10 @@ jobs:
       - uses: ./.github/actions/setup-rust-cached
         if: matrix.setup_rust == true
         with:
-          # graph-actions compiles, lints, and tests the whole workspace, so its
-          # target directory is the superset every other Rust job restores.
-          save-cache: ${{ matrix.name == 'graph-actions' }}
+          # Each split Rust job saves only the artifacts it builds. rust-test owns
+          # the default workspace family that the other Rust jobs restore.
+          cache-scope: ${{ matrix.rust_cache_scope || 'workspace' }}
+          save-cache: ${{ matrix.save_rust_cache == true }}
           components: clippy,rustfmt,llvm-tools-preview
           target: wasm32-unknown-unknown
           install-policy-tools: "true"

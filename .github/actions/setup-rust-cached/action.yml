@@ -46,6 +46,12 @@ runs:
         fi
         rustup "${args[@]}"
 
+    - name: Disable incremental compilation
+      shell: bash
+      # CI builds start from restored artifacts, never from incremental state;
+      # incremental data only inflates the cached target directory.
+      run: echo "CARGO_INCREMENTAL=0" >> "${GITHUB_ENV}"
+
     - name: Compute cache generation
       id: generation
       shell: bash
@@ -64,10 +70,10 @@ runs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
           target
-        key: ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
-          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-
 
     - name: Restore and save Rust build data
       if: inputs.save-cache == 'true' && github.ref == 'refs/heads/main'
@@ -80,10 +86,10 @@ runs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
           target
-        key: ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ steps.generation.outputs.week }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
-          ${{ runner.os }}-${{ runner.arch }}-rust-v3-${{ inputs.cache-scope }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
+          ${{ runner.os }}-${{ runner.arch }}-rust-v4-${{ inputs.cache-scope }}-
 
     - name: Install Rust dependency policy tool
       if: inputs.install-policy-tools == 'true'
