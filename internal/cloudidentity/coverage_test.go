@@ -148,12 +148,16 @@ func TestAssessExactFlagAloneDoesNotPermitEmptySource(t *testing.T) {
 
 func TestDefinitionsDigestConsistentWhenCorrectlyComputed(t *testing.T) {
 	defs := Definitions{Actions: []ActionDefinition{{Name: "s3:GetObject"}, {Name: "s3:PutObject"}}}
-	defs.Digest = Digest(struct {
+	digest, err := digestJSON(struct {
 		Actions    []ActionDefinition
 		Operations []OperationDefinition
 		Roles      []RoleDefinition
 		Policies   []ManagedPolicy
 	}{sortedActionDefinitions(defs.Actions), nil, nil, nil})
+	if err != nil {
+		t.Fatalf("digestJSON() error = %v", err)
+	}
+	defs.Digest = digest
 
 	if !definitionsDigestConsistent(defs) {
 		t.Fatal("expected a correctly-computed canonical Digest to be consistent")

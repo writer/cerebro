@@ -56,6 +56,7 @@ const (
 	GapUnapprovedDependency            = "cloud_identity.unapproved_dependency"
 	GapSourceRevisionNotImmutable      = "cloud_identity.source_revision_not_immutable"
 	GapSourceDigestMismatch            = "cloud_identity.source_digest_mismatch"
+	GapSourceDigestUnavailable         = "cloud_identity.source_digest_unavailable"
 	GapUnreviewablePackageInit         = "cloud_identity.unreviewable_package_init"
 	GapOperationDependenciesIncomplete = "cloud_identity.operation_dependencies_incomplete"
 	GapAmbiguousGCPOperation           = "cloud_identity.ambiguous_gcp_operation"

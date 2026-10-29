@@ -90,6 +90,32 @@ var (
 	ErrModulePrivateWithoutApp = errors.New("repository is private (or its visibility could not be verified) and no github app installation is configured for its owner")
 )
 
+// ErrArchiveMissingExpectedFile indicates the whole-repository archive
+// fetched for a commit did not contain a file the repository tree declared
+// at that commit -- an archive/tree mismatch (corrupted archive, GitHub
+// archive-generation inconsistency, or a race with a force-push) rather
+// than a budget or allowlist denial.
+type ErrArchiveMissingExpectedFile struct {
+	Owner, Repo, Commit, Path string
+}
+
+func (e *ErrArchiveMissingExpectedFile) Error() string {
+	return fmt.Sprintf("cloudidentitysource: archive for %s/%s@%s did not contain expected file %q", e.Owner, e.Repo, e.Commit, e.Path)
+}
+
+// ErrBlobIntegrityMismatch indicates a fetched archive blob's content does
+// not hash to the git SHA-1 the repository tree already reported for it
+// (corrupted or tampered transport). This is a content-integrity failure,
+// distinct from the archive/tree consistency failure above.
+type ErrBlobIntegrityMismatch struct {
+	Path string
+	SHA  string
+}
+
+func (e *ErrBlobIntegrityMismatch) Error() string {
+	return fmt.Sprintf("cloudidentitysource: blob %s failed git sha1 integrity verification", e.Path)
+}
+
 // RepositoryOptions configures NewRepositoryReader. Every GitHub owner routes
 // through its own GitHub App installation; only allow-listed owner/repo pairs
 // and module coordinates may ever be fetched.
@@ -166,35 +192,154 @@ type repositoryReader struct {
 	maxArchiveDecompressedBytes int64
 	timeout                     time.Duration
 
-	clientsMu sync.Mutex
-	clients   map[string]*gogithub.Client // keyed by lower-cased owner, "" = anonymous
+	clients              *repositoryClientCache
+	refs                 *repositoryRefCache
+	moduleRegistryClient *repositoryLazyClient
+	archiveClient        *repositoryLazyClient
+	archives             *repositoryArchiveCache
+	materialized         *repositoryMaterializedCache
+	visibility           *repositoryVisibilityCache
+}
 
-	refsMu sync.Mutex
-	refs   map[string]string // "owner/repo@revision" -> resolved commit sha, cached per reader instance
+// repositoryClientCache memoizes hardened, authenticated GitHub REST API
+// clients per lower-cased owner ("" = anonymous), built once per reader
+// instance. getOrBuild runs the whole get-or-build sequence under one lock
+// so two concurrent callers for the same owner never race to build (and
+// discard) duplicate clients.
+type repositoryClientCache struct {
+	mu      sync.Mutex
+	clients map[string]*gogithub.Client
+}
 
-	moduleRegistryClientOnce sync.Once
-	moduleRegistryClient     *http.Client
+func newRepositoryClientCache() *repositoryClientCache {
+	return &repositoryClientCache{clients: make(map[string]*gogithub.Client)}
+}
 
-	archiveClientOnce sync.Once
-	archiveClient     *http.Client
+func (c *repositoryClientCache) getOrBuild(key string, build func() (*gogithub.Client, error)) (*gogithub.Client, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if client, ok := c.clients[key]; ok {
+		return client, nil
+	}
+	client, err := build()
+	if err != nil {
+		return nil, err
+	}
+	c.clients[key] = client
+	return client, nil
+}
 
-	// archiveMu/archiveData cache the raw downloaded tarball bytes for one
-	// (repo, commit) -- the archive always contains the whole repository
-	// regardless of root, so a second root-scoped read of the same commit
-	// reuses the already-downloaded bytes instead of a second network
-	// fetch, satisfying "one archive download per (repo, commit)" even
-	// across many different-root reads in the same reader run.
-	archiveMu   sync.Mutex
-	archiveData map[string][]byte // "owner/repo@commit" -> raw tar.gz bytes
+// repositoryRefCache memoizes "owner/repo@revision" -> resolved commit sha,
+// cached per reader instance.
+type repositoryRefCache struct {
+	mu   sync.Mutex
+	refs map[string]string
+}
 
-	// materializedMu/materialized cache the fully built, root-scoped
-	// result per reader run so an identical (repo, commit, root) read is
-	// never redone at all.
-	materializedMu sync.Mutex
-	materialized   map[string]ci.Repository // "owner/repo@commit#root" -> result
+func newRepositoryRefCache() *repositoryRefCache {
+	return &repositoryRefCache{refs: make(map[string]string)}
+}
 
-	repoVisibilityMu sync.Mutex
-	repoVisibility   map[string]bool // coordinateKey -> is-public, cached per reader instance
+func (c *repositoryRefCache) get(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sha, ok := c.refs[key]
+	return sha, ok
+}
+
+func (c *repositoryRefCache) store(key, sha string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refs[key] = sha
+}
+
+// repositoryLazyClient lazily builds and memoizes one *http.Client exactly
+// once for the lifetime of a reader instance.
+type repositoryLazyClient struct {
+	once   sync.Once
+	client *http.Client
+}
+
+func (l *repositoryLazyClient) get(build func() *http.Client) *http.Client {
+	l.once.Do(func() { l.client = build() })
+	return l.client
+}
+
+// repositoryArchiveCache caches the raw downloaded tarball bytes for one
+// (repo, commit) -- the archive always contains the whole repository
+// regardless of root, so a second root-scoped read of the same commit
+// reuses the already-downloaded bytes instead of a second network fetch,
+// satisfying "one archive download per (repo, commit)" even across many
+// different-root reads in the same reader run.
+type repositoryArchiveCache struct {
+	mu   sync.Mutex
+	data map[string][]byte // "owner/repo@commit" -> raw tar.gz bytes
+}
+
+func newRepositoryArchiveCache() *repositoryArchiveCache {
+	return &repositoryArchiveCache{data: make(map[string][]byte)}
+}
+
+func (c *repositoryArchiveCache) get(key string) ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	data, ok := c.data[key]
+	return data, ok
+}
+
+func (c *repositoryArchiveCache) store(key string, data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[key] = data
+}
+
+// repositoryMaterializedCache caches the fully built, root-scoped result
+// per reader run so an identical (repo, commit, root) read is never redone
+// at all.
+type repositoryMaterializedCache struct {
+	mu      sync.Mutex
+	results map[string]ci.Repository // "owner/repo@commit#root" -> result
+}
+
+func newRepositoryMaterializedCache() *repositoryMaterializedCache {
+	return &repositoryMaterializedCache{results: make(map[string]ci.Repository)}
+}
+
+func (c *repositoryMaterializedCache) get(key string) (ci.Repository, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result, ok := c.results[key]
+	return result, ok
+}
+
+func (c *repositoryMaterializedCache) store(key string, result ci.Repository) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.results[key] = result
+}
+
+// repositoryVisibilityCache caches whether a repository is public, keyed by
+// coordinateKey, per reader instance.
+type repositoryVisibilityCache struct {
+	mu         sync.Mutex
+	visibility map[string]bool
+}
+
+func newRepositoryVisibilityCache() *repositoryVisibilityCache {
+	return &repositoryVisibilityCache{visibility: make(map[string]bool)}
+}
+
+func (c *repositoryVisibilityCache) get(key string) (bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	public, ok := c.visibility[key]
+	return public, ok
+}
+
+func (c *repositoryVisibilityCache) store(key string, public bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.visibility[key] = public
 }
 
 // NewRepositoryReader builds a GitHub-backed ci.RepositoryReader. The
@@ -293,11 +438,13 @@ func NewRepositoryReader(options RepositoryOptions) (ci.RepositoryReader, error)
 		maxArchiveEntries:           maxArchiveEntries,
 		maxArchiveDecompressedBytes: maxArchiveDecompressedBytes,
 		timeout:                     timeout,
-		clients:                     make(map[string]*gogithub.Client),
-		refs:                        make(map[string]string),
-		archiveData:                 make(map[string][]byte),
-		materialized:                make(map[string]ci.Repository),
-		repoVisibility:              make(map[string]bool),
+		clients:                     newRepositoryClientCache(),
+		refs:                        newRepositoryRefCache(),
+		moduleRegistryClient:        &repositoryLazyClient{},
+		archiveClient:               &repositoryLazyClient{},
+		archives:                    newRepositoryArchiveCache(),
+		materialized:                newRepositoryMaterializedCache(),
+		visibility:                  newRepositoryVisibilityCache(),
 	}, nil
 }
 
@@ -345,9 +492,6 @@ func (r *repositoryReader) ReadRepository(ctx context.Context, pin ci.SourcePin)
 // evidence.
 func (r *repositoryReader) githubClient(owner string, required bool) (*gogithub.Client, error) {
 	ownerKey := strings.ToLower(owner)
-	r.clientsMu.Lock()
-	defer r.clientsMu.Unlock()
-
 	cfg, hasApp := r.apps[ownerKey]
 	cacheKey := ownerKey
 	if !hasApp {
@@ -356,33 +500,30 @@ func (r *repositoryReader) githubClient(owner string, required bool) (*gogithub.
 		}
 		cacheKey = ""
 	}
-	if client, ok := r.clients[cacheKey]; ok {
+	return r.clients.getOrBuild(cacheKey, func() (*gogithub.Client, error) {
+		hardened := sourcehttp.HardenSourceClient(r.baseHTTPClient, repositorySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
+		httpClient := hardened
+		if hasApp {
+			if strings.TrimSpace(cfg.BaseURL) == "" {
+				cfg.BaseURL = r.githubBaseURL
+			}
+			wrapped, err := sourcehttp.WithGitHubAppAuth(hardened, cfg)
+			if err != nil {
+				return nil, fmt.Errorf("cloudidentitysource: configure github app auth for owner %q: %w", owner, err)
+			}
+			httpClient = wrapped
+		}
+
+		client := gogithub.NewClient(httpClient)
+		if r.githubBaseURL != "" {
+			enterprise, err := client.WithEnterpriseURLs(r.githubBaseURL, r.githubBaseURL)
+			if err != nil {
+				return nil, fmt.Errorf("cloudidentitysource: parse github base url: %w", err)
+			}
+			client = enterprise
+		}
 		return client, nil
-	}
-
-	hardened := sourcehttp.HardenSourceClient(r.baseHTTPClient, repositorySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
-	httpClient := hardened
-	if hasApp {
-		if strings.TrimSpace(cfg.BaseURL) == "" {
-			cfg.BaseURL = r.githubBaseURL
-		}
-		wrapped, err := sourcehttp.WithGitHubAppAuth(hardened, cfg)
-		if err != nil {
-			return nil, fmt.Errorf("cloudidentitysource: configure github app auth for owner %q: %w", owner, err)
-		}
-		httpClient = wrapped
-	}
-
-	client := gogithub.NewClient(httpClient)
-	if r.githubBaseURL != "" {
-		enterprise, err := client.WithEnterpriseURLs(r.githubBaseURL, r.githubBaseURL)
-		if err != nil {
-			return nil, fmt.Errorf("cloudidentitysource: parse github base url: %w", err)
-		}
-		client = enterprise
-	}
-	r.clients[cacheKey] = client
-	return client, nil
+	})
 }
 
 // hasGitHubApp reports whether owner has a configured GitHub App
@@ -400,15 +541,12 @@ func (r *repositoryReader) hasGitHubApp(owner string) bool {
 // no App installation; the result is cached per reader instance.
 func (r *repositoryReader) ensurePublicForAnonymousRead(ctx context.Context, client *gogithub.Client, owner, name string) error {
 	key := coordinateKey(owner, name)
-	r.repoVisibilityMu.Lock()
-	if public, ok := r.repoVisibility[key]; ok {
-		r.repoVisibilityMu.Unlock()
+	if public, ok := r.visibility.get(key); ok {
 		if !public {
 			return fmt.Errorf("cloudidentitysource: %s/%s: %w", owner, name, ErrModulePrivateWithoutApp)
 		}
 		return nil
 	}
-	r.repoVisibilityMu.Unlock()
 
 	repo, _, err := client.Repositories.Get(ctx, owner, name)
 	if err != nil {
@@ -416,9 +554,7 @@ func (r *repositoryReader) ensurePublicForAnonymousRead(ctx context.Context, cli
 	}
 	public := !repo.GetPrivate()
 
-	r.repoVisibilityMu.Lock()
-	r.repoVisibility[key] = public
-	r.repoVisibilityMu.Unlock()
+	r.visibility.store(key, public)
 
 	if !public {
 		return fmt.Errorf("cloudidentitysource: %s/%s: %w", owner, name, ErrModulePrivateWithoutApp)
@@ -432,12 +568,9 @@ func (r *repositoryReader) ensurePublicForAnonymousRead(ctx context.Context, cli
 // values against the same repo/ref never observe different commits.
 func (r *repositoryReader) resolveCommit(ctx context.Context, client *gogithub.Client, owner, name, revision string) (string, error) {
 	key := coordinateKey(owner, name) + "@" + revision
-	r.refsMu.Lock()
-	if sha, ok := r.refs[key]; ok {
-		r.refsMu.Unlock()
+	if sha, ok := r.refs.get(key); ok {
 		return sha, nil
 	}
-	r.refsMu.Unlock()
 
 	sha, _, err := client.Repositories.GetCommitSHA1(ctx, owner, name, revision, "")
 	if err != nil {
@@ -448,9 +581,7 @@ func (r *repositoryReader) resolveCommit(ctx context.Context, client *gogithub.C
 		return "", fmt.Errorf("cloudidentitysource: github returned an empty commit sha for %s/%s@%s", owner, name, revision)
 	}
 
-	r.refsMu.Lock()
-	r.refs[key] = sha
-	r.refsMu.Unlock()
+	r.refs.store(key, sha)
 	return sha, nil
 }
 
@@ -467,12 +598,9 @@ func (r *repositoryReader) resolveCommit(ctx context.Context, client *gogithub.C
 // keyed by (repo, commit, root).
 func (r *repositoryReader) readTree(ctx context.Context, client *gogithub.Client, owner, name, commit, root string) (ci.Repository, error) {
 	cacheKey := coordinateKey(owner, name) + "@" + commit + "#" + root
-	r.materializedMu.Lock()
-	if cached, ok := r.materialized[cacheKey]; ok {
-		r.materializedMu.Unlock()
+	if cached, ok := r.materialized.get(cacheKey); ok {
 		return cached, nil
 	}
-	r.materializedMu.Unlock()
 
 	tree, _, err := client.Git.GetTree(ctx, owner, name, commit, true)
 	if err != nil {
@@ -563,10 +691,10 @@ func (r *repositoryReader) readTree(ctx context.Context, client *gogithub.Client
 		for _, entry := range selected {
 			content, ok := extracted[entry.GetPath()]
 			if !ok {
-				return ci.Repository{}, fmt.Errorf("cloudidentitysource: archive for %s/%s@%s did not contain expected file %q", owner, name, commit, entry.GetPath())
+				return ci.Repository{}, &ErrArchiveMissingExpectedFile{Owner: owner, Repo: name, Commit: commit, Path: entry.GetPath()}
 			}
 			if !verifyGitBlobSHA(content, entry.GetSHA()) {
-				return ci.Repository{}, fmt.Errorf("cloudidentitysource: blob %s failed git sha1 integrity verification", entry.GetPath())
+				return ci.Repository{}, &ErrBlobIntegrityMismatch{Path: entry.GetPath(), SHA: entry.GetSHA()}
 			}
 			files = append(files, ci.SourceFile{Path: entry.GetPath(), Content: content, Digest: "sha1:" + entry.GetSHA()})
 		}
@@ -574,18 +702,20 @@ func (r *repositoryReader) readTree(ctx context.Context, client *gogithub.Client
 
 	gaps = append(gaps, skips.gaps(reference)...)
 
+	digest, err := contentDigest(files)
+	if err != nil {
+		return ci.Repository{}, fmt.Errorf("cloudidentitysource: digest %s/%s@%s content: %w", owner, name, commit, err)
+	}
 	pin := ci.SourcePin{
 		Repository: owner + "/" + name,
 		Revision:   commit,
 		Root:       root,
-		Digest:     contentDigest(files),
+		Digest:     digest,
 		Exact:      true,
 	}
 	result := ci.Repository{Pin: pin, Files: files, Gaps: gaps}
 
-	r.materializedMu.Lock()
-	r.materialized[cacheKey] = result
-	r.materializedMu.Unlock()
+	r.materialized.store(cacheKey, result)
 	return result, nil
 }
 
@@ -597,12 +727,9 @@ func (r *repositoryReader) readTree(ctx context.Context, client *gogithub.Client
 // commit never re-downloads.
 func (r *repositoryReader) fetchArchive(ctx context.Context, client *gogithub.Client, owner, name, commit string) ([]byte, error) {
 	key := coordinateKey(owner, name) + "@" + commit
-	r.archiveMu.Lock()
-	if data, ok := r.archiveData[key]; ok {
-		r.archiveMu.Unlock()
+	if data, ok := r.archives.get(key); ok {
 		return data, nil
 	}
-	r.archiveMu.Unlock()
 
 	link, _, err := client.Repositories.GetArchiveLink(ctx, owner, name, gogithub.Tarball, &gogithub.RepositoryContentGetOptions{Ref: commit}, 0)
 	if err != nil {
@@ -613,9 +740,7 @@ func (r *repositoryReader) fetchArchive(ctx context.Context, client *gogithub.Cl
 		return nil, fmt.Errorf("download archive: %w", err)
 	}
 
-	r.archiveMu.Lock()
-	r.archiveData[key] = data
-	r.archiveMu.Unlock()
+	r.archives.store(key, data)
 	return data, nil
 }
 
@@ -662,10 +787,9 @@ func (r *repositoryReader) downloadArchiveBytes(ctx context.Context, rawURL stri
 // URL -- it carries no GitHub App bearer token, since the resolved URL is
 // itself short-lived and self-authorizing.
 func (r *repositoryReader) archiveHTTPClient() *http.Client {
-	r.archiveClientOnce.Do(func() {
-		r.archiveClient = sourcehttp.HardenSourceClient(r.baseHTTPClient, repositorySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
+	return r.archiveClient.get(func() *http.Client {
+		return sourcehttp.HardenSourceClient(r.baseHTTPClient, repositorySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
 	})
-	return r.archiveClient
 }
 
 // repositoryExtractArchiveEntries streams archive (a gzipped tar, GitHub's
@@ -707,7 +831,7 @@ func repositoryExtractArchiveEntries(ctx context.Context, archive []byte, wanted
 		}
 		entries++
 		if entries > maxEntries {
-			return nil, fmt.Errorf("archive exceeded the %d entry bound", maxEntries)
+			return nil, &ErrArchiveEntryBoundExceeded{Limit: maxEntries}
 		}
 
 		remaining := maxTotalBytes - totalBytes
@@ -738,7 +862,7 @@ func repositoryExtractArchiveEntries(ctx context.Context, archive []byte, wanted
 			}
 			totalBytes += int64(len(content))
 			if totalBytes > maxTotalBytes {
-				return nil, fmt.Errorf("archive exceeded the %d aggregate decompressed byte bound", maxTotalBytes)
+				return nil, &ErrArchiveAggregateBoundExceeded{Limit: maxTotalBytes}
 			}
 			found[rel] = content
 			if len(found) >= len(wanted) {
@@ -757,7 +881,7 @@ func repositoryExtractArchiveEntries(ctx context.Context, archive []byte, wanted
 		}
 		totalBytes += n
 		if totalBytes > maxTotalBytes {
-			return nil, fmt.Errorf("archive exceeded the %d aggregate decompressed byte bound", maxTotalBytes)
+			return nil, &ErrArchiveAggregateBoundExceeded{Limit: maxTotalBytes}
 		}
 	}
 	return found, nil
@@ -871,7 +995,7 @@ func verifyGitBlobSHA(content []byte, sha string) bool {
 // requirements validator: it is computed from each file's actual content
 // bytes, never by trusting the git blob SHA this adapter already verified
 // (SourceFile.Digest) as proof.
-func contentDigest(files []ci.SourceFile) string {
+func contentDigest(files []ci.SourceFile) (string, error) {
 	return ci.RepositoryDigest(files)
 }
 

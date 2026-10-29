@@ -422,9 +422,10 @@ func requirementsExtractGoFile(path string, content []byte) (ops []StaticOperati
 	}
 
 	fileSupported := true
+	digest := ci.DigestBytes(content)
 	ctx := &requirementsGoFileContext{
 		fset: fset, lines: requirementsFileLines(content), path: path,
-		digest: ci.Digest(content), aliasToImport: aliasToImport, localFuncs: localFuncs,
+		digest: digest, aliasToImport: aliasToImport, localFuncs: localFuncs,
 		ops: &ops, fileSupported: &fileSupported, gaps: &gaps,
 	}
 

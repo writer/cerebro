@@ -20,7 +20,11 @@ func collectionCohorts(workloads []Workload) map[string]Evidence {
 	digests := make(map[string]string, len(workloads))
 	conflicts := make(map[string]bool)
 	for _, workload := range workloads {
-		digest := collectionConsumerDigest(workload)
+		digest, err := collectionConsumerDigest(workload)
+		if err != nil {
+			conflicts[workload.ID] = true
+			continue
+		}
 		if previous, ok := digests[workload.ID]; ok && previous != digest {
 			conflicts[workload.ID] = true
 		}
@@ -54,9 +58,9 @@ func collectionCohorts(workloads []Workload) map[string]Evidence {
 	return cohorts
 }
 
-func collectionConsumerDigest(workload Workload) string {
+func collectionConsumerDigest(workload Workload) (string, error) {
 	workload.References = nil
-	return Digest(workload)
+	return digestJSON(workload)
 }
 
 func collectionDeclaration(principal Principal, declarations []Declaration, gaps []Gap) PolicyState {
@@ -67,11 +71,13 @@ func collectionDeclaration(principal Principal, declarations []Declaration, gaps
 		if collectionPrincipalKey(principal) != collectionPrincipalKey(declaration.Principal) {
 			continue
 		}
-		key := Digest(declaration)
-		if _, exists := seen[key]; exists {
-			continue
+		key, err := digestJSON(declaration)
+		if err == nil {
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
 		}
-		seen[key] = struct{}{}
 		found = true
 		policy.Complete = policy.Complete && declaration.Policy.Complete
 		policy.Grants = append(policy.Grants, declaration.Policy.Grants...)

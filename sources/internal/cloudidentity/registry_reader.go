@@ -46,6 +46,29 @@ const (
 // registry-inspection API.
 var ErrUnsupportedRegistryHost = errors.New("registry host is not a supported ECR or Artifact Registry/GCR host")
 
+// ErrGoogleCredentialsNotConfigured is returned when an Artifact
+// Registry/GCR image read requires a Google OAuth2 token source and none
+// was configured on the reader. This is a required-credential-
+// configuration failure, distinct from an unsupported registry host.
+var ErrGoogleCredentialsNotConfigured = errors.New("no google token source is configured")
+
+// ErrDigestMismatch indicates a manifest or image reference's content
+// hashed to a different digest than was declared, pinned, or requested --
+// corrupted transport, a cache-poisoned mirror, or a compromised registry.
+// Subject identifies the specific declared-vs-computed relationship
+// (requested pin, response header, or digest-addressed reference) for
+// diagnostics; callers that only care about the integrity category should
+// use errors.As and ignore it.
+type ErrDigestMismatch struct {
+	Subject  string
+	Expected string
+	Actual   string
+}
+
+func (e *ErrDigestMismatch) Error() string {
+	return fmt.Sprintf("cloudidentitysource: %s: digest mismatch: expected %s, got %s", e.Subject, e.Expected, e.Actual)
+}
+
 // RegistryOptions configures NewRegistryReader.
 type RegistryOptions struct {
 	// AWSConfig authenticates ECR control-plane calls (GetAuthorizationToken,
@@ -107,14 +130,59 @@ type registryReader struct {
 	maxManifestBytes  int
 	maxConfigBytes    int
 
-	ecrClientsMu sync.Mutex
-	ecrClients   map[string]*ecr.Client
-
-	ecrTokensMu sync.Mutex
-	ecrTokens   map[string]ecrToken
+	ecrClients *registryECRClientCache
+	ecrTokens  *registryTokenCache
 
 	stsClientOnce  sync.Once
 	stsClientValue *sts.Client
+}
+
+// registryECRClientCache memoizes per-account/region ECR control-plane
+// clients, built once per reader instance. getOrBuild runs the whole
+// get-or-build sequence under one lock so concurrent callers for the same
+// account/region never race to build (and discard) duplicate clients.
+type registryECRClientCache struct {
+	mu      sync.Mutex
+	clients map[string]*ecr.Client
+}
+
+func newRegistryECRClientCache() *registryECRClientCache {
+	return &registryECRClientCache{clients: make(map[string]*ecr.Client)}
+}
+
+func (c *registryECRClientCache) getOrBuild(key string, build func() *ecr.Client) *ecr.Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if client, ok := c.clients[key]; ok {
+		return client
+	}
+	client := build()
+	c.clients[key] = client
+	return client
+}
+
+// registryTokenCache memoizes ECR basic-auth tokens per account/region,
+// refreshed ecrTokenRefreshSkew before expiry.
+type registryTokenCache struct {
+	mu     sync.Mutex
+	tokens map[string]ecrToken
+}
+
+func newRegistryTokenCache() *registryTokenCache {
+	return &registryTokenCache{tokens: make(map[string]ecrToken)}
+}
+
+func (c *registryTokenCache) get(key string) (ecrToken, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.tokens[key]
+	return cached, ok
+}
+
+func (c *registryTokenCache) store(key string, token ecrToken) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tokens[key] = token
 }
 
 // NewRegistryReader builds an ECR/GAR-backed ci.RegistryReader that performs
@@ -155,8 +223,8 @@ func NewRegistryReader(options RegistryOptions) (ci.RegistryReader, error) {
 		registryBaseURL:   registryBaseURL,
 		maxManifestBytes:  maxManifestBytes,
 		maxConfigBytes:    maxConfigBytes,
-		ecrClients:        make(map[string]*ecr.Client),
-		ecrTokens:         make(map[string]ecrToken),
+		ecrClients:        newRegistryECRClientCache(),
+		ecrTokens:         newRegistryTokenCache(),
 	}, nil
 }
 
@@ -191,7 +259,7 @@ func (r *registryReader) ReadImage(ctx context.Context, image string) (ci.ImageP
 	}
 
 	if parsed.digest != "" && !strings.EqualFold(manifestDigest, parsed.digest) {
-		return ci.ImageProvenance{}, fmt.Errorf("cloudidentitysource: image %q: manifest digest %s does not match pinned digest %s", image, manifestDigest, parsed.digest)
+		return ci.ImageProvenance{}, &ErrDigestMismatch{Subject: fmt.Sprintf("image %q pinned digest", image), Expected: parsed.digest, Actual: manifestDigest}
 	}
 
 	provenance := ci.ImageProvenance{Image: image, Digest: manifestDigest, DeploymentPinned: parsed.digest != ""}
@@ -465,7 +533,7 @@ func (r *registryReader) authorizationHeader(ctx context.Context, provider ci.Pr
 		return "Basic " + token, nil
 	case ci.GCP:
 		if r.googleTokenSource == nil {
-			return "", fmt.Errorf("cloudidentitysource: no google token source is configured to read %s", host)
+			return "", fmt.Errorf("cloudidentitysource: read %s: %w", host, ErrGoogleCredentialsNotConfigured)
 		}
 		token, err := r.googleTokenSource.Token()
 		if err != nil {
@@ -480,12 +548,9 @@ func (r *registryReader) authorizationHeader(ctx context.Context, provider ci.Pr
 
 func (r *registryReader) ecrAuthToken(ctx context.Context, accountID, region string) (string, error) {
 	cacheKey := accountID + "/" + region
-	r.ecrTokensMu.Lock()
-	if cached, ok := r.ecrTokens[cacheKey]; ok && time.Until(cached.expiresAt) > ecrTokenRefreshSkew {
-		r.ecrTokensMu.Unlock()
+	if cached, ok := r.ecrTokens.get(cacheKey); ok && time.Until(cached.expiresAt) > ecrTokenRefreshSkew {
 		return cached.basic, nil
 	}
-	r.ecrTokensMu.Unlock()
 
 	client := r.ecrClient(accountID, region)
 	output, err := client.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
@@ -505,9 +570,7 @@ func (r *registryReader) ecrAuthToken(ctx context.Context, accountID, region str
 		expiresAt = *data.ExpiresAt
 	}
 
-	r.ecrTokensMu.Lock()
-	r.ecrTokens[cacheKey] = ecrToken{basic: token, expiresAt: expiresAt}
-	r.ecrTokensMu.Unlock()
+	r.ecrTokens.store(cacheKey, ecrToken{basic: token, expiresAt: expiresAt})
 	return token, nil
 }
 
@@ -521,26 +584,21 @@ func (r *registryReader) ecrAuthToken(ctx context.Context, accountID, region str
 // single-account behavior.
 func (r *registryReader) ecrClient(accountID, region string) *ecr.Client {
 	cacheKey := accountID + "/" + region
-	r.ecrClientsMu.Lock()
-	defer r.ecrClientsMu.Unlock()
-	if client, ok := r.ecrClients[cacheKey]; ok {
-		return client
-	}
-	cfg := r.awsConfig
-	if r.awsRoleName != "" && accountID != "" {
-		roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, r.awsRoleName)
-		provider := stscreds.NewAssumeRoleProvider(r.stsClient(), roleARN)
-		cfg.Credentials = aws.NewCredentialsCache(provider)
-	}
-	endpoint := r.ecrBaseEndpoint
-	client := ecr.NewFromConfig(cfg, func(o *ecr.Options) {
-		o.Region = region
-		if endpoint != "" {
-			o.BaseEndpoint = &endpoint
+	return r.ecrClients.getOrBuild(cacheKey, func() *ecr.Client {
+		cfg := r.awsConfig
+		if r.awsRoleName != "" && accountID != "" {
+			roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, r.awsRoleName)
+			provider := stscreds.NewAssumeRoleProvider(r.stsClient(), roleARN)
+			cfg.Credentials = aws.NewCredentialsCache(provider)
 		}
+		endpoint := r.ecrBaseEndpoint
+		return ecr.NewFromConfig(cfg, func(o *ecr.Options) {
+			o.Region = region
+			if endpoint != "" {
+				o.BaseEndpoint = &endpoint
+			}
+		})
 	})
-	r.ecrClients[cacheKey] = client
-	return client
 }
 
 // stsClient lazily builds the single STS client used to assume each target
@@ -572,7 +630,7 @@ func (r *registryReader) fetchManifest(ctx context.Context, base, host, reposito
 	computed := computeDigest(resp.Body)
 	reported := strings.TrimSpace(resp.Header.Get("Docker-Content-Digest"))
 	if reported != "" && !strings.EqualFold(reported, computed) {
-		return nil, "", "", fmt.Errorf("manifest for %s/%s:%s digest header %s does not match fetched content digest %s", host, repository, reference, reported, computed)
+		return nil, "", "", &ErrDigestMismatch{Subject: fmt.Sprintf("manifest %s/%s:%s content digest header", host, repository, reference), Expected: reported, Actual: computed}
 	}
 	// Whenever the requested reference is itself a digest (a caller-pinned
 	// digest, or a child manifest fetched by its index-declared digest),
@@ -580,7 +638,7 @@ func (r *registryReader) fetchManifest(ctx context.Context, base, host, reposito
 	// serves different bytes for a digest-addressed reference is corrupt or
 	// compromised and must never be silently trusted.
 	if imageDigestPattern.MatchString(reference) && !strings.EqualFold(reference, computed) {
-		return nil, "", "", fmt.Errorf("manifest for %s/%s@%s: fetched content digest %s does not match the requested digest", host, repository, reference, computed)
+		return nil, "", "", &ErrDigestMismatch{Subject: fmt.Sprintf("manifest %s/%s@%s requested digest", host, repository, reference), Expected: reference, Actual: computed}
 	}
 	return resp.Body, computed, resp.Header.Get("Content-Type"), nil
 }

@@ -92,19 +92,131 @@ type awsReader struct {
 	budget   *awsRequestBudget
 	maxPages int
 
-	assumeMu sync.Mutex
-	assumed  map[string]awsAssumedConfig
+	assume     *awsAssumeCache
+	serviceRef *awsServiceReferenceCache
+	policies   *awsPolicyCache
+	roles      *awsRoleCache
+}
 
-	sarMu       sync.Mutex
-	sarIndex    map[string]string // service -> service JSON url
-	sarIndexErr error
-	sarFetched  map[string]awsCachedDefinitions // service -> definitions
+// awsAssumeCache memoizes one member account's assumed-role aws.Config for
+// the lifetime of a reader (one collection run).
+type awsAssumeCache struct {
+	mu      sync.Mutex
+	assumed map[string]awsAssumedConfig
+}
 
-	policyMu    sync.Mutex
-	policyCache map[string]ci.ManagedPolicy // arn -> expanded policy (default version)
+func newAWSAssumeCache() *awsAssumeCache {
+	return &awsAssumeCache{assumed: make(map[string]awsAssumedConfig)}
+}
 
-	roleMu    sync.Mutex
-	roleCache map[string]awsRoleObservation // role ARN -> cached live observation, this run only
+func (c *awsAssumeCache) get(account string) (awsAssumedConfig, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.assumed[account]
+	return cached, ok
+}
+
+func (c *awsAssumeCache) store(account string, cfg awsAssumedConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.assumed[account] = cfg
+}
+
+// awsServiceReferenceCache memoizes the AWS Service Reference service
+// index and per-service definitions fetched over HTTP, for the lifetime of
+// a reader instance.
+type awsServiceReferenceCache struct {
+	mu          sync.Mutex
+	index       map[string]string // service -> service JSON url
+	indexErr    error
+	definitions map[string]awsCachedDefinitions // service -> definitions
+}
+
+func newAWSServiceReferenceCache() *awsServiceReferenceCache {
+	return &awsServiceReferenceCache{definitions: make(map[string]awsCachedDefinitions)}
+}
+
+func (c *awsServiceReferenceCache) getIndex() (index map[string]string, indexErr error, known bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.index != nil || c.indexErr != nil {
+		return c.index, c.indexErr, true
+	}
+	return nil, nil, false
+}
+
+func (c *awsServiceReferenceCache) setIndexErr(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.indexErr = err
+}
+
+func (c *awsServiceReferenceCache) setIndex(index map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.index = index
+}
+
+func (c *awsServiceReferenceCache) getDefinitions(service string) (awsCachedDefinitions, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.definitions[service]
+	return cached, ok
+}
+
+func (c *awsServiceReferenceCache) storeDefinitions(service string, def awsCachedDefinitions) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.definitions[service] = def
+}
+
+// awsPolicyCache memoizes one managed policy's expanded (default version)
+// grants, keyed by ARN, for the lifetime of a reader instance.
+type awsPolicyCache struct {
+	mu    sync.Mutex
+	cache map[string]ci.ManagedPolicy
+}
+
+func newAWSPolicyCache() *awsPolicyCache {
+	return &awsPolicyCache{cache: make(map[string]ci.ManagedPolicy)}
+}
+
+func (c *awsPolicyCache) get(arn string) (ci.ManagedPolicy, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.cache[arn]
+	return cached, ok
+}
+
+func (c *awsPolicyCache) store(arn string, policy ci.ManagedPolicy) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[arn] = policy
+}
+
+// awsRoleCache memoizes one IAM role's fully-resolved live observation,
+// keyed by role ARN, for the lifetime of a reader instance (see
+// awsRoleObservation).
+type awsRoleCache struct {
+	mu    sync.Mutex
+	cache map[string]awsRoleObservation
+}
+
+func newAWSRoleCache() *awsRoleCache {
+	return &awsRoleCache{cache: make(map[string]awsRoleObservation)}
+}
+
+func (c *awsRoleCache) get(roleARN string) (awsRoleObservation, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.cache[roleARN]
+	return cached, ok
+}
+
+func (c *awsRoleCache) store(roleARN string, observation awsRoleObservation) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[roleARN] = observation
 }
 
 // awsRoleObservation caches one role's fully-resolved live policy state so a
@@ -165,14 +277,14 @@ func NewAWSReader(ctx context.Context, options AWSOptions) (ci.CloudReader, erro
 		clock = time.Now
 	}
 	return &awsReader{
-		options:     options,
-		clock:       clock,
-		budget:      &awsRequestBudget{max: options.RequestBudget},
-		maxPages:    options.MaxPages,
-		assumed:     make(map[string]awsAssumedConfig),
-		sarFetched:  make(map[string]awsCachedDefinitions),
-		policyCache: make(map[string]ci.ManagedPolicy),
-		roleCache:   make(map[string]awsRoleObservation),
+		options:    options,
+		clock:      clock,
+		budget:     &awsRequestBudget{max: options.RequestBudget},
+		maxPages:   options.MaxPages,
+		assume:     newAWSAssumeCache(),
+		serviceRef: newAWSServiceReferenceCache(),
+		policies:   newAWSPolicyCache(),
+		roles:      newAWSRoleCache(),
 	}, nil
 }
 

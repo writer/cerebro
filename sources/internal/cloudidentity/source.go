@@ -180,7 +180,11 @@ func collectionCoverageGaps(collection ci.Collection) []ci.Gap {
 }
 
 func cloudIdentityEvent(tenant, kind, schema, identity string, payload []byte, attributes map[string]string, observedAt time.Time) (*primitives.Event, error) {
-	event := &cerebrov1.EventEnvelope{Id: sourcecdk.EventID(ci.SourceID, tenant, kind, identity, observedAt.UTC().Format(time.RFC3339Nano), ci.Digest(json.RawMessage(payload))), TenantId: tenant, SourceId: ci.SourceID, Kind: kind, SchemaRef: schema, Payload: payload, Attributes: attributes, OccurredAt: timestamppb.New(observedAt.UTC())}
+	payloadDigest, err := ci.DigestJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("cloudidentitysource: digest %s event payload: %w", kind, err)
+	}
+	event := &cerebrov1.EventEnvelope{Id: sourcecdk.EventID(ci.SourceID, tenant, kind, identity, observedAt.UTC().Format(time.RFC3339Nano), payloadDigest), TenantId: tenant, SourceId: ci.SourceID, Kind: kind, SchemaRef: schema, Payload: payload, Attributes: attributes, OccurredAt: timestamppb.New(observedAt.UTC())}
 	if err := sourcecdk.ValidateEventEnvelope(event); err != nil {
 		return nil, err
 	}

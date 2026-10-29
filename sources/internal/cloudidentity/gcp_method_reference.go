@@ -325,6 +325,8 @@ var gcpMethodReferenceTable = []gcpMethodReferenceEntry{
 func gcpMethodReferenceOperations() []ci.OperationDefinition {
 	operations := make([]ci.OperationDefinition, 0, len(gcpMethodReferenceTable))
 	for _, entry := range gcpMethodReferenceTable {
+		// Every field is a string, string slice, or bool; JSON encoding cannot fail.
+		digest, _ := digestStruct(entry)
 		operations = append(operations, ci.OperationDefinition{
 			Provider:               ci.GCP,
 			Service:                entry.Service,
@@ -337,7 +339,7 @@ func gcpMethodReferenceOperations() []ci.OperationDefinition {
 			References: []ci.Reference{{
 				API:    entry.DocURL,
 				Scope:  "static-reference",
-				Digest: ci.Digest(entry),
+				Digest: digest,
 			}},
 		})
 	}

@@ -141,25 +141,19 @@ func (r *awsReader) fetchServiceReferenceJSON(ctx context.Context, path string, 
 	if err := json.Unmarshal(body.Body, out); err != nil {
 		return "", fmt.Errorf("decode service reference %s: %w", path, err)
 	}
-	return ci.Digest(string(body.Body)), nil
+	return ci.DigestString(string(body.Body)), nil
 }
 
 // serviceReferenceIndex lazily fetches and caches the SAR root index for the
 // lifetime of this reader.
 func (r *awsReader) serviceReferenceIndex(ctx context.Context) (map[string]string, error) {
-	r.sarMu.Lock()
-	if r.sarIndex != nil || r.sarIndexErr != nil {
-		index, err := r.sarIndex, r.sarIndexErr
-		r.sarMu.Unlock()
+	if index, err, known := r.serviceRef.getIndex(); known {
 		return index, err
 	}
-	r.sarMu.Unlock()
 
 	var mapping []awsServiceReferenceMappingEntry
 	if _, err := r.fetchServiceReferenceJSON(ctx, awsServiceReferenceIndexPath, &mapping); err != nil {
-		r.sarMu.Lock()
-		r.sarIndexErr = err
-		r.sarMu.Unlock()
+		r.serviceRef.setIndexErr(err)
 		return nil, err
 	}
 	index := make(map[string]string, len(mapping))
@@ -168,21 +162,16 @@ func (r *awsReader) serviceReferenceIndex(ctx context.Context) (map[string]strin
 			index[entry.Service] = entry.URL
 		}
 	}
-	r.sarMu.Lock()
-	r.sarIndex = index
-	r.sarMu.Unlock()
+	r.serviceRef.setIndex(index)
 	return index, nil
 }
 
 // serviceDefinitions fetches (or reuses this run's cached) action/operation
 // definitions for one AWS IAM service prefix (e.g. "s3", "eks").
 func (r *awsReader) serviceDefinitions(ctx context.Context, service string, now time.Time) ([]ci.ActionDefinition, []ci.OperationDefinition, []ci.Gap, error) {
-	r.sarMu.Lock()
-	if cached, ok := r.sarFetched[service]; ok {
-		r.sarMu.Unlock()
+	if cached, ok := r.serviceRef.getDefinitions(service); ok {
 		return cached.actions, cached.operations, cached.gaps, cached.err
 	}
-	r.sarMu.Unlock()
 
 	index, err := r.serviceReferenceIndex(ctx)
 	if err != nil {
@@ -329,7 +318,5 @@ func (r *awsReader) serviceDefinitions(ctx context.Context, service string, now 
 }
 
 func (r *awsReader) storeServiceDefinitions(service string, actions []ci.ActionDefinition, operations []ci.OperationDefinition, gaps []ci.Gap, reference ci.Reference, err error) {
-	r.sarMu.Lock()
-	defer r.sarMu.Unlock()
-	r.sarFetched[service] = awsCachedDefinitions{actions: actions, operations: operations, gaps: gaps, reference: reference, err: err}
+	r.serviceRef.storeDefinitions(service, awsCachedDefinitions{actions: actions, operations: operations, gaps: gaps, reference: reference, err: err})
 }

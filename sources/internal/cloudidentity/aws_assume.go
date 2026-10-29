@@ -43,12 +43,9 @@ func awsClampDurationSeconds(d time.Duration) int32 {
 // reader's lifetime only (bounded by AssumeRoleDuration), never written to
 // disk or logs.
 func (r *awsReader) assumedConfig(ctx context.Context, account string) (aws.Config, error) {
-	r.assumeMu.Lock()
-	if cached, ok := r.assumed[account]; ok && r.clock().Before(cached.expiresAt) {
-		r.assumeMu.Unlock()
+	if cached, ok := r.assume.get(account); ok && r.clock().Before(cached.expiresAt) {
 		return cached.config, nil
 	}
-	r.assumeMu.Unlock()
 
 	if err := r.budget.take(); err != nil {
 		return aws.Config{}, err
@@ -91,9 +88,7 @@ func (r *awsReader) assumedConfig(ctx context.Context, account string) (aws.Conf
 			}, nil
 		})),
 	}
-	r.assumeMu.Lock()
-	r.assumed[account] = awsAssumedConfig{config: assumed, expiresAt: expiresAt}
-	r.assumeMu.Unlock()
+	r.assume.store(account, awsAssumedConfig{config: assumed, expiresAt: expiresAt})
 	return assumed, nil
 }
 

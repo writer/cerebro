@@ -13,13 +13,22 @@ import (
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
-// cloudIdentityProjectionClock is the trusted evaluation clock the
-// projection uses to judge evidence freshness for both the excess and
-// sharing assessments. It is never derived from EventEnvelope.OccurredAt
-// (an attacker/source-controlled field, and replayed evidence is expected to
-// carry an old OccurredAt): production always uses time.Now, and tests in
-// this package override the var directly to pin a deterministic "now".
-var cloudIdentityProjectionClock = func() time.Time { return time.Now().UTC() }
+// cloudIdentityProjector holds cloudIdentityPrincipalEvidenceProjections'
+// trusted evaluation clock as an explicit dependency instead of a
+// package-level mutable hook. Clock judges evidence freshness for both the
+// excess and sharing assessments and is never derived from
+// EventEnvelope.OccurredAt (an attacker/source-controlled field, and
+// replayed evidence is expected to carry an old OccurredAt): production
+// always uses cloudIdentityDefaultProjector (time.Now), and tests construct
+// their own cloudIdentityProjector with a fixed Clock to pin a
+// deterministic "now".
+type cloudIdentityProjector struct {
+	Clock func() time.Time
+}
+
+// cloudIdentityDefaultProjector is the production dependency set registered
+// in builtinRegistry; its Clock is never reassigned.
+var cloudIdentityDefaultProjector = &cloudIdentityProjector{Clock: func() time.Time { return time.Now().UTC() }}
 
 // cloudIdentityPrincipalEntityType and cloudIdentityPrincipalURNKind must stay
 // byte-identical to the literals used by internal/findings' cloud_identity
@@ -51,6 +60,10 @@ const (
 // Incomplete evidence stay inspectable on the graph without ever being
 // represented as a passing control.
 func cloudIdentityPrincipalEvidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudIdentityDefaultProjector.evidenceProjections(event)
+}
+
+func (p *cloudIdentityProjector) evidenceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
@@ -68,7 +81,7 @@ func cloudIdentityPrincipalEvidenceProjections(event *cerebrov1.EventEnvelope) (
 	links := map[string]*ports.ProjectedLink{}
 	sourceID := event.GetSourceId()
 	eventID := event.GetId()
-	now := cloudIdentityProjectionNow()
+	now := p.Clock()
 	assessment := cloudidentity.Assess(evidence, now, cloudIdentityProjectionMaxAge)
 	sharing := cloudidentity.AssessSharing(evidence)
 	if !cloudIdentityEvidenceIsFresh(evidence, now) {
@@ -294,16 +307,6 @@ func cloudIdentityDecodeEvidence(event *cerebrov1.EventEnvelope) (cloudidentity.
 		return cloudidentity.Evidence{}, false
 	}
 	return evidence, true
-}
-
-// cloudIdentityProjectionNow returns the trusted evaluation clock used to
-// judge evidence freshness. It intentionally ignores the event entirely
-// (never EventEnvelope.OccurredAt) so replayed or source-controlled
-// timestamps cannot make stale evidence look current; it defers to
-// cloudIdentityProjectionClock, which defaults to time.Now and is overridden
-// only by tests in this package.
-func cloudIdentityProjectionNow() time.Time {
-	return cloudIdentityProjectionClock()
 }
 
 // cloudIdentityEvidenceIsFresh mirrors the freshness boundary

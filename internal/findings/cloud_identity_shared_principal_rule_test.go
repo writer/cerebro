@@ -40,7 +40,10 @@ func TestCloudIdentitySharedPrincipalRuleSupportedForDistinctServices(t *testing
 	if !containsTrimmed(finding.ResourceURNs, wantPrincipalURN) {
 		t.Fatalf("ResourceURNs = %#v, want principal URN %q", finding.ResourceURNs, wantPrincipalURN)
 	}
-	wantAssessmentDigest := cloudidentity.Digest(sharing)
+	wantAssessmentDigest, err := cloudIdentityDigest(sharing)
+	if err != nil {
+		t.Fatalf("cloudIdentityDigest(sharing) error = %v", err)
+	}
 	if got := finding.Attributes["cloud_identity_assessment_digest"]; got != wantAssessmentDigest {
 		t.Fatalf("Attributes[cloud_identity_assessment_digest] = %q, want %q (actual machine sharing output digest, not an ID string)", got, wantAssessmentDigest)
 	}

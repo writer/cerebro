@@ -795,7 +795,10 @@ func TestValidateSharedSourceIsDeterministic(t *testing.T) {
 	if a.Validation.SourceDigest != c.Validation.SourceDigest {
 		t.Fatalf("the same pinned source shared by two consumers must fingerprint identically")
 	}
-	want := ci.RepositoryDigest(repo.Files)
+	want, err := ci.RepositoryDigest(repo.Files)
+	if err != nil {
+		t.Fatalf("RepositoryDigest() error = %v", err)
+	}
 	if a.Validation.SourceDigest != want {
 		t.Fatalf("SourceDigest must be the independently recomputed repository digest, got %q want %q", a.Validation.SourceDigest, want)
 	}
@@ -804,7 +807,10 @@ func TestValidateSharedSourceIsDeterministic(t *testing.T) {
 func TestValidateSourceDigestMismatchBlocksScopeComplete(t *testing.T) {
 	repo := ci.Repository{Pin: ci.SourcePin{Repository: "writer/app", Revision: testSHA, Digest: "sha256:claimed-but-wrong"}, Files: []ci.SourceFile{goSourceFile("main.go", awsGetObjectSource)}}
 	inv := Validate(ValidateInput{Workload: ci.Workload{ID: "consumer-1"}, Repository: repo, Definitions: s3Definitions()})
-	want := ci.RepositoryDigest(repo.Files)
+	want, err := ci.RepositoryDigest(repo.Files)
+	if err != nil {
+		t.Fatalf("RepositoryDigest() error = %v", err)
+	}
 	if inv.Validation.SourceDigest != want {
 		t.Fatalf("a mismatched claimed digest must never be passed through as proof; want the independently computed digest %q, got %q", want, inv.Validation.SourceDigest)
 	}

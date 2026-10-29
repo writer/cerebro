@@ -678,8 +678,9 @@ func TestReadRepositoryBlobIntegrityMismatch(t *testing.T) {
 		t.Fatalf("NewRepositoryReader() error = %v", err)
 	}
 	_, err = reader.ReadRepository(context.Background(), ci.SourcePin{Repository: "acme/widgets", Revision: "main"})
-	if err == nil || !strings.Contains(err.Error(), "integrity verification") {
-		t.Fatalf("ReadRepository() error = %v, want integrity verification failure", err)
+	var integrityErr *ErrBlobIntegrityMismatch
+	if !errors.As(err, &integrityErr) {
+		t.Fatalf("ReadRepository() error = %v, want *ErrBlobIntegrityMismatch", err)
 	}
 }
 
@@ -716,8 +717,9 @@ func TestReadRepositoryArchiveMissingExpectedFileErrors(t *testing.T) {
 		t.Fatalf("NewRepositoryReader() error = %v", err)
 	}
 	_, err = reader.ReadRepository(context.Background(), ci.SourcePin{Repository: "acme/widgets", Revision: "main"})
-	if err == nil || !strings.Contains(err.Error(), "did not contain expected file") {
-		t.Fatalf("ReadRepository() error = %v, want an archive/tree mismatch failure", err)
+	var missingErr *ErrArchiveMissingExpectedFile
+	if !errors.As(err, &missingErr) {
+		t.Fatalf("ReadRepository() error = %v, want *ErrArchiveMissingExpectedFile", err)
 	}
 }
 
@@ -814,11 +816,9 @@ func TestRepositoryExtractArchiveEntriesBoundsUnwantedEntryBytes(t *testing.T) {
 
 	wanted := map[string]bool{"keep.txt": true}
 	_, err := repositoryExtractArchiveEntries(context.Background(), buf.Bytes(), wanted, 1<<20, 1000, 4096)
-	if err == nil {
-		t.Fatalf("expected the unwanted 5 MiB entry to exceed the aggregate decompressed byte bound")
-	}
-	if !strings.Contains(err.Error(), "aggregate decompressed byte bound") {
-		t.Fatalf("expected an aggregate decompressed byte bound error, got %v", err)
+	var aggregateErr *ErrArchiveAggregateBoundExceeded
+	if !errors.As(err, &aggregateErr) {
+		t.Fatalf("expected the unwanted 5 MiB entry to exceed the aggregate decompressed byte bound, got %v", err)
 	}
 }
 
@@ -851,11 +851,9 @@ func TestRepositoryExtractArchiveEntriesCountsEveryHeader(t *testing.T) {
 	wanted := map[string]bool{"keep.txt": true}
 	const maxEntries = 100
 	_, err := repositoryExtractArchiveEntries(context.Background(), buf.Bytes(), wanted, 1<<20, maxEntries, 1<<30)
-	if err == nil {
-		t.Fatalf("expected %d directory headers plus 1 file (%d total) to exceed the %d entry bound", unwantedCount, unwantedCount+1, maxEntries)
-	}
-	if !strings.Contains(err.Error(), "entry bound") {
-		t.Fatalf("expected an entry-bound error, got %v", err)
+	var entryErr *ErrArchiveEntryBoundExceeded
+	if !errors.As(err, &entryErr) {
+		t.Fatalf("expected %d directory headers plus 1 file (%d total) to exceed the %d entry bound, got %v", unwantedCount, unwantedCount+1, maxEntries, err)
 	}
 }
 

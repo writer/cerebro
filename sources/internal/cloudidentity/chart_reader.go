@@ -361,7 +361,7 @@ func chartExtractTarGz(ctx context.Context, data []byte, maxFiles int, maxEntryB
 		}
 		count++
 		if count > maxFiles {
-			return nil, fmt.Errorf("archive exceeded the %d entry bound", maxFiles)
+			return nil, &ErrArchiveEntryBoundExceeded{Limit: maxFiles}
 		}
 
 		remaining := maxTotalBytes - totalBytes
@@ -384,7 +384,7 @@ func chartExtractTarGz(ctx context.Context, data []byte, maxFiles int, maxEntryB
 			}
 			totalBytes += n
 			if totalBytes > maxTotalBytes {
-				return nil, fmt.Errorf("archive exceeded the %d aggregate decompressed byte bound", maxTotalBytes)
+				return nil, &ErrArchiveAggregateBoundExceeded{Limit: maxTotalBytes}
 			}
 			continue
 		}
@@ -409,7 +409,7 @@ func chartExtractTarGz(ctx context.Context, data []byte, maxFiles int, maxEntryB
 		}
 		totalBytes += int64(len(content))
 		if totalBytes > maxTotalBytes {
-			return nil, fmt.Errorf("archive exceeded the %d aggregate decompressed byte bound", maxTotalBytes)
+			return nil, &ErrArchiveAggregateBoundExceeded{Limit: maxTotalBytes}
 		}
 		files = append(files, ci.SourceFile{Path: rel, Content: content, Digest: manifestBytesDigest(content)})
 	}

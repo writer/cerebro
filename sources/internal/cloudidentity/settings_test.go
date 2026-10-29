@@ -1,7 +1,7 @@
 package cloudidentitysource
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	ci "github.com/writer/cerebro/internal/cloudidentity"
@@ -31,8 +31,9 @@ func TestValidateScanPlanRejectsAmbiguousClusterNames(t *testing.T) {
 	west := plan.Targets[0]
 	west.Name, west.Account, west.Region = "aws-west", "222222222222", "us-west-2"
 	plan.Targets = append(plan.Targets, west)
-	if err := validateScanPlan(plan); err == nil || !strings.Contains(err.Error(), "ambiguous") {
-		t.Fatalf("duplicate cluster name across accounts/regions: got %v, want ambiguity rejection", err)
+	var ambiguousErr *ErrAmbiguousClusterName
+	if err := validateScanPlan(plan); !errors.As(err, &ambiguousErr) {
+		t.Fatalf("duplicate cluster name across accounts/regions: got %v, want *ErrAmbiguousClusterName", err)
 	}
 }
 

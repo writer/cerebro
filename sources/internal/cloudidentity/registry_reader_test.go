@@ -391,8 +391,9 @@ func TestReadImageDigestMismatchHardError(t *testing.T) {
 		t.Fatalf("NewRegistryReader() error = %v", err)
 	}
 	_, err = reader.ReadImage(context.Background(), ecrImageHost+"/acme/widgets@"+wrongDigest)
-	if err == nil || !strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("ReadImage() error = %v, want a digest mismatch error", err)
+	var mismatchErr *ErrDigestMismatch
+	if !errors.As(err, &mismatchErr) {
+		t.Fatalf("ReadImage() error = %v, want *ErrDigestMismatch", err)
 	}
 }
 
@@ -784,8 +785,8 @@ func TestReadImageGARWithoutTokenSourceErrors(t *testing.T) {
 		t.Fatalf("NewRegistryReader() error = %v", err)
 	}
 	_, err = reader.ReadImage(context.Background(), garImageHost+"/acme/widgets:v1")
-	if err == nil || !strings.Contains(err.Error(), "no google token source") {
-		t.Fatalf("ReadImage() error = %v, want a missing google token source error", err)
+	if !errors.Is(err, ErrGoogleCredentialsNotConfigured) {
+		t.Fatalf("ReadImage() error = %v, want ErrGoogleCredentialsNotConfigured", err)
 	}
 }
 

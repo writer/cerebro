@@ -143,6 +143,19 @@ func decodeScanJSON(raw string, target any) error {
 	return nil
 }
 
+// ErrAmbiguousClusterName indicates two scan-plan targets name the same
+// cluster. Workload IDs, Kubernetes service-account subjects, and resolved
+// cluster identifiers are all keyed by cluster name, so an ambiguous
+// cluster name risks mis-linking identities across distinct
+// accounts/regions rather than being a merely cosmetic duplicate.
+type ErrAmbiguousClusterName struct {
+	Cluster string
+}
+
+func (e *ErrAmbiguousClusterName) Error() string {
+	return fmt.Sprintf("cloud_identity target clusters must be unique; cluster %q is ambiguous across targets", e.Cluster)
+}
+
 func validateScanPlan(plan ci.ScanPlan) error {
 	if plan.Scope == "" || len(plan.Targets) == 0 || len(plan.Targets) > 256 {
 		return fmt.Errorf("cloud_identity scan_plan requires scope and 1-256 targets")
@@ -158,7 +171,7 @@ func validateScanPlan(plan ci.ScanPlan) error {
 		// cluster identifiers (OIDC issuer/provider) are keyed by cluster
 		// name; two targets sharing one would mis-link identities.
 		if clusters[target.Cluster] {
-			return fmt.Errorf("cloud_identity target clusters must be unique; cluster %q is ambiguous across targets", target.Cluster)
+			return &ErrAmbiguousClusterName{Cluster: target.Cluster}
 		}
 		clusters[target.Cluster] = true
 		if (target.Provider != ci.AWS && target.Provider != ci.GCP) || (target.Provider == ci.AWS && target.Account == "") || (target.Provider == ci.GCP && target.Project == "") {

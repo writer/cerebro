@@ -108,7 +108,7 @@ func awsApplyCuratedOperationProfile(def ci.OperationDefinition, now time.Time) 
 	} else {
 		def.DependenciesComplete = true
 	}
-	digest := ci.Digest(fmt.Sprintf("%s|%s", strings.Join(profile.addPermissions, ","), strings.Join(profile.addConditionalPermissions, ",")))
+	digest := ci.DigestString(fmt.Sprintf("%s|%s", strings.Join(profile.addPermissions, ","), strings.Join(profile.addConditionalPermissions, ",")))
 	def.References = append(def.References, awsReference(profile.sourceURL, opScope, now, digest))
 	return def, gaps
 }

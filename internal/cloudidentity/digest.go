@@ -4,26 +4,49 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 )
 
-// Digest returns a deterministic "sha256:<hex>" digest of a JSON-safe typed
-// value. encoding/json marshals struct fields in declaration order and map
-// keys in sorted order, so two semantically equal values always produce the
-// same payload and therefore the same digest; this is why Digest only
-// accepts JSON-safe typed models (per contract), never a raw map built from
-// unordered iteration over something that isn't itself deterministic.
-//
-// Non-JSON values are programming errors, never content evidence. Reject them
-// rather than returning a fabricated digest shared by unrelated invalid inputs.
-func Digest(value any) string {
+// digestJSON hashes encoding/json's representation of a value. Map keys are
+// sorted; struct field order and raw JSON member order are preserved.
+// Encoding failures are errors, never fabricated content digests.
+func digestJSON(value any) (string, error) {
 	payload, err := json.Marshal(value)
 	if err != nil {
-		panic(fmt.Sprintf("cloudidentity: digest non-JSON value: %v", err))
+		return "", fmt.Errorf("cloudidentity: digest non-JSON value: %w", err)
 	}
+	return digestPayload(payload), nil
+}
+
+// DigestJSON hashes already-serialized JSON without copying or re-encoding it.
+// Callers use json.Marshal on typed values before crossing this boundary to
+// preserve the historical JSON encoding used for content identities.
+func DigestJSON(payload json.RawMessage) (string, error) {
+	if !json.Valid(payload) {
+		return "", errors.New("cloudidentity: digest invalid JSON payload")
+	}
+	return digestPayload(payload), nil
+}
+
+func digestPayload(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// DigestBytes preserves the historical base64-JSON encoding of byte content.
+// Encoding a byte slice cannot fail.
+func DigestBytes(content []byte) string {
+	digest, _ := digestJSON(content)
+	return digest
+}
+
+// DigestString preserves the historical quoted-JSON encoding of strings.
+// Encoding a string cannot fail.
+func DigestString(s string) string {
+	digest, _ := digestJSON(s)
+	return digest
 }
 
 // repositoryFileDigest is the canonical per-file entry RepositoryDigest
@@ -34,18 +57,13 @@ type repositoryFileDigest struct {
 	Digest string `json:"digest"`
 }
 
-// RepositoryDigest returns the canonical whole-repository content digest
-// for a pinned, bounded file set: Digest over the sorted (path, digest)
-// pairs, where each file's digest is Digest(file.Content) — computed from
-// its actual bytes every time, never trusting a SourceFile.Digest value
-// (e.g. a repository adapter's git blob SHA) as-is. Two callers that read
-// the identical file set always produce the identical RepositoryDigest,
-// and a corrupted/mismatched SourceFile.Digest can never hide inside it.
-func RepositoryDigest(files []SourceFile) string {
+// RepositoryDigest hashes sorted (path, content digest) pairs. Each digest is
+// computed from actual bytes, never from the caller-supplied SourceFile.Digest.
+func RepositoryDigest(files []SourceFile) (string, error) {
 	canonical := make([]repositoryFileDigest, len(files))
 	for i, file := range files {
-		canonical[i] = repositoryFileDigest{Path: file.Path, Digest: Digest(file.Content)}
+		canonical[i] = repositoryFileDigest{Path: file.Path, Digest: DigestBytes(file.Content)}
 	}
 	sort.Slice(canonical, func(i, j int) bool { return canonical[i].Path < canonical[j].Path })
-	return Digest(canonical)
+	return digestJSON(canonical)
 }

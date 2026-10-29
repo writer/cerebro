@@ -1,6 +1,9 @@
 package cloudidentity
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMergeDefinitionsDedupesIdenticalBodiesAndMergesReferences(t *testing.T) {
 	a := Definitions{
@@ -96,6 +99,26 @@ func TestMergeDefinitionsDigestDeterministic(t *testing.T) {
 	m2 := MergeDefinitions(b, a) // reversed input order
 	if m1.Digest != m2.Digest {
 		t.Errorf("Digest should be order-independent: %q != %q", m1.Digest, m2.Digest)
+	}
+}
+
+func TestMergeDefinitionsUnencodableEvidenceIsUnknownNotConflicting(t *testing.T) {
+	merged := MergeDefinitions(Definitions{
+		Actions: []ActionDefinition{{
+			Name:       "s3:GetObject",
+			References: []Reference{{ObservedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}},
+		}},
+		Complete:                  true,
+		AWSServiceCatalogComplete: true,
+	})
+	if merged.Complete || merged.AWSServiceCatalogComplete {
+		t.Fatal("unencodable evidence cannot establish a complete definition catalog")
+	}
+	if !hasGapCode(merged.Gaps, "cloudidentity.definition_digest_unavailable") {
+		t.Fatalf("expected an encoding gap, got %+v", merged.Gaps)
+	}
+	if hasGapCode(merged.Gaps, "cloudidentity.conflicting_definition") {
+		t.Fatal("an encoding failure is not evidence of conflicting definitions")
 	}
 }
 

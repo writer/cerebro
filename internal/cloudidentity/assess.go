@@ -99,7 +99,14 @@ func Assess(e Evidence, now time.Time, maxAge time.Duration) Assessment {
 		!hasGapCode(observedExcessGaps, gapUnknownGrantCondition) &&
 		!hasGapCode(observedExcessGaps, gapUnresolvedEffectiveResource)
 
-	drift := computeDrift(e.Declared, e.Observed)
+	drift, driftErr := computeDrift(e.Declared, e.Observed)
+	if driftErr != nil {
+		gaps = append(gaps, Gap{
+			Code:    "cloudidentity.drift_unavailable",
+			Scope:   e.Principal.ID,
+			Message: driftErr.Error(),
+		})
+	}
 
 	hasDeclaredExcess := len(declaredExcess) > 0
 	hasObservedExcess := len(observedExcess) > 0
@@ -117,7 +124,7 @@ func Assess(e Evidence, now time.Time, maxAge time.Duration) Assessment {
 		side = "live"
 	}
 
-	universalGatesOK := fresh && validated && e.ConsumerInventoryComplete && trustCoverageOK && coverageOK && definitionsOK
+	universalGatesOK := fresh && validated && e.ConsumerInventoryComplete && trustCoverageOK && coverageOK && definitionsOK && driftErr == nil
 
 	status := Incomplete
 	switch {

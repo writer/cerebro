@@ -74,6 +74,10 @@ func (r *gcpReader) Define(ctx context.Context, req ci.DefinitionRequest) (ci.De
 			gaps = append(gaps, ci.Gap{Code: "gcp_role_disabled", Scope: name, Message: "role stage is DISABLED; bindings to it grant no access, reporting zero permissions"})
 		}
 		permissions := gcpRoleEffectivePermissions(role)
+		roleDigest, digestErr := digestStruct(role)
+		if digestErr != nil {
+			gaps = append(gaps, ci.Gap{Code: "gcp_role_digest_unavailable", Scope: role.Name, Message: "role evidence could not be digested: " + digestErr.Error()})
+		}
 		roles = append(roles, ci.RoleDefinition{
 			Name:        role.Name,
 			Permissions: permissions,
@@ -81,7 +85,7 @@ func (r *gcpReader) Define(ctx context.Context, req ci.DefinitionRequest) (ci.De
 				API:        gcpGetRoleReference,
 				Scope:      role.Name,
 				ObservedAt: now,
-				Digest:     ci.Digest(role),
+				Digest:     roleDigest,
 			}},
 		})
 	}

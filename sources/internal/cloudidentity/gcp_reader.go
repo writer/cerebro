@@ -51,21 +51,62 @@ type gcpReader struct {
 	org    string
 	now    func() time.Time
 
-	// ancestryMu/ancestryCache memoize each GSA project's resolved Resource
-	// Manager ancestry plus the inherited impersonation Trust collected from
-	// it, keyed by project id, for the lifetime of this reader: many GSAs
-	// commonly share one project, and both the getAncestry call and the
-	// per-ancestor searchAllIamPolicies calls are otherwise redundant work.
-	ancestryMu    sync.Mutex
-	ancestryCache map[string]gcpAncestryTrust
+	ancestry *gcpAncestryCache
+	roles    *gcpRoleCache
+}
 
-	// roleMu/roleCache memoize each IAM role's live roles.get resolution,
-	// keyed by role resource name, for the lifetime of this reader: the
-	// same role (e.g. a broadly granted custom role) is commonly bound on
-	// many ancestor resources across many principals, and one roles.get
-	// result is authoritative for all of them this run.
-	roleMu    sync.Mutex
-	roleCache map[string]gcpRoleResolution
+// gcpAncestryCache memoizes each GSA project's resolved Resource Manager
+// ancestry plus the inherited impersonation Trust collected from it, keyed
+// by project id, for the lifetime of this reader: many GSAs commonly share
+// one project, and both the getAncestry call and the per-ancestor
+// searchAllIamPolicies calls are otherwise redundant work.
+type gcpAncestryCache struct {
+	mu    sync.Mutex
+	cache map[string]gcpAncestryTrust
+}
+
+func newGCPAncestryCache() *gcpAncestryCache {
+	return &gcpAncestryCache{cache: make(map[string]gcpAncestryTrust)}
+}
+
+func (c *gcpAncestryCache) get(projectID string) (gcpAncestryTrust, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.cache[projectID]
+	return cached, ok
+}
+
+func (c *gcpAncestryCache) store(projectID string, trust gcpAncestryTrust) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[projectID] = trust
+}
+
+// gcpRoleCache memoizes each IAM role's live roles.get resolution, keyed by
+// role resource name, for the lifetime of this reader: the same role (e.g.
+// a broadly granted custom role) is commonly bound on many ancestor
+// resources across many principals, and one roles.get result is
+// authoritative for all of them this run.
+type gcpRoleCache struct {
+	mu    sync.Mutex
+	cache map[string]gcpRoleResolution
+}
+
+func newGCPRoleCache() *gcpRoleCache {
+	return &gcpRoleCache{cache: make(map[string]gcpRoleResolution)}
+}
+
+func (c *gcpRoleCache) get(name string) (gcpRoleResolution, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cached, ok := c.cache[name]
+	return cached, ok
+}
+
+func (c *gcpRoleCache) store(name string, resolution gcpRoleResolution) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[name] = resolution
 }
 
 // NewGCPReader builds a ci.CloudReader backed by live GCP IAM, Cloud Asset,
@@ -88,7 +129,7 @@ func NewGCPReader(options GCPOptions) (ci.CloudReader, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &gcpReader{client: client, org: org, now: now, ancestryCache: map[string]gcpAncestryTrust{}, roleCache: map[string]gcpRoleResolution{}}, nil
+	return &gcpReader{client: client, org: org, now: now, ancestry: newGCPAncestryCache(), roles: newGCPRoleCache()}, nil
 }
 
 // gcpRoleResolution is one role's locally resolved IAM permissions (or
@@ -110,19 +151,14 @@ type gcpRoleResolution struct {
 // classify a binding to this role conservatively (unresolvable role =>
 // possibly capable) and record the lookup failure as an explicit gap.
 func (r *gcpReader) resolveRole(ctx context.Context, name string) gcpRoleResolution {
-	r.roleMu.Lock()
-	if cached, ok := r.roleCache[name]; ok {
-		r.roleMu.Unlock()
+	if cached, ok := r.roles.get(name); ok {
 		return cached
 	}
-	r.roleMu.Unlock()
 
 	role, gaps := r.client.getRole(ctx, name)
 	resolution := gcpRoleResolution{Role: role, Gaps: gaps, Known: len(gaps) == 0}
 
-	r.roleMu.Lock()
-	r.roleCache[name] = resolution
-	r.roleMu.Unlock()
+	r.roles.store(name, resolution)
 	return resolution
 }
 
@@ -203,7 +239,9 @@ func (r *gcpReader) observeServiceAccount(ctx context.Context, principal ci.Prin
 		gaps = append(gaps, gcpGapsToCore(email, policyGaps)...)
 		complete = false
 	} else {
-		trust = gcpTrustFromServiceAccountPolicy(fmt.Sprintf("//iam.googleapis.com/projects/%s/serviceAccounts/%s", emailProject, email), policy, now)
+		var trustGaps []ci.Gap
+		trust, trustGaps = gcpTrustFromServiceAccountPolicy(fmt.Sprintf("//iam.googleapis.com/projects/%s/serviceAccounts/%s", emailProject, email), policy, now)
+		gaps = append(gaps, trustGaps...)
 	}
 
 	// A service account's direct resource policy is not its complete trust
@@ -247,7 +285,12 @@ func (r *gcpReader) observeServiceAccount(ctx context.Context, principal ci.Prin
 	matcher := func(members []string) ([]string, string) {
 		return gcpMatchingMembers(members, candidates)
 	}
-	grants := gcpClassifyBindings(results, matcher, now, gcpSearchAllIAMPoliciesReference)
+	grants, classifyGaps := gcpClassifyBindings(results, matcher, now, gcpSearchAllIAMPoliciesReference)
+	gaps = append(gaps, classifyGaps...)
+	resultsDigest, resultsDigestErr := digestStruct(results)
+	if resultsDigestErr != nil {
+		gaps = append(gaps, ci.Gap{Code: "gcp_search_results_digest_unavailable", Scope: r.org, Message: "search results evidence could not be digested: " + resultsDigestErr.Error()})
+	}
 
 	return ci.Observation{
 		Policy: ci.PolicyState{
@@ -255,7 +298,7 @@ func (r *gcpReader) observeServiceAccount(ctx context.Context, principal ci.Prin
 			Trust:      trust,
 			Complete:   complete,
 			ObservedAt: now,
-			References: []ci.Reference{{API: gcpSearchAllIAMPoliciesReference, Scope: r.org, ObservedAt: now, Digest: ci.Digest(results)}},
+			References: []ci.Reference{{API: gcpSearchAllIAMPoliciesReference, Scope: r.org, ObservedAt: now, Digest: resultsDigest}},
 			Gaps:       gaps,
 		},
 		Definitions:         ci.Definitions{Complete: true},
@@ -331,12 +374,9 @@ type gcpAncestryTrust struct {
 // unresolved role lookup does not, since the binding is conservatively
 // retained rather than lost. Results are cached per project.
 func (r *gcpReader) effectiveAncestryTrust(ctx context.Context, projectID string, now time.Time) gcpAncestryTrust {
-	r.ancestryMu.Lock()
-	if cached, ok := r.ancestryCache[projectID]; ok {
-		r.ancestryMu.Unlock()
+	if cached, ok := r.ancestry.get(projectID); ok {
 		return cached
 	}
-	r.ancestryMu.Unlock()
 
 	complete := true
 	var gaps []ci.Gap
@@ -372,16 +412,18 @@ func (r *gcpReader) effectiveAncestryTrust(ctx context.Context, projectID string
 					if !gcpAncestorBindingCapable(resolution) {
 						continue
 					}
-					trust = append(trust, gcpGrantFromBinding(result, index, binding, binding.Members, now, gcpSearchAllIAMPoliciesReference))
+					grant, grantErr := gcpGrantFromBinding(result, index, binding, binding.Members, now, gcpSearchAllIAMPoliciesReference)
+					if grantErr != nil {
+						gaps = append(gaps, ci.Gap{Code: "gcp_grant_digest_unavailable", Scope: resource + "#" + binding.Role, Message: "trust evidence could not be digested: " + grantErr.Error()})
+					}
+					trust = append(trust, grant)
 				}
 			}
 		}
 	}
 
 	cached := gcpAncestryTrust{Ancestors: ancestors, Trust: trust, Complete: complete, Gaps: gaps}
-	r.ancestryMu.Lock()
-	r.ancestryCache[projectID] = cached
-	r.ancestryMu.Unlock()
+	r.ancestry.store(projectID, cached)
 	return cached
 }
 
@@ -511,7 +553,8 @@ func (r *gcpReader) observeKSAMembers(ctx context.Context, now time.Time, projec
 	matcher := func(members []string) ([]string, string) {
 		return gcpMatchingMembers(members, candidates)
 	}
-	grants := gcpClassifyBindings(results, matcher, now, gcpSearchAllIAMPoliciesReference)
+	grants, classifyGaps := gcpClassifyBindings(results, matcher, now, gcpSearchAllIAMPoliciesReference)
+	gaps = append(gaps, classifyGaps...)
 
 	// A binding member that references this pool but matched none of the
 	// built candidates could still be a documented form this reader simply
@@ -543,13 +586,17 @@ func (r *gcpReader) observeKSAMembers(ctx context.Context, now time.Time, projec
 			}
 		}
 	}
+	resultsDigest, resultsDigestErr := digestStruct(results)
+	if resultsDigestErr != nil {
+		gaps = append(gaps, ci.Gap{Code: "gcp_search_results_digest_unavailable", Scope: r.org, Message: "search results evidence could not be digested: " + resultsDigestErr.Error()})
+	}
 
 	return ci.Observation{
 		Policy: ci.PolicyState{
 			Grants:     grants,
 			Complete:   complete,
 			ObservedAt: now,
-			References: []ci.Reference{{API: gcpSearchAllIAMPoliciesReference, Scope: r.org, ObservedAt: now, Digest: ci.Digest(results)}},
+			References: []ci.Reference{{API: gcpSearchAllIAMPoliciesReference, Scope: r.org, ObservedAt: now, Digest: resultsDigest}},
 			Gaps:       gaps,
 		},
 		Definitions:         ci.Definitions{Complete: true},

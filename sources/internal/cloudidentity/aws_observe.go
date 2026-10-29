@@ -89,16 +89,11 @@ func (r *awsReader) incompleteObservation(scope, code, message string) ci.Observ
 // IAM role ARN: trust, permissions boundary, inline policies, and attached
 // managed-policy references plus their expanded definitions.
 func (r *awsReader) observeRoleByARNCached(roleARN string) (awsRoleObservation, bool) {
-	r.roleMu.Lock()
-	defer r.roleMu.Unlock()
-	cached, ok := r.roleCache[roleARN]
-	return cached, ok
+	return r.roles.get(roleARN)
 }
 
 func (r *awsReader) storeRoleObservation(roleARN string, observation awsRoleObservation) {
-	r.roleMu.Lock()
-	defer r.roleMu.Unlock()
-	r.roleCache[roleARN] = observation
+	r.roles.store(roleARN, observation)
 }
 
 func (r *awsReader) observeRole(ctx context.Context, roleARN string, now time.Time) (ci.PolicyState, ci.Definitions, []ci.Gap) {
@@ -210,7 +205,7 @@ func (r *awsReader) fetchRole(ctx context.Context, principal awsIAMPrincipal, no
 		Trust:      trustGrants,
 		Complete:   complete,
 		ObservedAt: now,
-		References: []ci.Reference{awsReference("iam:GetRole", scope, now, ci.Digest(scope))},
+		References: []ci.Reference{awsReference("iam:GetRole", scope, now, ci.DigestString(scope))},
 		Gaps:       gaps,
 	}
 	definitions := ci.Definitions{Policies: attachedPolicies, Complete: true}
@@ -297,7 +292,7 @@ func (r *awsReader) fetchUser(ctx context.Context, principal awsIAMPrincipal, no
 		Boundaries: boundaries,
 		Complete:   complete,
 		ObservedAt: now,
-		References: []ci.Reference{awsReference("iam:GetUser", scope, now, ci.Digest(scope))},
+		References: []ci.Reference{awsReference("iam:GetUser", scope, now, ci.DigestString(scope))},
 		Gaps:       gaps,
 	}
 	definitions := ci.Definitions{Policies: append(attachedPolicies, groupPolicies...), Complete: true}

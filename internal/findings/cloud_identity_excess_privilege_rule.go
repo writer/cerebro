@@ -163,11 +163,19 @@ func buildCloudIdentityExcessPrivilegeFinding(ctx context.Context, runtime *cere
 	}
 	severity := cloudIdentityExcessPrivilegeSeverity(assessment)
 	attrs := eventAttributes(event)
+	evidenceDigest, err := cloudIdentityDigest(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("digest cloud identity evidence for event %q: %w", event.GetId(), err)
+	}
+	assessmentDigest, err := cloudIdentityDigest(assessment)
+	if err != nil {
+		return nil, fmt.Errorf("digest cloud identity assessment for event %q: %w", event.GetId(), err)
+	}
 	attributes := map[string]string{
 		"cloud_identity_principal_scope_urn": principalScopeURN,
 		"primary_resource_urn":               principalScopeURN,
-		"cloud_identity_evidence_digest":     cloudidentity.Digest(evidence),
-		"cloud_identity_assessment_digest":   cloudidentity.Digest(assessment),
+		"cloud_identity_evidence_digest":     evidenceDigest,
+		"cloud_identity_assessment_digest":   assessmentDigest,
 		"principal_id":                       evidence.Principal.ID,
 		"cloud_provider":                     string(evidence.Principal.Provider),
 		"principal_kind":                     evidence.Principal.Kind,

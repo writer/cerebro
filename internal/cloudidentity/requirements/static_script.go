@@ -28,7 +28,7 @@ var requirementsPythonResourceUnsupported = []*regexp.Regexp{
 
 func requirementsExtractPythonFile(path string, content []byte) (ops []StaticOperation, gaps []ci.Gap) {
 	lines := requirementsFileLines(content)
-	digest := ci.Digest(content)
+	digest := ci.DigestBytes(content)
 	clientVars := map[string]string{} // var name -> boto3 service slug
 	for lineNo, line := range lines {
 		if m := requirementsPythonBotoAssign.FindStringSubmatch(line); m != nil {
@@ -76,7 +76,7 @@ var requirementsJSUnsupported = []*regexp.Regexp{
 
 func requirementsExtractJSFile(path string, content []byte) (ops []StaticOperation, gaps []ci.Gap) {
 	lines := requirementsFileLines(content)
-	digest := ci.Digest(content)
+	digest := ci.DigestBytes(content)
 	importedCommands := map[string]string{} // CommandName (without suffix) -> service slug
 	for _, line := range lines {
 		if m := requirementsJSImport.FindStringSubmatch(line); m != nil {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -178,11 +179,9 @@ func TestChartExtractTarGzEnforcesAggregateByteBound(t *testing.T) {
 	}
 	pkg := buildTarGz(files)
 	_, err := chartExtractTarGz(testContext(), pkg, 100, 2000, 10000)
-	if err == nil {
-		t.Fatalf("expected the aggregate decompressed byte bound to be enforced")
-	}
-	if !strings.Contains(err.Error(), "aggregate decompressed byte bound") {
-		t.Fatalf("expected an aggregate decompressed byte bound error, got %v", err)
+	var aggregateErr *ErrArchiveAggregateBoundExceeded
+	if !errors.As(err, &aggregateErr) {
+		t.Fatalf("expected the aggregate decompressed byte bound to be enforced, got %v", err)
 	}
 }
 
@@ -214,10 +213,8 @@ func TestChartExtractTarGzCountsDirectoryHeadersAgainstEntryBound(t *testing.T) 
 
 	const maxFiles = 100 // far fewer than dirCount+1 total headers
 	_, err := chartExtractTarGz(testContext(), buf.Bytes(), maxFiles, 1<<20, 1<<20)
-	if err == nil {
-		t.Fatalf("expected the %d directory headers plus 1 regular file (%d total) to exceed the %d entry bound", dirCount, dirCount+1, maxFiles)
-	}
-	if !strings.Contains(err.Error(), "entry bound") {
-		t.Fatalf("expected an entry-bound error, got %v", err)
+	var entryErr *ErrArchiveEntryBoundExceeded
+	if !errors.As(err, &entryErr) {
+		t.Fatalf("expected the %d directory headers plus 1 regular file (%d total) to exceed the %d entry bound, got %v", dirCount, dirCount+1, maxFiles, err)
 	}
 }

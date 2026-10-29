@@ -16,12 +16,9 @@ import (
 // caching the result for the lifetime of the reader so repeated attachments
 // (and the later Define call) do not refetch the same ARN.
 func (r *awsReader) resolveManagedPolicy(ctx context.Context, iamClient awsIAMReadAPI, arn string, now time.Time) (ci.ManagedPolicy, error) {
-	r.policyMu.Lock()
-	if cached, ok := r.policyCache[arn]; ok {
-		r.policyMu.Unlock()
+	if cached, ok := r.policies.get(arn); ok {
 		return cached, nil
 	}
-	r.policyMu.Unlock()
 
 	if err := r.budget.take(); err != nil {
 		return ci.ManagedPolicy{}, err
@@ -50,15 +47,13 @@ func (r *awsReader) resolveManagedPolicy(ctx context.Context, iamClient awsIAMRe
 	if err != nil {
 		return ci.ManagedPolicy{}, fmt.Errorf("decode policy document %s: %w", arn, err)
 	}
-	reference := awsReference("iam:GetPolicyVersion", arn, now, ci.Digest(string(document)))
+	reference := awsReference("iam:GetPolicyVersion", arn, now, ci.DigestString(string(document)))
 	grants, err := ci.ParseAWSPolicy(document, reference)
 	if err != nil {
 		return ci.ManagedPolicy{}, fmt.Errorf("parse policy document %s: %w", arn, err)
 	}
 	managed := ci.ManagedPolicy{ARN: arn, Grants: grants, References: []ci.Reference{reference}}
-	r.policyMu.Lock()
-	r.policyCache[arn] = managed
-	r.policyMu.Unlock()
+	r.policies.store(arn, managed)
 	return managed, nil
 }
 
@@ -96,7 +91,7 @@ func (r *awsReader) fetchAttachedPolicies(
 			if arn == "" {
 				continue
 			}
-			refs = append(refs, ci.Grant{Role: arn, References: []ci.Reference{awsReference("iam:ListAttachedPolicies", scope, now, ci.Digest(arn))}})
+			refs = append(refs, ci.Grant{Role: arn, References: []ci.Reference{awsReference("iam:ListAttachedPolicies", scope, now, ci.DigestString(arn))}})
 			managed, err := r.resolveManagedPolicy(ctx, iamClient, arn, now)
 			if err != nil {
 				gaps = append(gaps, awsGap("aws_managed_policy_unavailable", arn, "Managed policy default version could not be retrieved: "+err.Error()))
@@ -159,7 +154,7 @@ func (r *awsReader) fetchInlinePolicies(
 				complete = false
 				continue
 			}
-			reference := awsReference("iam:GetPolicy(inline)", scope+"#"+name, now, ci.Digest(string(document)))
+			reference := awsReference("iam:GetPolicy(inline)", scope+"#"+name, now, ci.DigestString(string(document)))
 			parsed, err := ci.ParseAWSPolicy(document, reference)
 			if err != nil {
 				gaps = append(gaps, awsGap("aws_inline_policy_unparseable", scope+"#"+name, err.Error()))
@@ -199,7 +194,7 @@ func (r *awsReader) fetchTrust(document *string, scope string, now time.Time) ([
 	if err != nil {
 		return nil, []ci.Gap{awsGap("aws_trust_policy_undecodable", scope, err.Error())}
 	}
-	reference := awsReference("iam:GetRole(trust)", scope, now, ci.Digest(string(decoded)))
+	reference := awsReference("iam:GetRole(trust)", scope, now, ci.DigestString(string(decoded)))
 	grants, err := ci.ParseAWSPolicy(decoded, reference)
 	if err != nil {
 		return nil, []ci.Gap{awsGap("aws_trust_policy_unparseable", scope, err.Error())}

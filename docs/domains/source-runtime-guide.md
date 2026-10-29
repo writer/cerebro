@@ -198,6 +198,13 @@ resolved role with `getAccessToken`, `signBlob`, or `signJwt`. Sharing closes on
 when every workload is classified and linked, the inventory and live trust are
 complete and reconciled, and every trust role is resolved.
 
+Cloud-identity fingerprints use the typed helpers in
+[`internal/cloudidentity/digest.go`](../../internal/cloudidentity/digest.go).
+Structured values are marshaled once before `DigestJSON`; byte and string
+fingerprints retain their historical JSON encodings. Encoding failures surface
+as errors or explicit gaps, not fabricated digests, complete catalogs, or
+confirmed policy drift.
+
 ### Scheduling and native findings
 
 Use a daily cohort schedule; manual runs are supported and no webhook is required.

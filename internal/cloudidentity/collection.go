@@ -102,7 +102,10 @@ func Collect(ctx context.Context, plan ScanPlan, ports CollectionPorts, now time
 }
 
 func (run *collectionRun) repository(ctx context.Context, pin SourcePin) (Repository, error) {
-	key := Digest(pin)
+	key, err := digestJSON(pin)
+	if err != nil {
+		return Repository{}, fmt.Errorf("cloudidentity: digest source pin: %w", err)
+	}
 	if cached, ok := run.repositories[key]; ok {
 		return cached.repository, cached.err
 	}

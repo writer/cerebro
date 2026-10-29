@@ -73,9 +73,13 @@ func collectionMergeCohort(left, right Evidence) Evidence {
 		consumers[consumer.ID] = consumer
 	}
 	for _, consumer := range right.Consumers {
-		if previous, ok := consumers[consumer.ID]; ok && collectionConsumerDigest(previous) != collectionConsumerDigest(consumer) {
-			left.ConsumerInventoryComplete = false
-			left.Gaps = append(left.Gaps, collectionGap("consumer_declaration_conflict", consumer.ID, "The same consumer has conflicting pinned declarations"))
+		if previous, ok := consumers[consumer.ID]; ok {
+			previousDigest, previousErr := collectionConsumerDigest(previous)
+			currentDigest, currentErr := collectionConsumerDigest(consumer)
+			if previousErr != nil || currentErr != nil || previousDigest != currentDigest {
+				left.ConsumerInventoryComplete = false
+				left.Gaps = append(left.Gaps, collectionGap("consumer_declaration_conflict", consumer.ID, "The same consumer has conflicting pinned declarations"))
+			}
 		}
 		consumers[consumer.ID] = consumer
 	}
@@ -84,7 +88,9 @@ func collectionMergeCohort(left, right Evidence) Evidence {
 		left.Consumers = append(left.Consumers, consumer)
 	}
 	sort.Slice(left.Consumers, func(i, j int) bool { return left.Consumers[i].ID < left.Consumers[j].ID })
-	if collectionPolicyDigest(left.Observed) != collectionPolicyDigest(right.Observed) {
+	leftPolicyDigest, leftPolicyErr := collectionPolicyDigest(left.Observed)
+	rightPolicyDigest, rightPolicyErr := collectionPolicyDigest(right.Observed)
+	if leftPolicyErr != nil || rightPolicyErr != nil || leftPolicyDigest != rightPolicyDigest {
 		left.Observed.Complete = false
 		left.Observed.Gaps = append(left.Observed.Gaps, collectionGap("observed_policy_conflict", left.Principal.ID, "Repeated observations of the resolved principal disagree within this collection"))
 	}
@@ -108,21 +114,47 @@ func collectionMergeCohort(left, right Evidence) Evidence {
 	return left
 }
 
-func collectionPolicyDigest(policy PolicyState) string {
+// collectionPolicyDigest fingerprints policy's Grants/Boundaries/Trust for
+// equality comparison. A digest failure (never expected for this
+// JSON-safe typed model) is treated the same as a confirmed mismatch:
+// collectionMergeCohort cannot safely assume two unconfirmable
+// observations agree, so it falls into the same conflict-gap path it
+// already uses when the digests genuinely differ.
+func collectionPolicyDigest(policy PolicyState) (string, error) {
 	boundaries := make([]string, 0, len(policy.Boundaries))
 	for _, boundary := range policy.Boundaries {
-		boundaries = append(boundaries, Digest(collectionGrantDigests(boundary)))
+		grantDigests, err := collectionGrantDigests(boundary)
+		if err != nil {
+			return "", err
+		}
+		boundaryDigest, err := digestJSON(grantDigests)
+		if err != nil {
+			return "", err
+		}
+		boundaries = append(boundaries, boundaryDigest)
 	}
 	sort.Strings(boundaries)
-	return Digest(struct{ Grants, Boundaries, Trust []string }{collectionGrantDigests(policy.Grants), boundaries, collectionGrantDigests(policy.Trust)})
+	grants, err := collectionGrantDigests(policy.Grants)
+	if err != nil {
+		return "", err
+	}
+	trust, err := collectionGrantDigests(policy.Trust)
+	if err != nil {
+		return "", err
+	}
+	return digestJSON(struct{ Grants, Boundaries, Trust []string }{grants, boundaries, trust})
 }
 
-func collectionGrantDigests(grants []Grant) []string {
+func collectionGrantDigests(grants []Grant) ([]string, error) {
 	result := make([]string, 0, len(grants))
 	for _, grant := range grants {
 		grant.ID, grant.References = "", nil
-		result = append(result, Digest(grant))
+		digest, err := digestJSON(grant)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, digest)
 	}
 	sort.Strings(result)
-	return slices.Compact(result)
+	return slices.Compact(result), nil
 }

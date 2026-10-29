@@ -90,6 +90,7 @@ func Validate(input ValidateInput) ci.Investigation {
 	// is the real positive path: it does not need, and is not improved by,
 	// any model claim.
 	for _, op := range static.Operations {
+		ref := requirementsStaticReference(op, files)
 		def, found := requirementsFindOperationByToken(input.Definitions, op.Provider, op.Service, op.Token)
 		if !found {
 			operationsOK = false
@@ -97,7 +98,7 @@ func Validate(input ValidateInput) ci.Investigation {
 				Code:       GapUnknownOperation,
 				Scope:      op.Path,
 				Message:    "static call to \"" + op.Token + "\" has no matching operation in Definitions for " + string(op.Provider) + "/" + op.Service,
-				References: []ci.Reference{requirementsStaticReference(op, files)},
+				References: []ci.Reference{ref},
 			})
 			continue
 		}
@@ -107,7 +108,7 @@ func Validate(input ValidateInput) ci.Investigation {
 				Code:       GapOperationDependenciesIncomplete,
 				Scope:      op.Path,
 				Message:    "operation " + def.Operation + " definition does not confirm its dependent/conditional permission set is complete (DependenciesComplete=false); the promoted Requirement(s) may still be missing a real downstream permission",
-				References: []ci.Reference{requirementsStaticReference(op, files)},
+				References: []ci.Reference{ref},
 			})
 		}
 		resources := op.Resources
@@ -117,7 +118,7 @@ func Validate(input ValidateInput) ci.Investigation {
 				Code:       GapResourceScopeUnresolved,
 				Scope:      op.Path,
 				Message:    "operation " + def.Operation + " resource scope could not be independently and semantically extracted from source; recorded as wildcard-unknown, never narrowed by an unverified claim or a generic literal guess",
-				References: []ci.Reference{requirementsStaticReference(op, files)},
+				References: []ci.Reference{ref},
 			})
 		}
 		key := requirementsOperationKey{def.Provider, def.Service, def.Operation}
@@ -129,7 +130,7 @@ func Validate(input ValidateInput) ci.Investigation {
 				Action:      permission,
 				Resources:   append([]string{}, resources...),
 				ConsumerIDs: []string{consumerID},
-				References:  []ci.Reference{requirementsStaticReference(op, files)},
+				References:  []ci.Reference{ref},
 			})
 			promoted[key] = append(promoted[key], len(reqs)-1)
 		}
@@ -152,14 +153,14 @@ func Validate(input ValidateInput) ci.Investigation {
 				Action:      conditional,
 				Resources:   []string{"*"},
 				ConsumerIDs: []string{consumerID},
-				References:  []ci.Reference{requirementsStaticReference(op, files)},
+				References:  []ci.Reference{ref},
 			})
 			promoted[key] = append(promoted[key], len(reqs)-1)
 			gaps = append(gaps, ci.Gap{
 				Code:       GapConditionalPermission,
 				Scope:      op.Path,
 				Message:    "operation " + def.Operation + " has conditional permission \"" + conditional + "\" whose triggering condition could not be resolved from source; conservatively included as a wildcard-resource Requirement rather than dropped",
-				References: []ci.Reference{requirementsStaticReference(op, files)},
+				References: []ci.Reference{ref},
 			})
 		}
 	}
@@ -244,8 +245,15 @@ func Validate(input ValidateInput) ci.Investigation {
 		})
 	}
 
-	sourceDigest, digestMatchesClaim := requirementsResolveSourceDigest(input.Repository.Pin, input.Repository.Files)
-	if !digestMatchesClaim {
+	sourceDigest, digestMatchesClaim, digestErr := requirementsResolveSourceDigest(input.Repository.Pin, input.Repository.Files)
+	if digestErr != nil {
+		digestMatchesClaim = false
+		gaps = append(gaps, ci.Gap{
+			Code:    GapSourceDigestUnavailable,
+			Scope:   consumerID,
+			Message: "the repository content digest could not be computed: " + digestErr.Error(),
+		})
+	} else if !digestMatchesClaim {
 		gaps = append(gaps, ci.Gap{
 			Code:    GapSourceDigestMismatch,
 			Scope:   consumerID,

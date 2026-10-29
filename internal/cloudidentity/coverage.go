@@ -122,7 +122,8 @@ func definitionsDigestConsistent(d Definitions) bool {
 	d.Operations = sortedOperationDefinitions(d.Operations)
 	d.Roles = sortedRoleDefinitions(d.Roles)
 	d.Policies = sortedPolicyDefinitions(d.Policies)
-	return definitionsContentDigest(d) == d.Digest
+	computed, err := definitionsContentDigest(d)
+	return err == nil && computed == d.Digest
 }
 
 func sortedActionDefinitions(in []ActionDefinition) []ActionDefinition {

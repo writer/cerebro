@@ -160,11 +160,19 @@ func buildCloudIdentitySharedPrincipalFinding(ctx context.Context, runtime *cere
 	consumerIDs := uniqueSortedStrings(sharing.ConsumerIDs)
 	severity := cloudIdentitySharedPrincipalSeverity(services)
 	attrs := eventAttributes(event)
+	evidenceDigest, err := cloudIdentityDigest(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("digest cloud identity evidence for event %q: %w", event.GetId(), err)
+	}
+	sharingDigest, err := cloudIdentityDigest(sharing)
+	if err != nil {
+		return nil, fmt.Errorf("digest cloud identity sharing assessment for event %q: %w", event.GetId(), err)
+	}
 	attributes := map[string]string{
 		"cloud_identity_principal_scope_urn": principalScopeURN,
 		"primary_resource_urn":               principalScopeURN,
-		"cloud_identity_evidence_digest":     cloudidentity.Digest(evidence),
-		"cloud_identity_assessment_digest":   cloudidentity.Digest(sharing),
+		"cloud_identity_evidence_digest":     evidenceDigest,
+		"cloud_identity_assessment_digest":   sharingDigest,
 		"principal_id":                       evidence.Principal.ID,
 		"cloud_provider":                     string(evidence.Principal.Provider),
 		"account_id":                         evidence.Principal.Account,

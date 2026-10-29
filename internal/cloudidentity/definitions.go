@@ -270,6 +270,13 @@ func MergeDefinitions(all ...Definitions) Definitions {
 			Message: fmt.Sprintf("%s definition %q has conflicting content across merged Definitions inputs; neither is trusted", kind, key),
 		}
 	}
+	digestGap := func(kind, key string, err error) Gap {
+		return Gap{
+			Code:    "cloudidentity.definition_digest_unavailable",
+			Scope:   kind + ":" + key,
+			Message: fmt.Sprintf("%s definition %q could not be fingerprinted for conflict detection: %v", kind, key, err),
+		}
+	}
 
 	for _, d := range all {
 		merged.Complete = merged.Complete && d.Complete
@@ -277,7 +284,12 @@ func MergeDefinitions(all ...Definitions) Definitions {
 		awsServiceCatalogComplete = awsServiceCatalogComplete || d.AWSServiceCatalogComplete
 
 		for _, a := range d.Actions {
-			digest := Digest(normalizeActionDefinition(a))
+			digest, err := digestJSON(normalizeActionDefinition(a))
+			if err != nil {
+				conflict = true
+				merged.Gaps = append(merged.Gaps, digestGap("action", a.Name, err))
+				continue
+			}
 			if existing, ok := actions[a.Name]; ok {
 				if existing.bodyDigest != digest {
 					conflict = true
@@ -293,7 +305,12 @@ func MergeDefinitions(all ...Definitions) Definitions {
 
 		for _, o := range d.Operations {
 			key := string(o.Provider) + "|" + o.Service + "|" + o.Operation
-			digest := Digest(normalizeOperationDefinition(o))
+			digest, err := digestJSON(normalizeOperationDefinition(o))
+			if err != nil {
+				conflict = true
+				merged.Gaps = append(merged.Gaps, digestGap("operation", key, err))
+				continue
+			}
 			if existing, ok := ops[key]; ok {
 				existing.value.SDKServices = dedupSorted(append(existing.value.SDKServices, o.SDKServices...))
 				if existing.bodyDigest != digest {
@@ -309,7 +326,12 @@ func MergeDefinitions(all ...Definitions) Definitions {
 		}
 
 		for _, r := range d.Roles {
-			digest := Digest(normalizeRoleDefinition(r))
+			digest, err := digestJSON(normalizeRoleDefinition(r))
+			if err != nil {
+				conflict = true
+				merged.Gaps = append(merged.Gaps, digestGap("role", r.Name, err))
+				continue
+			}
 			if existing, ok := roles[r.Name]; ok {
 				if existing.bodyDigest != digest {
 					conflict = true
@@ -324,7 +346,19 @@ func MergeDefinitions(all ...Definitions) Definitions {
 		}
 
 		for _, p := range d.Policies {
-			digest := Digest(normalizeGrantsForDrift(p.Grants))
+			normalizedGrants, normalizeErr := normalizeGrantsForDrift(p.Grants)
+			var digest string
+			var err error
+			if normalizeErr != nil {
+				err = normalizeErr
+			} else {
+				digest, err = digestJSON(normalizedGrants)
+			}
+			if err != nil {
+				conflict = true
+				merged.Gaps = append(merged.Gaps, digestGap("policy", p.ARN, err))
+				continue
+			}
 			if existing, ok := policies[p.ARN]; ok {
 				if existing.bodyDigest != digest {
 					conflict = true
@@ -365,15 +399,21 @@ func MergeDefinitions(all ...Definitions) Definitions {
 		merged.Policies = append(merged.Policies, policies[k].value)
 	}
 
-	merged.Digest = definitionsContentDigest(merged)
+	contentDigest, digestErr := definitionsContentDigest(merged)
+	if digestErr != nil {
+		merged.Complete = false
+		merged.AWSServiceCatalogComplete = false
+		merged.Gaps = append(merged.Gaps, digestGap("merged", "content", digestErr))
+	}
+	merged.Digest = contentDigest
 
 	return merged
 }
 
 // definitionsContentDigest consumes key-sorted slices. Empty categories use
 // nil in both merge and validation so a serialized snapshot keeps its digest.
-func definitionsContentDigest(d Definitions) string {
-	return Digest(struct {
+func definitionsContentDigest(d Definitions) (string, error) {
+	return digestJSON(struct {
 		Actions    []ActionDefinition
 		Operations []OperationDefinition
 		Roles      []RoleDefinition

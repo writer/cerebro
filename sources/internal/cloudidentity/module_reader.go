@@ -204,10 +204,9 @@ func (r *repositoryReader) resolveRegistryModuleSource(ctx context.Context, name
 }
 
 func (r *repositoryReader) moduleRegistryHTTPClient() *http.Client {
-	r.moduleRegistryClientOnce.Do(func() {
-		r.moduleRegistryClient = sourcehttp.HardenSourceClient(r.baseHTTPClient, moduleRegistrySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
+	return r.moduleRegistryClient.get(func() *http.Client {
+		return sourcehttp.HardenSourceClient(r.baseHTTPClient, moduleRegistrySourceID, r.timeout, r.allowLoopback, r.lookupIPAddrs)
 	})
-	return r.moduleRegistryClient
 }
 
 // splitOnDoubleSlash separates a go-getter "//" subdirectory marker from the

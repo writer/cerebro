@@ -93,7 +93,19 @@ func gcpAncestorBindingCapable(resolution gcpRoleResolution) bool {
 // gcpGrantFromBinding converts one matched IAM binding into a core Grant,
 // scoped to exactly the principal/principalSet members that apply to the
 // evaluated identity (never the unrelated co-members of a shared binding).
-func gcpGrantFromBinding(result gcpIamPolicySearchResult, bindingIndex int, binding gcpBinding, matchedMembers []string, now time.Time, apiReference string) ci.Grant {
+// The returned error is non-nil only when the binding's content could not
+// be digested; the Grant itself is always returned with its real
+// permission content (members/role/resource), since a digest failure
+// never means the grant evidence is invalid — only that this one
+// Reference's content-addressing proof is unavailable, left empty rather
+// than fabricated, for the caller to record as an explicit gap.
+func gcpGrantFromBinding(result gcpIamPolicySearchResult, bindingIndex int, binding gcpBinding, matchedMembers []string, now time.Time, apiReference string) (ci.Grant, error) {
+	digest, digestErr := digestStruct(struct {
+		Resource string
+		Role     string
+		Members  []string
+		Cond     *gcpCondition
+	}{result.Resource, binding.Role, binding.Members, binding.Condition})
 	grant := ci.Grant{
 		ID:      fmt.Sprintf("%s#%s#%d", result.Resource, binding.Role, bindingIndex),
 		Effect:  "Allow",
@@ -103,12 +115,7 @@ func gcpGrantFromBinding(result gcpIamPolicySearchResult, bindingIndex int, bind
 			API:        apiReference,
 			Scope:      result.Resource,
 			ObservedAt: now,
-			Digest: ci.Digest(struct {
-				Resource string
-				Role     string
-				Members  []string
-				Cond     *gcpCondition
-			}{result.Resource, binding.Role, binding.Members, binding.Condition}),
+			Digest:     digest,
 		}},
 	}
 	if result.Resource != "" {
@@ -117,7 +124,7 @@ func gcpGrantFromBinding(result gcpIamPolicySearchResult, bindingIndex int, bind
 	if binding.Condition != nil && binding.Condition.Expression != "" {
 		grant.Conditions = []ci.Condition{{Expression: binding.Condition.Expression}}
 	}
-	return grant
+	return grant, digestErr
 }
 
 // gcpClassifyBindings converts every matched org-wide-search binding into a
@@ -127,8 +134,9 @@ func gcpGrantFromBinding(result gcpIamPolicySearchResult, bindingIndex int, bind
 // is an outbound permission this principal holds), so it must never be
 // hidden away from Grants. Only a resource's own IAM policy (who may act as
 // THAT resource) is Trust; see gcpTrustFromServiceAccountPolicy.
-func gcpClassifyBindings(results []gcpIamPolicySearchResult, matcher func(members []string) ([]string, string), now time.Time, apiReference string) []ci.Grant {
+func gcpClassifyBindings(results []gcpIamPolicySearchResult, matcher func(members []string) ([]string, string), now time.Time, apiReference string) ([]ci.Grant, []ci.Gap) {
 	var grants []ci.Grant
+	var gaps []ci.Gap
 	for _, result := range results {
 		if result.Policy == nil {
 			continue
@@ -138,21 +146,29 @@ func gcpClassifyBindings(results []gcpIamPolicySearchResult, matcher func(member
 			if len(matched) == 0 {
 				continue
 			}
-			grant := gcpGrantFromBinding(result, index, binding, matched, now, apiReference)
+			grant, err := gcpGrantFromBinding(result, index, binding, matched, now, apiReference)
+			if err != nil {
+				gaps = append(gaps, ci.Gap{Code: "gcp_grant_digest_unavailable", Scope: result.Resource + "#" + binding.Role, Message: "grant evidence could not be digested: " + err.Error()})
+			}
 			grants = append(grants, grant)
 		}
 	}
-	return grants
+	return grants, gaps
 }
 
 // gcpTrustFromServiceAccountPolicy converts a GSA resource's own IAM policy
 // (who may impersonate/use/administer this identity) entirely into Trust:
 // it describes control of the identity, never what the identity itself can
 // do to other resources.
-func gcpTrustFromServiceAccountPolicy(resource string, policy gcpPolicy, now time.Time) []ci.Grant {
+func gcpTrustFromServiceAccountPolicy(resource string, policy gcpPolicy, now time.Time) ([]ci.Grant, []ci.Gap) {
 	trust := make([]ci.Grant, 0, len(policy.Bindings))
+	var gaps []ci.Gap
 	for index, binding := range policy.Bindings {
-		trust = append(trust, gcpGrantFromBinding(gcpIamPolicySearchResult{Resource: resource}, index, binding, binding.Members, now, gcpGetServiceAccountIAMReference))
+		grant, err := gcpGrantFromBinding(gcpIamPolicySearchResult{Resource: resource}, index, binding, binding.Members, now, gcpGetServiceAccountIAMReference)
+		if err != nil {
+			gaps = append(gaps, ci.Gap{Code: "gcp_grant_digest_unavailable", Scope: resource + "#" + binding.Role, Message: "trust evidence could not be digested: " + err.Error()})
+		}
+		trust = append(trust, grant)
 	}
-	return trust
+	return trust, gaps
 }

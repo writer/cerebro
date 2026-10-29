@@ -1,6 +1,9 @@
 package cloudidentity
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // normalizedGrant strips identity-irrelevant fields (ID, References, which
 // carry timestamps and source digests) before a Grant is compared for
@@ -43,44 +46,93 @@ func normalizeGrantForDrift(g Grant) normalizedGrant {
 	}
 }
 
-func normalizeGrantsForDrift(grants []Grant) []normalizedGrant {
-	out := make([]normalizedGrant, 0, len(grants))
+// normalizedGrantDigest pairs a normalized grant with its content digest so
+// sort.Slice can order by digest without calling the (now fallible) Digest
+// function from inside the comparator.
+type normalizedGrantDigest struct {
+	grant  normalizedGrant
+	digest string
+}
+
+func normalizeGrantsForDrift(grants []Grant) ([]normalizedGrant, error) {
+	paired := make([]normalizedGrantDigest, 0, len(grants))
 	for _, g := range grants {
-		out = append(out, normalizeGrantForDrift(g))
+		normalized := normalizeGrantForDrift(g)
+		digest, err := digestJSON(normalized)
+		if err != nil {
+			return nil, err
+		}
+		paired = append(paired, normalizedGrantDigest{grant: normalized, digest: digest})
 	}
-	sort.Slice(out, func(i, j int) bool { return Digest(out[i]) < Digest(out[j]) })
-	return out
+	sort.Slice(paired, func(i, j int) bool { return paired[i].digest < paired[j].digest })
+	out := make([]normalizedGrant, len(paired))
+	for i, p := range paired {
+		out[i] = p.grant
+	}
+	return out, nil
 }
 
-func normalizeGrantDigest(grants []Grant) string {
-	return Digest(normalizeGrantsForDrift(grants))
+func normalizeGrantDigest(grants []Grant) (string, error) {
+	normalized, err := normalizeGrantsForDrift(grants)
+	if err != nil {
+		return "", err
+	}
+	return digestJSON(normalized)
 }
 
-func normalizeBoundaryDigest(boundaries [][]Grant) string {
-	norm := make([][]normalizedGrant, 0, len(boundaries))
+// normalizedBoundaryDigest pairs a normalized boundary's grants with its
+// content digest for the same reason as normalizedGrantDigest above.
+type normalizedBoundaryDigest struct {
+	grants []normalizedGrant
+	digest string
+}
+
+func normalizeBoundaryDigest(boundaries [][]Grant) (string, error) {
+	paired := make([]normalizedBoundaryDigest, 0, len(boundaries))
 	for _, b := range boundaries {
-		norm = append(norm, normalizeGrantsForDrift(b))
+		normalized, err := normalizeGrantsForDrift(b)
+		if err != nil {
+			return "", err
+		}
+		digest, err := digestJSON(normalized)
+		if err != nil {
+			return "", err
+		}
+		paired = append(paired, normalizedBoundaryDigest{grants: normalized, digest: digest})
 	}
-	sort.Slice(norm, func(i, j int) bool { return Digest(norm[i]) < Digest(norm[j]) })
-	return Digest(norm)
+	sort.Slice(paired, func(i, j int) bool { return paired[i].digest < paired[j].digest })
+	norm := make([][]normalizedGrant, len(paired))
+	for i, p := range paired {
+		norm[i] = p.grants
+	}
+	return digestJSON(norm)
 }
 
-// computeDrift reports whether the declared and observed grant surfaces
-// differ, ignoring timestamps and reference digests. Drift is only ever
-// asserted between two KNOWN sides (binding semantic 5): an absent or
-// incomplete side can neither open nor close a drift finding, since there
-// is nothing confirmed on that side to compare against. When both sides
-// ARE confirmed complete, a complete-empty side next to a complete-nonempty
-// side is still genuine drift — Complete alone never suppresses a real
-// difference, only an unknown/incomplete side does.
-func computeDrift(declared, observed PolicyState) bool {
+// computeDrift compares known grant surfaces without timestamps or reference
+// digests. An incomplete side or an encoding failure cannot establish drift.
+func computeDrift(declared, observed PolicyState) (bool, error) {
 	if !declared.Complete || !observed.Complete {
-		return false
+		return false, nil
 	}
 	if len(declared.Grants) == 0 && len(observed.Grants) == 0 &&
 		len(declared.Boundaries) == 0 && len(observed.Boundaries) == 0 {
-		return false
+		return false, nil
 	}
-	return normalizeGrantDigest(declared.Grants) != normalizeGrantDigest(observed.Grants) ||
-		normalizeBoundaryDigest(declared.Boundaries) != normalizeBoundaryDigest(observed.Boundaries)
+	declaredGrantDigest, err := normalizeGrantDigest(declared.Grants)
+	if err != nil {
+		return false, fmt.Errorf("digest declared grants: %w", err)
+	}
+	observedGrantDigest, err := normalizeGrantDigest(observed.Grants)
+	if err != nil {
+		return false, fmt.Errorf("digest observed grants: %w", err)
+	}
+	declaredBoundaryDigest, err := normalizeBoundaryDigest(declared.Boundaries)
+	if err != nil {
+		return false, fmt.Errorf("digest declared boundaries: %w", err)
+	}
+	observedBoundaryDigest, err := normalizeBoundaryDigest(observed.Boundaries)
+	if err != nil {
+		return false, fmt.Errorf("digest observed boundaries: %w", err)
+	}
+	return declaredGrantDigest != observedGrantDigest || declaredBoundaryDigest != observedBoundaryDigest, nil
 }

@@ -486,7 +486,7 @@ func cloudIdentityProjectionExcessSupportedEvidence(baseTime time.Time) cloudide
 // AssessSharing had no freshness gate at all, so a cohort that is genuinely
 // Supported/Clear once fresh would misleadingly project as
 // Supported/Clear while 72h stale. After the fix, the trusted
-// cloudIdentityProjectionClock sees the evidence as 72h old (> the 48h
+// cloudIdentityProjector's injected Clock sees the evidence as 72h old (> the 48h
 // boundary) and both assessment_status and sharing_status fall back to the
 // existing Candidate/Incomplete vocabulary instead of Supported/Clear.
 func TestCloudIdentityPrincipalEvidenceProjectionsStaleEvidenceProjectsNotCurrent(t *testing.T) {
@@ -503,11 +503,8 @@ func TestCloudIdentityPrincipalEvidenceProjectionsStaleEvidenceProjectsNotCurren
 	event := cloudIdentityProjectionTestEvent(t, "event-stale", "writer", evidence)
 	event.OccurredAt = timestamppb.New(evidence.CollectedAt) // attacker/source-controlled, == CollectedAt
 
-	original := cloudIdentityProjectionClock
-	cloudIdentityProjectionClock = func() time.Time { return trustedNow }
-	defer func() { cloudIdentityProjectionClock = original }()
-
-	entities, _, err := cloudIdentityPrincipalEvidenceProjections(event)
+	projector := &cloudIdentityProjector{Clock: func() time.Time { return trustedNow }}
+	entities, _, err := projector.evidenceProjections(event)
 	if err != nil {
 		t.Fatalf("cloudIdentityPrincipalEvidenceProjections() error = %v", err)
 	}
@@ -541,11 +538,8 @@ func TestCloudIdentityPrincipalEvidenceProjectionsFutureEvidenceProjectsNotCurre
 	event := cloudIdentityProjectionTestEvent(t, "event-future", "writer", evidence)
 	event.OccurredAt = timestamppb.New(evidence.CollectedAt)
 
-	original := cloudIdentityProjectionClock
-	cloudIdentityProjectionClock = func() time.Time { return trustedNow }
-	defer func() { cloudIdentityProjectionClock = original }()
-
-	entities, _, err := cloudIdentityPrincipalEvidenceProjections(event)
+	projector := &cloudIdentityProjector{Clock: func() time.Time { return trustedNow }}
+	entities, _, err := projector.evidenceProjections(event)
 	if err != nil {
 		t.Fatalf("cloudIdentityPrincipalEvidenceProjections() error = %v", err)
 	}
@@ -579,11 +573,8 @@ func TestCloudIdentityPrincipalEvidenceProjectionsFreshEvidenceUnchanged(t *test
 	// below should determine freshness.
 	event.OccurredAt = timestamppb.New(baseTime.Add(-30 * 24 * time.Hour))
 
-	original := cloudIdentityProjectionClock
-	cloudIdentityProjectionClock = func() time.Time { return trustedNow }
-	defer func() { cloudIdentityProjectionClock = original }()
-
-	entities, _, err := cloudIdentityPrincipalEvidenceProjections(event)
+	projector := &cloudIdentityProjector{Clock: func() time.Time { return trustedNow }}
+	entities, _, err := projector.evidenceProjections(event)
 	if err != nil {
 		t.Fatalf("cloudIdentityPrincipalEvidenceProjections() error = %v", err)
 	}

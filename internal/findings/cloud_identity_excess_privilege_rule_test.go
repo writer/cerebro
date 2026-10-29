@@ -77,11 +77,17 @@ func TestCloudIdentityExcessPrivilegeRuleAWSSupportedExcess(t *testing.T) {
 	if finding.Attributes["cloud_identity_principal_scope_urn"] != wantPrincipalURN {
 		t.Fatalf("Attributes[cloud_identity_principal_scope_urn] = %q, want %q", finding.Attributes["cloud_identity_principal_scope_urn"], wantPrincipalURN)
 	}
-	wantEvidenceDigest := cloudidentity.Digest(evidence)
+	wantEvidenceDigest, err := cloudIdentityDigest(evidence)
+	if err != nil {
+		t.Fatalf("cloudIdentityDigest(evidence) error = %v", err)
+	}
 	if got := finding.Attributes["cloud_identity_evidence_digest"]; got != wantEvidenceDigest {
 		t.Fatalf("Attributes[cloud_identity_evidence_digest] = %q, want %q (actual evidence content digest, not an ID string)", got, wantEvidenceDigest)
 	}
-	wantAssessmentDigest := cloudidentity.Digest(assessment)
+	wantAssessmentDigest, err := cloudIdentityDigest(assessment)
+	if err != nil {
+		t.Fatalf("cloudIdentityDigest(assessment) error = %v", err)
+	}
 	if got := finding.Attributes["cloud_identity_assessment_digest"]; got != wantAssessmentDigest {
 		t.Fatalf("Attributes[cloud_identity_assessment_digest] = %q, want %q (actual machine assessment output digest, not an ID string)", got, wantAssessmentDigest)
 	}

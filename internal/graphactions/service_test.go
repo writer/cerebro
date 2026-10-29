@@ -303,7 +303,6 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 	}
 }
 
-
 func TestTargetForActionSpecUsesProvidedSpec(t *testing.T) {
 	target, err := TargetForActionSpec(ActionSpec{
 		ID: "custom.unregistered",

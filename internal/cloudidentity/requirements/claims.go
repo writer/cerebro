@@ -67,7 +67,7 @@ func requirementsStaticReference(op StaticOperation, files map[string]ci.SourceF
 	if file, ok := files[op.Path]; ok {
 		digest = requirementsFileDigest(file)
 	} else {
-		digest = ci.Digest([]byte(op.Quote))
+		digest = ci.DigestBytes([]byte(op.Quote))
 	}
 	return ci.Reference{Path: op.Path, StartLine: op.StartLine, EndLine: op.EndLine, Digest: digest}
 }
@@ -95,9 +95,10 @@ func requirementsVerifyCitations(citations []ClaimCitation, files map[string]ci.
 		if actual != citation.Quote {
 			return nil, fmt.Sprintf("citation quote at %s:%d-%d does not match the pinned source content", citation.Path, citation.StartLine, citation.EndLine)
 		}
+		digest := requirementsFileDigest(file)
 		refs = append(refs, ci.Reference{
 			Path: citation.Path, StartLine: citation.StartLine, EndLine: citation.EndLine,
-			Digest: requirementsFileDigest(file),
+			Digest: digest,
 		})
 	}
 	return refs, ""
