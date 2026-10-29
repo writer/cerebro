@@ -52,6 +52,165 @@ and inventory-fetch requests with one bounded opaque cursor. SentinelOne source
 preview remains on its compatibility path until the preview credential adapter
 is promoted separately.
 
+## Cloud identity scan
+
+`cloud_identity` runs one bounded Kubernetes-used AWS/GCP principal cohort.
+It emits `cloud_identity.principal_evidence` and `cloud_identity.coverage`;
+native rules produce `cloud-identity-excess-privilege` and
+`cloud-identity-shared-principal`. It is implemented entirely in Cerebro,
+without a security-reviewer service or reviewer-validation dependency.
+
+The `cohort` runtime requires a JSON `scan_plan`: a stable `scope`, `targets`
+with provider/account or project, cluster/environment, cluster `region`
+(required for AWS so EKS reads use the cluster's own regional endpoint),
+pinned manifest inputs and Terraform roots, and `services` mapping image
+prefixes to application repositories/source roots. A service mapping may list
+`workloads` (controller names) to separate logical services that share one
+image; equal-prefix mappings that still tie between services leave the workload
+unclassified with an `ambiguous_service_mapping` gap rather than picking one.
+A manifest input may list Argo CD `applications`: only those
+Application/ApplicationSet names are expanded from an app-of-apps render, and
+each expanded Application pins its own `targetRevision` to a commit for the
+run. Cluster names must be unique across targets, because workload IDs,
+service-account subjects, and resolved cluster identifiers are keyed by cluster.
+A Terraform root may declare `metadata_bindings` that map reviewed data-source
+traversals (for example a bootstrap remote-state `project_id` output) to the
+target's own project ID, project number, region, or account; bound values always
+come from scan inputs and no Terraform state is read. One run inventories all
+targets before grouping consumers by canonical cloud principal. See
+[`sources/cloud_identity/deploy.yaml`](../../sources/cloud_identity/deploy.yaml)
+and [`internal/cloudidentity/collection_models.go`](../../internal/cloudidentity/collection_models.go)
+for the executable configuration contract.
+
+Collection uses the existing GitHub App, AWS organization scan role, and GCP
+Workload Identity Federation. GitHub installation routing uses lowercase owner
+keys, either `github_installations` JSON or separate `github_installation_<owner>`
+config entries. Credentials resolve through the normal source secret boundary;
+they are not included in events or model prompts. Terraform module and external
+chart reads require `allowed_modules`, `registry_modules`, and
+`allowed_chart_repositories` allowlists; an allowlisted registry module may
+resolve to its upstream github.com repository without a second allowlist entry,
+and only the official `registry.terraform.io/` host prefix is accepted on
+registry sources. Repositories are materialized from one archive per commit,
+with every file verified against the commit's git tree, within bounded file,
+entry, and decompressed-byte budgets.
+
+Supported inputs include raw Kubernetes YAML, Helm with local/vendored/allowlisted
+remote dependencies (disabled dependencies are neither fetched nor gapped), Argo
+Applications including multi-source values, chart-relative `valueFiles`,
+`valuesObject` and parameters (typed like Helm `--set`, or strings with
+`forceString`), list-based ApplicationSets, Crossplane XRole-style compositions
+(exactly named `function-environment-configs` by reference, inline
+`function-go-templating` with a deterministic function allowlist, and
+`function-auto-ready`; legacy claims map to their XRD's composite type) expanded
+once per target so claims and the Compositions deployed by other charts meet,
+Upbound/Config Connector IAM resources including the namespaced `.m.upbound.io`
+groups and disabled custom roles, and statically resolvable Terraform HCL (remote
+Git/registry modules with subdirectories and their sibling directories,
+`terraform.tfvars`, `terraform.tfvars.json`, and `*.auto.tfvars[.json]` in
+Terraform's precedence, `aws_caller_identity`/`aws_region`/`google_project` and
+the default Google provider project from supplied inputs). Module inputs and
+outputs are evaluated only when identity, trust, grant, or boundary expressions
+depend on them. JSON Terraform configuration (`.tf.json`) is not parsed and
+leaves that module's declarations incomplete. Rendering and HCL evaluation do not
+run repository code, Terraform providers, `plan`, or `apply`. Helm renders
+client-side like Argo CD: `lookup` returns empty and DNS lookups are disabled.
+Charts whose templates or fully coalesced values (chart and subchart defaults
+plus overrides) use random or certificate-generation functions are rendered
+twice; differing identity-relevant output (names, namespaces, ServiceAccount
+annotations, workload service accounts, images, configuration, IAM resources,
+and the full content of custom resources such as composites, including their
+metadata) is a coverage gap, while differences confined to generated data are
+accepted. Identical time-derived values across both renders cannot be detected.
+Unsupported generators and functions, malformed values, dynamic values, missing
+modules, denied files, and access denials produce scoped coverage gaps.
+
+Inventory uncertainty is scoped by observed trust. A target-level gap (render,
+repository, or composition failures; invalid identity annotations) leaves a
+principal incomplete when it has consumers in that target, when its observed
+trust could admit that target's workloads (the cluster's OIDC provider, EKS Pod
+Identity, or the project's Workload Identity pool), or when its trust is
+unknown. An unrendered shared ServiceAccount affects only principals whose trust
+could admit that subject. Gaps about an already-identified workload, such as an
+unmapped image, stay with that workload's own principal.
+
+### Automatic promotion
+
+Excess permissions become a finding only when the consumer inventory and trust
+scope are closed, every consumer has a digest-pinned image-to-source mapping and
+content-bound investigation, and deterministic validation establishes a conservative
+required-permission set. The model proposes citations/operations; it cannot set
+validation or promotion flags. Known conditional/dependent permissions remain in
+that required set rather than being treated as unused.
+
+Source analysis can prove completeness for a bounded set of direct Go SDK calls
+in the files of a Linux build without custom tags. Test files, `testdata`, and
+files Go never compiles (names starting with `_` or `.`) are ignored;
+production files excluded by build constraints keep the scope incomplete when
+they use a cloud SDK. Lexical shadowing of clients, builtins, and imports is
+honored, and every evaluated expression is inspected. Python/JavaScript
+patterns, unknown wrappers/dependencies, replaced SDK modules, unsupported call
+forms, ambiguous receivers, and operations without a verified primary and
+dependent permission set remain incomplete. The supported operation profiles
+live in the AWS/GCP definition adapters.
+
+An image establishes the deployed application revision only when the deployed
+workload reference itself names a verified digest and its OCI source labels name
+the repository and a full commit ID agreed by every potentially runnable image
+in an index. Tag-only references never establish it: current registry tag
+immutability says nothing about the digest a tag named when the workload was
+deployed, so excess for tag-deployed workloads stays incomplete. Branch or short
+revisions, missing labels, unclassifiable or truncated index entries,
+disagreeing images, and digest mismatches never establish exact provenance.
+
+The rule compares the union of consumer requirements with desired IaC and live
+IAM independently. A supported finding identifies `iac`, `live`, or `both`;
+tentative excess on an incomplete opposite side is not promoted with it.
+Unknown evidence is not a clean result: `NotAction` and wildcard-service grants
+need the complete AWS action catalog; resource complements (`NotResource`),
+partial or conditional denies, boundary intersections that cannot be proven,
+Allow conditions whose effect cannot be determined (principal-bound keys,
+unsupported operators, GCP CEL other than literal `true`/`false`), and GCP
+project ID/number comparisons without a resolved mapping make that side
+incomplete instead of clear. Deleted or disabled custom roles grant nothing;
+unresolved roles stay unknown. Drift is reported only between two complete
+sides. Trust must restrict assumption to reviewed consumers: IRSA by exact
+subject and the consumer cluster's resolved OIDC provider; EKS Pod Identity by
+association evidence plus session-tag conditions naming the reviewed cluster,
+namespace, and service account; GSAs by exact Workload Identity members, treating
+unresolved roles and roles with credential-minting permissions (`getAccessToken`,
+`getOpenIdToken`, `signBlob`, `signJwt`, `implicitDelegation`) on the account or
+its ancestors as assumption-capable. Every ancestor binding is discovered and its
+role resolved individually; denied role lookups remain gaps. `actAs` is not
+treated as assumption.
+
+Native rules and graph projections measure freshness at evaluation time, not the
+event's occurrence time; evidence older than 48 hours, or dated in the future,
+neither opens nor closes findings and projects as not current. Automatic closeout
+requires complete, validated, fresh evidence on both sides and preserves existing
+lifecycle replay ordering. Sharing is independent: two positively mapped distinct
+services whose workloads are positively linked to one resolved principal suffice
+even when other observation coverage is partial. A positive link requires
+effective assumption: an IRSA statement allowing `sts:AssumeRoleWithWebIdentity`
+for that subject, EKS Pod Identity association evidence plus a statement allowing
+`sts:AssumeRole` and `sts:TagSession`, or an unconditional GSA binding to a
+resolved role with `getAccessToken`, `signBlob`, or `signJwt`. Sharing closes only
+when every workload is classified and linked, the inventory and live trust are
+complete and reconciled, and every trust role is resolved.
+
+### Scheduling and native findings
+
+Use a daily cohort schedule; manual runs are supported and no webhook is required.
+The orchestrator phase limit must accommodate the source's `timeout`, for example
+`orchestrator run runtime_id=<cohort-runtime> phase_timeout=3h`.
+
+This scan emits native Cerebro findings only. It does not publish tickets or
+require Jira credentials, signed publication actors, or an approval workflow.
+
+The scan never mutates IAM/cloud resources, probes permissions by attempting
+operations, applies infrastructure, or creates remediation PRs.
+
+
 ## Source preview
 
 Preview source behavior before creating a persisted runtime:

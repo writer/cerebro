@@ -1,0 +1,42 @@
+{{- /*
+  One ProjectIAMCustomRole per capability package — the project-scoped shared resource every XRole
+  on this cluster binds to (keeps the project's IAM allow policy under GCP's 1,500-member cap).
+  Minted ONCE PER CLUSTER by this chart; the Composition only BINDS to them (files/xrole-gcp.gotmpl).
+*/ -}}
+{{- $cloud := include "xrole-composition.cloud" . }}
+{{- if eq $cloud "gcp" }}
+{{- include "xrole-composition.validateCatalog" . }}
+{{- $ec := .Values.environmentConfig }}
+{{- $cluster := required "xrole-composition: environmentConfig.clusterID is required on a GCP cluster (it qualifies the custom role names)." $ec.clusterID }}
+{{- $proj := required "xrole-composition: environmentConfig.gcp.gcpProjectID is required on a GCP cluster." $ec.gcp.gcpProjectID }}
+{{- range $pkg, $roles := (include "xrole-composition.gcpPackageRoles" . | fromJson) }}
+{{- $permissions := list }}
+{{- range $r := $roles }}{{ $permissions = append $permissions (printf "%s.synthetic.permission" ($r | replace "roles/" "" | replace "." "_")) }}{{ end }}
+{{- $args := dict "pkg" $pkg "cluster" $cluster }}
+---
+apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+kind: ProjectIAMCustomRole
+metadata:
+  name: {{ include "xrole-composition.gcpCustomRoleName" $args | quote }}
+  namespace: {{ $.Release.Namespace }}
+  annotations:
+    crossplane.io/external-name: {{ include "xrole-composition.gcpCustomRoleId" $args | quote }}
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/xrole-package: {{ $pkg | quote }}
+spec:
+  forProvider:
+    project: {{ $proj | quote }}
+    stage: GA
+    title: {{ printf "xrole-composition %s (%s)" $pkg $cluster | quote }}
+    description: {{ printf "XRole capability package %q on %s — flattened union of %d predefined roles." $pkg $cluster (len $roles) | quote }}
+    permissions:
+    {{- range $p := $permissions }}
+    - {{ $p | quote }}
+    {{- end }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $ec.providerConfigName | quote }}
+{{- end }}
+{{- end }}

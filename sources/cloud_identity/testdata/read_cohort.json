@@ -1,0 +1,49 @@
+[
+  {
+    "id": "cloud-identity-incomplete-fixture",
+    "tenant_id": "example",
+    "source_id": "cloud_identity",
+    "kind": "cloud_identity.principal_evidence",
+    "occurred_at": "2026-01-02T03:04:05Z",
+    "schema_ref": "cloud_identity/principal_evidence/v1",
+    "attributes": {
+      "principal_id": "example@example-project.iam.gserviceaccount.com",
+      "cloud_provider": "gcp",
+      "scope": "example",
+      "resource_id": "example@example-project.iam.gserviceaccount.com",
+      "resource_type": "cloud_identity.principal",
+      "collection_complete": "false"
+    },
+    "payload": {
+      "schema": "cloud-identity-evidence/v1",
+      "principal": {"id": "example@example-project.iam.gserviceaccount.com", "provider": "gcp", "kind": "gcp_service_account", "project": "example-project"},
+      "scope": "example",
+      "consumers": [],
+      "consumer_inventory_complete": false,
+      "declared": {"grants": [], "complete": false, "references": []},
+      "observed": {"grants": [], "complete": false, "references": []},
+      "definitions": {"digest": "unavailable", "complete": false},
+      "investigations": [],
+      "collected_at": "2026-01-02T03:04:05Z",
+      "gaps": [{"code": "cloud_observation_failed", "scope": "example@example-project.iam.gserviceaccount.com", "message": "IAM observation did not complete"}]
+    }
+  },
+  {
+    "id": "cloud-identity-coverage-fixture",
+    "tenant_id": "example",
+    "source_id": "cloud_identity",
+    "kind": "cloud_identity.coverage",
+    "occurred_at": "2026-01-02T03:04:05Z",
+    "schema_ref": "cloud_identity/coverage/v1",
+    "attributes": {"scope": "example"},
+    "payload": {
+      "schema": "cloud-identity-evidence/v1",
+      "scope": "example",
+      "collected_at": "2026-01-02T03:04:05Z",
+      "inventory_complete": false,
+      "principal_count": 1,
+      "gap_count": 1,
+      "gaps": [{"code": "cloud_observation_failed", "scope": "example@example-project.iam.gserviceaccount.com", "message": "IAM observation did not complete"}]
+    }
+  }
+]

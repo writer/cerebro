@@ -25,6 +25,10 @@ func TestRepositoryDoesNotTrackNativeExecutables(t *testing.T) {
 		}
 		name := string(trackedPath)
 		contents, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		// Unstaged deletions remain in git ls-files but contain no executable.
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("read tracked file %q: %v", name, err)
 		}

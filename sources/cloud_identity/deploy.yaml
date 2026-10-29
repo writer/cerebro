@@ -1,0 +1,35 @@
+sourceId: cloud_identity
+secretKeys:
+  - GITHUB_APP_ID
+  - GITHUB_APP_PRIVATE_KEY_BASE64
+  - CEREBRO_CLOUD_IDENTITY_SCAN_PLAN
+  - CEREBRO_CLOUD_IDENTITY_GITHUB_INSTALLATIONS
+  - CEREBRO_CLOUD_IDENTITY_ALLOWED_MODULES
+  - CEREBRO_CLOUD_IDENTITY_REGISTRY_MODULES
+  - CEREBRO_CLOUD_IDENTITY_ALLOWED_CHART_REPOSITORIES
+  - AWS_REGION
+  - CEREBRO_CLOUD_IDENTITY_GCP_ORGANIZATION
+  - CEREBRO_CLOUD_IDENTITY_GCP_QUOTA_PROJECT
+  - GCP_WIF_AUDIENCE
+  - GCP_WIF_SERVICE_ACCOUNT_EMAIL
+  - CEREBRO_CLOUD_IDENTITY_LLM_MODEL
+runtimes:
+  - localId: cohort
+    config:
+      family: cohort
+      scan_plan: env:CEREBRO_CLOUD_IDENTITY_SCAN_PLAN
+      github_app_id: env:GITHUB_APP_ID
+      github_app_private_key_base64: env:GITHUB_APP_PRIVATE_KEY_BASE64
+      github_installations: env:CEREBRO_CLOUD_IDENTITY_GITHUB_INSTALLATIONS
+      allowed_modules: env:CEREBRO_CLOUD_IDENTITY_ALLOWED_MODULES
+      registry_modules: env:CEREBRO_CLOUD_IDENTITY_REGISTRY_MODULES
+      allowed_chart_repositories: env:CEREBRO_CLOUD_IDENTITY_ALLOWED_CHART_REPOSITORIES
+      aws_region: env:AWS_REGION
+      aws_role_name: cerebro-org-scan-role
+      gcp_organization: env:CEREBRO_CLOUD_IDENTITY_GCP_ORGANIZATION
+      gcp_quota_project: env:CEREBRO_CLOUD_IDENTITY_GCP_QUOTA_PROJECT
+      gcp_wif_audience: env:GCP_WIF_AUDIENCE
+      gcp_wif_service_account: env:GCP_WIF_SERVICE_ACCOUNT_EMAIL
+      llm_provider: bedrock
+      llm_model: env:CEREBRO_CLOUD_IDENTITY_LLM_MODEL
+      timeout: 45m

@@ -1,6 +1,9 @@
 package sourceprojection
 
-import "github.com/writer/cerebro/internal/attestedcompute"
+import (
+	"github.com/writer/cerebro/internal/attestedcompute"
+	"github.com/writer/cerebro/internal/cloudidentity"
+)
 
 // This table keeps static event-kind wiring separate from registry lifecycle,
 // connector-definition overlays, dispatch, and tenant-scope validation.
@@ -28,6 +31,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aurelius.image_scan":                           aureliusImageScanProjections,
 	"aurelius.policy_exception":                     aureliusPolicyExceptionProjections,
 	"cerebro.api_access":                            cerebroAPIAccessProjections,
+	cloudidentity.EventKind:                         cloudIdentityPrincipalEvidenceProjections,
+	cloudidentity.CoverageEventKind:                 cloudIdentityCoverageProjections,
 	"aurelius.verdict":                              aureliusVerdictProjections,
 	"github.pull_request":                           githubPullRequestProjections,
 	"github.audit":                                  githubAuditProjections,

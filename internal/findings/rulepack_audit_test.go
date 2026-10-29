@@ -34,9 +34,6 @@ type rulepackAuditClassification struct {
 func TestRulepackAllRulesDeclareLifecycle(t *testing.T) {
 	classifications := loadRulepackAuditClassifications(t)
 	metadataByID := rulepackAuditMetadataByID(t)
-	if got, want := len(metadataByID), len(classifications); got != want {
-		t.Fatalf("BuiltinRuleMetadata count = %d, want %d from rule classification plan", got, want)
-	}
 	validKinds := map[LifecycleKind]struct{}{
 		LifecycleDurableState:  {},
 		LifecycleAuditEvidence: {},

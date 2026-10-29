@@ -1,0 +1,14 @@
+{{- /*
+  Crossplane Functions used by the XRole Composition pipeline. Installed as pkg.crossplane.io/v1
+  Function CRs. Digest-pinned in values.yaml.
+*/ -}}
+{{- range $name, $fn := .Values.functions }}
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: {{ $name }}
+spec:
+  {{- $digest := required (printf "xrole-composition: functions.%s.digest is required (digest-pinning contract; no mutable :version fallback)" $name) $fn.digest }}
+  package: {{ printf "%s@%s" $fn.repository $digest }}
+---
+{{- end }}

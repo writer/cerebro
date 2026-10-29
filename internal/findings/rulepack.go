@@ -54,6 +54,15 @@ func builtinRulePacks() []RulePack {
 			Rules:       newCloudSignalRules(),
 		},
 		{
+			ID:          "cloud_identity",
+			Name:        "Cloud Identity",
+			Description: "Kubernetes-workload AWS IAM and GCP service account least-privilege, drift, and cross-service sharing findings.",
+			Rules: []Rule{
+				newCloudIdentityExcessPrivilegeRule(),
+				newCloudIdentitySharedPrincipalRule(),
+			},
+		},
+		{
 			ID:          "runtime",
 			Name:        "Runtime",
 			Description: "Runtime evidence findings.",

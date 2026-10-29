@@ -85200,7 +85200,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 22
         unmapped_controls: 14
-        mapped_rules: 592
+        mapped_rules: 594
         auditor_ready_controls: 0
         needs_enrichment_controls: 0
         placeholder_controls: 36
@@ -85595,10 +85595,11 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 14
+          rule_count: 15
           mapped_rules:
             - anthropic-unmanaged-active-api-key
             - aws-ecs-active-candidate-secret-role-path
+            - cloud-identity-excess-privilege
             - github-org-owner-role-review-needed
             - identity-okta-admin-plus-app-owner
             - identity-okta-admin-privilege-grant-events-30d
@@ -85989,9 +85990,10 @@ profiles:
             status: placeholder
             score: 0
           coverage_status: mapped
-          rule_count: 1
+          rule_count: 2
           mapped_rules:
             - cerebro-high-risk-api-access
+            - cloud-identity-shared-principal
         - framework_name: ISO 27001:2022
           family_id: A.8
           family_name: Technology Controls
@@ -86977,6 +86979,14 @@ profiles:
           controls:
             - framework_name: ISO 27001:2022
               control_id: A.8.20
+        - rule_id: cloud-identity-excess-privilege
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.2
+        - rule_id: cloud-identity-shared-principal
+          controls:
+            - framework_name: ISO 27001:2022
+              control_id: A.8.3
         - rule_id: cloud-privilege-path-granted
           controls:
             - framework_name: ISO 27001:2022
@@ -120507,7 +120517,7 @@ profiles:
         selected_controls: 36
         mapped_controls: 32
         unmapped_controls: 4
-        mapped_rules: 1520
+        mapped_rules: 1522
         auditor_ready_controls: 36
         needs_enrichment_controls: 0
         placeholder_controls: 0
@@ -124792,7 +124802,7 @@ profiles:
             - framework_name: NIST 800-53 r5
               control_id: PS-4
           coverage_status: mapped
-          rule_count: 312
+          rule_count: 314
           mapped_rules:
             - account-lateral-dormant
             - admin-inactive-keys
@@ -124875,6 +124885,8 @@ profiles:
             - bucket-dormant-principal
             - bucket-keys-excessive-access
             - bucket-public-low-exposure
+            - cloud-identity-excess-privilege
+            - cloud-identity-shared-principal
             - container-cross-account-keys
             - container-image-cleartext-keys
             - container-privileged
@@ -131861,6 +131873,14 @@ profiles:
               control_id: CC6.6
             - framework_name: SOC 2
               control_id: CC6.7
+        - rule_id: cloud-identity-excess-privilege
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.3
+        - rule_id: cloud-identity-shared-principal
+          controls:
+            - framework_name: SOC 2
+              control_id: CC6.3
         - rule_id: cloud-privilege-path-granted
           controls:
             - framework_name: SOC 2
