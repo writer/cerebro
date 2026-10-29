@@ -162,6 +162,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `clicksend` | Clicksend source | clicksend.audit_events, clicksend.documents, clicksend.groups, clicksend.users, clicksend.workspaces |
 | `clickup` | Clickup source | clickup.audit_events, clickup.projects, clickup.users |
 | `close_crm` | Close Crm source | close_crm.accounts, close_crm.audit_events, close_crm.policies, close_crm.records, close_crm.users |
+| `cloud_identity` | Pinned Kubernetes application requirements, desired IAM and live AWS/GCP IAM; automatic excess-privilege and shared-principal findings | cloud_identity.principal_evidence, cloud_identity.coverage; family: cohort |
 | `cloudbees_ci` | Cloudbees Ci source | cloudbees_ci.audit_events, cloudbees_ci.deployments, cloudbees_ci.projects, cloudbees_ci.repositories, cloudbees_ci.users |
 | `cloudflare` | Cloudflare account and network source | accounts, members, roles, zones, DNS records, Gateway rules, Workers scripts |
 | `cloudflare_workers_ai` | Cloudflare Workers Ai source | cloudflare_workers_ai.ai_gateways, cloudflare_workers_ai.gateway_evaluations, cloudflare_workers_ai.gateway_logs, cloudflare_workers_ai.gateway_provider_configs, cloudflare_workers_ai.model_catalog, cloudflare_workers_ai.vectorize_indexes |

@@ -1,0 +1,8 @@
+# cluster-gcp: synthetic GCP dev host-cluster fixture (project example-project).
+cloud: gcp
+
+environmentConfig:
+  clusterID: cluster-gcp
+  env: dev
+  gcp:
+    gcpProjectID: example-project

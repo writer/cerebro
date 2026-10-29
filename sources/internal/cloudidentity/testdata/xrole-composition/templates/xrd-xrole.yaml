@@ -1,0 +1,71 @@
+{{- /*
+  XRole CompositeResourceDefinition (Crossplane v2, Namespaced — namespaced XRs replace claims).
+  The `access` enum is GENERATED from the profiles+packages catalog in values.yaml.
+*/ -}}
+{{- $cloud := include "xrole-composition.cloud" . }}
+{{- $names := concat (keys .Values.profiles) (keys .Values.packages) | uniq | sortAlpha }}
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xroles.platform.example.com
+spec:
+  scope: Namespaced
+  group: platform.example.com
+  names:
+    kind: XRole
+    plural: xroles
+  # Pin every XRole on this cluster to this cloud's Composition (confused-deputy fence) — derived
+  # from `cloud`, so a claim can never select the other cloud's Composition.
+  enforcedCompositionRef:
+    name: xrole-{{ $cloud }}
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: [owner, serviceName, serviceAccountName, access]
+            properties:
+              owner:
+                type: string
+                minLength: 1
+                maxLength: 63
+                description: Owning team/identity. Stamped on every composed resource (attribution).
+              serviceName:
+                type: string
+                minLength: 1
+                maxLength: 40
+                description: Naming input for the minted GSA / IRSA role name. Immutable.
+              serviceAccountName:
+                type: string
+                minLength: 1
+                maxLength: 63
+                description: The app KSA bound in the trust policy.
+              access:
+                type: array
+                minItems: 1
+                description: Capability package or specific profile names. The ONLY grant surface.
+                items:
+                  type: string
+                  enum:
+                  {{- range $n := $names }}
+                  - {{ $n | quote }}
+                  {{- end }}
+          status:
+            type: object
+            properties:
+              identity:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    maxLength: 30
+                    description: The minted cloud identity's short name, as computed by the Composition.
+                  ref:
+                    type: string
+                    maxLength: 253
+                    description: Fully-qualified identity (GSA email on GCP, role ARN on AWS).

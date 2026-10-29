@@ -1,0 +1,57 @@
+{{- /*
+  XRole Composition for this cluster's single cloud. Exactly ONE Composition per cluster (name
+  xrole-<cloud>, matching the XRD enforcedCompositionRef). Pipeline: environment-configs ->
+  go-templating -> auto-ready. The profiles+packages catalog is injected as a go-template preamble
+  (single source of truth = chart values); the fan-out logic lives verbatim in the .gotmpl (Helm
+  never parses it — loaded via .Files.Get).
+*/ -}}
+{{- $cloud := include "xrole-composition.cloud" . }}
+{{- include "xrole-composition.validateCatalog" . }}
+{{- $preamble := printf "{{- $profiles := `%s` | fromJson }}\n{{- $packages := `%s` | fromJson }}\n" (.Values.profiles | toJson) (.Values.packages | toJson) }}
+{{- /* GCP only: the package -> ProjectIAMCustomRole roleId map, so xrole-gcp.gotmpl binds to the
+       exact names templates/gcp-custom-roles.yaml mints instead of re-deriving them. */ -}}
+{{- if eq $cloud "gcp" }}
+{{-   $cluster := required "xrole-composition: environmentConfig.clusterID is required on a GCP cluster (it qualifies the custom role names)." .Values.environmentConfig.clusterID }}
+{{-   $roleIDs := dict }}
+{{-   range $pkg, $_roles := (include "xrole-composition.gcpPackageRoles" . | fromJson) }}
+{{-     $_ := set $roleIDs $pkg (include "xrole-composition.gcpCustomRoleId" (dict "pkg" $pkg "cluster" $cluster)) }}
+{{-   end }}
+{{-   $preamble = printf "%s{{- $packageRoleIDs := `%s` | fromJson }}\n" $preamble ($roleIDs | toJson) }}
+{{- end }}
+{{- $body := printf "%s%s" $preamble (.Files.Get (printf "files/xrole-%s.gotmpl" $cloud)) }}
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xrole-{{ $cloud }}
+  labels:
+    cloud: {{ $cloud }}
+spec:
+  compositeTypeRef:
+    apiVersion: platform.example.com/v1alpha1
+    kind: XRole
+  mode: Pipeline
+  pipeline:
+  - step: load-cluster-facts
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
+      spec:
+        environmentConfigs:
+        - type: Reference
+          ref:
+            name: {{ .Values.environmentConfig.name | quote }}
+  - step: expand-and-fan-out
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+{{ $body | indent 10 }}
+  - step: ready
+    functionRef:
+      name: function-auto-ready

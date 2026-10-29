@@ -1,0 +1,158 @@
+{{- /*
+  XRole GCP expansion + fan-out (function-go-templating). Pure Crossplane go-template — Helm never
+  parses it (loaded verbatim via .Files.Get). $profiles/$packages/$packageRoleIDs are injected as a
+  preamble by templates/composition.yaml.
+
+  Emits:
+    1x ServiceAccount            (no accountId; external-name = metadata.name)
+    1x ServiceAccountIAMMember   (Workload Identity trust; serviceAccountId = full path)
+    Nx ProjectIAMMember          (one ADDITIVE grant per deduped role; never ProjectIAMPolicy/Binding)
+
+  An entry in spec.access naming a PACKAGE binds ONE ProjectIAMCustomRole (minted once per cluster
+  by templates/gcp-custom-roles.yaml; its roleId arrives in $packageRoleIDs). An entry naming a bare
+  PROFILE fans out to that profile's individual predefined roles.
+*/ -}}
+{{- $xr      := .observed.composite.resource }}
+{{- $env     := (index .context "apiextensions.crossplane.io/environment") }}
+{{- $proj    := $env.gcpProjectID }}
+{{- $cluster := $env.clusterID }}
+{{- $svc     := $xr.spec.serviceName }}
+{{- $ksa     := $xr.spec.serviceAccountName }}
+{{- $owner   := $xr.spec.owner }}
+{{- $ns      := $xr.metadata.namespace }}
+{{- /* Identity name must stay byte-identical to xrole-aws.gotmpl's derivation. */ -}}
+{{- $slug    := printf "app-role-%s-%s-%s" $cluster $ns $svc }}
+{{- $name    := printf "app-role-%s" (sha256sum $slug | trunc 20) }}
+{{- $email   := printf "%s@%s.iam.gserviceaccount.com" $name $proj }}
+{{- /* Resolve access -> the deduped list of ROLE NAMES to bind. */ -}}
+{{- $roles := list }}
+{{- range $a := ($xr.spec.access | uniq) }}
+{{-   if hasKey $packages $a }}
+{{-     if not (hasKey $packageRoleIDs $a) }}{{ fail (printf "XRole: capability package %q grants nothing on GCP (no custom role is minted for it) — remove it from spec.access or give one of its profiles a gcp role" $a) }}{{ end }}
+{{-     $roles = append $roles (printf "projects/%s/roles/%s" $proj (index $packageRoleIDs $a)) }}
+{{-   else }}
+{{-     if not (hasKey $profiles $a) }}{{ fail (printf "XRole: %q in spec.access is neither a capability package nor a defined profile (typo, or missing from the catalog)" $a) }}{{ end }}
+{{-     $roles = concat $roles (default (list) (index (index $profiles $a) "gcp")) }}
+{{-   end }}
+{{- end }}
+{{- $roles = $roles | uniq | sortAlpha }}
+---
+apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+kind: ServiceAccount
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: sa
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+  name: {{ $name | quote }}
+spec:
+  forProvider:
+    project: {{ $proj | quote }}
+    displayName: {{ $svc | quote }}
+    description: {{ printf "app-role %s %s/%s (owner=%s) managed by Crossplane XRole" $cluster $ns $svc $owner | quote }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $env.providerConfigName | quote }}
+---
+apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+kind: ServiceAccountIAMMember
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: sa-wi
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+    platform.example.com/xrole-binding: wi
+spec:
+  forProvider:
+    serviceAccountId: {{ printf "projects/%s/serviceAccounts/%s" $proj $email | quote }}
+    role: roles/iam.workloadIdentityUser
+    member: {{ printf "serviceAccount:%s.svc.id.goog[%s/%s]" $proj $ns $ksa | quote }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $env.providerConfigName | quote }}
+---
+{{- /* Teardown guard: delete the WI binding before the ServiceAccount. */}}
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: usage-sa-wi
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+spec:
+  replayDeletion: true
+  reason: "XRole teardown ordering: remove the Workload Identity binding before the ServiceAccount."
+  of:
+    apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+    kind: ServiceAccount
+    resourceRef:
+      name: {{ $name | quote }}
+  by:
+    apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+    kind: ServiceAccountIAMMember
+    resourceSelector:
+      matchControllerRef: true
+      matchLabels:
+        platform.example.com/xrole-binding: wi
+{{- range $role := $roles }}
+{{- $rn8 := sha256sum (printf "%s|%s|%s" $proj $role $email) | trunc 8 }}
+---
+apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+kind: ProjectIAMMember
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: {{ printf "role-%s" $rn8 | quote }}
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+    platform.example.com/xrole-binding: {{ $rn8 | quote }}
+spec:
+  forProvider:
+    project: {{ $proj | quote }}
+    role: {{ $role | quote }}
+    member: {{ printf "serviceAccount:%s" $email | quote }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $env.providerConfigName | quote }}
+---
+{{- /* Teardown guard: delete this project IAM binding before the ServiceAccount. */}}
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: {{ printf "usage-role-%s" $rn8 | quote }}
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+spec:
+  replayDeletion: true
+  reason: {{ printf "XRole teardown ordering: remove project IAM binding for %s before the ServiceAccount so GCP does not tombstone it as deleted:serviceAccount." $role | quote }}
+  of:
+    apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+    kind: ServiceAccount
+    resourceRef:
+      name: {{ $name | quote }}
+  by:
+    apiVersion: cloudplatform.gcp.m.upbound.io/v1beta1
+    kind: ProjectIAMMember
+    resourceSelector:
+      matchControllerRef: true
+      matchLabels:
+        platform.example.com/xrole-binding: {{ $rn8 | quote }}
+{{- end }}
+{{- /* Publish the identity the Composition actually derived. An XR-typed document WITHOUT the
+       gotemplating.fn.crossplane.io/composition-resource-name annotation is how function-go-templating
+       writes composite status. */}}
+---
+apiVersion: platform.example.com/v1alpha1
+kind: XRole
+status:
+  identity:
+    name: {{ $name | quote }}
+    ref: {{ $email | quote }}

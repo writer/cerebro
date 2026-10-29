@@ -1,0 +1,37 @@
+id: cloud_identity
+name: Kubernetes Cloud Identity
+description: Pinned workload, application requirement, declared IAM, and live AWS/GCP evidence for native identity findings.
+emitted_kinds:
+  - cloud_identity.principal_evidence
+  - cloud_identity.coverage
+runtime_families:
+  - cohort
+event_contracts:
+  - kind: cloud_identity.principal_evidence
+    schema_ref: cloud_identity/principal_evidence/v1
+    required_attributes: [principal_id, cloud_provider, scope, resource_id, resource_type]
+    required_payload_fields: [schema, principal, scope, consumers, consumer_inventory_complete, declared, observed, definitions, investigations, collected_at]
+  - kind: cloud_identity.coverage
+    schema_ref: cloud_identity/coverage/v1
+    required_attributes: [scope]
+    required_payload_fields: [schema, scope, collected_at, inventory_complete, principal_count, gap_count]
+coverage_contract:
+  owner_domain: cloud
+  authority_domain: cloud_identity
+  dimensions:
+    - id: principal_evidence
+      type: entity_family
+      title: Kubernetes-used cloud principal evidence
+      families: [cohort]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [identity_access]
+    - id: coverage
+      type: entity_family
+      title: Incomplete source and policy coverage
+      families: [cohort]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]

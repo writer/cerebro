@@ -17,6 +17,7 @@ import (
 	azuresource "github.com/writer/cerebro/sources/azure"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
+	cloudidentitysource "github.com/writer/cerebro/sources/cloud_identity"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
@@ -93,6 +94,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cerebro",
 		load: func() (sourcecdk.Source, error) {
 			return cerebrosource.New()
+		},
+	},
+	{
+		name: "cloud_identity",
+		load: func() (sourcecdk.Source, error) {
+			return cloudidentitysource.New()
 		},
 	},
 	{

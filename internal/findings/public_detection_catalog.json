@@ -2745,6 +2745,491 @@
       ]
     },
     {
+      "id": "cloud-identity-excess-privilege",
+      "pack_id": "cloud_identity",
+      "pack_name": "Cloud Identity",
+      "name": "Cloud Identity Excess Privilege",
+      "description": "Detect Kubernetes-workload cloud identities (AWS IAM roles or GCP service accounts) whose declared or live-observed IAM grants exceed the union of their consumers' validated operation requirements.",
+      "source_id": "cloud_identity",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "cloud_identity.principal_evidence"
+      ],
+      "output_kind": "finding.cloud_identity_excess_privilege",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "aws",
+        "cloud-identity",
+        "drift",
+        "gcp",
+        "iam",
+        "kubernetes",
+        "least-privilege"
+      ],
+      "references": [
+        "https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md#cloud-identity-scan"
+      ],
+      "false_positives": [
+        "A consumer workload was decommissioned but its requirement evidence has not yet been re-collected, or the investigator could not resolve a newly added consumer's actual API usage.",
+        "The excess permission is intentionally reserved for a documented, not-yet-deployed consumer."
+      ],
+      "runbook": "Review the declared and observed excess grants against the unioned consumer requirements, remove the unused actions/resources from the identity's IAM policy or Terraform declaration, and re-run the scan to confirm the finding clears.",
+      "evidence_type": "control_state",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the normalized source-state snapshot and the provider evidence behind the flagged configuration to confirm the control state for the assessment period.",
+      "risk_statement": "The mapped control may not be operating effectively, leaving the affected asset, identity, or data exposed for the assessment period.",
+      "remediation_intent": "Remediate the underlying risky state, preserve remediation and re-test evidence, and document any accepted risk or compensating control.",
+      "required_attributes": [
+        "cloud_provider",
+        "principal_id",
+        "resource_id",
+        "scope"
+      ],
+      "fingerprint_fields": [
+        "cloud_identity_principal_scope_urn"
+      ],
+      "lifecycle": {
+        "kind": "durable_state",
+        "anchor": "source_state"
+      },
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "cloud_identity",
+          "dimension_id": "principal_evidence",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cohort"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "auth0",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles",
+            "user_roles"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "ISO 27001:2022",
+              "control_id": "A.8.2"
+            },
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare_zero_trust",
+          "dimension_id": "roles",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "roles"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "duo",
+          "dimension_id": "roles",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "snyk",
+          "dimension_id": "org_access",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "org_memberships",
+            "service_accounts"
+          ],
+          "evidence_types": [
+            "access_review"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cloud-identity-shared-principal",
+      "pack_id": "cloud_identity",
+      "pack_name": "Cloud Identity",
+      "name": "Cloud Identity Shared Across Unrelated Services",
+      "description": "Detect one AWS IAM role or GCP service account whose validated consumer inventory spans multiple distinct logical services rather than replicas of the same service, breaking blast-radius isolation if the identity is compromised or over-permissioned for any one consumer.",
+      "source_id": "cloud_identity",
+      "evaluation_mode": "event",
+      "event_kinds": [
+        "cloud_identity.principal_evidence"
+      ],
+      "output_kind": "finding.cloud_identity_shared_principal",
+      "severity": "dynamic",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "aws",
+        "blast-radius",
+        "cloud-identity",
+        "gcp",
+        "iam",
+        "kubernetes",
+        "sharing"
+      ],
+      "references": [
+        "https://github.com/writer/cerebro/blob/main/docs/domains/source-runtime-guide.md#cloud-identity-scan"
+      ],
+      "false_positives": [
+        "The investigator could not resolve consumer service identity for one or more workloads, understating or overstating distinct services.",
+        "The services are intentionally co-deployed replicas of the same logical application under different image tags or namespaces."
+      ],
+      "runbook": "Split the shared identity into one principal per logical service (or scope its policy to the narrowest shared need), then re-run the scan to confirm the finding clears.",
+      "evidence_type": "control_state",
+      "assessment_methods": [
+        "examine",
+        "test"
+      ],
+      "auditor_guidance": "Review the normalized source-state snapshot and the provider evidence behind the flagged configuration to confirm the control state for the assessment period.",
+      "risk_statement": "The mapped control may not be operating effectively, leaving the affected asset, identity, or data exposed for the assessment period.",
+      "remediation_intent": "Remediate the underlying risky state, preserve remediation and re-test evidence, and document any accepted risk or compensating control.",
+      "required_attributes": [
+        "cloud_provider",
+        "principal_id",
+        "resource_id",
+        "scope"
+      ],
+      "fingerprint_fields": [
+        "cloud_identity_principal_scope_urn"
+      ],
+      "lifecycle": {
+        "kind": "durable_state",
+        "anchor": "source_state"
+      },
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.3"
+        }
+      ],
+      "source_coverage_refs": [
+        {
+          "source_id": "cloud_identity",
+          "dimension_id": "principal_evidence",
+          "dimension_type": "entity_family",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "cohort"
+          ],
+          "evidence_types": [
+            "source_snapshot"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "anthropic",
+          "dimension_id": "workload_identity",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "federation_issuer",
+            "federation_rule",
+            "service_account"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "cloudflare",
+          "dimension_id": "roles",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "duo",
+          "dimension_id": "roles",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "role"
+          ],
+          "evidence_types": [
+            "configuration_state"
+          ],
+          "control_domains": [
+            "identity_access",
+            "security_operations"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "google_workspace",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account",
+            "active_account",
+            "archived",
+            "dormant_user",
+            "employee_record",
+            "last_login",
+            "never_logged_in",
+            "stale_login",
+            "suspended",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "openai",
+          "dimension_id": "identity_access",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "group",
+            "group_role",
+            "group_user",
+            "invite",
+            "role",
+            "user",
+            "user_role"
+          ],
+          "evidence_types": [
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "privileged_users",
+          "dimension_type": "app_entitlement",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "admin",
+            "owner",
+            "privileged",
+            "privileged_user",
+            "role",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        },
+        {
+          "source_id": "tailscale",
+          "dimension_id": "user_lifecycle",
+          "dimension_type": "lifecycle_state",
+          "support_level": "supported",
+          "high_value": true,
+          "families": [
+            "account",
+            "active_account",
+            "dormant_user",
+            "employee_record",
+            "last_seen",
+            "never_logged_in",
+            "personal_email",
+            "privileged_user",
+            "stale_login",
+            "terminated_account",
+            "user"
+          ],
+          "evidence_types": [
+            "access_review",
+            "identity_configuration"
+          ],
+          "control_domains": [
+            "identity_access"
+          ],
+          "matched_control_refs": [
+            {
+              "framework_name": "SOC 2",
+              "control_id": "CC6.3"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "cloudflare-zone-protection-paused",
       "pack_id": "cloudflare",
       "pack_name": "Cloudflare",

@@ -1,0 +1,59 @@
+# xrole-composition — minimal synthetic fixture standing in for a real-world XRole XRD + per-cloud
+# Composition + capability-profile chart. Used ONLY by cloudidentity tests; shapes (not names) match
+# production: one Composition per cloud, pipeline function-environment-configs -> function-go-templating
+# -> function-auto-ready, an EnvironmentConfig feeding the go-template context, and (on GCP) a
+# ProjectIAMCustomRole minted per capability package.
+
+# -- Cloud this cluster runs: "aws" or "gcp". REQUIRED (host-cluster values).
+cloud: ""
+
+# -- Crossplane Functions consumed by the Composition pipeline. Digest-pinned (immutable).
+functions:
+  function-environment-configs:
+    repository: xpkg.example.com/crossplane-contrib/function-environment-configs
+    version: v0.7.2
+    digest: "sha256:1111111111111111111111111111111111111111111111111111111111111a"
+  function-go-templating:
+    repository: xpkg.example.com/crossplane-contrib/function-go-templating
+    version: v0.9.2
+    digest: "sha256:2222222222222222222222222222222222222222222222222222222222222b"
+  function-auto-ready:
+    repository: xpkg.example.com/crossplane-contrib/function-auto-ready
+    version: v0.7.0
+    digest: "sha256:3333333333333333333333333333333333333333333333333333333333333c"
+
+# -- Per-cluster EnvironmentConfig (git-authored infra facts; NOT claim-settable). Only the block
+#    matching `cloud` is emitted.
+environmentConfig:
+  name: cluster-facts
+  clusterID: ""
+  env: ""
+  providerConfigName: default
+  aws:
+    awsAccountID: ""
+    # FULL ARN of app-role-boundary-<cluster> (not the bare name).
+    awsBoundaryArn: ""
+    awsOidcProviderArn: ""
+    awsOidcIssuerHost: ""
+  gcp:
+    gcpProjectID: ""
+
+# ---------------------------------------------------------------------------------------------
+# Capability profiles catalog (SINGLE SOURCE OF TRUTH, trimmed to a two-profile fixture).
+#   profiles.<name>.gcp = list of full GCP role names (roles/<service>.<role>)
+#   profiles.<name>.aws = list of IAM actions (<service>:* or explicit action)
+# ---------------------------------------------------------------------------------------------
+profiles:
+  object-store:
+    gcp: [roles/storage.objectAdmin]
+    aws: ['s3:*']
+  observability:
+    gcp: [roles/logging.logWriter]
+    aws: ['cloudwatch:*', 'logs:*']
+
+# -- Capability PACKAGES: named bundles of profiles. Selecting a package name (instead of a bare
+#    profile) is what exercises the GCP custom-role-minting/binding path.
+packages:
+  standard:
+  - object-store
+  - observability

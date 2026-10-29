@@ -1,0 +1,6 @@
+apiVersion: v2
+name: xrole-composition
+description: Synthetic XRole composite API (XRD + per-cloud Compositions + capability profiles) fixture used only by cloudidentity tests
+type: application
+version: 0.1.0
+appVersion: 1.0.0
