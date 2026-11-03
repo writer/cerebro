@@ -590,7 +590,8 @@ func removeGroupPath(group ports.DirectoryGroup, path string, raw json.RawMessag
 	if path == "" {
 		return group, scimBadRequest(SCIMTypeNoTarget, "remove requires a path")
 	}
-	if match := memberFilterPathPattern.FindStringSubmatch(path); match != nil {
+	attr := strings.TrimPrefix(path, SCIMSchemaGroup+":")
+	if match := memberFilterPathPattern.FindStringSubmatch(attr); match != nil {
 		var id string
 		if err := json.Unmarshal([]byte(match[1]), &id); err != nil {
 			return group, scimBadRequest(SCIMTypeInvalidPath, "invalid member filter")
@@ -598,7 +599,7 @@ func removeGroupPath(group ports.DirectoryGroup, path string, raw json.RawMessag
 		group.MemberIDs = removeMembers(group.MemberIDs, []string{id})
 		return group, nil
 	}
-	switch strings.ToLower(path) {
+	switch strings.ToLower(attr) {
 	case "members":
 		if len(raw) == 0 || string(raw) == "null" {
 			group.MemberIDs = nil
