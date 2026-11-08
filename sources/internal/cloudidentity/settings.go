@@ -115,7 +115,7 @@ func ParseSettings(cfg sourcecdk.Config) (Settings, error) {
 			return st, fmt.Errorf("cloud_identity module_source_overrides: %w", err)
 		}
 		if err := validateModuleSourceOverrides(st.ModuleSourceOverrides); err != nil {
-			return st, fmt.Errorf("cloud_identity module_source_overrides %s", err)
+			return st, fmt.Errorf("cloud_identity module_source_overrides: %w", err)
 		}
 	}
 	st.AllowedRepositories = append(st.AllowedRepositories, planRepositories(st.Plan)...)

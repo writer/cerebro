@@ -82,7 +82,7 @@ func TestCollectNoLiveOnlyPodIdentityAssociationGapWhenDeclared(t *testing.T) {
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleARN":        roleARN,
-	}, "worker-pia", "payments")
+	}, "worker-pia")
 	plan, ports := collectionPodIdentityPorts(roleARN, pia)
 
 	result, err := Collect(context.Background(), plan, ports, time.Now())

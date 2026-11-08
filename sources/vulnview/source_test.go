@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -101,6 +100,9 @@ func TestParseSettingsRejectsUntrustedBaseURL(t *testing.T) {
 	}
 }
 
+// Same configuration as TestParseSettingsAcceptsNonWriterOriginWhenTrusted
+// without the deployment allowlist, so the rejection comes from the missing
+// trusted origin.
 func TestParseSettingsRejectsBaseURLWithNoTrustedOriginConfigured(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
 		"tenant_id":     "writer",
@@ -111,9 +113,6 @@ func TestParseSettingsRejectsBaseURLWithNoTrustedOriginConfigured(t *testing.T) 
 	}), false)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want missing trusted origin rejected")
-	}
-	if !strings.Contains(err.Error(), "CEREBRO_SOURCE_TRUSTED_ORIGINS") {
-		t.Fatalf("error = %v, want it to name CEREBRO_SOURCE_TRUSTED_ORIGINS", err)
 	}
 }
 

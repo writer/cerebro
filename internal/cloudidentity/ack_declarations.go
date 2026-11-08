@@ -154,7 +154,7 @@ func DeclarationsFromACK(manifests []Manifest, cluster, account string) ([]Decla
 
 	var podIdentities []PodIdentityDeclaration
 	for i, obj := range podIdentityObjects {
-		pid, g := ackPodIdentityDeclaration(obj, podIdentityRefs[i], cluster, account, roles)
+		pid, g := ackPodIdentityDeclaration(obj, podIdentityRefs[i], cluster, roles)
 		gaps = append(gaps, g...)
 		if pid != nil {
 			podIdentities = append(podIdentities, *pid)
@@ -273,7 +273,7 @@ func ackIAMRoleDeclaration(m Manifest, account, name, namespace string) (*Declar
 // spec.clusterName, when declared, must agree with the scan target's own
 // cluster -- a declared Pod Identity association naming a different
 // cluster is reported, never silently trusted or dropped.
-func ackPodIdentityDeclaration(obj map[string]any, ref Reference, targetCluster, account string, roles map[string]*Declaration) (*PodIdentityDeclaration, []Gap) {
+func ackPodIdentityDeclaration(obj map[string]any, ref Reference, targetCluster string, roles map[string]*Declaration) (*PodIdentityDeclaration, []Gap) {
 	var gaps []Gap
 	scope, _ := manifestInventoryNestedString(obj, "metadata", "name")
 	piaNamespace, _ := manifestInventoryNestedString(obj, "metadata", "namespace")

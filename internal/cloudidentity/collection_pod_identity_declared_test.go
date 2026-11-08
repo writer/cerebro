@@ -52,7 +52,7 @@ func TestCollectDeclaredPodIdentityAssociationJoinsUnverifiedWithoutLiveConfirma
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleARN":        roleARN,
-	}, "worker-pia", "payments")
+	}, "worker-pia")
 	plan, ports := collectionDeclaredPodIdentityPorts(pia)
 
 	result, err := Collect(context.Background(), plan, ports, time.Now())

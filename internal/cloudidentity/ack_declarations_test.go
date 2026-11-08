@@ -4,12 +4,15 @@ import (
 	"testing"
 )
 
-func ackManifest(apiVersion, kind string, spec map[string]any, name, namespace string) Manifest {
+// ackManifest builds a rendered ACK object in the "payments" namespace shared by
+// every fixture, so a PodIdentityAssociation roleRef without its own namespace
+// resolves against fixture Roles.
+func ackManifest(apiVersion, kind string, spec map[string]any, name string) Manifest {
 	return Manifest{
 		Object: map[string]any{
 			"apiVersion": apiVersion,
 			"kind":       kind,
-			"metadata":   map[string]any{"name": name, "namespace": namespace},
+			"metadata":   map[string]any{"name": name, "namespace": "payments"},
 			"spec":       spec,
 		},
 		Reference: Reference{Repository: "github.com/example/k8s", Revision: "deadbeef", Path: "manifests/example-apps/templates/identity.yaml"},
@@ -26,7 +29,7 @@ func TestDeclarationsFromACKRoleTrustInlineManagedAndBoundary(t *testing.T) {
 		"inlinePolicies":           map[string]any{"s3-read": testInlinePolicy},
 		"policies":                 []any{"arn:aws:iam::aws:policy/ReadOnlyAccess"},
 		"permissionsBoundary":      "arn:aws:iam::123456789012:policy/ack-boundary",
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, podIdentities, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(gaps) != 0 {
@@ -73,7 +76,7 @@ func TestDeclarationsFromACKRoleDefaultPath(t *testing.T) {
 	role := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Role", map[string]any{
 		"name":                     "payments-worker",
 		"assumeRolePolicyDocument": testACKTrustPolicy,
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(gaps) != 0 {
@@ -95,7 +98,7 @@ func TestDeclarationsFromACKRoleInvalidPathGap(t *testing.T) {
 		"name":                     "payments-worker",
 		"path":                     "not-a-path",
 		"assumeRolePolicyDocument": testACKTrustPolicy,
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(declarations) != 1 {
@@ -121,7 +124,7 @@ func TestDeclarationsFromACKRoleInvalidPathGap(t *testing.T) {
 func TestDeclarationsFromACKRoleSpecNameMissingGap(t *testing.T) {
 	role := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Role", map[string]any{
 		"assumeRolePolicyDocument": testACKTrustPolicy,
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(declarations) != 1 {
@@ -149,7 +152,7 @@ func TestDeclarationsFromACKRoleLongNameVerbatim(t *testing.T) {
 	role := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Role", map[string]any{
 		"name":                     longName,
 		"assumeRolePolicyDocument": testACKTrustPolicy,
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(gaps) != 0 {
@@ -177,7 +180,7 @@ func TestDeclarationsFromACKRoleBoundaryUnresolvedMarkerKeepsPolicyIncomplete(t 
 		"path":                     "/ack/cluster-a/",
 		"assumeRolePolicyDocument": testACKTrustPolicy,
 		"permissionsBoundary":      UnresolvedValueMarker("ack.permissionsBoundaryArn"),
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "123456789012")
 	if len(declarations) != 1 {
@@ -232,7 +235,7 @@ func TestUnresolvedValueMarkerKeyRoundTrip(t *testing.T) {
 func TestDeclarationsFromACKRoleMissingTrustAndAccountGaps(t *testing.T) {
 	role := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Role", map[string]any{
 		"name": "payments-worker",
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{role}, "cluster-a", "")
 	if len(declarations) != 1 {
@@ -261,7 +264,7 @@ func TestDeclarationsFromACKPodIdentityAssociationExplicitRoleARN(t *testing.T) 
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleARN":        "arn:aws:iam::123456789012:role/ack/cluster-a/cluster-a-payments-payments-worker",
-	}, "payments-worker-pia", "payments")
+	}, "payments-worker-pia")
 
 	declarations, podIdentities, gaps := DeclarationsFromACK([]Manifest{pia}, "cluster-a", "123456789012")
 	if len(gaps) != 0 {
@@ -287,12 +290,12 @@ func TestDeclarationsFromACKPodIdentityAssociationRoleRefResolvesAgainstCollecte
 		"name":                     "payments-worker",
 		"path":                     "/explicit/",
 		"assumeRolePolicyDocument": testACKTrustPolicy,
-	}, "payments-worker", "payments")
+	}, "payments-worker")
 	pia := ackManifest(ackEKSAPIGroup+"/v1alpha1", "PodIdentityAssociation", map[string]any{
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleRef":        map[string]any{"from": map[string]any{"name": "payments-worker"}},
-	}, "payments-worker-pia", "payments")
+	}, "payments-worker-pia")
 
 	declarations, podIdentities, gaps := DeclarationsFromACK([]Manifest{role, pia}, "cluster-a", "123456789012")
 	if len(gaps) != 0 {
@@ -319,7 +322,7 @@ func TestDeclarationsFromACKPodIdentityAssociationRoleRefAbsentRoleGap(t *testin
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleRef":        map[string]any{"from": map[string]any{"name": "payments-worker"}},
-	}, "payments-worker-pia", "payments")
+	}, "payments-worker-pia")
 
 	_, podIdentities, gaps := DeclarationsFromACK([]Manifest{pia}, "cluster-a", "123456789012")
 	if len(podIdentities) != 0 {
@@ -342,7 +345,7 @@ func TestDeclarationsFromACKPodIdentityAssociationClusterMismatchGap(t *testing.
 		"namespace":      "payments",
 		"serviceAccount": "worker",
 		"roleARN":        "arn:aws:iam::123456789012:role/ack/cluster-b/cluster-b-payments-payments-worker",
-	}, "payments-worker-pia", "payments")
+	}, "payments-worker-pia")
 
 	_, podIdentities, gaps := DeclarationsFromACK([]Manifest{pia}, "cluster-a", "123456789012")
 	if len(podIdentities) != 1 {
@@ -363,7 +366,7 @@ func TestDeclarationsFromACKPodIdentityAssociationUnresolvedRoleGap(t *testing.T
 	pia := ackManifest(ackEKSAPIGroup+"/v1alpha1", "PodIdentityAssociation", map[string]any{
 		"namespace":      "payments",
 		"serviceAccount": "worker",
-	}, "payments-worker-pia", "payments")
+	}, "payments-worker-pia")
 
 	_, podIdentities, gaps := DeclarationsFromACK([]Manifest{pia}, "cluster-a", "123456789012")
 	if len(podIdentities) != 0 {
@@ -381,7 +384,7 @@ func TestDeclarationsFromACKPodIdentityAssociationUnresolvedRoleGap(t *testing.T
 }
 
 func TestDeclarationsFromACKUnsupportedKindGap(t *testing.T) {
-	odd := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Policy", map[string]any{}, "weird", "payments")
+	odd := ackManifest(ackIAMAPIGroup+"/v1alpha1", "Policy", map[string]any{}, "weird")
 	declarations, _, gaps := DeclarationsFromACK([]Manifest{odd}, "cluster-a", "123456789012")
 	if len(declarations) != 0 {
 		t.Fatalf("expected no declarations for an unsupported kind, got %+v", declarations)
