@@ -1396,6 +1396,51 @@ func TestMergeStringMapClearsOlderObservationMetadataMissingFromNewerAt(t *testi
 	}
 }
 
+// Strict-precedence entities keep their newest observation within a page: the
+// assessment orders by `at`, and the finding by observation_version even when
+// a higher version committed with an earlier `at`.
+func TestProjectResponseCoalescedKeepsNewestStrictObservation(t *testing.T) {
+	const assessmentURN = "urn:cerebro:writer:vulnview_cloud_identity_assessment:principal"
+	const findingURN = "urn:cerebro:writer:vulnview_cloud_identity_finding:principal"
+	observations := map[string]struct{ urn, at, version, status string }{
+		"assessment-new":    {assessmentURN, "2026-11-02T10:00:00Z", "", "supported"},
+		"assessment-old":    {assessmentURN, "2026-11-02T09:00:00Z", "", "clear"},
+		"finding-v2":        {findingURN, "2026-11-02T10:00:01Z", "2", "fixed"},
+		"finding-v3":        {findingURN, "2026-11-02T10:00:00Z", "3", "open"},
+		"finding-v2-replay": {findingURN, "2026-11-02T10:00:01Z", "2", "fixed"},
+	}
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		observation := observations[event.GetId()]
+		return []*ports.ProjectedEntity{{
+			URN: observation.urn, TenantID: event.GetTenantId(), SourceID: event.GetSourceId(),
+			EntityType: "vulnview.cloud_identity", Label: event.GetId(),
+			Attributes: map[string]string{
+				"at": observation.at, "observation_precedence": "strict", "observation_version": observation.version,
+				"status": observation.status, "event_id": event.GetId(),
+			},
+		}}, nil, nil
+	})
+	events := make([]*cerebrov1.EventEnvelope, 0, len(observations))
+	for _, id := range []string{"assessment-new", "assessment-old", "finding-v2", "finding-v3", "finding-v2-replay"} {
+		events = append(events, &cerebrov1.EventEnvelope{Id: id, SourceId: "vulnview"})
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{Events: events}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	for urn, want := range map[string]string{assessmentURN: "assessment-new", findingURN: "finding-v3"} {
+		entity := store.entities[urn]
+		if entity == nil {
+			t.Fatalf("coalesced entity %s missing", urn)
+		}
+		wantStatus := observations[want].status
+		if entity.Label != want || entity.Attributes["event_id"] != want || entity.Attributes["status"] != wantStatus {
+			t.Fatalf("coalesced %s = label %q event_id %q status %q, want the %s observation (status %q)", urn, entity.Label, entity.Attributes["event_id"], entity.Attributes["status"], want, wantStatus)
+		}
+	}
+}
+
 func TestIngestSourceReportsProgressAfterEachPersistedPage(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&cursorPagedSource{
 		id: "paged",

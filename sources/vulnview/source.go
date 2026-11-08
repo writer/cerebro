@@ -3,15 +3,13 @@ package vulnview
 import (
 	"context"
 	"embed"
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -21,11 +19,13 @@ var catalogFS embed.FS
 const (
 	sourceID = "vulnview"
 
-	familySite          = "site"
-	familyScan          = "scan"
-	familyVulnerability = "vulnerability"
-	familyAsset         = "asset"
-	familyDNSAlert      = "dns_alert"
+	familySite                    = "site"
+	familyScan                    = "scan"
+	familyVulnerability           = "vulnerability"
+	familyAsset                   = "asset"
+	familyDNSAlert                = "dns_alert"
+	familyCloudIdentityFinding    = "cloud_identity_finding"
+	familyCloudIdentityAssessment = "cloud_identity_assessment"
 )
 
 // Source reads VulnView attack-surface and vulnerability data.
@@ -35,10 +35,7 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
-	mu                   sync.Mutex
-	tokenKey             string
-	accessToken          string
-	tokenExpiresAt       time.Time
+	tokenCache           *sourcecdk.OAuthTokenCache
 }
 
 // New constructs the VulnView source.
@@ -50,6 +47,7 @@ func New() (*Source, error) {
 	source := &Source{
 		spec:          spec,
 		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
+		tokenCache:    sourcecdk.NewOAuthTokenCache(tokenExpirationLeeway),
 	}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -78,6 +76,15 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
+// ReadWithCheckpoint pages VulnView records and emits vulnview.* events,
+// giving families that need the durable checkpoint (the cloud-identity
+// cursor-feed families, for Contract H resumable checkpointing) access to
+// it. sourcecdk recognizes this as sourcecdk.CheckpointAwareSource and
+// calls it instead of Read.
+func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
 func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return sourcecdk.LoadSpecFromFS(catalogFS, "catalog.yaml")
 }
@@ -91,35 +98,55 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.family(familyVulnerability, "/vulnerabilities"),
 		s.family(familyAsset, "/assets"),
 		s.dnsAlertFamily(),
+		s.cloudIdentityFindingFamily(),
+		s.cloudIdentityAssessmentFamily(),
 	)
 }
 
 func (s *Source) family(name string, path string) sourcecdk.Family[settings] {
+	return familyFromLister(name, func(ctx context.Context, settings settings, cursor string, pageSize int) ([]record, string, error) {
+		return s.list(ctx, settings, path, cursor, pageSize)
+	})
+}
+
+// familyFromLister builds a Family whose Check/Discover/Read page through
+// list, mapping records to events via the generic eventFromRecord.
+func familyFromLister(name string, list func(context.Context, settings, string, int) ([]record, string, error)) sourcecdk.Family[settings] {
+	return familyFromListerWithEvent(name, list, func(settings settings, rec record) *primitives.Event {
+		return eventFromRecord(settings, name, rec)
+	})
+}
+
+// familyFromListerWithEvent is familyFromLister for a family whose event
+// shaping needs more than the generic family-name kind/schema.
+func familyFromListerWithEvent(name string, list func(context.Context, settings, string, int) ([]record, string, error), event func(settings, record) *primitives.Event) sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: name,
 		Check: func(ctx context.Context, settings settings) error {
-			_, _, err := s.list(ctx, settings, path, "", 1)
-			if err != nil {
-				return fmt.Errorf("vulnview %s: %w", name, err)
-			}
-			return nil
+			_, _, err := list(ctx, settings, "", 1)
+			return wrapFamilyErr(name, err)
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
-			records, _, err := s.list(ctx, settings, path, "", settings.perPage)
+			records, _, err := list(ctx, settings, "", settings.perPage)
 			if err != nil {
-				return nil, fmt.Errorf("vulnview %s: %w", name, err)
+				return nil, wrapFamilyErr(name, err)
 			}
 			return urnsFor(settings, name, records)
 		},
 		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-			records, next, err := s.list(ctx, settings, path, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+			records, next, err := list(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
 			if err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("vulnview %s: %w", name, err)
+				return sourcecdk.Pull{}, wrapFamilyErr(name, err)
 			}
-			return pullFromRecords(settings, name, records, next)
+			return sourcecdk.PullFromRecords(records, next,
+				func(rec record) (*primitives.Event, error) { return event(settings, rec), nil },
+				func(rec record) string { return strings.TrimSpace(rec.ID) },
+			)
 		},
 	}
 }
+
+func wrapFamilyErr(name string, err error) error { return sourcecdk.WrapFamilyErr(sourceID, name, err) }
 
 func (s *Source) list(ctx context.Context, settings settings, path string, cursor string, pageSize int) ([]record, string, error) {
 	var response listResponse

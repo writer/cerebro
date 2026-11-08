@@ -40,7 +40,7 @@ A Deep source is exempt from the flat LOC ceiling but is instead held to the **D
 | `grc` | 1195 | Keep control/evidence shaping out of source orchestration and push common mapping into shared helpers. |
 | `okta` | 2239 | Extract client, pagination, and identity/group/application readers into smaller units. |
 | `panopticon` | 763 | Separate request plumbing from emitted record construction. |
-| `vulnview` | 1002 | Split feed/client access from vulnerability record normalization. |
+| `vulnview` | 974 | OAuth2 client-credentials caching, trusted-URL validation, opaque-cursor feed paging, keep-highest-version dedup, resumable cursor-feed checkpointing, collision-safe canonical record IDs, first-present-timestamp selection, and common ID/attribute text helpers now live in the Source CDK; keep new record families' attribute mapping declarative rather than growing bespoke plumbing. |
 
 ## Cross-Source Duplication Guardrail
 

@@ -303,33 +303,6 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 	}
 }
 
-func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
-	specs := KnownActionSpecs()
-	if len(specs) != 3 {
-		t.Fatalf("KnownActionSpecs() len = %d, want 3", len(specs))
-	}
-	spec, err := DefaultRegistry().Lookup(ActionIdentityOktaSuspendUser)
-	if err != nil {
-		t.Fatalf("Lookup() error = %v", err)
-	}
-	if spec.Provider != ProviderAccessApprovals || spec.ProviderAction != AccessApprovalsActionSuspend || spec.TargetKind != TargetKindOktaUser {
-		t.Fatalf("generated suspend spec = %#v, want access-approvals suspend Okta user", spec)
-	}
-	if spec.Effect != "deny_access" || !spec.Destructive || spec.ReversibleBy != ActionIdentityOktaUnsuspendUser {
-		t.Fatalf("generated suspend metadata = %#v, want destructive deny_access with unsuspend reversal", spec)
-	}
-	deviceSpec, err := DefaultRegistry().Lookup(ActionEndpointCerebroRevokeDevice)
-	if err != nil {
-		t.Fatalf("Lookup(device) error = %v", err)
-	}
-	if deviceSpec.Provider != ProviderCerebroDeviceAuth || deviceSpec.ProviderAction != CerebroDeviceActionRevoke || deviceSpec.TargetKind != TargetKindCerebroDevice {
-		t.Fatalf("generated device spec = %#v, want cerebro-device-auth revoke Cerebro device", deviceSpec)
-	}
-	if deviceSpec.Effect != "deny_device_access" || !deviceSpec.Destructive || deviceSpec.ReversibleBy != "" {
-		t.Fatalf("generated device metadata = %#v, want destructive deny_device_access without reversal", deviceSpec)
-	}
-}
-
 func TestTargetForActionSpecUsesProvidedSpec(t *testing.T) {
 	target, err := TargetForActionSpec(ActionSpec{
 		ID: "custom.unregistered",

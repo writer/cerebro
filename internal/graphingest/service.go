@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -1059,6 +1060,12 @@ func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *po
 		entities[urn] = cloneProjectedEntity(entity)
 		return
 	}
+	// The page is coalesced before the graph store sees it, so a stale strict
+	// observation must be dropped here: merged into the newer one, its
+	// attributes would reach the store under the newer observation's time.
+	if projectionmeta.StaleStrictObservation(existing.Attributes, entity.Attributes) {
+		return
+	}
 	if value := strings.TrimSpace(entity.TenantID); value != "" {
 		existing.TenantID = value
 	}
@@ -1112,8 +1119,8 @@ func mergeStringMap(dst map[string]string, src map[string]string) map[string]str
 	if dst == nil {
 		dst = make(map[string]string, len(src))
 	}
-	incomingIsOlderObservation := projectedIncomingObservationIsOlder(dst, src)
-	if !incomingIsOlderObservation && projectedIncomingObservationIsNewer(dst, src) {
+	order := projectionmeta.CompareObservations(dst, src)
+	if order == projectionmeta.ObservationNewer {
 		for key := range dst {
 			if projectedAttributeCoupledToObservationTime(key) {
 				delete(dst, key)
@@ -1121,43 +1128,12 @@ func mergeStringMap(dst map[string]string, src map[string]string) map[string]str
 		}
 	}
 	for key, value := range src {
-		if incomingIsOlderObservation && projectedAttributeCoupledToObservationTime(key) {
+		if order == projectionmeta.ObservationOlder && projectedAttributeCoupledToObservationTime(key) {
 			continue
 		}
 		dst[key] = mergeProjectedAttributeValue(key, dst[key], value)
 	}
 	return dst
-}
-
-func projectedIncomingObservationIsOlder(existing map[string]string, incoming map[string]string) bool {
-	existingAt := strings.TrimSpace(existing["at"])
-	incomingAt := strings.TrimSpace(incoming["at"])
-	if existingAt == "" {
-		return false
-	}
-	if incomingAt == "" {
-		return true
-	}
-	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
-	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
-	if errExisting != nil || errIncoming != nil {
-		return false
-	}
-	return incomingT.Before(existingT)
-}
-
-func projectedIncomingObservationIsNewer(existing map[string]string, incoming map[string]string) bool {
-	existingAt := strings.TrimSpace(existing["at"])
-	incomingAt := strings.TrimSpace(incoming["at"])
-	if existingAt == "" || incomingAt == "" {
-		return false
-	}
-	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
-	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
-	if errExisting != nil || errIncoming != nil {
-		return false
-	}
-	return incomingT.After(existingT)
 }
 
 func projectedAttributeCoupledToObservationTime(key string) bool {

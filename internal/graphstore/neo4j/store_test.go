@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -31,12 +32,6 @@ func TestOpenRejectsIncompleteConfig(t *testing.T) {
 	}
 	if _, err := Open(config.GraphStoreConfig{Neo4jURI: "bolt://127.0.0.1:7687", Neo4jUsername: "neo4j"}); err == nil {
 		t.Fatal("Open() error = nil, want non-nil")
-	}
-}
-
-func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing.T) {
-	if !strings.Contains(mergeEntityAndLoadAttributesQuery, "e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END") {
-		t.Fatalf("entity merge does not preserve existing labels for fallback labels:\n%s", mergeEntityAndLoadAttributesQuery)
 	}
 }
 
@@ -848,6 +843,36 @@ func projectedEntityTypedProperties(t *testing.T, ctx context.Context, store *St
 	}
 }
 
+type projectedEntityOwner struct {
+	sourceID  string
+	runtimeID string
+	label     string
+}
+
+// projectedEntityTypedOwner reads the node's typed source_id/runtime_id and
+// label, which must stay with the observation that owns attributes_json.
+func projectedEntityTypedOwner(t *testing.T, ctx context.Context, store *Store, urn string) projectedEntityOwner {
+	t.Helper()
+	values, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, "MATCH (e:Entity {urn: $urn}) RETURN coalesce(e.source_id, ''), coalesce(e.runtime_id, ''), coalesce(e.label, '')", map[string]any{"urn": urn})
+		if err != nil {
+			return nil, err
+		}
+		if !result.Next(ctx) {
+			return nil, result.Err()
+		}
+		return result.Record().Values, result.Err()
+	})
+	if err != nil {
+		t.Fatalf("query projected entity typed owner: %v", err)
+	}
+	row, ok := values.([]any)
+	if !ok || len(row) != 3 {
+		t.Fatalf("typed owner query returned %#v, want three columns", values)
+	}
+	return projectedEntityOwner{sourceID: stringValue(row[0]), runtimeID: stringValue(row[1]), label: stringValue(row[2])}
+}
+
 func projectedLinkAttributes(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) map[string]string {
 	t.Helper()
 	values, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -896,6 +921,46 @@ func neo4jProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, l
 		t.Fatalf("query projected link: %v", err)
 	}
 	return toInt64(value) > 0
+}
+
+type projectedLinkProvenance struct {
+	sourceID         string
+	runtimeID        string
+	reconciliationID string
+}
+
+// projectedLinkTypedProvenance reads the logical RELATION edge's typed
+// source_id/runtime_id/projection_reconciliation_id, which must stay coherent
+// with attributes_json's coupled source_runtime_id for the same owning writer.
+func projectedLinkTypedProvenance(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) projectedLinkProvenance {
+	t.Helper()
+	values, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
+RETURN count(r), coalesce(r.source_id, ''), coalesce(r.runtime_id, ''), coalesce(r.projection_reconciliation_id, '')`, map[string]any{
+			"from_urn": link.FromURN,
+			"relation": link.Relation,
+			"to_urn":   link.ToURN,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !result.Next(ctx) {
+			return nil, result.Err()
+		}
+		return result.Record().Values, result.Err()
+	})
+	if err != nil {
+		t.Fatalf("query projected link typed provenance: %v", err)
+	}
+	row, ok := values.([]any)
+	if !ok || len(row) != 4 || toInt64(row[0]) != 1 {
+		t.Fatalf("projected link typed provenance query returned %#v, want one relation", values)
+	}
+	return projectedLinkProvenance{
+		sourceID:         stringValue(row[1]),
+		runtimeID:        stringValue(row[2]),
+		reconciliationID: stringValue(row[3]),
+	}
 }
 
 func freePort(t *testing.T) int {
@@ -1075,6 +1140,239 @@ func TestMergeGraphAttributesFallsBackToLastWriteWinsWhenAtUnparseable(t *testin
 	}
 }
 
+// A projected logical RELATION edge must mirror one owning assertion's typed
+// provenance (source_id/runtime_id/projection_reconciliation_id), the same
+// way attributes_json's coupled keys already follow observation recency.
+// projectedLinkIncomingBecomesLogicalOwner is the decision point both the
+// single and batch upsert paths use to keep the typed owner coherent with
+// that recency rule.
+func TestProjectedLinkIncomingBecomesLogicalOwner(t *testing.T) {
+	older := time.Date(2025, time.March, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2025, time.March, 5, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	cases := []struct {
+		name     string
+		existing map[string]string
+		incoming map[string]string
+		want     bool
+	}{
+		{
+			name:     "first write on an edge with no prior observation becomes owner",
+			existing: map[string]string{},
+			incoming: map[string]string{"at": newer},
+			want:     true,
+		},
+		{
+			name:     "newer incoming observation becomes owner",
+			existing: map[string]string{"at": older},
+			incoming: map[string]string{"at": newer},
+			want:     true,
+		},
+		{
+			name:     "older incoming observation does not become owner",
+			existing: map[string]string{"at": newer},
+			incoming: map[string]string{"at": older},
+			want:     false,
+		},
+		{
+			name:     "equal observation keeps incoming as owner (idempotent replay)",
+			existing: map[string]string{"at": newer},
+			incoming: map[string]string{"at": newer},
+			want:     true,
+		},
+		{
+			name:     "incoming missing at does not become owner when existing has one",
+			existing: map[string]string{"at": newer},
+			incoming: map[string]string{},
+			want:     false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := projectedLinkIncomingBecomesLogicalOwner(tc.existing, tc.incoming); got != tc.want {
+				t.Fatalf("projectedLinkIncomingBecomesLogicalOwner(%#v, %#v) = %v, want %v", tc.existing, tc.incoming, got, tc.want)
+			}
+		})
+	}
+}
+
+// selectProjectedLinkSurvivor is the cleanup/rehydration counterpart of
+// projectedLinkIncomingBecomesLogicalOwner (Contract G): when an owning
+// assertion is deleted and several assertions remain, the logical edge must
+// rehydrate from the most recently observed survivor, not an arbitrary
+// deterministic-but-stale ordering.
+func TestSelectProjectedLinkSurvivorPicksNewestObservation(t *testing.T) {
+	sep1 := attributesJSONWithAt(t, "2026-09-01T00:00:00Z")
+	sep3 := attributesJSONWithAt(t, "2026-09-03T00:00:00Z")
+	candidates := []projectedLogicalLinkCandidate{
+		{sourceID: "aws", runtimeID: "runtime-a", attributesJSON: sep1, elementID: "4:a:1"},
+		{sourceID: "aws", runtimeID: "runtime-b", attributesJSON: sep3, elementID: "4:a:2"},
+	}
+	survivor, ok := selectProjectedLinkSurvivor(candidates)
+	if !ok {
+		t.Fatal("selectProjectedLinkSurvivor() ok = false, want true")
+	}
+	if survivor.runtimeID != "runtime-b" {
+		t.Fatalf("selectProjectedLinkSurvivor() runtimeID = %q, want %q (Sep 3 observation must beat Sep 1)", survivor.runtimeID, "runtime-b")
+	}
+}
+
+func TestSelectProjectedLinkSurvivorPresentAtBeatsMissing(t *testing.T) {
+	withAt := attributesJSONWithAt(t, "2026-09-01T00:00:00Z")
+	candidates := []projectedLogicalLinkCandidate{
+		{sourceID: "aws", runtimeID: "no-at", attributesJSON: `{}`, elementID: "4:a:1"},
+		{sourceID: "aws", runtimeID: "has-at", attributesJSON: withAt, elementID: "4:a:2"},
+	}
+	survivor, ok := selectProjectedLinkSurvivor(candidates)
+	if !ok {
+		t.Fatal("selectProjectedLinkSurvivor() ok = false, want true")
+	}
+	if survivor.runtimeID != "has-at" {
+		t.Fatalf("selectProjectedLinkSurvivor() runtimeID = %q, want %q (present at must beat missing at)", survivor.runtimeID, "has-at")
+	}
+}
+
+func TestSelectProjectedLinkSurvivorBreaksTiesDeterministically(t *testing.T) {
+	sameAt := attributesJSONWithAt(t, "2026-09-01T00:00:00Z")
+	candidates := []projectedLogicalLinkCandidate{
+		{sourceID: "aws", runtimeID: "runtime-z", attributesJSON: sameAt, elementID: "4:a:9"},
+		{sourceID: "aws", runtimeID: "runtime-a", attributesJSON: sameAt, elementID: "4:a:1"},
+	}
+	survivor, ok := selectProjectedLinkSurvivor(candidates)
+	if !ok {
+		t.Fatal("selectProjectedLinkSurvivor() ok = false, want true")
+	}
+	if survivor.runtimeID != "runtime-a" {
+		t.Fatalf("selectProjectedLinkSurvivor() runtimeID = %q, want %q (equal at must break on (source_id, runtime_id, attributes_json, elementId))", survivor.runtimeID, "runtime-a")
+	}
+	// Order independence: the same tiebreak must hold regardless of input order.
+	reversed, ok := selectProjectedLinkSurvivor([]projectedLogicalLinkCandidate{candidates[1], candidates[0]})
+	if !ok || reversed.runtimeID != "runtime-a" {
+		t.Fatalf("selectProjectedLinkSurvivor(reversed) runtimeID = %q, ok = %v, want %q, true", reversed.runtimeID, ok, "runtime-a")
+	}
+}
+
+func TestSelectProjectedLinkSurvivorNoCandidatesReturnsNotFound(t *testing.T) {
+	if _, ok := selectProjectedLinkSurvivor(nil); ok {
+		t.Fatal("selectProjectedLinkSurvivor(nil) ok = true, want false")
+	}
+}
+
+func attributesJSONWithAt(t *testing.T, at string) string {
+	t.Helper()
+	encoded, err := graphAttributesJSON(map[string]string{"at": at})
+	if err != nil {
+		t.Fatalf("graphAttributesJSON() error = %v", err)
+	}
+	return encoded
+}
+
+// Contract G: entities that opt in via observation_precedence:"strict" must
+// ignore an incoming write whose observation is older than the stored one,
+// changing no attributes at all (not even the non-coupled keys
+// mergeGraphAttributes would normally last-write-wins).
+func TestMergeProjectedEntityAttributesStrictIgnoresOlderWrite(t *testing.T) {
+	older := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	existing := map[string]string{
+		"at": newer, "observation_precedence": "strict", "status": "clear",
+	}
+	incoming := map[string]string{
+		"at": older, "observation_precedence": "strict", "status": "supported",
+	}
+	merged := mergeProjectedEntityAttributes(existing, incoming)
+	if merged["status"] != "clear" || merged["at"] != newer {
+		t.Fatalf("mergeProjectedEntityAttributes(strict, older incoming) = %#v, want unchanged existing %#v", merged, existing)
+	}
+}
+
+// A missing incoming `at` must be treated the same as an older one under
+// strict precedence: present beats missing.
+func TestMergeProjectedEntityAttributesStrictIgnoresMissingIncomingAt(t *testing.T) {
+	newer := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	existing := map[string]string{"at": newer, "observation_precedence": "strict", "status": "clear"}
+	incoming := map[string]string{"observation_precedence": "strict", "status": "supported"}
+	merged := mergeProjectedEntityAttributes(existing, incoming)
+	if merged["status"] != "clear" {
+		t.Fatalf("mergeProjectedEntityAttributes(strict, missing incoming at) status = %q, want %q", merged["status"], "clear")
+	}
+}
+
+func TestMergeProjectedEntityAttributesStrictAppliesNewerOrEqualWrite(t *testing.T) {
+	older := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	existing := map[string]string{"at": older, "observation_precedence": "strict", "status": "clear"}
+	incoming := map[string]string{"at": newer, "observation_precedence": "strict", "status": "supported"}
+	merged := mergeProjectedEntityAttributes(existing, incoming)
+	if merged["status"] != "supported" || merged["at"] != newer {
+		t.Fatalf("mergeProjectedEntityAttributes(strict, newer incoming) = %#v, want status=supported at=%s", merged, newer)
+	}
+	// Equal `at` is a normal merge (idempotent replay), not a no-op.
+	equalIncoming := map[string]string{"at": older, "observation_precedence": "strict", "status": "replayed"}
+	mergedEqual := mergeProjectedEntityAttributes(map[string]string{"at": older, "observation_precedence": "strict", "status": "clear"}, equalIncoming)
+	if mergedEqual["status"] != "replayed" {
+		t.Fatalf("mergeProjectedEntityAttributes(strict, equal at) status = %q, want %q", mergedEqual["status"], "replayed")
+	}
+}
+
+// Entities that never opt in keep mergeGraphAttributes's existing coupled-key
+// semantics unchanged: an older incoming write still updates non-coupled keys.
+func TestMergeProjectedEntityAttributesNonOptedInUnchanged(t *testing.T) {
+	older := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	existing := map[string]string{"at": newer, "status": "clear"}
+	incoming := map[string]string{"at": older, "status": "supported"}
+	merged := mergeProjectedEntityAttributes(existing, incoming)
+	want := mergeGraphAttributes(existing, incoming)
+	if merged["status"] != want["status"] || merged["at"] != want["at"] {
+		t.Fatalf("mergeProjectedEntityAttributes(non-opted-in) = %#v, want it to match mergeGraphAttributes = %#v", merged, want)
+	}
+	if merged["status"] != "supported" {
+		t.Fatalf("mergeProjectedEntityAttributes(non-opted-in, older incoming) status = %q, want %q (non-coupled keys stay last-write-wins)", merged["status"], "supported")
+	}
+}
+
+// A producer can commit a higher entity version with an earlier `at` than the
+// version it supersedes (VulnView samples updatedAt before its conditional
+// write). observation_version decides instead, and the winning version also
+// owns the time-coupled provenance keys.
+func TestMergeProjectedEntityAttributesStrictOrdersByObservationVersion(t *testing.T) {
+	fixed := map[string]string{
+		"at": "2026-11-02T10:00:01Z", "observation_precedence": "strict", "observation_version": "2",
+		"status": "fixed", "event_id": "event-v2", "source_runtime_id": "runtime-a",
+	}
+	reopened := map[string]string{
+		"at": "2026-11-02T10:00:00Z", "observation_precedence": "strict", "observation_version": "3",
+		"status": "open", "event_id": "event-v3", "source_runtime_id": "runtime-b",
+	}
+	merged := mergeProjectedEntityAttributes(fixed, reopened)
+	for key, want := range map[string]string{"status": "open", "observation_version": "3", "event_id": "event-v3", "source_runtime_id": "runtime-b"} {
+		if merged[key] != want {
+			t.Fatalf("version 3 after version 2: merged[%s] = %q, want %q", key, merged[key], want)
+		}
+	}
+	replayed := mergeProjectedEntityAttributes(merged, fixed)
+	if !maps.Equal(replayed, merged) {
+		t.Fatalf("replaying version 2 after version 3 = %#v, want unchanged %#v", replayed, merged)
+	}
+}
+
+// The logical edge's typed source_id/runtime_id/projection_reconciliation_id
+// must only move to the incoming writer when it is not a preserved legacy
+// edge and the incoming observation does not lose to the existing one.
+func TestUpdateProjectedLinksQueriesGateTypedOwnerOnObservationRecency(t *testing.T) {
+	for _, query := range []string{updateProjectedLinksQuery, updateProjectedLinkQuery} {
+		for _, field := range []string{"r.source_id", "r.runtime_id", "r.projection_reconciliation_id"} {
+			if !strings.Contains(query, field+" = CASE") {
+				t.Fatalf("query does not gate %s behind an ownership CASE expression:\n%s", field, query)
+			}
+		}
+		if !strings.Contains(query, "preserve_logical_owner") {
+			t.Fatalf("query does not reference preserve_logical_owner:\n%s", query)
+		}
+	}
+}
+
 func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig) *Store {
 	t.Helper()
 	deadline := time.Now().Add(90 * time.Second)
@@ -1101,35 +1399,6 @@ func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig
 	}
 	t.Fatalf("neo4j did not become ready: %v", lastErr)
 	return nil
-}
-
-func TestProjectedEntitiesBatchQueryPreservesPerItemSemantics(t *testing.T) {
-	for _, clause := range []string{
-		"UNWIND $rows AS row",
-		"MERGE (e:Entity {urn: row.urn})",
-		"ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0",
-		"existing_tenant_id <> '' AND existing_tenant_id <> row.tenant_id",
-		"existing_workspace_id <> '' AND existing_workspace_id <> row.application_workspace_id",
-		"e.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE existing_workspace_id END",
-		"workspace_conflict AS workspace_conflict",
-		"e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END",
-		"RETURN row.urn AS urn",
-	} {
-		if !strings.Contains(mergeProjectedEntitiesQuery, clause) {
-			t.Fatalf("mergeProjectedEntitiesQuery missing %q:\n%s", clause, mergeProjectedEntitiesQuery)
-		}
-	}
-	for _, clause := range []string{
-		"UNWIND $rows AS row",
-		"WHERE coalesce(e.attributes_version, 0) = row.attributes_version",
-		"e.attributes_version = row.next_attributes_version",
-		"e += row.typed_properties",
-		"RETURN count(e)",
-	} {
-		if !strings.Contains(updateProjectedEntitiesQuery, clause) {
-			t.Fatalf("updateProjectedEntitiesQuery missing %q:\n%s", clause, updateProjectedEntitiesQuery)
-		}
-	}
 }
 
 func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
@@ -1463,4 +1732,419 @@ func TestNeo4jDockerBatchProjectionMatchesPerItem(t *testing.T) {
 	if neo4jProjectedLinkExists(t, ctx, store, dangling) {
 		t.Fatal("dangling link was materialized; batch must skip links whose endpoints do not both exist")
 	}
+}
+
+// TestNeo4jDockerProjectedLinkLogicalOwnerFollowsObservationRecency reproduces
+// the EKS Pod Identity / cloud_identity convergence: two runtimes project the
+// same kubernetes_service_account -can_assume-> aws_role link out of order.
+// The logical edge's typed source_id/runtime_id/projection_reconciliation_id
+// must always match the owning writer (the one with the most recent `at`
+// observation), the same way attributes_json.source_runtime_id already does,
+// for both the single-item and batch upsert paths, and the retraction path
+// must keep that invariant when the owner's assertion disappears.
+func TestNeo4jDockerProjectedLinkLogicalOwnerFollowsObservationRecency(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
+		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	port := freePort(t)
+	name := fmt.Sprintf("cerebro-neo4j-owner-test-%d", time.Now().UnixNano())
+	password := "test-password"
+	image := os.Getenv("CEREBRO_NEO4J_DOCKER_IMAGE")
+	if image == "" {
+		image = "neo4j:5"
+	}
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
+		"-e", "NEO4J_AUTH=neo4j/"+password,
+		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
+		image)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
+	})
+	store := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = store.CloseContext(context.Background()) }()
+
+	older := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2026, time.September, 5, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	const eks = "eks-pod-identity"
+	const cloudIdentity = "cloud-identity"
+
+	serviceAccount := func(index int) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN:      fmt.Sprintf("urn:cerebro:writer:kubernetes_service_account:111111111111:prod:default:app-%d", index),
+			TenantID: "writer", SourceID: "aws", EntityType: "kubernetes_service_account",
+			Label: fmt.Sprintf("app-%d", index),
+		}
+	}
+	role := func(index int) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN:      fmt.Sprintf("urn:cerebro:writer:aws_role:arn:aws:iam::111111111111:role/app-%d", index),
+			TenantID: "writer", SourceID: "aws", EntityType: "aws_role",
+			Label: fmt.Sprintf("app-%d-role", index),
+		}
+	}
+	relation := func(index int) string {
+		return fmt.Sprintf("can_assume_%d", index)
+	}
+	link := func(index int, runtimeID string, at string) *ports.ProjectedLink {
+		return &ports.ProjectedLink{
+			TenantID: "writer", SourceID: "aws", RuntimeID: runtimeID,
+			FromURN: serviceAccount(index).URN, ToURN: role(index).URN, Relation: relation(index),
+			Attributes: map[string]string{
+				"source_runtime_id": runtimeID,
+				"source_event_id":   "evt-" + runtimeID + "-" + at,
+				"at":                at,
+			},
+		}
+	}
+	var entities []*ports.ProjectedEntity
+	for index := 1; index <= 4; index++ {
+		entities = append(entities, serviceAccount(index), role(index))
+	}
+	if err := store.UpsertProjectedEntities(ctx, entities); err != nil {
+		t.Fatalf("UpsertProjectedEntities() error = %v", err)
+	}
+
+	assertOwner := func(t *testing.T, index int, wantRuntimeID string) {
+		t.Helper()
+		edge := &ports.ProjectedLink{FromURN: serviceAccount(index).URN, ToURN: role(index).URN, Relation: relation(index)}
+		provenance := projectedLinkTypedProvenance(t, ctx, store, edge)
+		if provenance.sourceID != "aws" || provenance.runtimeID != wantRuntimeID {
+			t.Fatalf("link %d typed provenance = %#v, want source_id=aws runtime_id=%q", index, provenance, wantRuntimeID)
+		}
+		attributes := projectedLinkAttributes(t, ctx, store, edge)
+		if attributes["source_runtime_id"] != wantRuntimeID {
+			t.Fatalf("link %d attributes_json source_runtime_id = %q, want %q (must match typed runtime_id %q)", index, attributes["source_runtime_id"], wantRuntimeID, provenance.runtimeID)
+		}
+	}
+
+	// Link 1 (single-item path): newer observation first, then an older
+	// observation from a second runtime. The first writer must stay owner.
+	if err := store.UpsertProjectedLink(ctx, link(1, eks, newer)); err != nil {
+		t.Fatalf("UpsertProjectedLink(link1, eks, newer) error = %v", err)
+	}
+	if err := store.UpsertProjectedLink(ctx, link(1, cloudIdentity, older)); err != nil {
+		t.Fatalf("UpsertProjectedLink(link1, cloud-identity, older) error = %v", err)
+	}
+	assertOwner(t, 1, eks)
+
+	// Link 2 (single-item path): older observation first, then a newer
+	// observation from a second runtime. Ownership must switch.
+	if err := store.UpsertProjectedLink(ctx, link(2, eks, older)); err != nil {
+		t.Fatalf("UpsertProjectedLink(link2, eks, older) error = %v", err)
+	}
+	if err := store.UpsertProjectedLink(ctx, link(2, cloudIdentity, newer)); err != nil {
+		t.Fatalf("UpsertProjectedLink(link2, cloud-identity, newer) error = %v", err)
+	}
+	assertOwner(t, 2, cloudIdentity)
+
+	// Links 3 and 4 (batch path), both orderings in one batch: link 3 keeps
+	// its first (newer) writer as owner; link 4 switches to its second
+	// (newer) writer.
+	if err := store.UpsertProjectedLinks(ctx, []*ports.ProjectedLink{
+		link(3, eks, newer),
+		link(3, cloudIdentity, older),
+		link(4, eks, older),
+		link(4, cloudIdentity, newer),
+	}); err != nil {
+		t.Fatalf("UpsertProjectedLinks(batch) error = %v", err)
+	}
+	assertOwner(t, 3, eks)
+	assertOwner(t, 4, cloudIdentity)
+
+	// Retracting the owning runtime's assertion (link 1's eks-pod-identity
+	// assertion no longer observed in a fresh reconciliation pass) must
+	// rebuild the logical edge from the surviving cloud-identity assertion,
+	// keeping the typed/attribute invariant coherent with the new owner.
+	result, err := store.CleanupProjectedRuntimeLinks(ctx, ports.ProjectionRuntimeLinkReconciliationRequest{
+		TenantID: "writer", SourceID: "aws", RuntimeID: eks,
+		ReconciliationID: "reconciliation-run-2", Relations: []string{relation(1)}, Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("CleanupProjectedRuntimeLinks() error = %v", err)
+	}
+	if result.LinksDeleted != 1 {
+		t.Fatalf("CleanupProjectedRuntimeLinks() deleted = %d, want 1", result.LinksDeleted)
+	}
+	edge1 := &ports.ProjectedLink{FromURN: serviceAccount(1).URN, ToURN: role(1).URN, Relation: relation(1)}
+	if !neo4jProjectedLinkExists(t, ctx, store, edge1) {
+		t.Fatal("logical link 1 was deleted; it must survive on the remaining cloud-identity assertion")
+	}
+	assertOwner(t, 1, cloudIdentity)
+}
+
+// TestNeo4jDockerProjectedLinkRehydrationPicksNewestSurvivingObservation
+// reproduces review finding P2: when the owning (newest) assertion is
+// retracted and several non-owning assertions remain, the logical edge must
+// rehydrate from the most recently observed survivor (Sep 3), not from
+// whichever candidate an arbitrary deterministic Cypher ORDER BY happened to
+// sort first (previously the Sep 1 observation).
+func TestNeo4jDockerProjectedLinkRehydrationPicksNewestSurvivingObservation(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
+		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	port := freePort(t)
+	name := fmt.Sprintf("cerebro-neo4j-rehydrate-test-%d", time.Now().UnixNano())
+	password := "test-password"
+	image := os.Getenv("CEREBRO_NEO4J_DOCKER_IMAGE")
+	if image == "" {
+		image = "neo4j:5"
+	}
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
+		"-e", "NEO4J_AUTH=neo4j/"+password,
+		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
+		image)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
+	})
+	store := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = store.CloseContext(context.Background()) }()
+
+	sep1 := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	sep3 := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	sep5 := time.Date(2026, time.September, 5, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	serviceAccount := &ports.ProjectedEntity{
+		URN:      "urn:cerebro:writer:kubernetes_service_account:111111111111:prod:default:rehydrate",
+		TenantID: "writer", SourceID: "aws", EntityType: "kubernetes_service_account", Label: "rehydrate",
+	}
+	role := &ports.ProjectedEntity{
+		URN: "urn:cerebro:writer:aws_role:arn:aws:iam::111111111111:role/rehydrate", TenantID: "writer",
+		SourceID: "aws", EntityType: "aws_role", Label: "rehydrate-role",
+	}
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{serviceAccount, role}); err != nil {
+		t.Fatalf("UpsertProjectedEntities() error = %v", err)
+	}
+	const relation = "can_assume"
+	linkFrom := func(runtimeID string, at string) *ports.ProjectedLink {
+		return &ports.ProjectedLink{
+			TenantID: "writer", SourceID: "aws", RuntimeID: runtimeID,
+			FromURN: serviceAccount.URN, ToURN: role.URN, Relation: relation,
+			Attributes: map[string]string{"source_runtime_id": runtimeID, "at": at},
+		}
+	}
+	// Three runtimes assert the same link: Sep 1 (oldest), Sep 3, and Sep 5
+	// (the current owner). The owner always wins while present.
+	for _, link := range []*ports.ProjectedLink{
+		linkFrom("runtime-sep1", sep1),
+		linkFrom("runtime-sep3", sep3),
+		linkFrom("runtime-sep5", sep5),
+	} {
+		if err := store.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("UpsertProjectedLink(%s) error = %v", link.RuntimeID, err)
+		}
+	}
+	edge := &ports.ProjectedLink{FromURN: serviceAccount.URN, ToURN: role.URN, Relation: relation}
+	provenance := projectedLinkTypedProvenance(t, ctx, store, edge)
+	if provenance.runtimeID != "runtime-sep5" {
+		t.Fatalf("owner before retraction = %q, want %q", provenance.runtimeID, "runtime-sep5")
+	}
+
+	// Retract the Sep 5 owner. Sep 1 and Sep 3 assertions both survive; the
+	// logical edge must rehydrate from Sep 3 (newest remaining), not Sep 1.
+	result, err := store.CleanupProjectedRuntimeLinks(ctx, ports.ProjectionRuntimeLinkReconciliationRequest{
+		TenantID: "writer", SourceID: "aws", RuntimeID: "runtime-sep5",
+		ReconciliationID: "reconciliation-run-rehydrate", Relations: []string{relation}, Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("CleanupProjectedRuntimeLinks() error = %v", err)
+	}
+	if result.LinksDeleted != 1 {
+		t.Fatalf("CleanupProjectedRuntimeLinks() deleted = %d, want 1", result.LinksDeleted)
+	}
+	if !neo4jProjectedLinkExists(t, ctx, store, edge) {
+		t.Fatal("logical link was deleted; it must survive on the remaining Sep 1/Sep 3 assertions")
+	}
+	provenance = projectedLinkTypedProvenance(t, ctx, store, edge)
+	if provenance.runtimeID != "runtime-sep3" {
+		t.Fatalf("rehydrated owner runtime_id = %q, want %q (Sep 3 must beat Sep 1)", provenance.runtimeID, "runtime-sep3")
+	}
+	attributes := projectedLinkAttributes(t, ctx, store, edge)
+	if attributes["at"] != sep3 {
+		t.Fatalf("rehydrated attributes_json.at = %q, want %q", attributes["at"], sep3)
+	}
+}
+
+// TestNeo4jDockerProjectedEntityStrictObservationPrecedence exercises
+// Contract G's entity opt-in through both UpsertProjectedEntity (single) and
+// UpsertProjectedEntities (batch), against a real Neo4j instance so the
+// attributes_version-gated write path is proven end to end.
+func TestNeo4jDockerProjectedEntityStrictObservationPrecedence(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
+		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	port := freePort(t)
+	name := fmt.Sprintf("cerebro-neo4j-strict-entity-test-%d", time.Now().UnixNano())
+	password := "test-password"
+	image := os.Getenv("CEREBRO_NEO4J_DOCKER_IMAGE")
+	if image == "" {
+		image = "neo4j:5"
+	}
+	cmd := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", name, // #nosec G204 G702 -- integration test invokes fixed docker binary with generated container arguments.
+		"-e", "NEO4J_AUTH=neo4j/"+password,
+		"-p", fmt.Sprintf("127.0.0.1:%d:7687", port),
+		image)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker run neo4j: %v\n%s", err, string(output))
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", name).Run() // #nosec G204 -- integration test cleanup invokes fixed docker binary with generated container name.
+	})
+	store := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = store.CloseContext(context.Background()) }()
+
+	sep1 := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	sep3 := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	sep5 := time.Date(2026, time.September, 5, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	strictEntity := &ports.ProjectedEntity{
+		URN: "urn:cerebro:writer:vulnview_assessment:111111111111:strict", TenantID: "writer",
+		SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "strict",
+		Attributes: map[string]string{"at": sep3, "observation_precedence": "strict", "status": "clear"},
+	}
+	if err := store.UpsertProjectedEntity(ctx, strictEntity); err != nil {
+		t.Fatalf("UpsertProjectedEntity(establish) error = %v", err)
+	}
+
+	// Single-item path: an older write must change nothing.
+	olderSingle := &ports.ProjectedEntity{
+		URN: strictEntity.URN, TenantID: "writer", SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "strict",
+		Attributes: map[string]string{"at": sep1, "observation_precedence": "strict", "status": "supported"},
+	}
+	if err := store.UpsertProjectedEntity(ctx, olderSingle); err != nil {
+		t.Fatalf("UpsertProjectedEntity(older single) error = %v", err)
+	}
+	attributes := projectedEntityAttributes(t, ctx, store, strictEntity.URN)
+	if attributes["status"] != "clear" || attributes["at"] != sep3 {
+		t.Fatalf("after older single-path write, attributes = %#v, want status=clear at=%s (strict entity must ignore older write)", attributes, sep3)
+	}
+
+	// Batch path: an older write in UpsertProjectedEntities must also change
+	// nothing.
+	olderBatch := &ports.ProjectedEntity{
+		URN: strictEntity.URN, TenantID: "writer", SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "strict",
+		Attributes: map[string]string{"at": sep1, "observation_precedence": "strict", "status": "batch-supported"},
+	}
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{olderBatch}); err != nil {
+		t.Fatalf("UpsertProjectedEntities(older batch) error = %v", err)
+	}
+	attributes = projectedEntityAttributes(t, ctx, store, strictEntity.URN)
+	if attributes["status"] != "clear" || attributes["at"] != sep3 {
+		t.Fatalf("after older batch-path write, attributes = %#v, want status=clear at=%s (strict entity must ignore older write)", attributes, sep3)
+	}
+
+	// A newer write through the batch path must apply normally.
+	newerBatch := &ports.ProjectedEntity{
+		URN: strictEntity.URN, TenantID: "writer", SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "strict",
+		Attributes: map[string]string{"at": sep5, "observation_precedence": "strict", "status": "updated"},
+	}
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{newerBatch}); err != nil {
+		t.Fatalf("UpsertProjectedEntities(newer batch) error = %v", err)
+	}
+	attributes = projectedEntityAttributes(t, ctx, store, strictEntity.URN)
+	if attributes["status"] != "updated" || attributes["at"] != sep5 {
+		t.Fatalf("after newer batch-path write, attributes = %#v, want status=updated at=%s", attributes, sep5)
+	}
+
+	// An entity without the opt-in keeps today's semantics: an older write
+	// still updates non-coupled keys (last-write-wins), unaffected by Contract G.
+	nonOptedEntity := &ports.ProjectedEntity{
+		URN: "urn:cerebro:writer:vulnview_assessment:111111111111:non-strict", TenantID: "writer",
+		SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "non-strict",
+		Attributes: map[string]string{"at": sep3, "status": "clear"},
+	}
+	if err := store.UpsertProjectedEntity(ctx, nonOptedEntity); err != nil {
+		t.Fatalf("UpsertProjectedEntity(non-opted establish) error = %v", err)
+	}
+	olderNonOpted := &ports.ProjectedEntity{
+		URN: nonOptedEntity.URN, TenantID: "writer", SourceID: "vulnview", EntityType: "vulnview_assessment", Label: "non-strict",
+		Attributes: map[string]string{"at": sep1, "status": "supported"},
+	}
+	if err := store.UpsertProjectedEntity(ctx, olderNonOpted); err != nil {
+		t.Fatalf("UpsertProjectedEntity(non-opted older) error = %v", err)
+	}
+	attributes = projectedEntityAttributes(t, ctx, store, nonOptedEntity.URN)
+	if attributes["status"] != "supported" {
+		t.Fatalf("non-opted entity status = %q, want %q (entities without the opt-in keep last-write-wins semantics)", attributes["status"], "supported")
+	}
+
+	// observation_version, not `at`, orders a versioned strict entity, and the
+	// typed source_id/runtime_id and label stay with the winning observation:
+	// a stale replay from another runtime must not leave typed ownership
+	// disagreeing with attributes_json.source_runtime_id.
+	const versionedURN = "urn:cerebro:writer:vulnview_cloud_identity_finding:versioned"
+	versioned := func(version, at, status, runtimeID, label string) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN: versionedURN, TenantID: "writer",
+			SourceID: "vulnview", RuntimeID: runtimeID, EntityType: "vulnview.cloud_identity_finding", Label: label,
+			Attributes: map[string]string{
+				"at": at, "observation_precedence": "strict", "observation_version": version,
+				"status": status, "source_runtime_id": runtimeID,
+			},
+		}
+	}
+	assertVersioned := func(t *testing.T, step, status, runtimeID, label string) {
+		t.Helper()
+		attributes := projectedEntityAttributes(t, ctx, store, versionedURN)
+		owner := projectedEntityTypedOwner(t, ctx, store, versionedURN)
+		if attributes["status"] != status || attributes["source_runtime_id"] != runtimeID || owner.runtimeID != runtimeID || owner.label != label {
+			t.Fatalf("after %s: attributes = %#v, typed owner = %#v; want status=%s runtime=%s label=%s", step, attributes, owner, status, runtimeID, label)
+		}
+	}
+	if err := store.UpsertProjectedEntity(ctx, versioned("2", sep3, "fixed", "runtime-old", "version-2")); err != nil {
+		t.Fatalf("UpsertProjectedEntity(version 2) error = %v", err)
+	}
+	if err := store.UpsertProjectedEntity(ctx, versioned("3", sep1, "open", "runtime-new", "version-3")); err != nil {
+		t.Fatalf("UpsertProjectedEntity(version 3, earlier at) error = %v", err)
+	}
+	assertVersioned(t, "version 3 with an earlier at", "open", "runtime-new", "version-3")
+	if err := store.UpsertProjectedEntity(ctx, versioned("2", sep3, "fixed", "runtime-old", "version-2")); err != nil {
+		t.Fatalf("UpsertProjectedEntity(version 2 replay) error = %v", err)
+	}
+	assertVersioned(t, "single-path version 2 replay", "open", "runtime-new", "version-3")
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{versioned("2", sep3, "fixed", "runtime-old", "version-2")}); err != nil {
+		t.Fatalf("UpsertProjectedEntities(version 2 replay) error = %v", err)
+	}
+	assertVersioned(t, "batch-path version 2 replay", "open", "runtime-new", "version-3")
+	// A newer version arriving with only a fallback (urn-equal) label still
+	// keeps the stored label.
+	if err := store.UpsertProjectedEntities(ctx, []*ports.ProjectedEntity{versioned("4", sep5, "fixed", "runtime-new", "")}); err != nil {
+		t.Fatalf("UpsertProjectedEntities(version 4, fallback label) error = %v", err)
+	}
+	assertVersioned(t, "version 4 with a fallback label", "fixed", "runtime-new", "version-3")
 }

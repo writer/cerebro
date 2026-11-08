@@ -27,6 +27,44 @@ func (o JSONObject) FieldString(path string) string {
 	return (JSONScalar{Value: value}).SourceString()
 }
 
+// FieldTime returns the first field among keys, in order, whose flattened
+// string value parses against one of layouts (see JSONScalar.Time),
+// normalized to UTC. It returns a zero Time when no key is present or none
+// of the present values parse, so a source can apply its own deterministic
+// fallback (e.g. a fixed default or time.Now()) instead of silently picking
+// an arbitrary key.
+func (o JSONObject) FieldTime(layouts []string, keys ...string) time.Time {
+	for _, key := range keys {
+		if parsed := (JSONScalar{Value: o.FieldString(key)}).Time(layouts...); !parsed.IsZero() {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+// CopyFields sets attrs[attr] = FieldString(field) for each attr/field pair
+// in fields whenever that flattened value is non-empty, leaving an attr
+// absent from attrs when its source field is missing or blank rather than
+// present with an empty value.
+func (o JSONObject) CopyFields(attrs map[string]string, fields map[string]string) {
+	for attr, field := range fields {
+		if value := o.FieldString(field); value != "" {
+			attrs[attr] = value
+		}
+	}
+}
+
+// FirstFieldString returns the first non-empty flattened field value among
+// keys, in order.
+func (o JSONObject) FirstFieldString(keys ...string) string {
+	for _, key := range keys {
+		if value := o.FieldString(key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (o JSONObject) fieldValue(path string) (any, bool) {
 	var current any = map[string]any(o)
 	for _, part := range strings.Split(path, ".") {

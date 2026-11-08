@@ -1,0 +1,118 @@
+{{- /*
+  XRole AWS expansion + fan-out (function-go-templating). Pure Crossplane go-template — Helm never
+  parses it (loaded verbatim via .Files.Get). $profiles/$packages are injected as a preamble by
+  templates/composition.yaml.
+
+  Emits:
+    1x Role        (no IAM path; full boundary ARN; OIDC AssumeRoleWithWebIdentity trust)
+    1x RolePolicy  (one inline policy; actions come from the selected profiles)
+*/ -}}
+{{- $xr      := .observed.composite.resource }}
+{{- $env     := (index .context "apiextensions.crossplane.io/environment") }}
+{{- $cluster := $env.clusterID }}
+{{- $svc     := $xr.spec.serviceName }}
+{{- $ksa     := $xr.spec.serviceAccountName }}
+{{- $owner   := $xr.spec.owner }}
+{{- $ns      := $xr.metadata.namespace }}
+{{- $issuer  := $env.awsOidcIssuerHost }}
+{{- /* Identity name must stay byte-identical to xrole-gcp.gotmpl's derivation. */ -}}
+{{- $slug    := printf "app-role-%s-%s-%s" $cluster $ns $svc }}
+{{- $name    := printf "app-role-%s" (sha256sum $slug | trunc 20) }}
+{{- /* Resolve access -> packages -> profiles -> deduped action union. */ -}}
+{{- $selected := list }}
+{{- range $a := $xr.spec.access }}
+{{-   if hasKey $packages $a }}{{ $selected = concat $selected (index $packages $a) }}
+{{-   else }}{{ $selected = append $selected $a }}{{ end }}
+{{- end }}
+{{- $selected = $selected | uniq }}
+{{- $actions := list }}
+{{- range $p := $selected }}
+{{-   if not (hasKey $profiles $p) }}{{ fail (printf "XRole: %q resolved from spec.access is not a defined capability profile (bad package member or typo in the catalog)" $p) }}{{ end }}
+{{-   $actions = concat $actions (default (list) (index (index $profiles $p) "aws")) }}
+{{- end }}
+{{- $actions = $actions | uniq | sortAlpha }}
+{{- /* AssumeRoleWithWebIdentity trust doc: cluster OIDC provider + the claim's own KSA subject. */ -}}
+{{- $sub := printf "system:serviceaccount:%s:%s" $ns $ksa }}
+{{- $cond := dict (printf "%s:sub" $issuer) $sub (printf "%s:aud" $issuer) "sts.amazonaws.com" }}
+{{- $trust := dict "Version" "2012-10-17" "Statement" (list (dict "Effect" "Allow" "Principal" (dict "Federated" $env.awsOidcProviderArn) "Action" "sts:AssumeRoleWithWebIdentity" "Condition" (dict "StringEquals" $cond))) }}
+---
+apiVersion: iam.aws.m.upbound.io/v1beta1
+kind: Role
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: role
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+  name: {{ $name | quote }}
+spec:
+  forProvider:
+    assumeRolePolicy: {{ $trust | toJson | quote }}
+    permissionsBoundary: {{ $env.awsBoundaryArn | quote }}
+    tags:
+      owner: {{ $owner | quote }}
+      service: {{ $svc | quote }}
+      managed-by: crossplane
+      cluster: {{ $cluster | quote }}
+      namespace: {{ $ns | quote }}
+      {{- if $env.env }}
+      env: {{ $env.env | quote }}
+      {{- end }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $env.providerConfigName | quote }}
+{{- if $actions }}
+{{- $policy := dict "Version" "2012-10-17" "Statement" (list (dict "Sid" "XRoleProfileActions" "Effect" "Allow" "Action" $actions "Resource" "*")) }}
+---
+apiVersion: iam.aws.m.upbound.io/v1beta1
+kind: RolePolicy
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: role-policy
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+  name: {{ $name | quote }}
+spec:
+  forProvider:
+    roleRef:
+      name: {{ $name | quote }}
+    policy: {{ $policy | toJson | quote }}
+  managementPolicies: ["*"]
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: {{ $env.providerConfigName | quote }}
+---
+{{- /* Delete the RolePolicy before the Role. Both MRs share the same deterministic name. */}}
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  annotations:
+    gotemplating.fn.crossplane.io/composition-resource-name: usage-role-policy
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    platform.example.com/owner: {{ $owner | quote }}
+spec:
+  replayDeletion: true
+  reason: "XRole teardown ordering: remove the inline RolePolicy before the Role."
+  of:
+    apiVersion: iam.aws.m.upbound.io/v1beta1
+    kind: Role
+    resourceRef:
+      name: {{ $name | quote }}
+  by:
+    apiVersion: iam.aws.m.upbound.io/v1beta1
+    kind: RolePolicy
+    resourceRef:
+      name: {{ $name | quote }}
+{{- end }}
+{{- /* XR-typed doc with NO composition-resource-name annotation = composite status write. `ref`
+       is the role ARN, the string that lands on the workload ServiceAccount's annotation. */}}
+---
+apiVersion: platform.example.com/v1alpha1
+kind: XRole
+status:
+  identity:
+    name: {{ $name | quote }}
+    ref: {{ printf "arn:aws:iam::%s:role/%s" $env.awsAccountID $name | quote }}

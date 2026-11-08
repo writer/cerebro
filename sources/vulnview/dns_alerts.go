@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -21,30 +20,15 @@ type dnsAlertCursor struct {
 }
 
 func (s *Source) dnsAlertFamily() sourcecdk.Family[settings] {
-	return sourcecdk.Family[settings]{
-		Name: familyDNSAlert,
-		Check: func(ctx context.Context, settings settings) error {
-			_, _, err := s.listDNSAlerts(ctx, settings, "", 1)
-			if err != nil {
-				return fmt.Errorf("vulnview dns_alert: %w", err)
-			}
-			return nil
-		},
-		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
-			records, err := s.discoverDNSAlerts(ctx, settings)
-			if err != nil {
-				return nil, fmt.Errorf("vulnview dns_alert: %w", err)
-			}
-			return urnsFor(settings, familyDNSAlert, records)
-		},
-		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-			records, next, err := s.listDNSAlerts(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
-			if err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("vulnview dns_alert: %w", err)
-			}
-			return pullFromRecords(settings, familyDNSAlert, records, next)
-		},
+	family := familyFromLister(familyDNSAlert, s.listDNSAlerts)
+	family.Discover = func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+		records, err := s.discoverDNSAlerts(ctx, settings)
+		if err != nil {
+			return nil, wrapFamilyErr(familyDNSAlert, err)
+		}
+		return urnsFor(settings, familyDNSAlert, records)
 	}
+	return family
 }
 
 func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor string, pageSize int) ([]record, string, error) {
@@ -84,7 +68,7 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 				return nil, "", fmt.Errorf("marshal VulnView DNS alert: %w", err)
 			}
 			id := firstValueString(values, "id", "alert", "name", "type")
-			assetID := valueString(asset["asset"])
+			assetID := sourcecdk.JSONScalar{Value: asset["asset"]}.Flattened()
 			records = append(records, record{
 				Raw:    raw,
 				Values: values,

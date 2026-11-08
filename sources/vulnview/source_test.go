@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -42,30 +43,77 @@ func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
 	}
 }
 
-func TestParseSettingsRejectsTokenURLOutsideOktaIssuer(t *testing.T) {
+func TestParseSettingsRejectsMissingBaseURL(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- invalid config fixture uses placeholder secret text.
 		"tenant_id":     "writer",
-		"base_url":      "https://vulnview.writer-security.com/api",
-		"okta_issuer":   "https://writer.okta.com/oauth2/default",
-		"token_url":     "https://attacker.example/token",
+		"okta_issuer":   "https://example.okta.com/oauth2/default",
 		"client_id":     "client",
 		"client_secret": "secret",
+	}), false)
+	if !errors.Is(err, errMissingBaseURL) {
+		t.Fatalf("error = %v, want errMissingBaseURL", err)
+	}
+}
+
+func TestParseSettingsRejectsTokenURLOutsideOktaIssuer(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- invalid config fixture uses placeholder secret text.
+		"tenant_id":                          "writer",
+		"base_url":                           "https://vulnview.example.test/api",
+		"okta_issuer":                        "https://writer.okta.com/oauth2/default",
+		"token_url":                          "https://attacker.example/token",
+		"client_id":                          "client",
+		"client_secret":                      "secret",
+		sourceconfig.SourceTrustedOriginsKey: "vulnview=https://vulnview.example.test",
 	}), false)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
 	}
 }
 
+func TestParseSettingsAcceptsNonWriterOriginWhenTrusted(t *testing.T) {
+	resolved, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":                          "writer",
+		"base_url":                           "https://vulnview.example.test/api",
+		"okta_issuer":                        "https://writer.okta.com/oauth2/default",
+		"client_id":                          "client",
+		"client_secret":                      "secret",
+		sourceconfig.SourceTrustedOriginsKey: "vulnview=https://vulnview.example.test",
+	}), false)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if resolved.baseURL != "https://vulnview.example.test/api" {
+		t.Fatalf("baseURL = %q, want https://vulnview.example.test/api", resolved.baseURL)
+	}
+}
+
 func TestParseSettingsRejectsUntrustedBaseURL(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":                          "writer",
+		"base_url":                           "https://attacker.example/api",
+		"okta_issuer":                        "https://writer.okta.com/oauth2/default",
+		"client_id":                          "client",
+		"client_secret":                      "secret",
+		sourceconfig.SourceTrustedOriginsKey: "vulnview=https://vulnview.example.test",
+	}), false)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want non-nil")
+	}
+}
+
+func TestParseSettingsRejectsBaseURLWithNoTrustedOriginConfigured(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
 		"tenant_id":     "writer",
-		"base_url":      "https://attacker.example/api",
+		"base_url":      "https://vulnview.example.test/api",
 		"okta_issuer":   "https://writer.okta.com/oauth2/default",
 		"client_id":     "client",
 		"client_secret": "secret",
 	}), false)
 	if err == nil {
-		t.Fatal("parseSettings() error = nil, want non-nil")
+		t.Fatal("parseSettings() error = nil, want missing trusted origin rejected")
+	}
+	if !strings.Contains(err.Error(), "CEREBRO_SOURCE_TRUSTED_ORIGINS") {
+		t.Fatalf("error = %v, want it to name CEREBRO_SOURCE_TRUSTED_ORIGINS", err)
 	}
 }
 
@@ -607,7 +655,7 @@ func TestParseSettingsRejectsMissingClientSecret(t *testing.T) {
 func TestParseSettingsRejectsBaseURLWithFragment(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
 		"tenant_id":     "writer",
-		"base_url":      "https://vulnview.writer-security.com/api#section",
+		"base_url":      "https://vulnview.example.test/api#section",
 		"okta_issuer":   "https://writer.okta.com/oauth2/default",
 		"client_id":     "client",
 		"client_secret": "secret",
@@ -680,9 +728,9 @@ func TestReadReturnsErrorOnHTTP404(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 404 error")
 	}
-	var respErr *responseError
+	var respErr *sourcecdk.HTTPStatusError
 	if !errors.As(err, &respErr) {
-		t.Fatalf("error type = %T, want *responseError", err)
+		t.Fatalf("error type = %T, want *sourcecdk.HTTPStatusError", err)
 	}
 	if respErr.StatusCode() != http.StatusNotFound {
 		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusNotFound)
@@ -717,9 +765,9 @@ func TestReadReturnsErrorOnHTTP500(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 500 error")
 	}
-	var respErr *responseError
+	var respErr *sourcecdk.HTTPStatusError
 	if !errors.As(err, &respErr) {
-		t.Fatalf("error type = %T, want *responseError", err)
+		t.Fatalf("error type = %T, want *sourcecdk.HTTPStatusError", err)
 	}
 	if respErr.StatusCode() != http.StatusInternalServerError {
 		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusInternalServerError)
@@ -754,9 +802,9 @@ func TestReadReturnsErrorOnHTTP429RateLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 429 error")
 	}
-	var respErr *responseError
+	var respErr *sourcecdk.HTTPStatusError
 	if !errors.As(err, &respErr) {
-		t.Fatalf("error type = %T, want *responseError", err)
+		t.Fatalf("error type = %T, want *sourcecdk.HTTPStatusError", err)
 	}
 	if respErr.StatusCode() != http.StatusTooManyRequests {
 		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusTooManyRequests)
@@ -786,9 +834,9 @@ func TestTokenEndpointHTTP500ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read() error = nil, want token endpoint error")
 	}
-	var respErr *responseError
+	var respErr *sourcecdk.HTTPStatusError
 	if !errors.As(err, &respErr) {
-		t.Fatalf("error type = %T, want *responseError", err)
+		t.Fatalf("error type = %T, want *sourcecdk.HTTPStatusError", err)
 	}
 	if respErr.StatusCode() != http.StatusInternalServerError {
 		t.Fatalf("statusCode = %d, want %d", respErr.StatusCode(), http.StatusInternalServerError)

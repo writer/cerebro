@@ -1,0 +1,48 @@
+{
+  "items": [
+    {
+      "findingId": "6f1d2c0000000000000000000000000000000000000000000000000000000000",
+      "source": "cloud_identity",
+      "checkId": "cloud_identity_excess_privilege",
+      "checkVersion": 1,
+      "detectorVersion": "1.0.0",
+      "status": "open",
+      "severity": "high",
+      "title": "Role grants unused write access",
+      "provider": "aws",
+      "account": "111111111111",
+      "project": "",
+      "principalId": "arn:aws:iam::111111111111:role/svc-0",
+      "principalKind": "aws_role",
+      "cohortScope": "writer",
+      "evidenceStream": "staging",
+      "firstSeenAt": "2026-11-01T09:10:00.000000Z",
+      "lastSeenAt": "2026-11-03T09:10:00.000000Z",
+      "lastEvaluatedAt": "2026-11-03T09:10:00.000000Z",
+      "updatedAt": "2026-11-03T09:10:00.000000Z",
+      "version": 2,
+      "lastScanId": "scan-a",
+      "lastRunId": "run-1",
+      "triage": "none",
+      "consumers": [
+        {
+          "cluster": "cluster-a",
+          "namespace": "payments",
+          "serviceAccount": "worker",
+          "service": "billing"
+        }
+      ],
+      "gapCodes": [],
+      "side": "iac",
+      "drift": false,
+      "evidence": {
+        "bundleKey": "cloud-identity/staging/writer/20261103T090000Z-ab12.json.gz",
+        "bundleSha256": "ab12cd34",
+        "principalEvidenceSha256": "sha256:ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34",
+        "collectedAt": "2026-11-03T09:00:00Z"
+      }
+    }
+  ],
+  "nextCursor": "eyJyb3V0ZSI6ImZpbmRpbmdzIiwic291cmNlIjoiY2xvdWRfaWRlbnRpdHkiLCJ3YXRlcm1hcmsiOiIyMDI2LTExLTAzVDA5OjEwOjAwLjAwMDAwMFoifQ==",
+  "hasMore": false
+}

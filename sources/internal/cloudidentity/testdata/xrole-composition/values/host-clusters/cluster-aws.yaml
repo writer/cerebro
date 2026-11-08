@@ -1,0 +1,11 @@
+# cluster-aws: synthetic AWS prod host-cluster fixture.
+cloud: aws
+
+environmentConfig:
+  clusterID: cluster-aws
+  env: prod
+  aws:
+    awsAccountID: "123456789012"
+    awsBoundaryArn: "arn:aws:iam::123456789012:policy/app-role-boundary-cluster-aws"
+    awsOidcProviderArn: "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE123456789ABCDEF0123456789AB"
+    awsOidcIssuerHost: "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE123456789ABCDEF0123456789AB"

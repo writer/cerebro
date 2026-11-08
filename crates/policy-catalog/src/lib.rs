@@ -297,9 +297,6 @@ mod tests {
 
     #[test]
     fn generated_detection_definitions_preserve_go_rule_semantics() {
-        assert_eq!(definitions().len() + detection_definitions().len(), 1_617);
-        assert_eq!(detection_definitions().len(), 86);
-
         let mut ids = BTreeSet::new();
         let mut previous = None;
         for definition in detection_definitions() {

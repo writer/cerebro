@@ -38,6 +38,12 @@ const (
 	neo4jConnectionAcquisitionTimeout = 60 * time.Second
 	neo4jMaxConnectionPoolSize        = 100
 )
+
+// mergeEntityAndLoadAttributesQuery MERGEs one projected entity, writes its
+// tenant scope (which also write-locks the node for the rest of the
+// transaction), and returns its stored attributes so the caller can decide
+// observation precedence before updateProjectedEntityQuery writes the
+// observation-owned fields.
 const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
 WITH e, coalesce(e.tenant_id, '') AS existing_tenant_id, coalesce(e.application_workspace_id, '') AS existing_workspace_id
@@ -47,12 +53,27 @@ WITH e, existing_workspace_id,
 FOREACH (_ IN CASE WHEN workspace_conflict THEN [] ELSE [1] END |
   SET e.tenant_id = $tenant_id,
     e.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE existing_workspace_id END,
-    e.source_id = $source_id,
-    e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
-    e.entity_type = $entity_type,
-    e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END
+    e.entity_type = $entity_type
 )
 RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0), workspace_conflict`
+
+// updateProjectedEntityQuery writes the merged attributes and, unless the
+// incoming observation is a stale strict one (preserve_owner), the typed
+// source_id/runtime_id and label in the same version-guarded write, so typed
+// ownership never disagrees with the attributes_json a stale observation was
+// not allowed to change. A fallback (urn-equal) label never replaces an
+// existing one.
+const updateProjectedEntityQuery = `MATCH (e:Entity {urn: $urn})
+WHERE coalesce(e.attributes_version, 0) = $attributes_version
+SET e.attributes_json = $attributes_json,
+    e.attributes_version = $next_attributes_version,
+    e += $typed_properties
+FOREACH (_ IN CASE WHEN $preserve_owner THEN [] ELSE [1] END |
+  SET e.source_id = $source_id,
+    e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
+    e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END
+)
+RETURN count(e)`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 var errProjectionAssertionMigrationScopeRequired = errors.New("tenant_id and relations are required for projected link assertion migration")
@@ -607,13 +628,14 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 			if err != nil {
 				return nil, fmt.Errorf("decode projected entity attributes: %w", err)
 			}
-			mergedAttributes := mergeGraphAttributes(existing, incomingAttributes)
+			params["preserve_owner"] = projectionmeta.StaleStrictObservation(existing, incomingAttributes)
+			mergedAttributes := mergeProjectedEntityAttributes(existing, incomingAttributes)
 			mergedJSON, err := graphAttributesJSON(mergedAttributes)
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
 			}
 			typedProperties := entityTypedPropertyParams(projectionmeta.DerivedEntityProperties(mergedAttributes))
-			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON, typedProperties)
+			updated, err := updateEntityAttributes(ctx, tx, params, version, mergedJSON, typedProperties)
 			if err != nil {
 				return nil, err
 			}
@@ -674,6 +696,7 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 			if err != nil {
 				return nil, fmt.Errorf("decode projected link assertion attributes: %w", err)
 			}
+			params["preserve_logical_owner"] = !projectedLinkIncomingBecomesLogicalOwner(existingLogical, link.Attributes)
 			logicalJSON, err := graphAttributesJSON(mergeGraphAttributes(existingLogical, link.Attributes))
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected logical link attributes: %w", err)
@@ -715,10 +738,10 @@ const defaultProjectionUpsertBatchSize = 500
 const defaultProjectionWriteConcurrency = 4
 
 // mergeProjectedEntitiesQuery is the batched counterpart of
-// mergeEntityAndLoadAttributesQuery: it MERGEs every entity in the batch and
-// returns each node's current attributes_json/version so the caller can deep-merge
-// client-side before the version-checked write. The label clause mirrors the
-// per-item query so existing labels survive fallback (urn-equal) labels.
+// mergeEntityAndLoadAttributesQuery: it MERGEs every entity in the batch, writes
+// its tenant scope, and returns each node's current attributes_json/version so
+// the caller can decide observation precedence and deep-merge client-side
+// before the version-checked write.
 const mergeProjectedEntitiesQuery = `UNWIND $rows AS row
 MERGE (e:Entity {urn: row.urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
@@ -729,23 +752,26 @@ WITH e, row, existing_workspace_id,
 FOREACH (_ IN CASE WHEN workspace_conflict THEN [] ELSE [1] END |
   SET e.tenant_id = row.tenant_id,
     e.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE existing_workspace_id END,
-    e.source_id = row.source_id,
-    e.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(e.runtime_id, '') END,
-    e.entity_type = row.entity_type,
-    e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END
+    e.entity_type = row.entity_type
 )
 RETURN row.urn AS urn, workspace_conflict AS workspace_conflict, coalesce(e.attributes_json, '{}') AS attributes_json, coalesce(e.attributes_version, 0) AS attributes_version`
 
-// updateProjectedEntitiesQuery is the batched counterpart of updateEntityAttributes.
-// The version guard is redundant within a single transaction (the MERGE above
-// write-locks each node for the batch's duration) but is retained so the on-disk
-// write semantics and monotonic version increment match the per-item path exactly.
+// updateProjectedEntitiesQuery is the batched counterpart of
+// updateProjectedEntityQuery. The version guard is redundant within a single
+// transaction (the scope write above write-locks each node for the batch's
+// duration) but is retained so the on-disk write semantics and monotonic
+// version increment match the per-item path exactly.
 const updateProjectedEntitiesQuery = `UNWIND $rows AS row
 MATCH (e:Entity {urn: row.urn})
 WHERE coalesce(e.attributes_version, 0) = row.attributes_version
 SET e.attributes_json = row.attributes_json,
     e.attributes_version = row.next_attributes_version,
     e += row.typed_properties
+FOREACH (_ IN CASE WHEN row.preserve_owner THEN [] ELSE [1] END |
+  SET e.source_id = row.source_id,
+    e.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(e.runtime_id, '') END,
+    e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END
+)
 RETURN count(e)`
 
 // mergeProjectedLinksQuery is the batched counterpart of mergeLinkAndLoadAttributes.
@@ -783,8 +809,6 @@ WITH src, dst, r, a, row, logical_workspace_id, assertion_workspace_id, preserve
 FOREACH (_ IN CASE WHEN logical_workspace_conflict OR assertion_workspace_conflict THEN [] ELSE [1] END |
   SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE row.tenant_id END,
       r.application_workspace_id = CASE WHEN preserve_legacy_logical THEN logical_workspace_id WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE logical_workspace_id END,
-      r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE row.source_id END,
-      r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE row.runtime_id END,
       r.assertion_managed = NOT preserve_legacy_logical,
       r.assertion_quarantined = preserve_legacy_logical,
       a.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE assertion_workspace_id END,
@@ -811,9 +835,9 @@ SET r.attributes_json = row.attributes_json,
     r.attributes_version = row.next_attributes_version,
     r.tenant_id = row.tenant_id,
     r.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE coalesce(r.application_workspace_id, '') END,
-    r.source_id = row.source_id,
-    r.runtime_id = row.runtime_id,
-    r.projection_reconciliation_id = row.reconciliation_id,
+    r.source_id = CASE WHEN row.preserve_logical_owner THEN r.source_id ELSE row.source_id END,
+    r.runtime_id = CASE WHEN row.preserve_logical_owner THEN r.runtime_id ELSE row.runtime_id END,
+    r.projection_reconciliation_id = CASE WHEN row.preserve_logical_owner THEN r.projection_reconciliation_id ELSE row.reconciliation_id END,
     r.assertion_managed = true,
     r.assertion_quarantined = false
 RETURN count(r)`
@@ -943,10 +967,7 @@ func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*prepared
 				"urn":                      entity.urn,
 				"tenant_id":                entity.tenantID,
 				"application_workspace_id": entity.applicationWorkspaceID,
-				"source_id":                entity.sourceID,
-				"runtime_id":               entity.runtimeID,
 				"entity_type":              entity.entityType,
-				"label":                    entity.label,
 			})
 		}
 		loaded, err := loadAttributeRows(ctx, tx, mergeProjectedEntitiesQuery, mergeRows, entityAttributeRowKey)
@@ -966,13 +987,17 @@ func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*prepared
 			if err != nil {
 				return nil, fmt.Errorf("decode projected entity %q attributes: %w", entity.urn, err)
 			}
-			merged := mergeGraphAttributes(existing, entity.attributes)
+			merged := mergeProjectedEntityAttributes(existing, entity.attributes)
 			mergedJSON, err := graphAttributesJSON(merged)
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected entity %q attributes: %w", entity.urn, err)
 			}
 			updateRows = append(updateRows, map[string]any{
 				"urn":                     entity.urn,
+				"source_id":               entity.sourceID,
+				"runtime_id":              entity.runtimeID,
+				"label":                   entity.label,
+				"preserve_owner":          projectionmeta.StaleStrictObservation(existing, entity.attributes),
 				"attributes_version":      current.version,
 				"next_attributes_version": current.version + 1,
 				"attributes_json":         mergedJSON,
@@ -1026,6 +1051,7 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 		assertionUpdateRows := make([]map[string]any, 0, len(loaded))
 		type logicalUpdate struct {
 			link       *preparedProjectedLink
+			ownerLink  *preparedProjectedLink
 			version    int64
 			attributes map[string]string
 			preserve   bool
@@ -1075,6 +1101,9 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 				logicalUpdates = append(logicalUpdates, logical)
 			}
 			if !logical.preserve {
+				if projectedLinkIncomingBecomesLogicalOwner(logical.attributes, link.attributes) {
+					logical.ownerLink = link
+				}
 				logical.attributes = mergeGraphAttributes(logical.attributes, link.attributes)
 			}
 		}
@@ -1090,15 +1119,25 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 			if err != nil {
 				return nil, fmt.Errorf("marshal projected logical link %q attributes: %w", projectedLinkKey(logical.link.fromURN, logical.link.relation, logical.link.toURN), err)
 			}
+			preserveOwner := logical.ownerLink == nil
+			ownerSourceID := ""
+			ownerRuntimeID := ""
+			ownerReconciliationID := ""
+			if !preserveOwner {
+				ownerSourceID = logical.ownerLink.sourceID
+				ownerRuntimeID = logical.ownerLink.runtimeID
+				ownerReconciliationID = projectedLinkReconciliationID(logical.ownerLink.attributes)
+			}
 			logicalUpdateRows = append(logicalUpdateRows, map[string]any{
 				"from_urn":                 logical.link.fromURN,
 				"to_urn":                   logical.link.toURN,
 				"relation":                 logical.link.relation,
 				"tenant_id":                logical.link.tenantID,
 				"application_workspace_id": logical.link.applicationWorkspaceID,
-				"source_id":                logical.link.sourceID,
-				"runtime_id":               logical.link.runtimeID,
-				"reconciliation_id":        projectedLinkReconciliationID(logical.link.attributes),
+				"source_id":                ownerSourceID,
+				"runtime_id":               ownerRuntimeID,
+				"reconciliation_id":        ownerReconciliationID,
+				"preserve_logical_owner":   preserveOwner,
 				"attributes_version":       logical.version,
 				"next_attributes_version":  logical.version + 1,
 				"attributes_json":          attributesJSON,
@@ -1186,39 +1225,206 @@ func projectedLinkReconciliationID(attributes map[string]string) string {
 	return strings.TrimSpace(attributes["projection_reconciliation_id"])
 }
 
-const reconcileProjectedLogicalLinksQuery = `UNWIND $rows AS row
+const loadProjectedLogicalLinkCandidatesQuery = `UNWIND $rows AS row
 MATCH (src:Entity {urn: row.from_urn})-[logical:RELATION {relation: row.relation}]->(dst:Entity {urn: row.to_urn})
 WHERE logical.tenant_id = row.tenant_id
-CALL {
-  WITH src, dst, row
-  OPTIONAL MATCH (src)-[candidate:RELATION_ASSERTION {relation: row.relation}]->(dst)
-  WHERE candidate.tenant_id = row.tenant_id
-  WITH candidate
-  ORDER BY candidate.source_id, candidate.runtime_id, candidate.attributes_json, elementId(candidate)
-  RETURN head(collect(candidate)) AS survivor
-}
-WITH logical, survivor, coalesce(logical.assertion_managed, false) AS can_rehydrate
-FOREACH (_ IN CASE WHEN survivor IS NOT NULL AND can_rehydrate THEN [1] ELSE [] END |
-  SET logical.tenant_id = survivor.tenant_id,
-      logical.source_id = survivor.source_id,
-      logical.runtime_id = survivor.runtime_id,
-      logical.attributes_json = coalesce(survivor.attributes_json, '{}'),
+OPTIONAL MATCH (src)-[candidate:RELATION_ASSERTION {relation: row.relation}]->(dst)
+WHERE candidate.tenant_id = row.tenant_id
+RETURN row.from_urn AS from_urn, row.relation AS relation, row.to_urn AS to_urn, row.tenant_id AS tenant_id,
+       coalesce(logical.assertion_managed, false) AS assertion_managed,
+       candidate.source_id AS candidate_source_id,
+       candidate.runtime_id AS candidate_runtime_id,
+       candidate.attributes_json AS candidate_attributes_json,
+       coalesce(candidate.projection_reconciliation_id, '') AS candidate_reconciliation_id,
+       elementId(candidate) AS candidate_element_id`
+
+const applyProjectedLogicalLinkSurvivorsQuery = `UNWIND $rows AS row
+MATCH (src:Entity {urn: row.from_urn})-[logical:RELATION {relation: row.relation}]->(dst:Entity {urn: row.to_urn})
+WHERE logical.tenant_id = row.tenant_id
+FOREACH (_ IN CASE WHEN row.has_survivor THEN [1] ELSE [] END |
+  SET logical.tenant_id = row.tenant_id,
+      logical.source_id = row.survivor_source_id,
+      logical.runtime_id = row.survivor_runtime_id,
+      logical.attributes_json = row.survivor_attributes_json,
       logical.attributes_version = coalesce(logical.attributes_version, 0) + 1,
-      logical.projection_reconciliation_id = coalesce(survivor.projection_reconciliation_id, ''),
+      logical.projection_reconciliation_id = row.survivor_reconciliation_id,
       logical.assertion_managed = true,
       logical.assertion_quarantined = false
 )
-FOREACH (_ IN CASE WHEN survivor IS NULL AND coalesce(logical.assertion_managed, false) THEN [1] ELSE [] END |
+FOREACH (_ IN CASE WHEN NOT row.has_survivor THEN [1] ELSE [] END |
   DELETE logical
 )
 RETURN count(*)`
 
+// projectedLogicalLinkCandidate is one RELATION_ASSERTION still asserting a
+// logical link, loaded so the surviving assertion can be chosen in Go using
+// the same observation-recency rule as upsert ownership (Contract G), rather
+// than the arbitrary deterministic Cypher ORDER BY this replaces.
+type projectedLogicalLinkCandidate struct {
+	sourceID         string
+	runtimeID        string
+	attributesJSON   string
+	reconciliationID string
+	elementID        string
+}
+
+type projectedLogicalLinkReconciliation struct {
+	fromURN          string
+	relation         string
+	toURN            string
+	tenantID         string
+	assertionManaged bool
+	candidates       []projectedLogicalLinkCandidate
+}
+
+// reconcileProjectedLogicalLinks chooses, for every affected logical RELATION
+// edge that is assertion-managed, the surviving RELATION_ASSERTION (if any)
+// and rehydrates the logical edge's typed provenance and attributes_json from
+// it, deleting the logical edge when no assertion survives. Survivor
+// selection mirrors projectedLinkIncomingBecomesLogicalOwner: the candidate
+// with the newest parseable `at` wins, a present `at` beats a missing one,
+// and ties break deterministically on (source_id, runtime_id, attributes_json,
+// elementId). This runs on every cleanup/retraction/rehydration path that
+// calls it (DeleteProjectedLink(s), CleanupEndpointOwnerIDLinks,
+// CleanupProjectedRuntimeLinks).
 func reconcileProjectedLogicalLinks(ctx context.Context, tx neo4jdriver.ManagedTransaction, rows []map[string]any) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	_, err := consume(ctx, tx, reconcileProjectedLogicalLinksQuery, map[string]any{"rows": rows})
+	result, err := tx.Run(ctx, loadProjectedLogicalLinkCandidatesQuery, map[string]any{"rows": rows})
+	if err != nil {
+		return err
+	}
+	groups := make(map[string]*projectedLogicalLinkReconciliation, len(rows))
+	order := make([]string, 0, len(rows))
+	for result.Next(ctx) {
+		values := result.Record().Values
+		fromURN := stringValue(values[0])
+		relation := stringValue(values[1])
+		toURN := stringValue(values[2])
+		tenantID := stringValue(values[3])
+		key := projectedLinkKey(fromURN, relation, toURN) + "|" + tenantID
+		group, ok := groups[key]
+		if !ok {
+			group = &projectedLogicalLinkReconciliation{
+				fromURN: fromURN, relation: relation, toURN: toURN, tenantID: tenantID,
+				assertionManaged: boolValue(values[4]),
+			}
+			groups[key] = group
+			order = append(order, key)
+		}
+		elementID := stringValue(values[9])
+		if elementID == "" {
+			continue
+		}
+		group.candidates = append(group.candidates, projectedLogicalLinkCandidate{
+			sourceID:         stringValue(values[5]),
+			runtimeID:        stringValue(values[6]),
+			attributesJSON:   stringValue(values[7]),
+			reconciliationID: stringValue(values[8]),
+			elementID:        elementID,
+		})
+	}
+	if err := result.Err(); err != nil {
+		return err
+	}
+	updateRows := make([]map[string]any, 0, len(order))
+	for _, key := range order {
+		group := groups[key]
+		if !group.assertionManaged {
+			// Legacy logical edge without assertion coverage: left untouched,
+			// matching the pre-fix behavior for unmigrated relationships.
+			continue
+		}
+		survivor, hasSurvivor := selectProjectedLinkSurvivor(group.candidates)
+		row := map[string]any{
+			"from_urn": group.fromURN, "relation": group.relation, "to_urn": group.toURN, "tenant_id": group.tenantID,
+			"has_survivor":               hasSurvivor,
+			"survivor_source_id":         "",
+			"survivor_runtime_id":        "",
+			"survivor_attributes_json":   "{}",
+			"survivor_reconciliation_id": "",
+		}
+		if hasSurvivor {
+			row["survivor_source_id"] = survivor.sourceID
+			row["survivor_runtime_id"] = survivor.runtimeID
+			if strings.TrimSpace(survivor.attributesJSON) != "" {
+				row["survivor_attributes_json"] = survivor.attributesJSON
+			}
+			row["survivor_reconciliation_id"] = survivor.reconciliationID
+		}
+		updateRows = append(updateRows, row)
+	}
+	if len(updateRows) == 0 {
+		return nil
+	}
+	_, err = consume(ctx, tx, applyProjectedLogicalLinkSurvivorsQuery, map[string]any{"rows": updateRows})
 	return err
+}
+
+// selectProjectedLinkSurvivor picks the surviving RELATION_ASSERTION among
+// candidates still asserting a logical link, per Contract G's recency rule.
+func selectProjectedLinkSurvivor(candidates []projectedLogicalLinkCandidate) (projectedLogicalLinkCandidate, bool) {
+	var survivor projectedLogicalLinkCandidate
+	found := false
+	for _, candidate := range candidates {
+		if !found || projectedLinkCandidateIsPreferred(candidate, survivor) {
+			survivor = candidate
+			found = true
+		}
+	}
+	return survivor, found
+}
+
+// projectedLinkCandidateIsPreferred reports whether candidate a should survive
+// over candidate b: the newer parseable `at` wins, a present `at` beats a
+// missing/unparseable one, and equal or incomparable observations break
+// deterministically via projectedLinkCandidateTiebreakLess.
+func projectedLinkCandidateIsPreferred(a projectedLogicalLinkCandidate, b projectedLogicalLinkCandidate) bool {
+	aAt, aOK := projectedLinkCandidateObservedAt(a)
+	bAt, bOK := projectedLinkCandidateObservedAt(b)
+	switch {
+	case aOK && bOK && !aAt.Equal(bAt):
+		return aAt.After(bAt)
+	case aOK && !bOK:
+		return true
+	case !aOK && bOK:
+		return false
+	}
+	return projectedLinkCandidateTiebreakLess(a, b)
+}
+
+func projectedLinkCandidateObservedAt(candidate projectedLogicalLinkCandidate) (time.Time, bool) {
+	attributes, err := graphAttributesFromJSON(candidate.attributesJSON)
+	if err != nil {
+		return time.Time{}, false
+	}
+	at := strings.TrimSpace(attributes["at"])
+	if at == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+// projectedLinkCandidateTiebreakLess breaks ties between candidates whose
+// observation times are equal, missing, or unparseable, deterministically on
+// (source_id, runtime_id, attributes_json, elementId), matching the ordering
+// this replaces.
+func projectedLinkCandidateTiebreakLess(a projectedLogicalLinkCandidate, b projectedLogicalLinkCandidate) bool {
+	if a.sourceID != b.sourceID {
+		return a.sourceID < b.sourceID
+	}
+	if a.runtimeID != b.runtimeID {
+		return a.runtimeID < b.runtimeID
+	}
+	if a.attributesJSON != b.attributesJSON {
+		return a.attributesJSON < b.attributesJSON
+	}
+	return a.elementID < b.elementID
 }
 
 func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedProjectedEntity, error) {
@@ -1263,6 +1469,11 @@ func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedPro
 			if existing.applicationWorkspaceID != "" && workspaceID != "" && existing.applicationWorkspaceID != workspaceID {
 				return nil, fmt.Errorf("%w: projected entity %q has multiple workspaces", ports.ErrApplicationWorkspaceConflict, urn)
 			}
+			// A stale strict observation in the same batch changes nothing,
+			// exactly as it would against the stored entity.
+			if projectionmeta.StaleStrictObservation(existing.attributes, incoming) {
+				continue
+			}
 			if workspaceID != "" {
 				existing.applicationWorkspaceID = workspaceID
 			}
@@ -1271,7 +1482,7 @@ func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedPro
 			existing.runtimeID = strings.TrimSpace(entity.RuntimeID)
 			existing.entityType = entityType
 			existing.label = label
-			existing.attributes = mergeGraphAttributes(existing.attributes, incoming)
+			existing.attributes = mergeProjectedEntityAttributes(existing.attributes, incoming)
 			continue
 		}
 		entry := &preparedProjectedEntity{
@@ -2977,19 +3188,12 @@ func entityTypedPropertyParams(properties projectionmeta.EntityTypedProperties) 
 	}
 }
 
-func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string, typedProperties map[string]any) (bool, error) {
-	updated, err := countQuery(ctx, tx, `MATCH (e:Entity {urn: $urn})
-WHERE coalesce(e.attributes_version, 0) = $attributes_version
-SET e.attributes_json = $attributes_json,
-    e.attributes_version = $next_attributes_version,
-    e += $typed_properties
-RETURN count(e)`, map[string]any{
-		"urn":                     urn,
-		"attributes_version":      version,
-		"next_attributes_version": version + 1,
-		"attributes_json":         attributesJSON,
-		"typed_properties":        typedProperties,
-	})
+func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any, version int64, attributesJSON string, typedProperties map[string]any) (bool, error) {
+	params["attributes_version"] = version
+	params["next_attributes_version"] = version + 1
+	params["attributes_json"] = attributesJSON
+	params["typed_properties"] = typedProperties
+	updated, err := countQuery(ctx, tx, updateProjectedEntityQuery, params)
 	if err != nil {
 		return false, err
 	}
@@ -3025,8 +3229,6 @@ WITH r, a, logical_workspace_id, assertion_workspace_id, preserve_legacy_logical
 FOREACH (_ IN CASE WHEN logical_workspace_conflict OR assertion_workspace_conflict THEN [] ELSE [1] END |
   SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE $tenant_id END,
       r.application_workspace_id = CASE WHEN preserve_legacy_logical THEN logical_workspace_id WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE logical_workspace_id END,
-      r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE $source_id END,
-      r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE $runtime_id END,
       r.assertion_managed = NOT preserve_legacy_logical,
       r.assertion_quarantined = preserve_legacy_logical,
       a.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE assertion_workspace_id END,
@@ -3055,18 +3257,9 @@ RETURN coalesce(r.attributes_json, '{}'),
 	}, true, result.Err()
 }
 
-func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any, current loadedProjectedLinkRow, logicalAttributesJSON string, assertionAttributesJSON string) (bool, error) {
-	params["logical_attributes_version"] = current.logicalVersion
-	params["next_logical_attributes_version"] = current.logicalVersion + 1
-	params["logical_attributes_json"] = logicalAttributesJSON
-	params["assertion_attributes_version"] = current.assertionVersion
-	params["next_assertion_attributes_version"] = current.assertionVersion + 1
-	params["assertion_attributes_json"] = assertionAttributesJSON
-	params["preserve_legacy_logical"] = current.preserveLegacyLogical
-	if current.workspaceConflict {
-		return false, ports.ErrApplicationWorkspaceConflict
-	}
-	updated, err := countQuery(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
+// updateProjectedLinkQuery is the per-item counterpart of
+// updateProjectedLinksQuery.
+const updateProjectedLinkQuery = `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
 MATCH (:Entity {urn: $from_urn})-[a:RELATION_ASSERTION {
     relation: $relation,
     tenant_id: $tenant_id,
@@ -3079,16 +3272,29 @@ SET r.attributes_json = CASE WHEN $preserve_legacy_logical THEN r.attributes_jso
 	r.attributes_version = CASE WHEN $preserve_legacy_logical THEN r.attributes_version ELSE $next_logical_attributes_version END,
 	r.tenant_id = CASE WHEN $preserve_legacy_logical THEN r.tenant_id ELSE $tenant_id END,
 	r.application_workspace_id = CASE WHEN $preserve_legacy_logical THEN coalesce(r.application_workspace_id, '') WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE coalesce(r.application_workspace_id, '') END,
-	r.source_id = CASE WHEN $preserve_legacy_logical THEN r.source_id ELSE $source_id END,
-	r.runtime_id = CASE WHEN $preserve_legacy_logical THEN r.runtime_id ELSE $runtime_id END,
-	r.projection_reconciliation_id = CASE WHEN $preserve_legacy_logical THEN r.projection_reconciliation_id ELSE $reconciliation_id END,
+	r.source_id = CASE WHEN $preserve_legacy_logical THEN r.source_id WHEN $preserve_logical_owner THEN r.source_id ELSE $source_id END,
+	r.runtime_id = CASE WHEN $preserve_legacy_logical THEN r.runtime_id WHEN $preserve_logical_owner THEN r.runtime_id ELSE $runtime_id END,
+	r.projection_reconciliation_id = CASE WHEN $preserve_legacy_logical THEN r.projection_reconciliation_id WHEN $preserve_logical_owner THEN r.projection_reconciliation_id ELSE $reconciliation_id END,
 	r.assertion_managed = CASE WHEN $preserve_legacy_logical THEN false ELSE true END,
 	r.assertion_quarantined = $preserve_legacy_logical,
 	a.attributes_json = $assertion_attributes_json,
 	a.attributes_version = $next_assertion_attributes_version,
 	a.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE coalesce(a.application_workspace_id, '') END,
 	a.projection_reconciliation_id = $reconciliation_id
-RETURN count(a)`, params)
+RETURN count(a)`
+
+func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any, current loadedProjectedLinkRow, logicalAttributesJSON string, assertionAttributesJSON string) (bool, error) {
+	params["logical_attributes_version"] = current.logicalVersion
+	params["next_logical_attributes_version"] = current.logicalVersion + 1
+	params["logical_attributes_json"] = logicalAttributesJSON
+	params["assertion_attributes_version"] = current.assertionVersion
+	params["next_assertion_attributes_version"] = current.assertionVersion + 1
+	params["assertion_attributes_json"] = assertionAttributesJSON
+	params["preserve_legacy_logical"] = current.preserveLegacyLogical
+	if current.workspaceConflict {
+		return false, ports.ErrApplicationWorkspaceConflict
+	}
+	updated, err := countQuery(ctx, tx, updateProjectedLinkQuery, params)
 	if err != nil {
 		return false, err
 	}
@@ -3125,8 +3331,8 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 	for key, value := range existing {
 		merged[key] = value
 	}
-	incomingIsOlderObservation := graphIncomingObservationIsOlder(existing, incoming)
-	if !incomingIsOlderObservation && graphIncomingObservationIsNewer(existing, incoming) {
+	order := projectionmeta.CompareObservations(existing, incoming)
+	if order == projectionmeta.ObservationNewer {
 		for key := range merged {
 			if graphAttributeCoupledToObservationTime(key) {
 				delete(merged, key)
@@ -3134,7 +3340,7 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 		}
 	}
 	for key, value := range incoming {
-		if incomingIsOlderObservation && graphAttributeCoupledToObservationTime(key) {
+		if order == projectionmeta.ObservationOlder && graphAttributeCoupledToObservationTime(key) {
 			continue
 		}
 		merged[key] = mergeAttributeValue(key, merged[key], value)
@@ -3142,35 +3348,28 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 	return merged
 }
 
-func graphIncomingObservationIsOlder(existing map[string]string, incoming map[string]string) bool {
-	existingAt := strings.TrimSpace(existing["at"])
-	incomingAt := strings.TrimSpace(incoming["at"])
-	if existingAt == "" {
-		return false
+// mergeProjectedEntityAttributes applies Contract G's strict observation
+// precedence opt-in for entity attribute merges: a stale strict observation
+// (projectionmeta.StaleStrictObservation) changes no attributes at all.
+// Every other observation falls back to mergeGraphAttributes's per-key
+// coupling rules, ordered by projectionmeta.CompareObservations. Entities
+// that never opt in keep today's semantics unchanged.
+func mergeProjectedEntityAttributes(existing map[string]string, incoming map[string]string) map[string]string {
+	if projectionmeta.StaleStrictObservation(existing, incoming) {
+		return existing
 	}
-	if incomingAt == "" {
-		return true
-	}
-	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
-	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
-	if errExisting != nil || errIncoming != nil {
-		return false
-	}
-	return incomingT.Before(existingT)
+	return mergeGraphAttributes(existing, incoming)
 }
 
-func graphIncomingObservationIsNewer(existing map[string]string, incoming map[string]string) bool {
-	existingAt := strings.TrimSpace(existing["at"])
-	incomingAt := strings.TrimSpace(incoming["at"])
-	if existingAt == "" || incomingAt == "" {
-		return false
-	}
-	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
-	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
-	if errExisting != nil || errIncoming != nil {
-		return false
-	}
-	return incomingT.After(existingT)
+// projectedLinkIncomingBecomesLogicalOwner decides whether an incoming write
+// to a projected logical RELATION edge should own the edge's typed
+// source_id/runtime_id/projection_reconciliation_id, mirroring the
+// observation-time precedence mergeGraphAttributes already applies to
+// attributes_json's coupled keys (see graphAttributeCoupledToObservationTime).
+// The incoming write owns the edge unless its observation is strictly older
+// than the existing logical edge's observation.
+func projectedLinkIncomingBecomesLogicalOwner(existingLogical map[string]string, incoming map[string]string) bool {
+	return projectionmeta.CompareObservations(existingLogical, incoming) != projectionmeta.ObservationOlder
 }
 
 func graphAttributeCoupledToObservationTime(key string) bool {

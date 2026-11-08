@@ -1,0 +1,16 @@
+{{- /*
+  Per-cluster EnvironmentConfig — git-authored, platform-owned infra facts (NOT claim-settable).
+  Only the fact block matching this cluster's `cloud` is emitted.
+*/ -}}
+{{- $cloud := include "xrole-composition.cloud" . }}
+{{- $ec := .Values.environmentConfig }}
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: {{ $ec.name }}
+data:
+  clusterID: {{ $ec.clusterID | quote }}
+  env: {{ $ec.env | quote }}
+  cloud: {{ $cloud | quote }}
+  providerConfigName: {{ $ec.providerConfigName | quote }}
+  {{- toYaml (index $ec $cloud) | nindent 2 }}

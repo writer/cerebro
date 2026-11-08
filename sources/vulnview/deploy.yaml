@@ -1,11 +1,13 @@
 sourceId: vulnview
 secretKeys:
+  - VULNVIEW_BASE_URL
   - VULNVIEW_CLIENT_ID
   - VULNVIEW_CLIENT_SECRET
   - VULNVIEW_OKTA_ISSUER
 runtimes:
   - localId: site
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: site
@@ -13,6 +15,7 @@ runtimes:
       per_page: "100"
   - localId: scan
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: scan
@@ -20,6 +23,7 @@ runtimes:
       per_page: "100"
   - localId: vulnerability
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: vulnerability
@@ -27,6 +31,7 @@ runtimes:
       per_page: "100"
   - localId: asset
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: asset
@@ -34,8 +39,25 @@ runtimes:
       per_page: "100"
   - localId: dns-alert
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: dns_alert
       okta_issuer: env:VULNVIEW_OKTA_ISSUER
       per_page: "100"
+  - localId: cloud-identity-finding
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: cloud_identity_finding
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "200"
+  - localId: cloud-identity-assessment
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: cloud_identity_assessment
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "500"

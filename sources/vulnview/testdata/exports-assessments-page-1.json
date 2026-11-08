@@ -1,0 +1,111 @@
+{
+  "items": [
+    {
+      "scanId": "scan-a",
+      "runId": "run-1",
+      "cohortScope": "writer",
+      "evidenceStream": "staging",
+      "authoritative": true,
+      "reasons": [],
+      "evaluatedAt": "2026-11-03T09:10:00.000000Z",
+      "completedAt": "2026-11-03T09:09:50.000000Z",
+      "finishedAt": "2026-11-03T09:10:00.000000Z",
+      "detectorVersion": "1.0.0",
+      "type": "run",
+      "bundle": {
+        "key": "cloud-identity/staging/writer/20260101T000000Z-ab12.json.gz",
+        "sha256": "ab12cd34",
+        "collectedAt": "2026-11-03T09:10:00.000000Z",
+        "principalCount": 2
+      },
+      "counts": {
+        "supported": 1,
+        "candidate": 0,
+        "incomplete": 0,
+        "clear": 1
+      },
+      "collectionCoverage": {
+        "inventoryComplete": true,
+        "gapCodes": [],
+        "gapCount": 0
+      },
+      "assessmentsState": "available"
+    },
+    {
+      "type": "assessment",
+      "scanId": "scan-a",
+      "runId": "run-1",
+      "checkId": "cloud_identity_excess_privilege",
+      "checkVersion": 1,
+      "provider": "aws",
+      "principalId": "arn:aws:iam::111111111111:role/svc-0",
+      "principalKind": "aws_role",
+      "account": "111111111111",
+      "project": "",
+      "cohortScope": "writer",
+      "status": "supported",
+      "severity": "high",
+      "title": "Role grants unused write access",
+      "side": "iac",
+      "drift": false,
+      "findingId": "7b7efccf6ae4acc4ed18a438f68291d9b28ef36290544a92f80cecb7cc706a52",
+      "evidenceFresh": true,
+      "gapCodes": [],
+      "consumers": [
+        {
+          "cluster": "cluster-a",
+          "namespace": "payments",
+          "serviceAccount": "worker",
+          "cloudAccount": "111111111111",
+          "service": "billing"
+        }
+      ],
+      "consumersTruncated": false,
+      "collectedAt": "2026-11-03T09:10:00.000000Z",
+      "evaluatedAt": "2026-11-03T09:10:00.000000Z",
+      "completedAt": "2026-11-03T09:09:50.000000Z",
+      "finishedAt": "2026-11-03T09:10:00.000000Z",
+      "truncated": false,
+      "principalEvidenceSha256": "sha256:ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34"
+    },
+    {
+      "type": "assessment",
+      "scanId": "scan-a",
+      "runId": "run-1",
+      "checkId": "cloud_identity_excess_privilege",
+      "checkVersion": 1,
+      "provider": "aws",
+      "principalId": "arn:aws:iam::111111111111:role/svc-1",
+      "principalKind": "aws_role",
+      "account": "111111111111",
+      "project": "",
+      "cohortScope": "writer",
+      "status": "supported",
+      "severity": "high",
+      "title": "Role grants unused write access",
+      "side": "iac",
+      "drift": false,
+      "findingId": "74031539c84b3845f17cb6db02fdff86f423cc7f9d9cbf6fdf7453e7db79fa74",
+      "evidenceFresh": true,
+      "gapCodes": [],
+      "consumers": [
+        {
+          "cluster": "cluster-a",
+          "namespace": "payments",
+          "serviceAccount": "worker",
+          "cloudAccount": "111111111111",
+          "service": "billing"
+        }
+      ],
+      "consumersTruncated": false,
+      "collectedAt": "2026-11-03T09:10:00.000000Z",
+      "evaluatedAt": "2026-11-03T09:10:00.000000Z",
+      "completedAt": "2026-11-03T09:09:50.000000Z",
+      "finishedAt": "2026-11-03T09:10:00.000000Z",
+      "truncated": false,
+      "principalEvidenceSha256": "sha256:ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34"
+    }
+  ],
+  "nextCursor": "eyJyb3V0ZSI6ImFzc2Vzc21lbnRzIiwic291cmNlIjoiY2xvdWRfaWRlbnRpdHkiLCJtYXhTZWVuIjoiMjAyNi0xMS0wM1QwOToxMDowMC4wMDAwMDBaIiwicnVuQ3Vyc29yIjp7InNjYW5JZCI6InNjYW4tYSIsInJ1bklkIjoicnVuLTEiLCJmaW5pc2hlZEF0IjoiMjAyNi0xMS0wM1QwOToxMDowMC4wMDAwMDBaIiwibmV4dEluZGV4IjoyfX0=",
+  "hasMore": true
+}
