@@ -295,6 +295,9 @@ func verifyHCLValueAssertion(file SourceFile, a InputAssertion) error {
 	if diags.HasErrors() {
 		return fmt.Errorf("%s is not valid HCL: %s", a.Path, diags.Error())
 	}
+	if parsed == nil {
+		return fmt.Errorf("%s has no statically parseable body", a.Path)
+	}
 	body, ok := parsed.Body.(*hclsyntax.Body)
 	if !ok {
 		return fmt.Errorf("%s has no statically parseable body", a.Path)

@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -46,11 +45,23 @@ func TestParseSourceRuntimeBootstrapArgsReadsCompressedEnvDocument(t *testing.T)
 	}
 }
 
-func TestDecodeSourceRuntimeBootstrapPayloadRejectsOversizedDocument(t *testing.T) {
-	oversized := bytes.Repeat([]byte(" "), maxSourceRuntimeBootstrapPayloadBytes+1)
-	_, err := decodeSourceRuntimeBootstrapPayload(gzipBase64BootstrapValue(t, oversized))
-	if err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("decodeSourceRuntimeBootstrapPayload() error = %v, want size bound error", err)
+func TestDecodeSourceRuntimeBootstrapPayloadEnforcesDecodedSizeLimit(t *testing.T) {
+	atLimit := bytes.Repeat([]byte(" "), maxSourceRuntimeBootstrapPayloadBytes)
+	decoded, err := decodeSourceRuntimeBootstrapPayload(gzipBase64BootstrapValue(t, atLimit))
+	if err != nil {
+		t.Fatalf("decodeSourceRuntimeBootstrapPayload(at limit) error = %v", err)
+	}
+	if decoded != string(atLimit) {
+		t.Fatalf("decoded at-limit document has %d bytes, want byte-identical %d", len(decoded), len(atLimit))
+	}
+
+	overLimit := bytes.Repeat([]byte(" "), maxSourceRuntimeBootstrapPayloadBytes+1)
+	decoded, err = decodeSourceRuntimeBootstrapPayload(gzipBase64BootstrapValue(t, overLimit))
+	if err == nil {
+		t.Fatal("decodeSourceRuntimeBootstrapPayload(over limit) error = nil, want rejection")
+	}
+	if decoded != "" {
+		t.Fatalf("decodeSourceRuntimeBootstrapPayload(over limit) returned %d bytes, want none", len(decoded))
 	}
 }
 
