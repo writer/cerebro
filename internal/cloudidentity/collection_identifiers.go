@@ -45,7 +45,6 @@ func collectionTargetIdentifiers(observed []Evidence, target ScanTarget) map[str
 var collectionWorkloadScopedGapCodes = map[string]bool{
 	"cloud_identity.inventory.unmapped_service":          true,
 	"cloud_identity.inventory.ambiguous_service_mapping": true,
-	"cloud_identity.inventory.unresolved_config":         true,
 }
 
 // collectionServiceAccountNotRenderedGapCode is Inventory's gap for a

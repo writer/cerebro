@@ -157,6 +157,71 @@ func TestInventoryGCPAnnotationConfiguredAndEligible(t *testing.T) {
 	}
 }
 
+// TestInventoryConflictingServiceAccountIdentityAnnotationGapsNoPrincipal
+// reproduces the O3 fix: two ServiceAccount manifests for the same
+// namespace/name declaring different eks.amazonaws.com/role-arn values
+// must never resolve to whichever manifest happened to render last -- the
+// workload gets a scoped conflicting_identity_annotation gap and no
+// principal at all, deterministically regardless of manifest order.
+func TestInventoryConflictingServiceAccountIdentityAnnotationGapsNoPrincipal(t *testing.T) {
+	saA := serviceAccountManifest("payments-sa", "payments", map[string]string{
+		manifestInventoryAnnotationIRSARole: "arn:aws:iam::111111111111:role/role-a",
+	})
+	saB := serviceAccountManifest("payments-sa", "payments", map[string]string{
+		manifestInventoryAnnotationIRSARole: "arn:aws:iam::111111111111:role/role-b",
+	})
+	dep := deploymentManifest("payments-api", "payments", "payments-sa",
+		[]map[string]any{{"name": "app", "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/payments:v1"}}, nil)
+
+	for _, order := range [][]Manifest{{saA, saB, dep}, {saB, saA, dep}} {
+		workloads, gaps := Inventory(InventoryRequest{Manifests: order, Cluster: "eks-prod", Provider: AWS, Account: "111111111111"})
+		if len(workloads) != 1 {
+			t.Fatalf("expected 1 workload, got %d", len(workloads))
+		}
+		if len(workloads[0].Principals) != 0 {
+			t.Fatalf("expected no principal for a conflicting SA, got %+v", workloads[0].Principals)
+		}
+		if !hasGapCode(gaps, "cloud_identity.inventory.conflicting_identity_annotation") {
+			t.Fatalf("expected conflicting_identity_annotation gap, got %+v", gaps)
+		}
+		found := false
+		for _, g := range gaps {
+			if g.Code == "cloud_identity.inventory.conflicting_identity_annotation" && g.Scope == "payments/payments-sa" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("expected conflicting_identity_annotation gap scoped to payments/payments-sa, got %+v", gaps)
+		}
+	}
+}
+
+// TestInventoryIdenticalDuplicateServiceAccountAnnotationsStayHarmless is
+// the control: two ServiceAccount manifests for the same namespace/name
+// declaring the SAME role-arn value must resolve normally, with no
+// conflict gap.
+func TestInventoryIdenticalDuplicateServiceAccountAnnotationsStayHarmless(t *testing.T) {
+	sa1 := serviceAccountManifest("payments-sa", "payments", map[string]string{
+		manifestInventoryAnnotationIRSARole: "arn:aws:iam::111111111111:role/role-a",
+	})
+	sa2 := serviceAccountManifest("payments-sa", "payments", map[string]string{
+		manifestInventoryAnnotationIRSARole: "arn:aws:iam::111111111111:role/role-a",
+	})
+	dep := deploymentManifest("payments-api", "payments", "payments-sa",
+		[]map[string]any{{"name": "app", "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/payments:v1"}}, nil)
+
+	workloads, gaps := Inventory(InventoryRequest{Manifests: []Manifest{sa1, sa2, dep}, Cluster: "eks-prod", Provider: AWS, Account: "111111111111"})
+	if len(workloads) != 1 || len(workloads[0].Principals) != 1 {
+		t.Fatalf("expected 1 workload with 1 principal, got %+v", workloads)
+	}
+	if workloads[0].Principals[0].ID != "arn:aws:iam::111111111111:role/role-a" {
+		t.Fatalf("unexpected principal: %+v", workloads[0].Principals[0])
+	}
+	if hasGapCode(gaps, "cloud_identity.inventory.conflicting_identity_annotation") {
+		t.Fatalf("identical duplicate annotations must never be a conflict, got %+v", gaps)
+	}
+}
+
 func TestInventoryEligibleOnlyWithoutAnnotationGapsUnresolvedAccount(t *testing.T) {
 	dep := deploymentManifest("worker", "jobs", "default",
 		[]map[string]any{{"name": "app", "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/worker:v1"}}, nil)
@@ -305,7 +370,13 @@ func TestInventoryStatefulSetDaemonSetJobCronJobPod(t *testing.T) {
 	}
 }
 
-func TestInventoryEnvAndConfigCapture(t *testing.T) {
+// TestInventoryConfigurationExcludesLiteralEnvAndConfigMapValues reproduces
+// the O1 fix: Workload.Configuration must never carry literal container env
+// values or ConfigMap data (model-input material forwarded verbatim into an
+// investigator prompt) -- only collector-derived metadata keys such as
+// container_type. A ConfigMap manifest and an env/envFrom block that would
+// previously have been captured, resolved, or gapped are all now inert.
+func TestInventoryConfigurationExcludesLiteralEnvAndConfigMapValues(t *testing.T) {
 	cm := Manifest{Object: map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "app-config", "namespace": "payments"},
@@ -331,26 +402,16 @@ func TestInventoryEnvAndConfigCapture(t *testing.T) {
 		t.Fatalf("expected 1 workload, got %d", len(workloads))
 	}
 	config := workloads[0].Configuration
-	if config["STAGE"] != "prod" {
-		t.Fatalf("expected literal env captured, got %+v", config)
+	if len(config) != 1 || config["container_type"] != "container" {
+		t.Fatalf("expected Configuration to carry only container_type, got %+v", config)
 	}
-	if config["LOG_LEVEL"] != "info" {
-		t.Fatalf("expected configMap-resolved env captured, got %+v", config)
-	}
-	if _, ok := config["DB_PASSWORD"]; ok {
-		t.Fatalf("secret-sourced env must never be captured, got %+v", config)
-	}
-	if config["CFG_REGION"] != "us-east-1" {
-		t.Fatalf("expected envFrom configMap with prefix captured, got %+v", config)
-	}
-	foundGap := false
-	for _, g := range gaps {
-		if g.Code == "cloud_identity.inventory.unresolved_config" {
-			foundGap = true
+	for _, key := range []string{"STAGE", "LOG_LEVEL", "DB_PASSWORD", "MISSING", "CFG_REGION", "CFG_LOG_LEVEL"} {
+		if _, ok := config[key]; ok {
+			t.Fatalf("literal env/ConfigMap-derived key %q must never reach Configuration, got %+v", key, config)
 		}
 	}
-	if !foundGap {
-		t.Fatalf("expected unresolved_config gap for missing configmap, got %+v", gaps)
+	if hasGapCode(gaps, "cloud_identity.inventory.unresolved_config") {
+		t.Fatalf("the ConfigMap-resolution gap no longer exists; got %+v", gaps)
 	}
 }
 

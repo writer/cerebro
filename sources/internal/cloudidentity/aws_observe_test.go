@@ -372,7 +372,7 @@ func TestAWSObserveComputedIssuerResolution(t *testing.T) {
 
 	observation, err := reader.Observe(context.Background(), ci.CloudRequest{
 		Principal: ci.Principal{ID: roleARN, Provider: ci.AWS, Kind: "aws_iam_role", Account: "111111111111"},
-		Consumers: []ci.Workload{{ID: "w1", Cluster: "my-cluster", Region: "us-east-1"}},
+		Consumers: []ci.Workload{{ID: "w1", Cluster: "my-cluster", CloudAccount: "111111111111", Region: "us-east-1"}},
 	})
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
@@ -621,8 +621,8 @@ func TestAWSObserveWorkloadLinkageUsesPerClusterRegion(t *testing.T) {
 	observation, err := reader.Observe(context.Background(), ci.CloudRequest{
 		Principal: ci.Principal{ID: roleARN, Provider: ci.AWS, Kind: "aws_iam_role", Account: "111111111111"},
 		Consumers: []ci.Workload{
-			{ID: "w1", Cluster: "cluster-a", Region: "us-east-1"},
-			{ID: "w2", Cluster: "cluster-b", Region: "eu-west-1"},
+			{ID: "w1", Cluster: "cluster-a", CloudAccount: "111111111111", Region: "us-east-1"},
+			{ID: "w2", Cluster: "cluster-b", CloudAccount: "111111111111", Region: "eu-west-1"},
 		},
 	})
 	if err != nil {
@@ -654,7 +654,7 @@ func TestAWSObserveWorkloadLinkageEmptyRegionIsScopedGap(t *testing.T) {
 
 	observation, err := reader.Observe(context.Background(), ci.CloudRequest{
 		Principal: ci.Principal{ID: roleARN, Provider: ci.AWS, Kind: "aws_iam_role", Account: "111111111111"},
-		Consumers: []ci.Workload{{ID: "w1", Cluster: "my-cluster"}}, // no Region: must not fall back to the reader-wide default
+		Consumers: []ci.Workload{{ID: "w1", Cluster: "my-cluster", CloudAccount: "111111111111"}}, // no Region: must not fall back to the reader-wide default
 	})
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
@@ -695,6 +695,109 @@ func TestAWSObservePodIdentityEmptyRegionIsScopedGap(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Gaps = %+v, want aws_eks_cluster_region_unresolved", observation.Gaps)
+	}
+}
+
+// TestAWSObserveWorkloadLinkageUsesConsumerAccountForEKSAndRoleAccountForIAM
+// reproduces the O6 fix: the EKS cluster OIDC issuer lookup must assume a
+// role in the CONSUMER cluster's own account, never the IRSA role's
+// account -- an EKS cluster can live in a different AWS account than the
+// role trusting it. The IAM OIDC-provider lookup, by contrast, stays
+// scoped to the role's own account (where the provider is registered).
+func TestAWSObserveWorkloadLinkageUsesConsumerAccountForEKSAndRoleAccountForIAM(t *testing.T) {
+	const roleARN = "arn:aws:iam::222222222222:role/my-role"
+	var mu sync.Mutex
+	var assumedRoleARNs []string
+	stsFake := &fakeSTS{assumeRole: func(in *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
+		mu.Lock()
+		assumedRoleARNs = append(assumedRoleARNs, aws.ToString(in.RoleArn))
+		mu.Unlock()
+		return fixedAssumeRole(in)
+	}}
+	iamFake := &fakeIAM{
+		getRole: func(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
+			return &iam.GetRoleOutput{Role: &iamtypes.Role{Arn: aws.String(roleARN), RoleName: aws.String("my-role")}}, nil
+		},
+	}
+	eksFake := &fakeEKS{describeCluster: func(*eks.DescribeClusterInput) (*eks.DescribeClusterOutput, error) {
+		return &eks.DescribeClusterOutput{Cluster: &ekstypes.Cluster{Identity: &ekstypes.Identity{Oidc: &ekstypes.OIDC{Issuer: aws.String("https://oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE")}}}}, nil
+	}}
+	readerAny, err := NewAWSReader(context.Background(), AWSOptions{
+		Config:           aws.Config{Region: "us-east-1"},
+		RoleName:         "cerebro-org-scan-role",
+		Clock:            func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
+		STSClientFactory: func(aws.Config) awsSTSAssumeRoleAPI { return stsFake },
+		IAMClientFactory: func(aws.Config) awsIAMReadAPI { return iamFake },
+		EKSClientFactory: func(aws.Config) awsEKSReadAPI { return eksFake },
+	})
+	if err != nil {
+		t.Fatalf("NewAWSReader: %v", err)
+	}
+	reader := readerAny.(*awsReader)
+
+	observation, err := reader.Observe(context.Background(), ci.CloudRequest{
+		Principal: ci.Principal{ID: roleARN, Provider: ci.AWS, Kind: "aws_iam_role", Account: "222222222222"},
+		Consumers: []ci.Workload{{ID: "w1", Cluster: "cluster-a", CloudAccount: "111111111111", Region: "us-east-1"}},
+	})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if observation.ResolvedIdentifiers["aws_eks_oidc_issuer:cluster-a"] == "" {
+		t.Fatalf("expected the cluster's issuer resolved, got %+v", observation.ResolvedIdentifiers)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	wantEKSRole := "arn:aws:iam::111111111111:role/cerebro-org-scan-role"
+	wantIAMRole := "arn:aws:iam::222222222222:role/cerebro-org-scan-role"
+	var sawEKS, sawIAM bool
+	for _, a := range assumedRoleARNs {
+		if a == wantEKSRole {
+			sawEKS = true
+		}
+		if a == wantIAMRole {
+			sawIAM = true
+		}
+	}
+	if !sawEKS {
+		t.Fatalf("expected the EKS issuer lookup to assume the consumer cluster's own account (%s), got assumed role ARNs %+v", wantEKSRole, assumedRoleARNs)
+	}
+	if !sawIAM {
+		t.Fatalf("expected the IAM OIDC-provider lookup to stay in the role's account (%s), got assumed role ARNs %+v", wantIAMRole, assumedRoleARNs)
+	}
+}
+
+// TestAWSObserveWorkloadLinkageEmptyAccountIsScopedGap reproduces the O6
+// fix's gap path: a consumer with a known region but an unknown account
+// must never fall back to the role's account -- it is a scoped gap, and
+// DescribeCluster must never be called.
+func TestAWSObserveWorkloadLinkageEmptyAccountIsScopedGap(t *testing.T) {
+	const roleARN = "arn:aws:iam::111111111111:role/my-role"
+	iamFake := &fakeIAM{
+		getRole: func(*iam.GetRoleInput) (*iam.GetRoleOutput, error) {
+			return &iam.GetRoleOutput{Role: &iamtypes.Role{Arn: aws.String(roleARN), RoleName: aws.String("my-role")}}, nil
+		},
+	}
+	eksFake := &fakeEKS{describeCluster: func(*eks.DescribeClusterInput) (*eks.DescribeClusterOutput, error) {
+		t.Fatal("DescribeCluster must not be called when the cluster's account is unresolved")
+		return nil, nil
+	}}
+	reader := newTestAWSReader(t, &fakeSTS{assumeRole: fixedAssumeRole}, iamFake, eksFake)
+
+	observation, err := reader.Observe(context.Background(), ci.CloudRequest{
+		Principal: ci.Principal{ID: roleARN, Provider: ci.AWS, Kind: "aws_iam_role", Account: "111111111111"},
+		Consumers: []ci.Workload{{ID: "w1", Cluster: "my-cluster", Region: "us-east-1"}}, // no CloudAccount: must not fall back to the role's account
+	})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	found := false
+	for _, gap := range observation.Gaps {
+		if gap.Code == "aws_eks_cluster_account_unresolved" && gap.Scope == "my-cluster" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Gaps = %+v, want aws_eks_cluster_account_unresolved scoped to my-cluster", observation.Gaps)
 	}
 }
 

@@ -3,6 +3,7 @@ package sourceprojection
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -175,10 +176,23 @@ func vulnViewCloudIdentityFindingProjections(event *cerebrov1.EventEnvelope) ([]
 		},
 	})
 	if principalURN != "" {
+		// Materialize the minimal canonical principal endpoint this
+		// has_evidence join needs: the Neo4j link upsert MATCHes both
+		// endpoints and silently drops the link if either is missing, so a
+		// finding projected into a tenant with no prior AWS/GCP connector
+		// coverage of this account must mint the same stub evidence
+		// already does (cloudIdentityUpsertCanonicalPrincipalEntity),
+		// never leave the join unmaterialized.
+		cloudIdentityUpsertCanonicalPrincipalEntity(entities, tenantID, sourceID, provider, principalID, firstAttribute(attrs, "account_id", "project_id"), principalURN)
 		addLink(links, projectedLink(tenantID, sourceID, principalURN, findingURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 	}
 	if lastScanID, lastRunID := firstAttribute(attrs, "last_scan_id"), firstAttribute(attrs, "last_run_id"); lastScanID != "" && lastRunID != "" {
 		if runURN := projectionURN(tenantID, vulnViewCloudIdentityRunURNKind, lastScanID, lastRunID); runURN != "" {
+			// Same rationale as the principal stub above, for the other
+			// endpoint: a finding can arrive before (or long after,
+			// replayed) its run event, and the belongs_to link must not
+			// silently drop just because the run hasn't landed yet.
+			vulnViewCloudIdentityAddMinimalRunEntity(entities, tenantID, sourceID, lastScanID, lastRunID, runURN)
 			addLink(links, projectedLink(tenantID, sourceID, findingURN, runURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
@@ -258,15 +272,48 @@ func vulnViewCloudIdentityRunProjections(event *cerebrov1.EventEnvelope) ([]*por
 	return entitiesOut, linksOut, nil
 }
 
-// vulnViewCloudIdentityAssessmentPayload decodes only the bounded consumer
-// list from the assessment event payload; every other fact used for
-// projection is already carried as a bounded attribute. The field tags
-// match Contract B's camelCase assessment consumer wire shape (cluster,
-// namespace, serviceAccount, cloudAccount, cloudProject, service), which
-// is distinct from the legacy /exports/findings consumer shape. cloudAccount
-// / cloudProject are omitted when the detector report's evidence workload
-// had neither (the consumer then projects no KSA link, never a
-// collision-prone cluster-name-only URN).
+// vulnViewCloudIdentityAddMinimalRunEntity upserts the minimal
+// vulnview.cloud_identity_run stub a finding/assessment projection's
+// belongs_to link needs as its endpoint when the run event has not (yet,
+// or ever will, if it fell outside the collector's reconciliation window)
+// arrived: the Neo4j link upsert MATCHes both endpoints and silently
+// drops the link when either is missing (store.go
+// mergeProjectedLinksQuery), so a belongs_to join must never depend on
+// event arrival order. It carries only the run identity (scan_id/run_id)
+// and never claims observation precedence, so in either arrival order it
+// can only add those two keys to -- never regress -- the richer run
+// entity vulnViewCloudIdentityRunProjections projects once the run event
+// itself lands.
+func vulnViewCloudIdentityAddMinimalRunEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, scanID string, runID string, runURN string) {
+	if runURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        runURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: vulnViewCloudIdentityRunEntityType,
+		Label:      scanID + "/" + runID,
+		Attributes: map[string]string{
+			"scan_id": scanID,
+			"run_id":  runID,
+		},
+	})
+}
+
+// vulnViewCloudIdentityAssessmentPayload decodes the bounded consumer list
+// plus two other payload-only facts the bounded attributes do not carry:
+// truncated (a raw-payload flag distinct from the consumers_truncated
+// attribute -- it reports the detector's own evidence record was cut, not
+// just this row's consumer list) and principalEvidenceSha256 (the
+// evidence bundle hash for this specific assessment row, distinct from
+// the finding event's evidence.principalEvidenceSha256 attribute). The
+// field tags match Contract B's camelCase assessment wire shape (cluster,
+// namespace, serviceAccount, cloudAccount, cloudProject, service for each
+// consumer), which is distinct from the legacy /exports/findings consumer
+// shape. cloudAccount / cloudProject are omitted when the detector
+// report's evidence workload had neither (the consumer then projects no
+// KSA link, never a collision-prone cluster-name-only URN).
 type vulnViewCloudIdentityAssessmentPayload struct {
 	Consumers []struct {
 		Cluster        string `json:"cluster"`
@@ -276,6 +323,8 @@ type vulnViewCloudIdentityAssessmentPayload struct {
 		CloudProject   string `json:"cloudProject,omitempty"`
 		Service        string `json:"service,omitempty"`
 	} `json:"consumers"`
+	Truncated               bool   `json:"truncated"`
+	PrincipalEvidenceSha256 string `json:"principalEvidenceSha256"`
 }
 
 // vulnViewCloudIdentityAssessmentProjections joins one VulnView
@@ -325,49 +374,71 @@ func vulnViewCloudIdentityAssessmentProjections(event *cerebrov1.EventEnvelope) 
 
 	scanID := firstAttribute(attrs, "scan_id")
 	runID := firstAttribute(attrs, "run_id")
+
+	var payload vulnViewCloudIdentityAssessmentPayload
+	payloadDecoded := json.Unmarshal(event.GetPayload(), &payload) == nil
+
+	assessmentAttributes := map[string]string{
+		"scan_id":         scanID,
+		"run_id":          runID,
+		"check_id":        checkID,
+		"check_version":   firstAttribute(attrs, "check_version"),
+		"status":          firstAttribute(attrs, "status"),
+		"source_severity": firstAttribute(attrs, "severity", "source_severity"),
+		"side":            firstAttribute(attrs, "side"),
+		"drift":           firstAttribute(attrs, "drift"),
+		"cloud_provider":  provider,
+		"account_id":      firstAttribute(attrs, "account_id"),
+		"project_id":      firstAttribute(attrs, "project_id"),
+		"principal_id":    principalID,
+		"principal_kind":  firstAttribute(attrs, "principal_kind"),
+		"cohort_scope":    cohortScope,
+		"finding_id":      firstAttribute(attrs, "finding_id"),
+		"evidence_fresh":  firstAttribute(attrs, "evidence_fresh"),
+		"gap_codes":       strings.Join(gapCodes, ","),
+		"event_id":        event.GetId(),
+		// consumers_truncated is already a bounded event attribute
+		// (Contract B's consumersTruncated). truncated and
+		// principal_evidence_sha256 below are raw-payload-only facts (see
+		// vulnViewCloudIdentityAssessmentPayload) previously dropped on
+		// the floor; surfaced with the same naming convention the finding
+		// entity already uses for its own evidence sha256 attribute.
+		"consumers_truncated": firstAttribute(attrs, "consumers_truncated"),
+		// Contract G/H: the stable assessment entity opts into strict
+		// observation-time precedence so a late-arriving older run
+		// never regresses it with stale posture.
+		"at":                     event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339),
+		"observation_precedence": "strict",
+	}
+	if payloadDecoded {
+		assessmentAttributes["truncated"] = strconv.FormatBool(payload.Truncated)
+		if sha := strings.TrimSpace(payload.PrincipalEvidenceSha256); sha != "" {
+			assessmentAttributes["principal_evidence_sha256"] = sha
+		}
+	}
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        assessmentURN,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: vulnViewCloudIdentityAssessmentEntityType,
 		Label:      firstAttribute(attrs, "title", "check_id"),
-		Attributes: map[string]string{
-			"scan_id":         scanID,
-			"run_id":          runID,
-			"check_id":        checkID,
-			"check_version":   firstAttribute(attrs, "check_version"),
-			"status":          firstAttribute(attrs, "status"),
-			"source_severity": firstAttribute(attrs, "severity", "source_severity"),
-			"side":            firstAttribute(attrs, "side"),
-			"drift":           firstAttribute(attrs, "drift"),
-			"cloud_provider":  provider,
-			"account_id":      firstAttribute(attrs, "account_id"),
-			"project_id":      firstAttribute(attrs, "project_id"),
-			"principal_id":    principalID,
-			"principal_kind":  firstAttribute(attrs, "principal_kind"),
-			"cohort_scope":    cohortScope,
-			"finding_id":      firstAttribute(attrs, "finding_id"),
-			"evidence_fresh":  firstAttribute(attrs, "evidence_fresh"),
-			"gap_codes":       strings.Join(gapCodes, ","),
-			"event_id":        event.GetId(),
-			// Contract G/H: the stable assessment entity opts into strict
-			// observation-time precedence so a late-arriving older run
-			// never regresses it with stale posture.
-			"at":                     event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339),
-			"observation_precedence": "strict",
-		},
+		Attributes: assessmentAttributes,
 	})
 	if principalURN != "" {
+		// Same endpoint-materialization rationale as the finding
+		// projection: the Neo4j link upsert silently drops a has_evidence
+		// join whose principal node does not exist yet.
+		cloudIdentityUpsertCanonicalPrincipalEntity(entities, tenantID, sourceID, provider, principalID, firstAttribute(attrs, "account_id", "project_id"), principalURN)
 		addLink(links, projectedLink(tenantID, sourceID, principalURN, assessmentURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 	}
 	if scanID != "" && runID != "" {
 		if runURN := projectionURN(tenantID, vulnViewCloudIdentityRunURNKind, scanID, runID); runURN != "" {
+			vulnViewCloudIdentityAddMinimalRunEntity(entities, tenantID, sourceID, scanID, runID, runURN)
 			addLink(links, projectedLink(tenantID, sourceID, assessmentURN, runURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
 
-	var payload vulnViewCloudIdentityAssessmentPayload
-	if err := json.Unmarshal(event.GetPayload(), &payload); err == nil {
+	if payloadDecoded {
 		for _, consumer := range payload.Consumers {
 			cluster, namespace, serviceAccount := strings.TrimSpace(consumer.Cluster), strings.TrimSpace(consumer.Namespace), strings.TrimSpace(consumer.ServiceAccount)
 			if cluster == "" || namespace == "" || serviceAccount == "" {

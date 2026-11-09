@@ -523,6 +523,8 @@ export SOURCE_RUNTIMES_JSON='[
 
 Use this for local experiments and platform-driven bootstrap flows. Do not put live provider tokens in the JSON. Use `env:` references for sensitive values.
 
+Linux limits a single environment string to 128 KiB on 4 KiB-page hosts, and a larger value fails the container's exec before the CLI starts. For a larger document, set the variable to `gzip+base64:` followed by the standard padded base64 encoding of the gzip-compressed JSON; the CLI decompresses it (up to 16 MiB) before parsing. Plain JSON stays supported.
+
 ## Secrets and `env:` references
 
 Source config can reference environment variables with values like:

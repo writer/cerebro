@@ -9,6 +9,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/cloudidentity"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
@@ -109,13 +110,39 @@ func cloudIdentityCanonicalPrincipalURN(tenantID string, principal cloudidentity
 // aws/gcp connector covers the account yet (for example a newly onboarded
 // cell account). Never a scan- or scope-keyed principal: the URN is the
 // same cloudIdentityCanonicalPrincipalURN every join in this file uses.
+// It delegates to cloudIdentityUpsertCanonicalPrincipalEntity so a caller
+// that has not decoded a cloudidentity.Principal (vulnview_cloud_identity.go's
+// imported finding/assessment projections, which carry
+// cloud_provider/principal_id/account_id/project_id as bounded event
+// attributes) can still materialize the exact same minimal endpoint
+// entity a has_evidence join's principal side needs, instead of relying
+// on Neo4j's link MATCH to silently drop the join when the principal
+// node does not exist yet.
 func cloudIdentityAddCanonicalPrincipalEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, principal cloudidentity.Principal, principalURN string) {
+	accountOrProject := principal.Account
+	if principal.Provider == cloudidentity.GCP {
+		accountOrProject = principal.Project
+	}
+	cloudIdentityUpsertCanonicalPrincipalEntity(entities, tenantID, sourceID, string(principal.Provider), principal.ID, accountOrProject, principalURN)
+}
+
+// cloudIdentityUpsertCanonicalPrincipalEntity is the provider/principalID
+// form of cloudIdentityAddCanonicalPrincipalEntity: byte-identical
+// aws.role / gcp.service_account entity type and attribute shape, keyed
+// only by raw strings. accountOrProject is the AWS account id for an AWS
+// principal or the GCP project id for a GCP principal; the caller decides
+// which it has, mirroring cloudIdentityAddCanonicalPrincipalEntity's own
+// per-provider field choice. principalURN must already be resolved by the
+// caller (cloudIdentityCanonicalPrincipalURN and
+// vulnViewCloudIdentityCanonicalPrincipalURN mint the SAME URN for the
+// same provider/principalID); an unresolved URN upserts nothing.
+func cloudIdentityUpsertCanonicalPrincipalEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, provider string, principalID string, accountOrProject string, principalURN string) {
 	if principalURN == "" {
 		return
 	}
-	switch principal.Provider {
-	case cloudidentity.AWS:
-		roleARN := strings.TrimSpace(principal.ID)
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "aws":
+		roleARN := strings.TrimSpace(principalID)
 		roleName := awsRoleNameFromARN(roleARN)
 		attrs := map[string]string{
 			"role_arn": roleARN,
@@ -124,7 +151,7 @@ func cloudIdentityAddCanonicalPrincipalEntity(entities map[string]*ports.Project
 		if roleName != "" {
 			attrs["role_name"] = roleName
 		}
-		if account := strings.TrimSpace(principal.Account); account != "" {
+		if account := strings.TrimSpace(accountOrProject); account != "" {
 			attrs["account_id"] = account
 		}
 		addEntity(entities, &ports.ProjectedEntity{
@@ -135,13 +162,13 @@ func cloudIdentityAddCanonicalPrincipalEntity(entities map[string]*ports.Project
 			Label:      firstNonEmpty(roleName, roleARN),
 			Attributes: attrs,
 		})
-	case cloudidentity.GCP:
-		email := strings.TrimSpace(principal.ID)
+	case "gcp":
+		email := strings.TrimSpace(principalID)
 		attrs := map[string]string{
 			"email":    email,
 			"provider": "gcp",
 		}
-		if project := strings.TrimSpace(principal.Project); project != "" {
+		if project := strings.TrimSpace(accountOrProject); project != "" {
 			attrs["domain"] = project
 			attrs["project_id"] = project
 		}
@@ -328,7 +355,18 @@ func cloudIdentityAddIACSourceLinks(entities map[string]*ports.ProjectedEntity, 
 // metadata (scope, inventory completeness, gap counts, and the VulnView
 // evidence handoff status) without the per-principal evidence array the
 // collector strips from this event kind. It stays a durable, inspectable
-// fact rather than a posture verdict.
+// fact rather than a posture verdict. The coverage entity opts into
+// strict observation precedence (projectionmeta.AttributeObservedAt /
+// AttributeObservationPrecedence) keyed on the collector's own
+// CollectedAt, so a replayed older-but-complete coverage observation can
+// never overwrite a newer-but-incomplete one. handoff_error_code is
+// always written (empty string when the handoff carries none), never
+// merely omitted, so a published or disabled handoff's write actually
+// clears a prior failed handoff's error code instead of leaving it
+// stranded -- mergeGraphAttributes's per-key merge
+// (graphstore/neo4j/store.go) treats an explicit empty value as the new
+// value for any key not coupled to observation time, but an omitted key
+// leaves the stored value untouched.
 func cloudIdentityCoverageProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -363,13 +401,15 @@ func cloudIdentityCoverageProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		gapCodes = append(gapCodes, code)
 	}
 	attributes := map[string]string{
-		"scope":              scope,
-		"inventory_complete": strconv.FormatBool(coverage.InventoryComplete),
-		"gap_count":          strconv.Itoa(coverage.GapCount),
-		"gaps_truncated":     strconv.FormatBool(coverage.GapsTruncated),
-		"gap_codes":          strings.Join(gapCodes, ","),
-		"collected_at":       coverage.CollectedAt.UTC().Format(time.RFC3339),
-		"event_id":           event.GetId(),
+		"scope":                            scope,
+		"inventory_complete":               strconv.FormatBool(coverage.InventoryComplete),
+		"gap_count":                        strconv.Itoa(coverage.GapCount),
+		"gaps_truncated":                   strconv.FormatBool(coverage.GapsTruncated),
+		"gap_codes":                        strings.Join(gapCodes, ","),
+		"collected_at":                     coverage.CollectedAt.UTC().Format(time.RFC3339),
+		"event_id":                         event.GetId(),
+		projectionmeta.AttributeObservedAt: coverage.CollectedAt.UTC().Format(time.RFC3339Nano),
+		projectionmeta.AttributeObservationPrecedence: projectionmeta.ObservationPrecedenceStrict,
 	}
 	if status := strings.TrimSpace(coverage.Handoff.Status); status != "" {
 		attributes["handoff_status"] = status
@@ -378,9 +418,7 @@ func cloudIdentityCoverageProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		attributes["handoff_sha256"] = strings.TrimSpace(coverage.Handoff.SHA256)
 		attributes["handoff_size_bytes"] = strconv.FormatInt(coverage.Handoff.SizeBytes, 10)
 		attributes["handoff_stream"] = strings.TrimSpace(coverage.Handoff.Stream)
-		if errorCode := strings.TrimSpace(coverage.Handoff.ErrorCode); errorCode != "" {
-			attributes["handoff_error_code"] = errorCode
-		}
+		attributes["handoff_error_code"] = strings.TrimSpace(coverage.Handoff.ErrorCode)
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	addEntity(entities, &ports.ProjectedEntity{

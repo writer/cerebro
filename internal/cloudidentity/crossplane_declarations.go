@@ -17,8 +17,8 @@ func DeclarationsFromManifests(manifests []Manifest, account, project string) ([
 	var gaps []Gap
 
 	awsRoles := map[string]*Declaration{}
-	var awsPolicyAttachments []map[string]any
-	var awsInlinePolicies []map[string]any
+	var awsPolicyAttachments []Manifest
+	var awsInlinePolicies []Manifest
 
 	gcpAccounts := map[string]*Declaration{}
 	var gcpTrustBindings []map[string]any
@@ -52,9 +52,9 @@ func DeclarationsFromManifests(manifests []Manifest, account, project string) ([
 					awsRoles[crossplaneResourceName(m.Object)] = d
 				}
 			case "RolePolicy":
-				awsInlinePolicies = append(awsInlinePolicies, m.Object)
+				awsInlinePolicies = append(awsInlinePolicies, m)
 			case "RolePolicyAttachment":
-				awsPolicyAttachments = append(awsPolicyAttachments, m.Object)
+				awsPolicyAttachments = append(awsPolicyAttachments, m)
 			case "Policy":
 				// A standalone managed policy with no attachment in this
 				// batch declares no principal by itself; nothing to attach
@@ -97,7 +97,8 @@ func DeclarationsFromManifests(manifests []Manifest, account, project string) ([
 		}
 	}
 
-	for _, obj := range awsInlinePolicies {
+	for _, policy := range awsInlinePolicies {
+		obj := policy.Object
 		scope := crossplaneResourceName(obj)
 		roleName, selector := crossplaneAWSRoleRef(obj)
 		if selector {
@@ -113,14 +114,16 @@ func DeclarationsFromManifests(manifests []Manifest, account, project string) ([
 		if policyDoc == "" {
 			continue
 		}
-		grants, err := ParseAWSPolicy([]byte(policyDoc), Reference{})
+		grants, err := ParseAWSPolicy([]byte(policyDoc), policy.Reference)
 		if err != nil {
 			gaps = append(gaps, Gap{Code: "cloud_identity.crossplane_declaration.policy_unparseable", Scope: roleName, Message: err.Error()})
 			continue
 		}
 		decl.Policy.Grants = append(decl.Policy.Grants, grants...)
+		decl.Policy.References = append(decl.Policy.References, policy.Reference)
 	}
-	for _, obj := range awsPolicyAttachments {
+	for _, attachment := range awsPolicyAttachments {
+		obj := attachment.Object
 		scope := crossplaneResourceName(obj)
 		roleName, selector := crossplaneAWSRoleRef(obj)
 		if selector {
@@ -136,7 +139,8 @@ func DeclarationsFromManifests(manifests []Manifest, account, project string) ([
 		if policyARN == "" {
 			continue
 		}
-		decl.Policy.Grants = append(decl.Policy.Grants, Grant{ID: policyARN, Effect: "Allow", Role: policyARN})
+		decl.Policy.Grants = append(decl.Policy.Grants, Grant{ID: policyARN, Effect: "Allow", Role: policyARN, References: []Reference{attachment.Reference}})
+		decl.Policy.References = append(decl.Policy.References, attachment.Reference)
 	}
 
 	// Trust: who may assume/impersonate this service account (Workload
@@ -241,12 +245,68 @@ func crossplaneAWSRoleRef(obj map[string]any) (name string, selector bool) {
 	return name, false
 }
 
+// crossplaneExternalName resolves the external (cloud-provider) identifier
+// Crossplane manages one composed resource against: the
+// "crossplane.io/external-name" annotation when present -- Crossplane's own
+// mechanism for naming the external resource -- else the object's own
+// metadata.name (Crossplane's documented default external name), else
+// explicitField alone when neither of those is set (see
+// https://docs.crossplane.io/v1.20/concepts/managed-resources/#naming-external-resources).
+// explicitField/explicitPresent carry a resource-kind-specific field that
+// can independently state the same external identifier (AWS Role's
+// forProvider.name, GCP ServiceAccount's forProvider.accountId, both real
+// Terraform-backed naming fields some provider schemas expose directly).
+// When explicitField is present AND an independent source (external-name
+// annotation or metadata.name) also resolved a value, the two must agree,
+// or the external name is genuinely ambiguous -- this scan cannot know,
+// without a live read, which one the provider actually used. A resolved
+// value carrying UnresolvedValueMarkerPrefix (the manifest renderer's
+// sentinel for a Terraform-contract value this scan could not resolve) is
+// unresolved, not usable. Both cases become a Gap, never an invented
+// identity.
+func crossplaneExternalName(obj map[string]any, explicitField string, explicitPresent bool) (name string, ok bool, gap Gap) {
+	scope := crossplaneResourceName(obj)
+	objectName, hasObjectName := manifestInventoryNestedString(obj, "metadata", "name")
+	hasObjectName = hasObjectName && objectName != ""
+	external, hasExternal := manifestInventoryNestedString(obj, "metadata", "annotations", "crossplane.io/external-name")
+	hasExternal = hasExternal && external != ""
+
+	var resolved string
+	var resolvedKnown bool
+	switch {
+	case hasExternal:
+		resolved, resolvedKnown = external, true
+	case hasObjectName:
+		resolved, resolvedKnown = objectName, true
+	case explicitPresent:
+		resolved, resolvedKnown = explicitField, true
+	}
+
+	if resolvedKnown {
+		if key, unresolved := UnresolvedValueMarkerKey(resolved); unresolved {
+			return "", false, Gap{Code: "cloud_identity.crossplane_declaration.external_name_unresolved", Scope: scope, Message: "external name resolves to an unresolved Terraform-contract value (" + key + ")"}
+		}
+	}
+	if explicitPresent && (hasExternal || hasObjectName) && explicitField != resolved {
+		return "", false, Gap{Code: "cloud_identity.crossplane_declaration.external_name_ambiguous", Scope: scope, Message: "resolved external name \"" + resolved + "\" disagrees with the explicitly declared \"" + explicitField + "\""}
+	}
+	if !resolvedKnown || resolved == "" {
+		return "", false, Gap{Code: "cloud_identity.crossplane_declaration.external_name_unresolved", Scope: scope, Message: "no external name could be resolved from metadata.name, an explicit field, or the crossplane.io/external-name annotation"}
+	}
+	return resolved, true, Gap{}
+}
+
 func crossplaneAWSRoleDeclaration(m Manifest, account string) (*Declaration, []Gap) {
 	name := crossplaneResourceName(m.Object)
+	explicitName, hasExplicitName := manifestInventoryNestedString(m.Object, "spec", "forProvider", "name")
+	externalName, ok, extGap := crossplaneExternalName(m.Object, explicitName, hasExplicitName && explicitName != "")
+	if !ok {
+		return nil, []Gap{extGap}
+	}
 	var gaps []Gap
-	id := name
+	id := externalName
 	if account != "" {
-		id = "arn:aws:iam::" + account + ":role/" + name
+		id = "arn:aws:iam::" + account + ":role/" + externalName
 	} else {
 		gaps = append(gaps, Gap{Code: "cloud_identity.crossplane_declaration.unresolved_account", Scope: name, Message: "AWS account was not supplied; role ARN could not be constructed"})
 	}
@@ -278,12 +338,13 @@ func crossplaneAWSRoleDeclaration(m Manifest, account string) (*Declaration, []G
 
 func crossplaneGCPServiceAccountDeclaration(m Manifest, project string) (*Declaration, []Gap) {
 	name := crossplaneResourceName(m.Object)
-	accountID, _ := manifestInventoryNestedString(m.Object, "spec", "forProvider", "accountId")
-	if accountID == "" {
-		accountID, _ = manifestInventoryNestedString(m.Object, "spec", "accountId")
+	explicitAccountID, hasAccountID := manifestInventoryNestedString(m.Object, "spec", "forProvider", "accountId")
+	if !hasAccountID || explicitAccountID == "" {
+		explicitAccountID, hasAccountID = manifestInventoryNestedString(m.Object, "spec", "accountId")
 	}
-	if accountID == "" {
-		accountID = name
+	accountID, ok, extGap := crossplaneExternalName(m.Object, explicitAccountID, hasAccountID && explicitAccountID != "")
+	if !ok {
+		return nil, []Gap{extGap}
 	}
 	var gaps []Gap
 	id := accountID

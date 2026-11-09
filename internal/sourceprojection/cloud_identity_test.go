@@ -8,6 +8,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/cloudidentity"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -561,6 +562,113 @@ func TestCloudIdentityCoverageProjectionsCarriesHandoffRef(t *testing.T) {
 	}
 	if attrs["handoff_bucket"] == "" || attrs["handoff_key"] == "" || attrs["handoff_sha256"] == "" || attrs["handoff_stream"] != "security" {
 		t.Fatalf("expected handoff bucket/key/sha256/stream attributes, got %+v", attrs)
+	}
+	// O7: a successful handoff must still explicitly write
+	// handoff_error_code (empty), not merely omit it -- omitting the key
+	// would leave a prior failed handoff's error code stranded on replay
+	// (mergeGraphAttributes only clears a key it is given).
+	if errorCode, ok := attrs["handoff_error_code"]; !ok || errorCode != "" {
+		t.Fatalf("handoff_error_code = %q (present=%v), want empty and present", errorCode, ok)
+	}
+	// O7: the coverage entity must opt into strict observation precedence
+	// keyed on CollectedAt, so a replayed older-but-complete coverage
+	// observation can never overwrite a newer-but-incomplete one.
+	if attrs[projectionmeta.AttributeObservedAt] != baseTime.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("attrs[%s] = %q, want %q", projectionmeta.AttributeObservedAt, attrs[projectionmeta.AttributeObservedAt], baseTime.UTC().Format(time.RFC3339Nano))
+	}
+	if attrs[projectionmeta.AttributeObservationPrecedence] != projectionmeta.ObservationPrecedenceStrict {
+		t.Fatalf("attrs[%s] = %q, want %q", projectionmeta.AttributeObservationPrecedence, attrs[projectionmeta.AttributeObservationPrecedence], projectionmeta.ObservationPrecedenceStrict)
+	}
+}
+
+// TestCloudIdentityCoverageProjectionsOrdersByCollectedAtStrict pins O7:
+// confirmed against real Neo4j, an older-but-complete coverage
+// observation replayed after a newer-but-incomplete one used to overwrite
+// it (plain last-write-wins). The coverage entity's own `at`/
+// observation_precedence attributes must order the two the same way
+// projectionmeta.CompareObservations/StaleStrictObservation (the exact
+// decision the graph store's merge makes) already orders every other
+// strict-precedence entity in this package.
+func TestCloudIdentityCoverageProjectionsOrdersByCollectedAtStrict(t *testing.T) {
+	project := func(id string, collectedAt time.Time, inventoryComplete bool) map[string]string {
+		coverage := cloudidentity.CollectionCoverage{
+			Schema: cloudidentity.SchemaVersion, Scope: "org:writer", CollectedAt: collectedAt,
+			InventoryComplete: inventoryComplete,
+		}
+		payload, err := json.Marshal(coverage)
+		if err != nil {
+			t.Fatalf("marshal coverage: %v", err)
+		}
+		event := &cerebrov1.EventEnvelope{
+			Id: id, TenantId: "writer", SourceId: cloudidentity.SourceID,
+			Kind: cloudidentity.CoverageEventKind, Payload: payload,
+			Attributes: map[string]string{"scope": coverage.Scope}, OccurredAt: timestamppb.New(collectedAt),
+		}
+		entities, _, err := cloudIdentityCoverageProjections(event)
+		if err != nil {
+			t.Fatalf("cloudIdentityCoverageProjections() error = %v", err)
+		}
+		if len(entities) != 1 {
+			t.Fatalf("got %d coverage entities, want 1", len(entities))
+		}
+		return entities[0].Attributes
+	}
+	newerIncomplete := project("event-coverage-t2", time.Date(2026, time.April, 1, 12, 0, 0, 0, time.UTC), false)
+	olderComplete := project("event-coverage-t1", time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC), true)
+	if got := projectionmeta.CompareObservations(newerIncomplete, olderComplete); got != projectionmeta.ObservationOlder {
+		t.Fatalf("older-but-complete coverage after newer-but-incomplete orders %v, want older", got)
+	}
+	if !projectionmeta.StaleStrictObservation(newerIncomplete, olderComplete) {
+		t.Fatal("older-but-complete coverage replayed after newer-but-incomplete must be a stale strict observation")
+	}
+}
+
+// TestCloudIdentityCoverageProjectionsClearsHandoffErrorCodeOnRecovery pins
+// O7: confirmed against real Neo4j, a published handoff after a failed
+// one kept the stale handoff_error_code because the old code only wrote
+// the attribute when non-empty, so a successful write never carried the
+// key needed to clear it. The fix always writes handoff_error_code
+// (empty when none) whenever handoff status is present.
+func TestCloudIdentityCoverageProjectionsClearsHandoffErrorCodeOnRecovery(t *testing.T) {
+	baseTime := time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC)
+	coverage := cloudidentity.CollectionCoverage{
+		Schema: cloudidentity.SchemaVersion, Scope: "org:writer", CollectedAt: baseTime,
+		InventoryComplete: true,
+		Handoff: cloudidentity.CollectionHandoff{
+			Status: "published", Bucket: "vulnview-cloud-identity-intake-111111111111",
+			Key:    "cloud-identity/security/writer/20260401T110000Z-abc123.json.gz",
+			SHA256: "abc123", SizeBytes: 4096, Stream: "security",
+			// No ErrorCode: this is the recovery write after a prior
+			// failed handoff.
+		},
+	}
+	payload, err := json.Marshal(coverage)
+	if err != nil {
+		t.Fatalf("marshal coverage: %v", err)
+	}
+	event := &cerebrov1.EventEnvelope{
+		Id: "event-coverage-recovered", TenantId: "writer", SourceId: cloudidentity.SourceID,
+		Kind: cloudidentity.CoverageEventKind, Payload: payload,
+		Attributes: map[string]string{"scope": coverage.Scope}, OccurredAt: timestamppb.New(baseTime),
+	}
+	entities, _, err := cloudIdentityCoverageProjections(event)
+	if err != nil {
+		t.Fatalf("cloudIdentityCoverageProjections() error = %v", err)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("got %d coverage entities, want 1", len(entities))
+	}
+	// The key must be PRESENT and empty, not merely absent: an absent key
+	// leaves a stale stored handoff_error_code value untouched on merge
+	// (graphstore/neo4j/store.go mergeGraphAttributes's last-write-wins
+	// only overwrites keys it is actually given), while an explicit empty
+	// value does clear it.
+	errorCode, ok := entities[0].Attributes["handoff_error_code"]
+	if !ok {
+		t.Fatal("handoff_error_code key must be present (empty) on a published handoff, so a prior failed handoff's code is cleared on merge")
+	}
+	if errorCode != "" {
+		t.Fatalf("handoff_error_code = %q, want empty", errorCode)
 	}
 }
 

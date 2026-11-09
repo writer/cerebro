@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/projectionmeta"
 )
 
@@ -46,6 +47,20 @@ func TestVulnViewCloudIdentityFindingAWSCanonicalJoin(t *testing.T) {
 	wantPrincipalURN := identityPrincipalURN("writer", "aws", "role", "arn:aws:iam::222222222222:role/billing-worker", "")
 	if findLink(links, wantPrincipalURN, finding.URN, relationHasEvidence) == nil {
 		t.Fatal("missing canonical AWS principal -has_evidence-> finding join")
+	}
+	// O2: the Neo4j link upsert MATCHes both endpoints and silently drops
+	// the join if the principal node does not exist yet, so the
+	// projection must materialize the minimal canonical principal entity
+	// itself, not just the link.
+	role := findEntity(entities, "aws.role")
+	if role == nil {
+		t.Fatalf("missing aws.role principal endpoint entity; got %v", entityTypes(entities))
+	}
+	if role.URN != wantPrincipalURN {
+		t.Fatalf("role.URN = %q, want %q", role.URN, wantPrincipalURN)
+	}
+	if role.Attributes["role_arn"] != "arn:aws:iam::222222222222:role/billing-worker" || role.Attributes["account_id"] != "222222222222" {
+		t.Fatalf("role.Attributes = %+v", role.Attributes)
 	}
 	if finding.Attributes["gap_codes"] != "" {
 		t.Fatalf("gap_codes = %q, want empty for a fully resolved AWS subject", finding.Attributes["gap_codes"])
@@ -95,6 +110,16 @@ func TestVulnViewCloudIdentityFindingGCPCanonicalJoin(t *testing.T) {
 	wantPrincipalURN := identityPrincipalURN("writer", "gcp", "service_account", "payments-sa@writer-prod.iam.gserviceaccount.com", "")
 	if findLink(links, wantPrincipalURN, finding.URN, relationHasEvidence) == nil {
 		t.Fatal("missing canonical GCP principal -has_evidence-> finding join")
+	}
+	sa := findEntity(entities, "gcp.service_account")
+	if sa == nil {
+		t.Fatalf("missing gcp.service_account principal endpoint entity; got %v", entityTypes(entities))
+	}
+	if sa.URN != wantPrincipalURN {
+		t.Fatalf("sa.URN = %q, want %q", sa.URN, wantPrincipalURN)
+	}
+	if sa.Attributes["email"] != "payments-sa@writer-prod.iam.gserviceaccount.com" || sa.Attributes["project_id"] != "writer-prod" {
+		t.Fatalf("sa.Attributes = %+v", sa.Attributes)
 	}
 }
 
@@ -317,6 +342,26 @@ func TestVulnViewCloudIdentityFindingLinksToRunEntity(t *testing.T) {
 	if findLink(links, finding.URN, runURN, relationBelongsTo) == nil {
 		t.Fatal("missing finding -belongs_to-> run join")
 	}
+	// O2: the Neo4j link upsert MATCHes both endpoints and silently drops
+	// the join if the run node does not exist yet (the run event may
+	// arrive before, after, or never relative to this finding), so the
+	// projection must materialize the minimal run entity itself.
+	run := findEntity(entities, vulnViewCloudIdentityRunEntityType)
+	if run == nil {
+		t.Fatalf("missing run endpoint entity; got %v", entityTypes(entities))
+	}
+	if run.URN != runURN || run.Attributes["scan_id"] != "scan-1" || run.Attributes["run_id"] != "run-1" {
+		t.Fatalf("run endpoint entity = %+v", run)
+	}
+	// The stub must never claim observation precedence: it must not be
+	// able to out-rank the richer run entity vulnViewCloudIdentityRunProjections
+	// projects once the run event itself lands, in either arrival order.
+	if _, ok := run.Attributes["at"]; ok {
+		t.Fatalf("run endpoint stub must not set \"at\": %+v", run.Attributes)
+	}
+	if _, ok := run.Attributes["observation_precedence"]; ok {
+		t.Fatalf("run endpoint stub must not set observation_precedence: %+v", run.Attributes)
+	}
 }
 
 func TestVulnViewCloudIdentityAssessmentProjectionAndConsumerLinks(t *testing.T) {
@@ -324,6 +369,8 @@ func TestVulnViewCloudIdentityAssessmentProjectionAndConsumerLinks(t *testing.T)
 		"consumers": []map[string]any{
 			{"id": "w1", "cluster": "prod-eks", "namespace": "billing", "serviceAccount": "billing-worker", "cloudAccount": "222222222222"},
 		},
+		"truncated":               true,
+		"principalEvidenceSha256": "sha256:ab12cd34",
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
@@ -337,7 +384,7 @@ func TestVulnViewCloudIdentityAssessmentProjectionAndConsumerLinks(t *testing.T)
 			"cloud_provider": "aws", "account_id": "222222222222", "principal_id": "arn:aws:iam::222222222222:role/billing-worker",
 			"principal_kind": "aws_role", "cohort_scope": "writer", "status": "supported", "severity": "high", "title": "Excess privilege",
 			"finding_id":     "cloud_identity|cloud_identity_excess_privilege|aws|arn:aws:iam::222222222222:role/billing-worker|writer",
-			"evidence_fresh": "true",
+			"evidence_fresh": "true", "consumers_truncated": "true",
 		},
 	}
 	entities, links, err := vulnViewCloudIdentityAssessmentProjections(event)
@@ -355,12 +402,30 @@ func TestVulnViewCloudIdentityAssessmentProjectionAndConsumerLinks(t *testing.T)
 	if assessment.Attributes["finding_id"] == "" || assessment.Attributes["evidence_fresh"] != "true" {
 		t.Fatalf("assessment attrs missing contracted findingId/evidenceFresh: %+v", assessment.Attributes)
 	}
+	// O8: consumers_truncated is already a bounded event attribute; truncated
+	// and principal_evidence_sha256 are raw-payload-only facts. All three
+	// must survive onto the assessment entity.
+	if assessment.Attributes["consumers_truncated"] != "true" {
+		t.Fatalf("assessment.Attributes[consumers_truncated] = %q, want true", assessment.Attributes["consumers_truncated"])
+	}
+	if assessment.Attributes["truncated"] != "true" {
+		t.Fatalf("assessment.Attributes[truncated] = %q, want true", assessment.Attributes["truncated"])
+	}
+	if assessment.Attributes["principal_evidence_sha256"] != "sha256:ab12cd34" {
+		t.Fatalf("assessment.Attributes[principal_evidence_sha256] = %q, want sha256:ab12cd34", assessment.Attributes["principal_evidence_sha256"])
+	}
 	// Contract G/H: strict observation-time precedence.
 	if assessment.Attributes["at"] != "2026-04-01T09:10:00Z" {
 		t.Fatalf("assessment.Attributes[at] = %q, want 2026-04-01T09:10:00Z", assessment.Attributes["at"])
 	}
 	if assessment.Attributes["observation_precedence"] != "strict" {
 		t.Fatalf("assessment.Attributes[observation_precedence] = %q, want strict", assessment.Attributes["observation_precedence"])
+	}
+	// O2: the has_evidence join's principal endpoint must be materialized,
+	// not just the link (see TestVulnViewCloudIdentityFindingAWSCanonicalJoin).
+	role := findEntity(entities, "aws.role")
+	if role == nil || role.URN != wantPrincipalURN {
+		t.Fatalf("missing aws.role principal endpoint entity; got %v", entityTypes(entities))
 	}
 	ksa := findEntity(entities, "kubernetes.service_account")
 	if ksa == nil {
@@ -378,6 +443,11 @@ func TestVulnViewCloudIdentityAssessmentProjectionAndConsumerLinks(t *testing.T)
 	runURN := projectionURN("writer", vulnViewCloudIdentityRunURNKind, "scan-1", "run-1")
 	if findLink(links, assessment.URN, runURN, relationBelongsTo) == nil {
 		t.Fatal("missing assessment -belongs_to-> run join")
+	}
+	// O2: the belongs_to join's run endpoint must be materialized too.
+	run := findEntity(entities, vulnViewCloudIdentityRunEntityType)
+	if run == nil || run.URN != runURN {
+		t.Fatalf("missing run endpoint entity; got %v", entityTypes(entities))
 	}
 }
 
@@ -516,4 +586,97 @@ func TestVulnViewCloudIdentityFindingTenantIsolation(t *testing.T) {
 	if findingA.TenantID != "tenant-a" || findingB.TenantID != "tenant-b" {
 		t.Fatalf("TenantID = %q/%q, want tenant-a/tenant-b", findingA.TenantID, findingB.TenantID)
 	}
+}
+
+// TestVulnViewCloudIdentityPrincipalEndpointStubNeverDegradesRicherEntity
+// pins O2's safety rule for the materialized principal endpoint: a
+// VulnView-sourced minimal stub (cloudIdentityUpsertCanonicalPrincipalEntity,
+// the same helper the finding/assessment projections call) must only ever
+// add its own small attribute set -- never blank out a richer entity's
+// other attributes or its real label -- in either merge order, so a
+// finding projected before or after a native AWS connector's own role
+// projection lands on one undamaged node.
+func TestVulnViewCloudIdentityPrincipalEndpointStubNeverDegradesRicherEntity(t *testing.T) {
+	principalURN := identityPrincipalURN("writer", "aws", "role", "arn:aws:iam::222222222222:role/billing-worker", "")
+	richer := func() *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN: principalURN, TenantID: "writer", SourceID: "aws", EntityType: "aws.role",
+			Label: "billing-worker",
+			Attributes: map[string]string{
+				"role_arn": "arn:aws:iam::222222222222:role/billing-worker", "role_name": "billing-worker",
+				"account_id": "222222222222", "is_admin": "true", "provider": "aws",
+			},
+		}
+	}
+	addStub := func(entities map[string]*ports.ProjectedEntity) {
+		cloudIdentityUpsertCanonicalPrincipalEntity(entities, "writer", "vulnview", "aws", "arn:aws:iam::222222222222:role/billing-worker", "222222222222", principalURN)
+	}
+	assertUndamaged := func(t *testing.T, entities map[string]*ports.ProjectedEntity, order string) {
+		t.Helper()
+		merged := entities[principalURN]
+		if merged == nil {
+			t.Fatalf("[%s] missing merged principal entity", order)
+		}
+		if merged.Attributes["is_admin"] != "true" {
+			t.Fatalf("[%s] merge dropped is_admin: %+v", order, merged.Attributes)
+		}
+		if merged.EntityType != "aws.role" {
+			t.Fatalf("[%s] merge changed entity_type to %q", order, merged.EntityType)
+		}
+		if merged.Label != "billing-worker" {
+			t.Fatalf("[%s] merge degraded label to %q", order, merged.Label)
+		}
+	}
+
+	stubFirst := map[string]*ports.ProjectedEntity{}
+	addStub(stubFirst)
+	addEntity(stubFirst, richer())
+	assertUndamaged(t, stubFirst, "stub-then-richer")
+
+	richerFirst := map[string]*ports.ProjectedEntity{}
+	addEntity(richerFirst, richer())
+	addStub(richerFirst)
+	assertUndamaged(t, richerFirst, "richer-then-stub")
+}
+
+// TestVulnViewCloudIdentityRunEndpointStubNeverDegradesRicherEntity mirrors
+// the principal test for the other O2 endpoint: the minimal run stub
+// (vulnViewCloudIdentityAddMinimalRunEntity) must only ever add its own
+// scan_id/run_id -- never blank out the richer run entity
+// vulnViewCloudIdentityRunProjections projects from the run event itself
+// -- in either merge order.
+func TestVulnViewCloudIdentityRunEndpointStubNeverDegradesRicherEntity(t *testing.T) {
+	runURN := projectionURN("writer", vulnViewCloudIdentityRunURNKind, "scan-1", "run-1")
+	richer := func() *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{
+			URN: runURN, TenantID: "writer", SourceID: "vulnview", EntityType: vulnViewCloudIdentityRunEntityType,
+			Label: "scan-1/run-1",
+			Attributes: map[string]string{
+				"scan_id": "scan-1", "run_id": "run-1", "bundle_sha256": "abc", "reasons": "scan_completed",
+			},
+		}
+	}
+	addStub := func(entities map[string]*ports.ProjectedEntity) {
+		vulnViewCloudIdentityAddMinimalRunEntity(entities, "writer", "vulnview", "scan-1", "run-1", runURN)
+	}
+	assertUndamaged := func(t *testing.T, entities map[string]*ports.ProjectedEntity, order string) {
+		t.Helper()
+		merged := entities[runURN]
+		if merged == nil {
+			t.Fatalf("[%s] missing merged run entity", order)
+		}
+		if merged.Attributes["bundle_sha256"] != "abc" || merged.Attributes["reasons"] != "scan_completed" {
+			t.Fatalf("[%s] merge dropped richer run attrs: %+v", order, merged.Attributes)
+		}
+	}
+
+	stubFirst := map[string]*ports.ProjectedEntity{}
+	addStub(stubFirst)
+	addEntity(stubFirst, richer())
+	assertUndamaged(t, stubFirst, "stub-then-richer")
+
+	richerFirst := map[string]*ports.ProjectedEntity{}
+	addEntity(richerFirst, richer())
+	addStub(richerFirst)
+	assertUndamaged(t, richerFirst, "richer-then-stub")
 }

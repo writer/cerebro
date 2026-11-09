@@ -721,7 +721,11 @@ func parseSourceRuntimeBootstrapArgs(args []string) ([]*cerebrov1.SourceRuntime,
 	if !ok {
 		return nil, fmt.Errorf("source runtime bootstrap env %q is unset", envName)
 	}
-	return parseSourceRuntimeBootstrapJSON(payload)
+	document, err := decodeSourceRuntimeBootstrapPayload(payload)
+	if err != nil {
+		return nil, err
+	}
+	return parseSourceRuntimeBootstrapJSON(document)
 }
 
 func parseSourceRuntimeBootstrapJSON(payload string) ([]*cerebrov1.SourceRuntime, error) {

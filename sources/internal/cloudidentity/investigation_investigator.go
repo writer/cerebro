@@ -189,14 +189,9 @@ func investigationBuildPrompt(request ci.InvestigationRequest, options Investiga
 	b.WriteString("You have no authority to mark anything verified, trusted, or complete; a separate deterministic process re-derives all of that from the real pinned source. Only propose a claim when you can point at an exact, unmodified excerpt of the files below that shows the call.\n\n")
 
 	fmt.Fprintf(&b, "Workload: id=%s service=%s cluster=%s namespace=%s name=%s kind=%s service_account=%s\n", request.Workload.ID, request.Workload.Service, request.Workload.Cluster, request.Workload.Namespace, request.Workload.Name, request.Workload.Kind, request.Workload.ServiceAccount)
-	if len(request.Workload.Configuration) > 0 {
-		keys := make([]string, 0, len(request.Workload.Configuration))
-		for k := range request.Workload.Configuration {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+	if configKeys := investigationAllowlistedConfigurationKeys(request.Workload.Configuration); len(configKeys) > 0 {
 		b.WriteString("Configuration:\n")
-		for _, k := range keys {
+		for _, k := range configKeys {
 			fmt.Fprintf(&b, "  %s=%s\n", k, request.Workload.Configuration[k])
 		}
 	}
@@ -219,23 +214,50 @@ func investigationBuildPrompt(request ci.InvestigationRequest, options Investiga
 	return b.String()
 }
 
+// investigationConfigurationAllowlist names the only Workload.Configuration
+// keys ever forwarded into the model prompt: collector-derived nonsecret
+// metadata (see the Configuration contract in models.go), never literal
+// container env values or ConfigMap data -- those are model-input material
+// a collector must never place in Configuration to begin with (see
+// inventory.go), but the prompt stays allowlisted defensively rather than
+// trusting every upstream caller to have gotten that right.
+var investigationConfigurationAllowlist = map[string]bool{
+	"container_type":        true,
+	"identity_binding_kind": true,
+}
+
+// investigationAllowlistedConfigurationKeys returns the sorted subset of
+// configuration's keys named in investigationConfigurationAllowlist.
+func investigationAllowlistedConfigurationKeys(configuration map[string]string) []string {
+	keys := make([]string, 0, len(configuration))
+	for k := range configuration {
+		if investigationConfigurationAllowlist[k] {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // investigationSelectFiles bounds and sorts which pinned files are included
-// in the prompt: supported source extensions first (deterministic order),
-// each truncated to MaxFileBytes, up to MaxFiles total, skipping anything
-// that looks binary (contains a NUL byte).
+// in the prompt: only supported source extensions (investigationIsSourceExt)
+// are ever candidates -- a non-source file (config/data, docs, ...) is
+// model-input material the prompt must never carry, never merely
+// deprioritized -- sorted deterministically by path, each truncated to
+// MaxFileBytes, up to MaxFiles total, skipping anything that looks binary
+// (contains a NUL byte).
 func investigationSelectFiles(files []ci.SourceFile, options InvestigatorOptions) []ci.SourceFile {
 	candidates := make([]ci.SourceFile, 0, len(files))
 	for _, f := range files {
+		if !investigationIsSourceExt(f.Path) {
+			continue
+		}
 		if bytes.IndexByte(f.Content, 0) != -1 {
 			continue
 		}
 		candidates = append(candidates, f)
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		iSrc, jSrc := investigationIsSourceExt(candidates[i].Path), investigationIsSourceExt(candidates[j].Path)
-		if iSrc != jSrc {
-			return iSrc
-		}
 		return candidates[i].Path < candidates[j].Path
 	})
 	if len(candidates) > options.MaxFiles {

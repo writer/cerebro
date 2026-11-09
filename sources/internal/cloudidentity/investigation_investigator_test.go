@@ -150,3 +150,39 @@ func TestInvestigatePromptExcludesBinaryContent(t *testing.T) {
 		t.Fatalf("binary-looking file must never be forwarded into the model prompt")
 	}
 }
+
+// TestInvestigatePromptExcludesDisallowedConfigurationKeysAndNonSourceFiles
+// reproduces the O1 fix: only allowlisted Workload.Configuration keys
+// (container_type, identity_binding_kind) ever reach the model prompt, and
+// only supported source-extension files are ever selected -- a non-source
+// file such as config/prod.yaml is excluded outright, never merely sorted
+// after source files.
+func TestInvestigatePromptExcludesDisallowedConfigurationKeysAndNonSourceFiles(t *testing.T) {
+	client := &stubStructuredClient{response: []byte(`{"claims":[]}`)}
+	investigator, err := NewRequirementInvestigator(InvestigatorOptions{Client: client})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req := requestForTest()
+	req.Workload.Configuration = map[string]string{
+		"container_type": "container",
+		"DB_PASSWORD":    "synthetic-secret-token-7f3a",
+	}
+	req.Repository.Files = append(req.Repository.Files, ci.SourceFile{Path: "config/prod.yaml", Content: []byte("db_password: synthetic-secret-token-7f3a\n")})
+	if _, err := investigator.Investigate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	prompt := client.lastReq.Prompt
+	if !strings.Contains(prompt, "container_type=container") {
+		t.Fatalf("expected the allowlisted container_type key in the prompt, got:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "DB_PASSWORD") || strings.Contains(prompt, "synthetic-secret-token-7f3a") {
+		t.Fatalf("a non-allowlisted Configuration key/value must never reach the model prompt, got:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "config/prod.yaml") {
+		t.Fatalf("a non-source-extension file must never reach the model prompt, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "main.go") {
+		t.Fatalf("expected the supported .go source file to remain in the prompt, got:\n%s", prompt)
+	}
+}

@@ -419,9 +419,15 @@ func (r *awsReader) fetchClusterIssuer(ctx context.Context, account, region, clu
 // against the EKS cluster OIDC issuer/provider for every distinct cluster
 // among request consumers, so drift between the configured annotation link
 // and the role's actual trust statements is observable. Each cluster's EKS
-// client is built for that cluster's own reported region (Workload.Region);
-// a cluster with no known region is an explicit scoped gap, never silently
-// queried against the reader-wide default region.
+// client is built for that cluster's own reported account and region
+// (Workload.CloudAccount/Workload.Region) -- a consumer cluster can live in
+// a different AWS account than the IRSA role itself, and borrowing the
+// role's account would silently read (or fail to find) the wrong account's
+// cluster. A cluster with no known account or region is an explicit scoped
+// gap, never silently queried against the role's account or the
+// reader-wide default region. The IAM OIDC-provider lookup below stays
+// scoped to the role's own account: an OIDC provider is registered in the
+// account that trusts it (here, the role's account), not the cluster's.
 func (r *awsReader) resolveWorkloadLinkage(ctx context.Context, principal awsIAMPrincipal, consumers []ci.Workload) (map[string]string, []ci.Gap) {
 	locations, ambiguousClusters := awsConsumerClusterLocations(consumers)
 	if len(locations) == 0 && len(ambiguousClusters) == 0 {
@@ -439,12 +445,17 @@ func (r *awsReader) resolveWorkloadLinkage(ctx context.Context, principal awsIAM
 		gaps = append(gaps, awsGap("aws_eks_cluster_name_ambiguous", cluster, "Multiple consumers report this cluster name with different accounts/regions; refusing to guess which one to query"))
 	}
 	for cluster, location := range locations {
+		account := location.Account
+		if account == "" {
+			gaps = append(gaps, awsGap("aws_eks_cluster_account_unresolved", cluster, "No account is known for this cluster; refusing to query a default/fallback account"))
+			continue
+		}
 		region := location.Region
 		if region == "" {
 			gaps = append(gaps, awsGap("aws_eks_cluster_region_unresolved", cluster, "No region is known for this cluster; refusing to query a default/fallback region"))
 			continue
 		}
-		issuer, found, issuerGaps := r.resolveClusterIssuerCached(ctx, principal.Account, region, cluster)
+		issuer, found, issuerGaps := r.resolveClusterIssuerCached(ctx, account, region, cluster)
 		gaps = append(gaps, issuerGaps...)
 		if !found {
 			continue
