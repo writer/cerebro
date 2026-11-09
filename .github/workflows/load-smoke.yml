@@ -76,7 +76,7 @@ jobs:
 
       - name: Fetch org-level secrets from Infisical
         if: steps.infisical.outputs.configured == 'true'
-        uses: Infisical/secrets-action@6cd3f7c0e4cc0d2395ee4ef414eb6eeb5d3e73db # v1.0.17
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_ORG_IDENTITY_UUID }}
@@ -86,7 +86,7 @@ jobs:
           export-type: env
       - name: Fetch repo-level secrets from Infisical
         if: steps.infisical.outputs.configured == 'true'
-        uses: Infisical/secrets-action@6cd3f7c0e4cc0d2395ee4ef414eb6eeb5d3e73db # v1.0.17
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           identity-id: ${{ secrets.INFISICAL_REPO_IDENTITY_UUID }}
@@ -160,7 +160,7 @@ jobs:
 
       - name: Upload load-smoke artifacts
         if: steps.target.outputs.skip != 'true' && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cerebro-load-smoke
           path: |
