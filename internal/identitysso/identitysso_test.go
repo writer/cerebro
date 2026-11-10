@@ -573,6 +573,10 @@ func TestApplySCIMGroupPatch(t *testing.T) {
 		{`{"Operations":[{"op":"replace","path":"members","value":[{"value":"u9"}]}]}`, "u9", "Engineering"},
 		{`{"Operations":[{"op":"replace","value":{"id":"g1","displayName":"Eng"}}]}`, "u9", "Eng"},
 		{`{"Operations":[{"op":"add","path":"members","value":{"value":"u8"}}]}`, "u9,u8", "Eng"},
+		{`{"Operations":[{"op":"add","path":"urn:ietf:params:scim:schemas:core:2.0:Group:members","value":[{"value":"u7"},{"value":"u6"}]}]}`, "u9,u8,u7,u6", "Eng"},
+		{`{"Operations":[{"op":"remove","path":"urn:ietf:params:scim:schemas:core:2.0:Group:members[value eq \"u7\"]"}]}`, "u9,u8,u6", "Eng"},
+		{`{"Operations":[{"op":"remove","path":"urn:ietf:params:scim:schemas:core:2.0:Group:members","value":[{"value":"u9"}]}]}`, "u8,u6", "Eng"},
+		{`{"Operations":[{"op":"remove","path":"urn:ietf:params:scim:schemas:core:2.0:Group:externalId"}]}`, "u8,u6", "Eng"},
 		{`{"Operations":[{"op":"remove","path":"members"}]}`, "", "Eng"},
 	}
 	for _, step := range steps {
@@ -586,6 +590,7 @@ func TestApplySCIMGroupPatch(t *testing.T) {
 	}
 	for _, bad := range []string{
 		`{"Operations":[{"op":"remove","path":"displayName"}]}`,
+		`{"Operations":[{"op":"remove","path":"urn:ietf:params:scim:schemas:core:2.0:Group:displayName"}]}`,
 		`{"Operations":[{"op":"add","path":"owners","value":"x"}]}`,
 		`{"Operations":[{"op":"add","path":"members","value":[{"value":""}]}]}`,
 		`{"Operations":[{"op":"replace","path":"displayName","value":""}]}`,
