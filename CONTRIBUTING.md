@@ -48,6 +48,25 @@ For CI-parity validation:
 make verify
 ```
 
+For dependency updates, regenerate the corresponding lockfiles and run the
+production dependency security gates:
+
+```bash
+npm ci
+npm audit --omit=dev --audit-level=moderate
+make govulncheck rust-deny
+```
+
+Keep the root npm overrides effective when regenerating `package-lock.json`.
+Security gates do not replace consumer compatibility checks. For JavaScript and
+Rust dependency changes, also run:
+
+```bash
+npm run check:workspaces
+npm run verify:build --workspace=@writer/cerebro-web
+make graph-action-check rust-wasm-check
+```
+
 For public docs, config, or example changes:
 
 ```bash
