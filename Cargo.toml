@@ -98,7 +98,7 @@ native-tls = "0.2.18"
 postgres-native-tls = "0.5.3"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
-tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync"] }
+tokio = { version = "1.53.3", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync"] }
 tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
 tower = "0.5.3"
 time = { version = "0.3.53", features = ["formatting", "parsing"] }
