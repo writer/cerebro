@@ -166,8 +166,32 @@ class AppCIScopeTests(unittest.TestCase):
         write_github_outputs(scope, output)
         self.assertEqual(
             output.getvalue(),
-            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\nweb_integration=true\npractice_registry=false\n",
+            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\nweb_integration=true\npractice_registry=false\nruntime_image=false\n",
         )
+
+    def test_runtime_image_inputs_select_the_runtime_image_smoke(self):
+        for path in (
+            "Dockerfile.runtime",
+            ".dockerignore",
+            "Cargo.lock",
+            "go.sum",
+            "rust-toolchain.toml",
+            "crates/cerebro-platform/Cargo.toml",
+            "internal/sourceruntime/eventadmission/build.rs",
+            "Makefile",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(select_scope([path]).runtime_image)
+
+    def test_source_only_changes_skip_the_runtime_image_smoke(self):
+        for path in (
+            "internal/bootstrap/routes.go",
+            "crates/cerebro-platform/src/main.rs",
+            "docs/reference/architecture.md",
+            "apps/web/src/app/page.tsx",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(select_scope([path]).runtime_image)
 
 
 if __name__ == "__main__":

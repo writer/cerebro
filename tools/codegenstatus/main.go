@@ -51,12 +51,18 @@ func main() {
 	var catalogPath string
 	var changedBase string
 	var runChecks bool
+	var skipChecks string
 	flag.StringVar(&catalogPath, "catalog", "devex/codegen_catalog.json", "codegen registry path")
 	flag.StringVar(&changedBase, "changed-base", "", "select generators affected since this Git revision")
 	flag.BoolVar(&runChecks, "check", false, "run each unique registered check")
+	flag.StringVar(&skipChecks, "skip", "", "comma-separated check keys another gate already runs")
 	flag.Parse()
 
 	registry, err := codegencatalog.Load(catalogPath)
+	if err != nil {
+		fail(err)
+	}
+	skipped, err := skipSet(registry.Families, skipChecks)
 	if err != nil {
 		fail(err)
 	}
@@ -75,7 +81,7 @@ func main() {
 	loadCatalogStatus(&status)
 	loadProjectionTemplates(&status)
 	if runChecks {
-		status.Checks = executeChecks(status.Generators)
+		status.Checks = executeChecks(status.Generators, skipped)
 	}
 	payload, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
@@ -161,11 +167,37 @@ func changedFiles(base string) ([]string, error) {
 	return files, nil
 }
 
-func executeChecks(families []codegencatalog.Family) []CheckResult {
+// skipSet rejects unknown keys so a renamed check cannot silently drop out of
+// every gate.
+func skipSet(families []codegencatalog.Family, raw string) (map[string]struct{}, error) {
+	known := map[string]struct{}{}
+	for _, family := range families {
+		for _, check := range family.Checks {
+			known[check.Key] = struct{}{}
+		}
+	}
+	skipped := map[string]struct{}{}
+	for _, key := range strings.Split(raw, ",") {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := known[key]; !ok {
+			return nil, fmt.Errorf("skip: unknown check key %q", key)
+		}
+		skipped[key] = struct{}{}
+	}
+	return skipped, nil
+}
+
+func executeChecks(families []codegencatalog.Family, skipped map[string]struct{}) []CheckResult {
 	seen := map[string]struct{}{}
 	results := make([]CheckResult, 0)
 	for _, family := range families {
 		for _, check := range family.Checks {
+			if _, skip := skipped[check.Key]; skip {
+				continue
+			}
 			key := strings.Join(check.Command, "\x00")
 			if _, exists := seen[key]; exists {
 				continue
