@@ -104,7 +104,7 @@ func panopticonThreatHuntEligibleFinding(finding *ports.FindingRecord) bool {
 	if strings.TrimSpace(finding.ID) == "" || !strings.EqualFold(strings.TrimSpace(finding.Status), findingStatusOpen) {
 		return false
 	}
-	if eventKind := strings.TrimSpace(finding.Attributes["event_kind"]); eventKind != "" && !strings.EqualFold(eventKind, "vulnview.vulnerability") {
+	if eventKind := strings.TrimSpace(finding.Attributes["event_kind"]); eventKind != "" && !strings.EqualFold(eventKind, "vulnview.finding") {
 		return false
 	}
 	return true

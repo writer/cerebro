@@ -45,7 +45,7 @@ GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 # go/packages loader shells out to `go list`, and it refuses to process
 # sources when the ambient go is newer than the analysis packages it was
 # built against.
-GO_TOOLCHAIN := go1.26.10
+GO_TOOLCHAIN := go1.26.11
 PINNED_GO := GOFLAGS= GOTOOLCHAIN=$(GO_TOOLCHAIN)
 BUF := $(PINNED_GO) go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 CONNECTRPC_CODEGEN_REV := 8b3c3b05d3b54af547477a9e3b3a77d62f68e229
@@ -499,17 +499,18 @@ openapi-sync: ## Update OpenAPI route parity metadata.
 
 catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/catalogcheck -runtime-depth-max-queued "$(CONNECTOR_CATALOG_RUNTIME_DEPTH_MAX_QUEUED)"
-	go run ./tools/controlindex --check
+	$(PINNED_GO) go run ./tools/controlindex --check
 
 content-pack-check: ## Verify signed pilot content packs independently from the kernel build.
 	go test ./internal/contentpacks ./internal/config ./internal/findingdsl ./internal/findings ./internal/observability ./internal/sourceregistry ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
 	go run ./tools/contentpackcheck -root contentpacks/pilot -allowlist contentpacks/pilot/allowlist.json -tenant content-pack-pilot -kernel-version 1.0.0
 
+# Compressed index bytes must be generated and compared with CI's Go toolchain.
 control-index-generate: ## Regenerate compliance control coverage index.
-	go run ./tools/controlindex --write
+	$(PINNED_GO) go run ./tools/controlindex --write
 
 control-index-check: ## Verify compliance control coverage index is current.
-	go run ./tools/controlindex --check
+	$(PINNED_GO) go run ./tools/controlindex --check
 
 sourcegen-check: ## Verify connector definitions remain sourcegen-ready.
 	go run ./tools/catalogcheck -require-sourcegen-ready -summary=true

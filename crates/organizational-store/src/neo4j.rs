@@ -7048,6 +7048,69 @@ mod tests {
         Ok(())
     }
 
+    // Reproduces the EKS Pod Identity / cloud_identity convergence described in
+    // the Go graph store fix: two runtimes (an older EKS Pod Identity observer
+    // and a newer cloud_identity observer) assert the same logical link. The Go
+    // store now rebuilds the typed r.runtime_id and attributes_json's coupled
+    // source_runtime_id from the same owning (most recent observation) writer,
+    // so this fixture only materializes the resulting coherent RELATION edge
+    // (one typed runtime_id, matching attributes_json.source_runtime_id) that
+    // store.go's upsert path guarantees after the fix. This test proves the
+    // neighborhood read succeeds for that coherent two-runtime link instead of
+    // failing closed with "legacy relation runtime provenance conflicts".
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn legacy_root_reads_link_converged_from_two_runtimes() -> Result<(), Box<dyn Error>> {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant = format!("tenant-legacy-two-runtime-{}", std::process::id());
+        let service_account_urn = format!(
+            "urn:cerebro:{tenant}:kubernetes_service_account:111111111111:prod:default:app"
+        );
+        let role_urn = format!("urn:cerebro:{tenant}:aws_role:arn:aws:iam::111111111111:role/app");
+        graph
+            .run(
+                query(
+                    "CREATE (sa:Entity {tenant_id: $tenant, urn: $sa, entity_type: 'kubernetes_service_account', label: 'app', attributes_json: '{}'}) \
+CREATE (role:Entity {tenant_id: $tenant, urn: $role, entity_type: 'aws_role', label: 'app-role', attributes_json: '{}'}) \
+CREATE (sa)-[:RELATION {tenant_id: $tenant, relation: 'can_assume', source_id: 'aws', runtime_id: 'runtime-cloud-identity', attributes_json: '{\"source_runtime_id\":\"runtime-cloud-identity\",\"source_event_id\":\"evt-cloud-identity-2\",\"at\":\"2026-09-01T00:00:00Z\",\"binding\":\"pod_identity\"}'}]->(role)",
+                )
+                .param("tenant", tenant.clone())
+                .param("sa", service_account_urn.clone())
+                .param("role", role_urn.clone()),
+            )
+            .await?;
+
+        let projector = Neo4jProjector::from_graph(graph.clone());
+        let tenant_id = TenantId::parse(tenant.clone())?;
+        let neighborhoods = projector
+            .expand_many(
+                &tenant_id,
+                std::slice::from_ref(&service_account_urn),
+                1,
+                10,
+            )
+            .await?;
+        let neighborhood = &neighborhoods[&service_account_urn];
+        assert_eq!(neighborhood.edges.len(), 1);
+        let edge = &neighborhood.edges[0];
+        assert_eq!(edge.relation, "can_assume");
+        assert_eq!(edge.source_runtime_id, "runtime-cloud-identity");
+        assert_eq!(edge.to, legacy_entity_id(&tenant_id, &role_urn));
+
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant}) DETACH DELETE node")
+                    .param("tenant", tenant),
+            )
+            .await?;
+        Ok(())
+    }
+
     #[tokio::test]
     #[ignore = "requires a disposable Neo4j instance"]
     async fn legacy_root_rejects_explicit_cross_tenant_relation_metadata()

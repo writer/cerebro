@@ -95,3 +95,57 @@ func TestValidateApplicationWorkspaceScopeIsTenantQualifiedAndBounded(t *testing
 		t.Fatal("129-byte workspace scope error = nil")
 	}
 }
+
+// Contract G1 rule 4: Incomplete must never carry links.
+func TestValidateProjectedLinkSetIncompleteRejectsLinks(t *testing.T) {
+	set := &ProjectedLinkSet{
+		OwnerURN: "urn:cerebro:writer:aws_role:principal", Relation: "associated_with", Incomplete: true,
+		Links: []*ProjectedLink{{FromURN: "urn:cerebro:writer:aws_role:principal", ToURN: "urn:cerebro:writer:kubernetes_service_account:ns/a", Relation: "associated_with"}},
+	}
+	if err := ValidateProjectedLinkSetIncomplete(set); err == nil {
+		t.Fatal("ValidateProjectedLinkSetIncomplete(incomplete with links) error = nil, want rejection")
+	}
+	set.Links = nil
+	if err := ValidateProjectedLinkSetIncomplete(set); err != nil {
+		t.Fatalf("ValidateProjectedLinkSetIncomplete(incomplete without links) error = %v, want nil", err)
+	}
+	set.Incomplete = false
+	set.Links = []*ProjectedLink{{FromURN: "a", ToURN: "b", Relation: "r"}}
+	if err := ValidateProjectedLinkSetIncomplete(set); err != nil {
+		t.Fatalf("ValidateProjectedLinkSetIncomplete(complete with links) error = %v, want nil", err)
+	}
+}
+
+// Contract G1 rule 1: a key present in incoming must never be removed, even
+// if it is also named in retracted; keys absent from incoming are deleted.
+func TestApplyRetractedAttributesRemovesAbsentKeysOnly(t *testing.T) {
+	attributes := map[string]string{"triage_state": "none", "triage_reason": "reviewed", "status": "open"}
+	incoming := map[string]string{"triage_state": "none", "status": "open"}
+	got := ApplyRetractedAttributes(attributes, incoming, []string{"triage_reason", "status"})
+	if _, present := got["triage_reason"]; present {
+		t.Fatalf("ApplyRetractedAttributes() = %#v, want triage_reason removed", got)
+	}
+	if got["status"] != "open" {
+		t.Fatalf("ApplyRetractedAttributes() = %#v, want status kept (present in incoming)", got)
+	}
+}
+
+// Contract G1 rule 3: the coalesced RetractedAttributes field is the union
+// of both lists minus whichever keys the final coalesced attributes still
+// carry.
+func TestCoalesceRetractedAttributesUnionsMinusPresentKeys(t *testing.T) {
+	attributes := map[string]string{"triage_reason": "reinstated"}
+	got := CoalesceRetractedAttributes(attributes, []string{"triage_reason", "triage_by"}, []string{"triage_by", "status"})
+	want := []string{"status", "triage_by"}
+	if len(got) != len(want) {
+		t.Fatalf("CoalesceRetractedAttributes() = %#v, want %#v", got, want)
+	}
+	for i, key := range want {
+		if got[i] != key {
+			t.Fatalf("CoalesceRetractedAttributes() = %#v, want %#v", got, want)
+		}
+	}
+	if got := CoalesceRetractedAttributes(nil, nil, nil); got != nil {
+		t.Fatalf("CoalesceRetractedAttributes(empty) = %#v, want nil", got)
+	}
+}

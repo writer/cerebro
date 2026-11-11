@@ -9,6 +9,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 )
 
 type graphTestStore struct {
@@ -20,14 +21,24 @@ type graphTestStore struct {
 	cypherRows             []ports.CypherRow
 	cypherErr              error
 	lastFindingRuleRequest ports.FindingGraphRuleRequest
+
+	// linkSetObservations/linkSetLinks implement Contract C9's guarded
+	// replace semantics for ports.ProjectionLinkSetStore: each owner/
+	// relation/direction/tenant/source/runtime scope keeps the last
+	// applied Observation and desired links, keyed by the other
+	// endpoint's URN.
+	linkSetObservations map[string]map[string]string
+	linkSetLinks        map[string]map[string]*ports.ProjectedLink
 }
 
 func newGraphTestStore() *graphTestStore {
 	return &graphTestStore{
-		entities:    make(map[string]*ports.ProjectedEntity),
-		links:       make(map[string]*ports.ProjectedLink),
-		checkpoints: make(map[string]graphstore.IngestCheckpoint),
-		runs:        make(map[string]graphstore.IngestRun),
+		entities:            make(map[string]*ports.ProjectedEntity),
+		links:               make(map[string]*ports.ProjectedLink),
+		checkpoints:         make(map[string]graphstore.IngestCheckpoint),
+		runs:                make(map[string]graphstore.IngestRun),
+		linkSetObservations: make(map[string]map[string]string),
+		linkSetLinks:        make(map[string]map[string]*ports.ProjectedLink),
 	}
 }
 
@@ -37,15 +48,23 @@ func (s *graphTestStore) UpsertProjectedEntity(_ context.Context, entity *ports.
 	if entity == nil || strings.TrimSpace(entity.URN) == "" {
 		return errors.New("projected entity urn is required")
 	}
+	urn := strings.TrimSpace(entity.URN)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entity.CreateOnly {
+		if _, exists := s.entities[urn]; exists {
+			// CreateOnly materialization: the entity already exists, so
+			// this observation changes nothing at all (Contract G1).
+			return nil
+		}
+	}
 	clone := *entity
-	clone.URN = strings.TrimSpace(entity.URN)
+	clone.URN = urn
 	clone.TenantID = strings.TrimSpace(entity.TenantID)
 	clone.SourceID = strings.TrimSpace(entity.SourceID)
 	clone.EntityType = strings.TrimSpace(entity.EntityType)
 	clone.Label = strings.TrimSpace(entity.Label)
 	clone.Attributes = cloneGraphTestStringMap(entity.Attributes)
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.entities[clone.URN] = &clone
 	return nil
 }
@@ -66,6 +85,53 @@ func (s *graphTestStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	s.links[testLinkKey(&clone)] = &clone
 	return nil
 }
+
+func graphTestLinkSetKey(set *ports.ProjectedLinkSet) string {
+	direction := "0"
+	if set.Outgoing {
+		direction = "1"
+	}
+	return strings.Join([]string{set.TenantID, set.SourceID, set.RuntimeID, set.OwnerURN, set.Relation, direction}, "\x00")
+}
+
+// ReplaceProjectedLinkSets applies each set only when its Observation is
+// not older than the scope's last applied one, then replaces that scope's
+// desired links wholesale, mirroring the Neo4j store's guarded transaction.
+// An Incomplete set only advances the scope's observation guard: its link
+// context is unavailable or truncated, so it never retracts or asserts
+// links (Contract G1).
+func (s *graphTestStore) ReplaceProjectedLinkSets(_ context.Context, sets []*ports.ProjectedLinkSet) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		key := graphTestLinkSetKey(set)
+		if stored, ok := s.linkSetObservations[key]; ok && projectionmeta.CompareObservations(stored, set.Observation) == projectionmeta.ObservationOlder {
+			continue
+		}
+		if set.Incomplete {
+			s.linkSetObservations[key] = set.Observation
+			continue
+		}
+		desired := make(map[string]*ports.ProjectedLink, len(set.Links))
+		for _, link := range set.Links {
+			other := link.ToURN
+			if !set.Outgoing {
+				other = link.FromURN
+			}
+			clone := *link
+			clone.Attributes = cloneGraphTestStringMap(link.Attributes)
+			desired[other] = &clone
+		}
+		s.linkSetLinks[key] = desired
+		s.linkSetObservations[key] = set.Observation
+	}
+	return nil
+}
+
+var _ ports.ProjectionLinkSetStore = (*graphTestStore)(nil)
 
 func (s *graphTestStore) Counts(context.Context) (graphstore.Counts, error) {
 	s.mu.Lock()

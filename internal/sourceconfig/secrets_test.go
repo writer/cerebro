@@ -131,3 +131,41 @@ func TestValidateGCPWIFBindingAllowsTrustedRuntime(t *testing.T) {
 		t.Fatalf("ValidateGCPWIFBinding() error = %v", err)
 	}
 }
+
+func TestSourceTrustedOriginsFiltersBySourceAndIgnoresOthers(t *testing.T) {
+	origins, err := SourceTrustedOrigins("vulnview", "vulnview=https://vulnview.example.test, other=https://other.example.test")
+	if err != nil {
+		t.Fatalf("SourceTrustedOrigins() error = %v", err)
+	}
+	if len(origins) != 1 || origins[0] != "https://vulnview.example.test" {
+		t.Fatalf("SourceTrustedOrigins() = %v, want [https://vulnview.example.test]", origins)
+	}
+}
+
+func TestSourceTrustedOriginsReturnsEmptyWhenSourceAbsent(t *testing.T) {
+	origins, err := SourceTrustedOrigins("vulnview", "other=https://other.example.test")
+	if err != nil {
+		t.Fatalf("SourceTrustedOrigins() error = %v", err)
+	}
+	if len(origins) != 0 {
+		t.Fatalf("SourceTrustedOrigins() = %v, want empty", origins)
+	}
+}
+
+func TestSourceTrustedOriginsFailsClosedOnMalformedEntry(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		allowlist string
+	}{
+		{name: "missing equals", allowlist: "vulnview-https://vulnview.example.test"},
+		{name: "empty source id", allowlist: "=https://vulnview.example.test"},
+		{name: "empty origin", allowlist: "vulnview="},
+		{name: "non-https origin", allowlist: "vulnview=http://vulnview.example.test"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := SourceTrustedOrigins("vulnview", tt.allowlist); err == nil {
+				t.Fatal("SourceTrustedOrigins() error = nil, want non-nil")
+			}
+		})
+	}
+}

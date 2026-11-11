@@ -10,4 +10,3 @@ identity-external-or-personal-group-member
 identity-mfa-factor-reset-or-disabled
 identity-okta-policy-rule-lifecycle-tampering
 sentinelone-protection-control-tampering
-vulnview-actionable-external-finding

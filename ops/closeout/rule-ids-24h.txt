@@ -13,3 +13,5 @@ identity-api-token-or-oauth-app-created
 identity-privileged-account-without-mfa
 identity-privileged-no-mfa-plus-sensitive-access
 identity-stale-privileged-account
+vulnview-actionable-external-finding
+vulnview-external-asset-concentrated-signal

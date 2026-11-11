@@ -23,3 +23,10 @@ func DecodeRecords[T any](rawRecords []json.RawMessage, label string, setRaw fun
 	}
 	return records, nil
 }
+
+// CloneRawMessage returns a copy of raw that does not alias its backing
+// array, so a caller can retain or mutate the returned bytes without
+// affecting the original payload.
+func CloneRawMessage(raw json.RawMessage) json.RawMessage {
+	return append(json.RawMessage(nil), raw...)
+}

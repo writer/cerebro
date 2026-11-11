@@ -68,3 +68,62 @@ func TestJSONScalarTime(t *testing.T) {
 		t.Fatalf("unparseable Time() = %v, want zero", got)
 	}
 }
+
+func TestJSONFieldTimePicksFirstPresentParsingKey(t *testing.T) {
+	layouts := []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"}
+	values := map[string]any{
+		"finishedAt":  "",
+		"completedAt": "2026-06-15T12:00:00Z",
+	}
+	object := JSONObject(values)
+	want := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	if got := object.FieldTime(layouts, "finishedAt", "completedAt"); !got.Equal(want) {
+		t.Fatalf("FieldTime() = %v, want %v", got, want)
+	}
+	if got := object.FieldTime(layouts, "missing"); !got.IsZero() {
+		t.Fatalf("FieldTime(missing) = %v, want zero", got)
+	}
+}
+
+func TestJSONObjectCopyFieldsSkipsMissingAndEmpty(t *testing.T) {
+	values := map[string]any{"a": "x", "b": "", "nested": map[string]any{"c": "y"}}
+	object := JSONObject(values)
+	attrs := map[string]string{}
+	object.CopyFields(attrs, map[string]string{"attr_a": "a", "attr_b": "b", "attr_c": "nested.c", "attr_missing": "missing"})
+	want := map[string]string{"attr_a": "x", "attr_c": "y"}
+	if len(attrs) != len(want) || attrs["attr_a"] != want["attr_a"] || attrs["attr_c"] != want["attr_c"] {
+		t.Fatalf("CopyFields() attrs = %#v, want %#v", attrs, want)
+	}
+}
+
+func TestJSONObjectFirstFieldStringReturnsFirstNonEmpty(t *testing.T) {
+	values := map[string]any{"a": "", "b": "y"}
+	object := JSONObject(values)
+	if got := object.FirstFieldString("a", "b"); got != "y" {
+		t.Fatalf("FirstFieldString() = %q, want y", got)
+	}
+	if got := object.FirstFieldString("missing"); got != "" {
+		t.Fatalf("FirstFieldString(missing) = %q, want empty", got)
+	}
+}
+
+func TestJSONArrayJoinObjectsSkipsNonObjectsAndEmptyRenderings(t *testing.T) {
+	values := JSONObject(map[string]any{"items": []any{
+		map[string]any{"name": "a", "role": "x"},
+		"not-an-object",
+		map[string]any{"name": ""},
+		map[string]any{"name": "b", "role": "y"},
+	}})
+	got := values.Array("items").JoinObjects(";", func(item JSONObject) string {
+		if item.FieldString("name") == "" {
+			return ""
+		}
+		return item.FieldString("name") + "=" + item.FieldString("role")
+	})
+	if got != "a=x;b=y" {
+		t.Fatalf("JoinObjects() = %q, want a=x;b=y", got)
+	}
+	if got := JSONObject(nil).Array("items").JoinObjects(",", func(JSONObject) string { return "unexpected" }); got != "" {
+		t.Fatalf("JoinObjects() over a missing array = %q, want empty", got)
+	}
+}

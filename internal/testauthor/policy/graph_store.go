@@ -42,6 +42,21 @@ func (s *CompatibilityGraphTestStore) UpsertProjectedLink(ctx context.Context, l
 	return s.projection.UpsertProjectedLink(ctx, link)
 }
 
+// ReplaceProjectedLinkSets forwards a guarded Contract C9 link set to the
+// underlying projection boundary, failing closed (rather than silently
+// falling back to a plain upsert) when it does not implement
+// ports.ProjectionLinkSetStore.
+func (s *CompatibilityGraphTestStore) ReplaceProjectedLinkSets(ctx context.Context, sets []*ports.ProjectedLinkSet) error {
+	if s == nil || s.projection == nil {
+		return errors.New("policy graph fixture projection is unavailable")
+	}
+	linkSetStore, ok := s.projection.(ports.ProjectionLinkSetStore)
+	if !ok {
+		return errors.New("policy graph fixture projection does not support guarded link set replacement")
+	}
+	return linkSetStore.ReplaceProjectedLinkSets(ctx, sets)
+}
+
 func (s *CompatibilityGraphTestStore) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
 	if s == nil || s.projection == nil {
 		return errors.New("policy graph fixture projection is unavailable")

@@ -1,8 +1,6 @@
 package vulnview
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -30,7 +28,7 @@ func recordFromRaw(family string, raw json.RawMessage) (record, error) {
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return record{}, fmt.Errorf("decode VulnView %s record: %w", family, err)
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: recordID(family, values)}, nil
+	return record{Raw: sourcecdk.CloneRawMessage(raw), Values: values, ID: recordID(family, values)}, nil
 }
 
 func recordID(family string, values map[string]any) string {
@@ -39,14 +37,10 @@ func recordID(family string, values map[string]any) string {
 		return firstValueString(values, "siteId", "id", "name")
 	case familyScan:
 		return firstValueString(values, "scanId", "id", "name")
-	case familyVulnerability:
-		return stableID(
-			firstValueString(values, "scanId"),
-			firstValueString(values, "templateId", "template-id", "id", "name"),
-			firstValueString(values, "matchedAt", "matched-at", "host"),
-		)
 	case familyAsset:
 		return firstValueString(values, "asset", "host", "matchedAt", "matched-at")
+	case familyFinding:
+		return firstValueString(values, "findingId")
 	default:
 		return firstValueString(values, "id", "name")
 	}
@@ -64,46 +58,41 @@ func urnsFor(settings settings, family string, records []record) ([]sourcecdk.UR
 	return urns, nil
 }
 
-func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
-	return sourcecdk.PullFromRecords(records, next,
-		func(rec record) (*primitives.Event, error) {
-			return eventFromRecord(settings, family, rec), nil
-		},
-		func(rec record) string { return strings.TrimSpace(rec.ID) },
-	)
-}
-
 func eventFromRecord(settings settings, family string, record record) *primitives.Event {
 	occurredAt := occurredAtFor(record.Values)
 	return &primitives.Event{
-		Id:         eventID(settings, family, record.ID),
+		Id:         eventID(settings, family, record),
 		TenantId:   settings.tenantID,
 		SourceId:   sourceID,
 		Kind:       sourceID + "." + family,
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  sourceID + "/" + family + "/v1",
-		Payload:    cloneRaw(record.Raw),
+		Payload:    sourcecdk.CloneRawMessage(record.Raw),
 		Attributes: attributesFor(family, record),
 	}
 }
 
-func eventID(settings settings, family string, recordID string) string {
-	return strings.Join([]string{
+// eventID scopes an event to tenant/runtime/family/record. Finding events also
+// carry the numeric version so append-log message-ID deduplication keeps every
+// version while a replay of one version keeps the same ID.
+func eventID(settings settings, family string, record record) string {
+	parts := []string{
 		sourceID,
 		normalizeID(settings.tenantID),
 		runtimeScope(settings),
 		normalizeID(family),
-		normalizeID(recordID),
-	}, "-")
+		normalizeID(record.ID),
+	}
+	if family == familyFinding {
+		if version := firstValueString(record.Values, "version"); version != "" {
+			parts = append(parts, normalizeID(version))
+		}
+	}
+	return strings.Join(parts, "-")
 }
 
 func runtimeScope(settings settings) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{
-		settings.baseURL,
-		settings.clientID,
-		settings.scope,
-	}, "\x00")))
-	return hex.EncodeToString(sum[:])[:12]
+	return sourcecdk.ScopeHash(settings.baseURL, settings.clientID, settings.scope)
 }
 
 func attributesFor(family string, record record) map[string]string {
@@ -116,208 +105,165 @@ func attributesFor(family string, record record) map[string]string {
 	}
 	switch family {
 	case familySite:
-		copyFields(attrs, values, map[string]string{
-			"site_id": "siteId",
-			"name":    "name",
-		})
+		copyFields(attrs, values, map[string]string{"site_id": "siteId", "name": "name"})
 	case familyScan:
-		copyFields(attrs, values, map[string]string{
-			"scan_id":          "scanId",
-			"site_id":          "siteId",
-			"name":             "name",
-			"scan_type":        "scanType",
-			"target":           "target",
-			"status":           "status",
-			"findings_count":   "findingsCount",
-			"results_key":      "resultsKey",
-			"created_at":       "createdAt",
-			"started_at":       "startedAt",
-			"completed_at":     "completedAt",
-			"cloud_account_id": "cloudAccountId",
-		})
-	case familyVulnerability:
-		copyFields(attrs, values, map[string]string{
-			"vulnerability_id": "templateId",
-			"template_id":      "templateId",
-			"name":             "name",
-			"severity":         "severity",
-			"type":             "type",
-			"target_id":        "host",
-			"target_name":      "host",
-			"host":             "host",
-			"matched_at":       "matchedAt",
-			"description":      "description",
-			"remediation":      "remediation",
-			"scan_id":          "scanId",
-			"scan_name":        "scanName",
-			"site_id":          "siteId",
-			"site_name":        "siteName",
-			"timestamp":        "timestamp",
-		})
-		addVulnViewFindingStateAttributes(attrs, values)
-		if attrs["template_id"] == "" {
-			copyFields(attrs, values, map[string]string{"template_id": "template-id", "vulnerability_id": "template-id"})
-		}
-		if attrs["matched_at"] == "" {
-			copyFields(attrs, values, map[string]string{"matched_at": "matched-at"})
-		}
-		attrs["target_type"] = "external_asset"
-		attrs["vulnerability_type"] = firstNonEmpty(attrs["type"], "vulnview")
+		copyFields(attrs, values, map[string]string{"scan_id": "scanId", "site_id": "siteId", "name": "name", "scan_type": "scanType", "target": "target", "status": "status", "findings_count": "findingsCount", "results_key": "resultsKey", "created_at": "createdAt", "started_at": "startedAt", "completed_at": "completedAt", "cloud_account_id": "cloudAccountId"})
 	case familyAsset:
-		copyFields(attrs, values, map[string]string{
-			"asset_id":          "asset",
-			"asset_name":        "asset",
-			"target_id":         "asset",
-			"target_name":       "asset",
-			"highest_severity":  "highestSeverity",
-			"findings_count":    "findingsCount",
-			"sites":             "sites",
-			"scan_names":        "scanNames",
-			"critical_count":    "severityCounts.critical",
-			"high_count":        "severityCounts.high",
-			"medium_count":      "severityCounts.medium",
-			"low_count":         "severityCounts.low",
-			"info_count":        "severityCounts.info",
-			"dns_alerts_count":  "dnsAlertSummary.total",
-			"dns_highest_alert": "dnsAlertSummary.highestSeverity",
-		})
+		copyFields(attrs, values, map[string]string{"asset_id": "asset", "asset_name": "asset", "target_id": "asset", "target_name": "asset", "highest_severity": "highestSeverity", "findings_count": "findingsCount", "sites": "sites", "scan_names": "scanNames", "critical_count": "severityCounts.critical", "high_count": "severityCounts.high", "medium_count": "severityCounts.medium", "low_count": "severityCounts.low", "info_count": "severityCounts.info"})
 		attrs["target_type"] = "external_asset"
-	case familyDNSAlert:
-		copyFields(attrs, values, map[string]string{
-			"asset_id":     "asset",
-			"asset_name":   "asset",
-			"target_id":    "asset",
-			"target_name":  "asset",
-			"alert":        "alert",
-			"name":         "alert",
-			"severity":     "severity",
-			"description":  "description",
-			"record_type":  "recordType",
-			"record_value": "recordValue",
-			"sites":        "siteNames",
-			"scan_names":   "scanNames",
-		})
-		addVulnViewFindingStateAttributes(attrs, values)
-		attrs["target_type"] = "external_asset"
+	case familyFinding:
+		attributesForFinding(attrs, values)
 	}
 	trimEmptyAttributes(attrs)
 	return attrs
 }
 
-func addVulnViewFindingStateAttributes(attrs map[string]string, values map[string]any) {
-	stateFields := map[string][]string{
-		"vulnview_status":            {"status"},
-		"vulnview_state":             {"state"},
-		"vulnview_finding_status":    {"findingStatus", "finding_status"},
-		"vulnview_remediation_state": {"remediationState", "remediation_state"},
-		"vulnview_lifecycle_state":   {"lifecycleState", "lifecycle_state"},
+// attributesForFinding flattens a vulnview-finding-export/v1 item (Contract C7)
+// onto bounded event attributes, including the source-specific details object.
+func attributesForFinding(attrs map[string]string, values map[string]any) {
+	copyFields(attrs, values, map[string]string{
+		"finding_id":                         "findingId",
+		"check_id":                           "checkId",
+		"title":                              "title",
+		"description":                        "description",
+		"severity":                           "severity",
+		"status":                             "status",
+		"location":                           "location",
+		"resource_provider":                  "resource.provider",
+		"resource_account":                   "resource.account",
+		"resource_account_name":              "resource.accountName",
+		"resource_project":                   "resource.project",
+		"resource_region":                    "resource.region",
+		"resource_type":                      "resource.resourceType",
+		"resource_name":                      "resource.resourceName",
+		"resource_kind":                      "resource.kind",
+		"resource_port":                      "resource.port",
+		"resource_protocol":                  "resource.protocol",
+		"remediation":                        "remediation",
+		"references":                         "references",
+		"triage_state":                       "triage.state",
+		"triage_reason":                      "triage.reason",
+		"triage_by":                          "triage.by",
+		"triage_at":                          "triage.at",
+		"triage_expires_at":                  "triage.expiresAt",
+		"first_seen_at":                      "lifecycle.firstSeenAt",
+		"last_seen_at":                       "lifecycle.lastSeenAt",
+		"last_evaluated_at":                  "lifecycle.lastEvaluatedAt",
+		"fixed_at":                           "lifecycle.fixedAt",
+		"reopened_at":                        "lifecycle.reopenedAt",
+		"reopen_count":                       "lifecycle.reopenCount",
+		"last_scan_id":                       "provenance.lastScanId",
+		"last_run_id":                        "provenance.lastRunId",
+		"last_site_id":                       "provenance.lastSiteId",
+		"provenance_integration_attribution": "provenance.integrationAttribution",
+		"version":                            "version",
+		"updated_at":                         "updatedAt",
+	})
+	provenance := sourcecdk.JSONObject(values).Nested("provenance")
+	attrs["provenance_integrations"] = provenance.Array("integrations").SortedJoinObjects(",", vulnviewIntegrationRef)
+	attrs["provenance_repository_integrations"] = provenance.Array("repositoryIntegrations").SortedJoinObjects(",", vulnviewIntegrationRef)
+	attrs["source"] = firstValueString(values, "source")
+	attrs["source_severity"] = firstValueString(values, "severity")
+	if asset := firstValueString(values, "asset"); asset != "" {
+		attrs["asset"] = asset
+		attrs["asset_id"] = asset
+		attrs["target_type"] = "external_asset"
 	}
-	for attr, fields := range stateFields {
-		if value := firstValueString(values, fields...); value != "" {
-			attrs[attr] = value
+	details, ok := values["details"].(map[string]any)
+	if !ok {
+		return
+	}
+	copyFields(attrs, details, map[string]string{
+		"principal_id":                       "principalId",
+		"principal_kind":                     "principalKind",
+		"cohort_scope":                       "cohortScope",
+		"check_version":                      "checkVersion",
+		"detector_version":                   "detectorVersion",
+		"side":                               "side",
+		"drift":                              "drift",
+		"gap_codes":                          "gapCodes",
+		"evidence_bundle_key":                "evidence.bundleKey",
+		"evidence_bundle_sha256":             "evidence.bundleSha256",
+		"evidence_principal_evidence_sha256": "evidence.principalEvidenceSha256",
+		"evidence_collected_at":              "evidence.collectedAt",
+		"matcher":                            "matcher",
+		"template_path":                      "templatePath",
+		"sharing_services":                   "sharing.services",
+		"sharing_consumer_ids":               "sharing.consumerIds",
+		"detail_truncated":                   "detailTruncated",
+		"excess_declared_count":              "excessSummary.declared",
+		"excess_observed_count":              "excessSummary.observed",
+		"sharing_services_count":             "sharingSummary.services",
+		"sharing_consumer_ids_count":         "sharingSummary.consumerIds",
+	})
+	if complete, ok := details["consumersComplete"].(bool); ok {
+		attrs["consumers_complete"] = fmt.Sprintf("%t", complete)
+	}
+	if consumers := cloudIdentityConsumersSummary(details); consumers != "" {
+		attrs["consumers"] = consumers
+	}
+	for _, side := range []string{"declared", "observed"} {
+		if summary := cloudIdentityExcessSummary(details, side); summary != "" {
+			attrs["excess_"+side] = summary
 		}
 	}
-	attrs["vulnview_finding_state"] = firstNonEmpty(
-		attrs["vulnview_status"],
-		attrs["vulnview_state"],
-		attrs["vulnview_finding_status"],
-		attrs["vulnview_remediation_state"],
-		attrs["vulnview_lifecycle_state"],
-	)
 }
 
+// vulnviewTimeLayouts are the timestamp formats VulnView's export and legacy
+// list endpoints use; sourcecdk.JSONObject.FieldTime tries them in order.
+var vulnviewTimeLayouts = []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"}
+
 func occurredAtFor(values map[string]any) time.Time {
-	for _, key := range []string{"timestamp", "completedAt", "startedAt", "createdAt", "matchedAt", "matched-at"} {
-		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
-			return parsed
-		}
+	if occurredAt := sourcecdk.JSONObject(values).FieldTime(vulnviewTimeLayouts, "updatedAt", "timestamp", "completedAt", "startedAt", "createdAt", "matchedAt", "matched-at"); !occurredAt.IsZero() {
+		return occurredAt
 	}
 	return time.Now().UTC()
 }
 
-func parseTime(raw string) (time.Time, bool) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return time.Time{}, false
-	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			return parsed.UTC(), true
-		}
-	}
-	return time.Time{}, false
-}
-
+// copyFields and firstValueString read dot-separated field paths via sourcecdk.JSONObject.
 func copyFields(attrs map[string]string, values map[string]any, fields map[string]string) {
-	for attr, field := range fields {
-		if value := valueString(valueAt(values, field)); value != "" {
-			attrs[attr] = value
-		}
-	}
+	sourcecdk.JSONObject(values).CopyFields(attrs, fields)
 }
 
 func firstValueString(values map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value := valueString(valueAt(values, key)); value != "" {
-			return value
+	return sourcecdk.JSONObject(values).FirstFieldString(keys...)
+}
+
+// vulnviewIntegrationRef renders one provenance.integrations/
+// repositoryIntegrations element ({kind,id}) as "kind:id"; an element
+// missing either field is skipped by the caller's SortedJoinObjects.
+func vulnviewIntegrationRef(o sourcecdk.JSONObject) string {
+	return o.JoinFieldsIfAllPresent(":", "kind", "id")
+}
+
+// cloudIdentityConsumersSummary joins details.consumers as cluster-qualified
+// "<cluster>/<namespace>/<serviceAccount>" identifiers.
+func cloudIdentityConsumersSummary(details sourcecdk.JSONObject) string {
+	return details.Array("consumers").JoinObjects(",", func(consumer sourcecdk.JSONObject) string {
+		return consumer.JoinFieldsIfAllPresent("/", "cluster", "namespace", "serviceAccount")
+	})
+}
+
+// cloudIdentityExcessSummary joins one details.excess side as
+// "action(resources)[required:...]" items; a null or missing excess yields "".
+func cloudIdentityExcessSummary(details sourcecdk.JSONObject, side string) string {
+	return details.Nested("excess").Array(side).JoinObjects(";", func(item sourcecdk.JSONObject) string {
+		action := item.FieldString("action")
+		if action == "" {
+			return ""
 		}
-	}
-	return ""
-}
-
-func valueAt(values map[string]any, path string) any {
-	current := any(values)
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return nil
+		if resources := item.FieldString("resources"); resources != "" {
+			action += "(" + resources + ")"
 		}
-		current = object[part]
-	}
-	return current
-}
-
-func valueString(value any) string {
-	return sourcecdk.JSONScalar{Value: value}.Flattened()
-}
-
-func stableID(parts ...string) string {
-	values := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if value := strings.TrimSpace(part); value != "" {
-			values = append(values, value)
+		if required := item.FieldString("requiredResources"); required != "" {
+			action += "[required:" + required + "]"
 		}
-	}
-	return strings.Join(values, ":")
+		return action
+	})
 }
 
-func normalizeID(value string) string {
-	if normalized := strings.TrimSpace(value); normalized != "" {
-		return strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-").Replace(normalized)
-	}
-	return "unknown"
-}
+func normalizeID(value string) string { return sourcecdk.NormalizeID(value) }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
+func firstNonEmpty(values ...string) string { return sourcecdk.FirstNonEmpty(values...) }
 
-func trimEmptyAttributes(attrs map[string]string) {
-	for key, value := range attrs {
-		if strings.TrimSpace(value) == "" {
-			delete(attrs, key)
-			continue
-		}
-		attrs[key] = strings.TrimSpace(value)
-	}
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	return append(json.RawMessage(nil), raw...)
-}
+func trimEmptyAttributes(attrs map[string]string) { sourcecdk.TrimEmptyAttributes(attrs) }

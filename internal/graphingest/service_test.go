@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -131,6 +132,18 @@ func (p retractionProjector) ProjectRetractions(*cerebrov1.EventEnvelope) ([]*po
 	return p.retractions, nil
 }
 
+type linkSetProjector struct {
+	recordProjectorFunc
+	linkSets func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error)
+}
+
+func (p linkSetProjector) ProjectLinkSets(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+	if p.linkSets == nil {
+		return nil, nil
+	}
+	return p.linkSets(event)
+}
+
 type recordingProjectionGraphStore struct {
 	entities        map[string]*ports.ProjectedEntity
 	links           map[string]*ports.ProjectedLink
@@ -138,6 +151,22 @@ type recordingProjectionGraphStore struct {
 	deletedEntities map[string]struct{}
 	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
+
+	// linkSetObservations/linkSetLinks model the Neo4j store's guarded
+	// Contract C9 semantics faithfully (not just recording calls) so
+	// graphingest-level tests can prove retraction/no-op/survival behavior
+	// without a database: each owner/relation/direction/tenant/source/
+	// runtime scope keeps the last applied Observation and desired links,
+	// keyed by the other endpoint's URN.
+	linkSetObservations map[string]map[string]string
+	linkSetLinks        map[string]map[string]*ports.ProjectedLink
+	linkSetCalls        int
+	linkSetSetsReceived int
+	replaceLinkSetsErr  error
+
+	// callOrder records the sequence of write-method calls so tests can
+	// assert that link sets are applied after entity upserts.
+	callOrder []string
 }
 
 type checkpointProjectionRunStore struct {
@@ -152,6 +181,7 @@ func (s *checkpointProjectionRunStore) Ping(ctx context.Context) error {
 func (s *recordingProjectionGraphStore) Ping(context.Context) error { return nil }
 
 func (s *recordingProjectionGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	s.callOrder = append(s.callOrder, "entity")
 	if s.entities == nil {
 		s.entities = map[string]*ports.ProjectedEntity{}
 	}
@@ -160,6 +190,7 @@ func (s *recordingProjectionGraphStore) UpsertProjectedEntity(_ context.Context,
 }
 
 func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	s.callOrder = append(s.callOrder, "link")
 	if s.upsertLinkErr != nil {
 		return s.upsertLinkErr
 	}
@@ -169,6 +200,70 @@ func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, l
 	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
 	return nil
 }
+
+// ReplaceProjectedLinkSets applies each set only when its Observation is not
+// older than the scope's last applied one, then replaces that scope's
+// desired links wholesale — mirroring the Neo4j store's guarded transaction
+// (retract links the new set drops, keep/merge links it still wants). An
+// Incomplete set only advances the scope's observation guard: its link
+// context is unavailable or truncated, so it never retracts, asserts, or
+// materializes anything (Contract G1). Once a set is accepted and not
+// Incomplete, its Endpoints are CreateOnly-materialized into s.entities
+// (R06, never overwriting an existing entity) before links are recorded,
+// so tests can prove a stale or losing set's Endpoints never reach the
+// store.
+func (s *recordingProjectionGraphStore) ReplaceProjectedLinkSets(_ context.Context, sets []*ports.ProjectedLinkSet) error {
+	s.callOrder = append(s.callOrder, "linkset")
+	s.linkSetCalls++
+	s.linkSetSetsReceived += len(sets)
+	if s.replaceLinkSetsErr != nil {
+		return s.replaceLinkSetsErr
+	}
+	if s.linkSetObservations == nil {
+		s.linkSetObservations = map[string]map[string]string{}
+	}
+	if s.linkSetLinks == nil {
+		s.linkSetLinks = map[string]map[string]*ports.ProjectedLink{}
+	}
+	for _, set := range sets {
+		if err := ports.ValidateProjectedLinkSetEndpoints(set); err != nil {
+			return err
+		}
+		key := projectedLinkSetKey(set)
+		if stored, ok := s.linkSetObservations[key]; ok && projectionmeta.CompareObservations(stored, set.Observation) == projectionmeta.ObservationOlder {
+			continue
+		}
+		if set.Incomplete {
+			s.linkSetObservations[key] = set.Observation
+			continue
+		}
+		if s.entities == nil {
+			s.entities = map[string]*ports.ProjectedEntity{}
+		}
+		for _, endpoint := range set.Endpoints {
+			if endpoint == nil {
+				continue
+			}
+			if _, exists := s.entities[endpoint.URN]; exists {
+				continue
+			}
+			s.entities[endpoint.URN] = endpoint
+		}
+		desired := make(map[string]*ports.ProjectedLink, len(set.Links))
+		for _, link := range set.Links {
+			other := link.ToURN
+			if !set.Outgoing {
+				other = link.FromURN
+			}
+			desired[other] = link
+		}
+		s.linkSetLinks[key] = desired
+		s.linkSetObservations[key] = set.Observation
+	}
+	return nil
+}
+
+var _ ports.ProjectionLinkSetStore = (*recordingProjectionGraphStore)(nil)
 
 type batchRecordingProjectionGraphStore struct {
 	recordingProjectionGraphStore
@@ -1396,6 +1491,51 @@ func TestMergeStringMapClearsOlderObservationMetadataMissingFromNewerAt(t *testi
 	}
 }
 
+// Strict-precedence entities keep their newest observation within a page: one
+// vulnview.finding orders by `at`, and another by observation_version even
+// when a higher version committed with an earlier `at`.
+func TestProjectResponseCoalescedKeepsNewestStrictObservation(t *testing.T) {
+	const atOrderedFindingURN = "urn:cerebro:writer:vulnview.finding:at-ordered"
+	const versionOrderedFindingURN = "urn:cerebro:writer:vulnview.finding:version-ordered"
+	observations := map[string]struct{ urn, at, version, status string }{
+		"at-ordered-new":    {atOrderedFindingURN, "2026-11-02T10:00:00Z", "", "supported"},
+		"at-ordered-old":    {atOrderedFindingURN, "2026-11-02T09:00:00Z", "", "clear"},
+		"finding-v2":        {versionOrderedFindingURN, "2026-11-02T10:00:01Z", "2", "fixed"},
+		"finding-v3":        {versionOrderedFindingURN, "2026-11-02T10:00:00Z", "3", "open"},
+		"finding-v2-replay": {versionOrderedFindingURN, "2026-11-02T10:00:01Z", "2", "fixed"},
+	}
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		observation := observations[event.GetId()]
+		return []*ports.ProjectedEntity{{
+			URN: observation.urn, TenantID: event.GetTenantId(), SourceID: event.GetSourceId(),
+			EntityType: "vulnview.finding", Label: event.GetId(),
+			Attributes: map[string]string{
+				"at": observation.at, "observation_precedence": "strict", "observation_version": observation.version,
+				"status": observation.status, "event_id": event.GetId(),
+			},
+		}}, nil, nil
+	})
+	events := make([]*cerebrov1.EventEnvelope, 0, len(observations))
+	for _, id := range []string{"at-ordered-new", "at-ordered-old", "finding-v2", "finding-v3", "finding-v2-replay"} {
+		events = append(events, &cerebrov1.EventEnvelope{Id: id, SourceId: "vulnview"})
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{Events: events}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	for urn, want := range map[string]string{atOrderedFindingURN: "at-ordered-new", versionOrderedFindingURN: "finding-v3"} {
+		entity := store.entities[urn]
+		if entity == nil {
+			t.Fatalf("coalesced entity %s missing", urn)
+		}
+		wantStatus := observations[want].status
+		if entity.Label != want || entity.Attributes["event_id"] != want || entity.Attributes["status"] != wantStatus {
+			t.Fatalf("coalesced %s = label %q event_id %q status %q, want the %s observation (status %q)", urn, entity.Label, entity.Attributes["event_id"], entity.Attributes["status"], want, wantStatus)
+		}
+	}
+}
+
 func TestIngestSourceReportsProgressAfterEachPersistedPage(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&cursorPagedSource{
 		id: "paged",
@@ -1960,4 +2100,650 @@ func graphIngestTelemetryPayload(t *testing.T, stderr string, name string) map[s
 	}
 	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
 	return nil
+}
+
+// testProjectedLinkSet builds a complete desired outgoing associated_with
+// link set for one owner of the writer tenant's vulnview source, matching
+// what the vulnview.finding C9 projector emits.
+func testProjectedLinkSet(runtimeID, ownerURN string, observation map[string]string, otherURNs ...string) *ports.ProjectedLinkSet {
+	const tenantID, sourceID, relation = "writer", "vulnview", "associated_with"
+	links := make([]*ports.ProjectedLink, 0, len(otherURNs))
+	for _, other := range otherURNs {
+		links = append(links, &ports.ProjectedLink{
+			TenantID: tenantID, SourceID: sourceID, RuntimeID: runtimeID,
+			FromURN: ownerURN, ToURN: other, Relation: relation,
+		})
+	}
+	return &ports.ProjectedLinkSet{
+		TenantID: tenantID, SourceID: sourceID, RuntimeID: runtimeID,
+		OwnerURN: ownerURN, Relation: relation, Outgoing: true,
+		Links: links, Observation: observation,
+	}
+}
+
+func noopProjectRecords(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, nil
+}
+
+// A link set is authoritative for its owner/relation/direction scope: plain
+// links the same page emits for that exact scope must never reach the
+// ordinary link upsert path, links outside that scope are unaffected, and
+// the set itself is applied only after every entity in the page is upserted.
+func TestProjectResponseCoalescedLinkSetAppliesAfterEntitiesAndExcludesCoveredLinks(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	consumerB := "urn:cerebro:writer:k8s_service_account:ns/b"
+	uncoveredTarget := "urn:cerebro:writer:external_asset:other"
+
+	set := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, consumerA, consumerB)
+	coveredPlainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		FromURN: owner, ToURN: consumerA, Relation: "associated_with",
+	}
+	uncoveredPlainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		FromURN: owner, ToURN: uncoveredTarget, Relation: "has_evidence",
+	}
+	projector := linkSetProjector{
+		recordProjectorFunc: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}},
+				[]*ports.ProjectedLink{coveredPlainLink, uncoveredPlainLink}, nil
+		},
+		linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set}, nil
+		},
+	}
+	result, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.linkSetCalls != 1 {
+		t.Fatalf("ReplaceProjectedLinkSets called %d times, want 1", store.linkSetCalls)
+	}
+	stored := store.linkSetLinks[projectedLinkSetKey(set)]
+	if len(stored) != 2 {
+		t.Fatalf("stored link-set links = %d, want 2: %#v", len(stored), stored)
+	}
+	coveredKey := coveredPlainLink.FromURN + "|" + coveredPlainLink.Relation + "|" + coveredPlainLink.ToURN
+	if _, ok := store.links[coveredKey]; ok {
+		t.Fatalf("covered plain link reached the plain upsert path: %#v", store.links)
+	}
+	uncoveredKey := uncoveredPlainLink.FromURN + "|" + uncoveredPlainLink.Relation + "|" + uncoveredPlainLink.ToURN
+	if _, ok := store.links[uncoveredKey]; !ok {
+		t.Fatalf("uncovered plain link did not reach the plain upsert path: %#v", store.links)
+	}
+	if result.LinksProjected != 3 {
+		t.Fatalf("LinksProjected = %d, want 3 (1 uncovered plain link + 2 from the applied set)", result.LinksProjected)
+	}
+	firstLinkSet, lastEntity := -1, -1
+	for index, call := range store.callOrder {
+		switch call {
+		case "linkset":
+			if firstLinkSet == -1 {
+				firstLinkSet = index
+			}
+		case "entity":
+			lastEntity = index
+		}
+	}
+	if firstLinkSet == -1 || lastEntity == -1 || firstLinkSet < lastEntity {
+		t.Fatalf("call order = %v, want every entity upsert before the link set is applied", store.callOrder)
+	}
+}
+
+// {A,B} -> {A} must retract only B; A, asserted again by the merge path,
+// survives untouched.
+func TestProjectResponseCoalescedLinkSetRemovesOnlyDroppedLink(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	linkB := "urn:cerebro:writer:k8s_service_account:ns/b"
+	request := sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}
+
+	initial := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, linkA, linkB)
+	projector := linkSetProjector{
+		recordProjectorFunc: noopProjectRecords,
+		linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{initial}, nil
+		},
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(initial) error = %v", err)
+	}
+	key := projectedLinkSetKey(initial)
+	if got := len(store.linkSetLinks[key]); got != 2 {
+		t.Fatalf("after initial set, stored links = %d, want 2", got)
+	}
+
+	narrowed := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:05:00Z"}, linkA)
+	projector.linkSets = func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+		return []*ports.ProjectedLinkSet{narrowed}, nil
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-2", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(narrowed) error = %v", err)
+	}
+	stored := store.linkSetLinks[key]
+	if _, ok := stored[linkB]; ok {
+		t.Fatalf("link B survived narrowing the set to {A}: %#v", stored)
+	}
+	if _, ok := stored[linkA]; !ok {
+		t.Fatalf("link A was incorrectly removed: %#v", stored)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("stored links = %d, want 1 (only A)", len(stored))
+	}
+}
+
+// Within one page, two events disagree about the same owner/relation/
+// direction scope: the older observation's attempt to retract everything to
+// empty must lose to the newer observation that keeps the links, and only
+// the coalesced winner ever reaches the store.
+func TestProjectResponseCoalescedLinkSetSamePageOlderObservationCannotRetract(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	linkB := "urn:cerebro:writer:k8s_service_account:ns/b"
+
+	newest := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, linkA, linkB)
+	olderRetractAttempt := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T09:00:00Z"})
+	eventSets := map[string]*ports.ProjectedLinkSet{"event-old": olderRetractAttempt, "event-new": newest}
+	projector := linkSetProjector{
+		recordProjectorFunc: noopProjectRecords,
+		linkSets: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{eventSets[event.GetId()]}, nil
+		},
+	}
+	events := []*cerebrov1.EventEnvelope{{Id: "event-old", SourceId: "vulnview"}, {Id: "event-new", SourceId: "vulnview"}}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{Events: events}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.linkSetSetsReceived != 1 {
+		t.Fatalf("sets received by the store = %d, want 1 (coalesced within the page before reaching the store)", store.linkSetSetsReceived)
+	}
+	stored := store.linkSetLinks[projectedLinkSetKey(newest)]
+	if len(stored) != 2 {
+		t.Fatalf("an older same-page observation retracted links: stored = %#v, want {A, B}", stored)
+	}
+}
+
+// Within one page, the older observation tries to restore a link the newer,
+// authoritative-empty observation already cleared; coalescing must still
+// keep the empty winner regardless of event iteration order.
+func TestProjectResponseCoalescedLinkSetSamePageOlderObservationCannotRestore(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+
+	newestEmpty := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"})
+	olderRestoreAttempt := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T09:00:00Z"}, linkA)
+	eventSets := map[string]*ports.ProjectedLinkSet{"event-new": newestEmpty, "event-old": olderRestoreAttempt}
+	projector := linkSetProjector{
+		recordProjectorFunc: noopProjectRecords,
+		linkSets: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{eventSets[event.GetId()]}, nil
+		},
+	}
+	// The newest, empty observation is processed first and the stale restore
+	// attempt second, so a coalescing bug that let the last-processed event
+	// win would incorrectly restore link A.
+	events := []*cerebrov1.EventEnvelope{{Id: "event-new", SourceId: "vulnview"}, {Id: "event-old", SourceId: "vulnview"}}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{Events: events}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.linkSetSetsReceived != 1 {
+		t.Fatalf("sets received by the store = %d, want 1 (coalesced within the page before reaching the store)", store.linkSetSetsReceived)
+	}
+	stored := store.linkSetLinks[projectedLinkSetKey(newestEmpty)]
+	if len(stored) != 0 {
+		t.Fatalf("an older same-page observation restored link A: %#v", stored)
+	}
+}
+
+// TestProjectResponseCoalescedLinkSetSamePageEndpointWinnerIsOrderIndependent
+// pins R06 at the page-coalescing level: when two same-page observations
+// disagree about one owner/relation/direction scope, coalescing keeps the
+// whole winning set (including its Endpoints) regardless of event
+// iteration order, so the loser's Endpoints never reach the store.
+func TestProjectResponseCoalescedLinkSetSamePageEndpointWinnerIsOrderIndependent(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	consumerB := "urn:cerebro:writer:k8s_service_account:ns/b"
+	endpointFor := func(urn string) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{URN: urn, TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview", EntityType: "kubernetes.service_account", Label: urn, CreateOnly: true}
+	}
+	newest := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, consumerA)
+	newest.Endpoints = []*ports.ProjectedEntity{endpointFor(consumerA)}
+	olderWithB := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T09:00:00Z"}, consumerB)
+	olderWithB.Endpoints = []*ports.ProjectedEntity{endpointFor(consumerB)}
+	eventSets := map[string]*ports.ProjectedLinkSet{"event-new": newest, "event-old": olderWithB}
+
+	for _, order := range []struct {
+		name   string
+		events []*cerebrov1.EventEnvelope
+	}{
+		{"new-then-old", []*cerebrov1.EventEnvelope{{Id: "event-new", SourceId: "vulnview"}, {Id: "event-old", SourceId: "vulnview"}}},
+		{"old-then-new", []*cerebrov1.EventEnvelope{{Id: "event-old", SourceId: "vulnview"}, {Id: "event-new", SourceId: "vulnview"}}},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			store := &recordingProjectionGraphStore{}
+			service := &Service{graphStore: store}
+			projector := linkSetProjector{
+				recordProjectorFunc: noopProjectRecords,
+				linkSets: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+					return []*ports.ProjectedLinkSet{eventSets[event.GetId()]}, nil
+				},
+			}
+			if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{Events: order.events}, projector, nil); err != nil {
+				t.Fatalf("projectResponseCoalesced() error = %v", err)
+			}
+			if store.linkSetSetsReceived != 1 {
+				t.Fatalf("sets received by the store = %d, want 1 (coalesced within the page before reaching the store)", store.linkSetSetsReceived)
+			}
+			stored := store.linkSetLinks[projectedLinkSetKey(newest)]
+			if len(stored) != 1 || stored[consumerA] == nil {
+				t.Fatalf("stored links = %#v, want only the newest observation's consumerA", stored)
+			}
+			if _, exists := store.entities[consumerA]; !exists {
+				t.Fatalf("winning observation's endpoint A was never materialized: %#v", store.entities)
+			}
+			if _, exists := store.entities[consumerB]; exists {
+				t.Fatalf("losing observation's endpoint B was materialized: %#v", store.entities)
+			}
+		})
+	}
+}
+
+// A stale observation delivered in a later, separate page must still be
+// unable to retract or restore anything: the store's persisted guard (not
+// just within-page coalescing) rejects it.
+func TestProjectResponseCoalescedLinkSetGuardsStaleObservationAcrossPages(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	request := sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}
+
+	current := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, linkA)
+	projector := linkSetProjector{
+		recordProjectorFunc: noopProjectRecords,
+		linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{current}, nil
+		},
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(current) error = %v", err)
+	}
+
+	stale := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T09:00:00Z"})
+	projector.linkSets = func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+		return []*ports.ProjectedLinkSet{stale}, nil
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-2", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(stale) error = %v", err)
+	}
+	stored := store.linkSetLinks[projectedLinkSetKey(current)]
+	if len(stored) != 1 {
+		t.Fatalf("a stale page retracted link A: %#v", stored)
+	}
+	if _, ok := stored[linkA]; !ok {
+		t.Fatalf("link A missing after the stale page: %#v", stored)
+	}
+}
+
+// Applying a set for one tenant/source/runtime must never touch another
+// tenant/source/runtime's assertions on the exact same owner and relation.
+func TestProjectResponseCoalescedLinkSetLeavesOtherRuntimeUntouched(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	otherRuntimeLink := "urn:cerebro:writer:k8s_service_account:other-cluster/a"
+	ourLink := "urn:cerebro:writer:k8s_service_account:our-cluster/a"
+
+	otherRuntimeSet := testProjectedLinkSet("other-runtime", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, otherRuntimeLink)
+	ourSet := testProjectedLinkSet("our-runtime", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, ourLink)
+	projector := linkSetProjector{recordProjectorFunc: noopProjectRecords}
+
+	projector.linkSets = func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+		return []*ports.ProjectedLinkSet{otherRuntimeSet}, nil
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "other-runtime", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(other runtime) error = %v", err)
+	}
+
+	narrowingOtherRuntime := testProjectedLinkSet("our-runtime", owner, map[string]string{"at": "2026-11-02T10:05:00Z"}, ourLink)
+	projector.linkSets = func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+		return []*ports.ProjectedLinkSet{narrowingOtherRuntime}, nil
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "our-runtime", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-2", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(our runtime) error = %v", err)
+	}
+
+	otherStored := store.linkSetLinks[projectedLinkSetKey(otherRuntimeSet)]
+	if len(otherStored) != 1 {
+		t.Fatalf("other runtime's assertion was touched: %#v", otherStored)
+	}
+	if _, ok := otherStored[otherRuntimeLink]; !ok {
+		t.Fatalf("other runtime's link is missing: %#v", otherStored)
+	}
+	ourStored := store.linkSetLinks[projectedLinkSetKey(ourSet)]
+	if len(ourStored) != 1 {
+		t.Fatalf("our runtime's link set = %#v, want exactly {ourLink}", ourStored)
+	}
+}
+
+// An authoritative empty set clears every previously asserted link for its
+// owner/relation/direction/runtime scope.
+func TestProjectResponseCoalescedLinkSetAuthoritativeEmptySetClears(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	linkB := "urn:cerebro:writer:k8s_service_account:ns/b"
+	request := sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}
+
+	initial := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, linkA, linkB)
+	projector := linkSetProjector{
+		recordProjectorFunc: noopProjectRecords,
+		linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{initial}, nil
+		},
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(initial) error = %v", err)
+	}
+
+	cleared := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:05:00Z"})
+	projector.linkSets = func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+		return []*ports.ProjectedLinkSet{cleared}, nil
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-2", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced(cleared) error = %v", err)
+	}
+	stored := store.linkSetLinks[projectedLinkSetKey(initial)]
+	if len(stored) != 0 {
+		t.Fatalf("authoritative empty set left links behind: %#v", stored)
+	}
+}
+
+// When a page's projector never emits link sets, plain links flow through
+// the ordinary upsert path untouched and the link-set store is never called.
+func TestProjectResponseCoalescedLinkSetsAbsentLeavesLinksUntouched(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	plainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		FromURN: "urn:cerebro:writer:aws_role:principal", ToURN: "urn:cerebro:writer:k8s_service_account:ns/a",
+		Relation: "associated_with",
+	}
+	projector := recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return nil, []*ports.ProjectedLink{plainLink}, nil
+	})
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.linkSetCalls != 0 {
+		t.Fatalf("ReplaceProjectedLinkSets called %d times, want 0 (no sets emitted)", store.linkSetCalls)
+	}
+	key := plainLink.FromURN + "|" + plainLink.Relation + "|" + plainLink.ToURN
+	if _, ok := store.links[key]; !ok {
+		t.Fatalf("plain link was not upserted when no link sets were emitted: %#v", store.links)
+	}
+}
+
+// Contract G1 page coalescing: a CreateOnly stub must never contribute
+// attributes, label, or ownership over an ordinary entity for the same
+// URN within one page, regardless of which event arrives first. Before
+// this fix mergeProjectedEntity blindly overwrote fields, so an ordinary
+// principal projected earlier in the page could lose its label/source to
+// a later VulnView endpoint stub (or vice versa).
+func TestProjectResponseCoalescedEntityOrdinaryWinsOverCreateOnlyStubRegardlessOfOrder(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	ordinary := &ports.ProjectedEntity{
+		URN: owner, TenantID: "writer", SourceID: "aws", RuntimeID: "writer-aws",
+		EntityType: "aws.role", Label: "arn:aws:iam::111:role/principal",
+		Attributes: map[string]string{"account_id": "111"},
+	}
+	stub := &ports.ProjectedEntity{
+		URN: owner, TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		EntityType: "aws.role", Label: owner, CreateOnly: true,
+	}
+	for _, order := range []struct {
+		name     string
+		entities []*ports.ProjectedEntity
+	}{
+		{"ordinary then stub", []*ports.ProjectedEntity{ordinary, stub}},
+		{"stub then ordinary", []*ports.ProjectedEntity{stub, ordinary}},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			store := &recordingProjectionGraphStore{}
+			service := &Service{graphStore: store}
+			entities := order.entities
+			projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				index := 0
+				if event.GetId() == "event-2" {
+					index = 1
+				}
+				return []*ports.ProjectedEntity{entities[index]}, nil, nil
+			})
+			if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+				Events: []*cerebrov1.EventEnvelope{{Id: "event-1"}, {Id: "event-2"}},
+			}, projector, nil); err != nil {
+				t.Fatalf("projectResponseCoalesced() error = %v", err)
+			}
+			got := store.entities[owner]
+			if got == nil {
+				t.Fatalf("entity %q was not upserted", owner)
+			}
+			if got.SourceID != "aws" || got.Label != ordinary.Label || got.Attributes["account_id"] != "111" || got.CreateOnly {
+				t.Fatalf("stored entity = %#v, want the ordinary entity untouched by the stub", got)
+			}
+		})
+	}
+}
+
+// Contract G1 entity merge: an accepted observation's RetractedAttributes
+// keys absent from its own Attributes must be deleted from the coalesced
+// attributes that reach the store, even when both observations arrive
+// within the same page.
+func TestProjectResponseCoalescedEntityAppliesRetractedAttributes(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	urn := "urn:cerebro:writer:finding:f-1"
+	first := &ports.ProjectedEntity{
+		URN: urn, TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		EntityType: "finding",
+		Attributes: map[string]string{"triage_state": "accepted", "triage_reason": "reviewed", "status": "open"},
+	}
+	second := &ports.ProjectedEntity{
+		URN: urn, TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		EntityType:          "finding",
+		Attributes:          map[string]string{"triage_state": "none", "status": "open"},
+		RetractedAttributes: []string{"triage_reason"},
+	}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		if event.GetId() == "event-1" {
+			return []*ports.ProjectedEntity{first}, nil, nil
+		}
+		return []*ports.ProjectedEntity{second}, nil, nil
+	})
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1"}, {Id: "event-2"}},
+	}, projector, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	got := store.entities[urn]
+	if got == nil {
+		t.Fatalf("entity %q was not upserted", urn)
+	}
+	if _, present := got.Attributes["triage_reason"]; present {
+		t.Fatalf("attributes = %#v, want triage_reason retracted", got.Attributes)
+	}
+	if got.Attributes["triage_state"] != "none" || got.Attributes["status"] != "open" {
+		t.Fatalf("attributes = %#v, want triage_state=none and status preserved", got.Attributes)
+	}
+	if len(got.RetractedAttributes) != 1 || got.RetractedAttributes[0] != "triage_reason" {
+		t.Fatalf("retracted attributes = %#v, want [triage_reason] forwarded to the store", got.RetractedAttributes)
+	}
+}
+
+// F04 regression: v1 {A} establishes the scope in an earlier page. A later
+// page then carries, within the SAME page, both an Incomplete observation
+// (newest) and a stale replay of v2 {B} (older) for the same owner/
+// relation/direction/runtime scope. Graphingest's page coalescing must
+// keep only the newest (Incomplete) observation regardless of the two
+// events' order within the page, so the store only ever sees it — never
+// the stale {B} replay — and {A} must survive untouched.
+func TestProjectResponseCoalescedLinkSetIncompleteSurvivesSamePageReplayRegardlessOfOrder(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	linkA := "urn:cerebro:writer:k8s_service_account:ns/a"
+	linkB := "urn:cerebro:writer:k8s_service_account:ns/b"
+	request := sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}
+
+	v1 := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-01T10:00:00Z"}, linkA)
+	v2Replay := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, linkB)
+	v3Incomplete := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-03T10:00:00Z"})
+	v3Incomplete.Incomplete = true
+
+	for _, order := range []struct {
+		name   string
+		events []*cerebrov1.EventEnvelope
+		sets   map[string]*ports.ProjectedLinkSet
+	}{
+		{"v2 then incomplete v3", []*cerebrov1.EventEnvelope{{Id: "event-v2"}, {Id: "event-v3"}}, map[string]*ports.ProjectedLinkSet{"event-v2": v2Replay, "event-v3": v3Incomplete}},
+		{"incomplete v3 then v2", []*cerebrov1.EventEnvelope{{Id: "event-v3"}, {Id: "event-v2"}}, map[string]*ports.ProjectedLinkSet{"event-v2": v2Replay, "event-v3": v3Incomplete}},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			store := &recordingProjectionGraphStore{}
+			service := &Service{graphStore: store}
+			// Establish {A} in an earlier page.
+			initial := linkSetProjector{
+				recordProjectorFunc: noopProjectRecords,
+				linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+					return []*ports.ProjectedLinkSet{v1}, nil
+				},
+			}
+			if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+				Events: []*cerebrov1.EventEnvelope{{Id: "event-v1"}},
+			}, initial, nil); err != nil {
+				t.Fatalf("projectResponseCoalesced(v1) error = %v", err)
+			}
+			key := projectedLinkSetKey(v1)
+			if got := len(store.linkSetLinks[key]); got != 1 {
+				t.Fatalf("after v1, stored links = %d, want 1 ({A})", got)
+			}
+
+			// The later page carries both the stale v2 replay and the
+			// newest Incomplete observation, in this subtest's order.
+			sets := order.sets
+			projector := linkSetProjector{
+				recordProjectorFunc: noopProjectRecords,
+				linkSets: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+					return []*ports.ProjectedLinkSet{sets[event.GetId()]}, nil
+				},
+			}
+			setsReceivedBefore := store.linkSetSetsReceived
+			if _, err := service.projectResponseCoalesced(context.Background(), request, &cerebrov1.ReadSourceResponse{
+				Events: order.events,
+			}, projector, nil); err != nil {
+				t.Fatalf("projectResponseCoalesced(page) error = %v", err)
+			}
+			if got := store.linkSetSetsReceived - setsReceivedBefore; got != 1 {
+				t.Fatalf("sets received by the store this page = %d, want 1 (coalesced to the newest Incomplete observation)", got)
+			}
+			stored := store.linkSetLinks[key]
+			if len(stored) != 1 || stored[linkA] == nil {
+				t.Fatalf("after the same-page incomplete/stale-replay page (%s), stored links = %#v, want {A} to survive untouched", order.name, stored)
+			}
+			if _, ok := stored[linkB]; ok {
+				t.Fatalf("stale replayed {B} reached the store (%s): %#v", order.name, stored)
+			}
+		})
+	}
+}
+
+// unsupportedLinkSetGraphStore implements only the bare minimum of
+// ports.ProjectionGraphStore — notably NOT ports.ProjectionLinkSetStore —
+// so tests can prove a page that carries link sets fails closed against a
+// store that cannot apply them, instead of silently dropping the covered
+// plain links while reporting success.
+type unsupportedLinkSetGraphStore struct {
+	links map[string]*ports.ProjectedLink
+}
+
+func (s *unsupportedLinkSetGraphStore) Ping(context.Context) error { return nil }
+
+func (s *unsupportedLinkSetGraphStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
+	return nil
+}
+
+func (s *unsupportedLinkSetGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.links == nil {
+		s.links = map[string]*ports.ProjectedLink{}
+	}
+	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
+	return nil
+}
+
+var _ ports.ProjectionGraphStore = (*unsupportedLinkSetGraphStore)(nil)
+
+// Before this fix, projectResponseCoalesced's applyLinkSets silently
+// returned nil when the graph store did not implement
+// ports.ProjectionLinkSetStore, so the page's covered consumer links were
+// permanently dropped (never applied as a set, and excluded from the
+// plain link path by their own coverage) while the page still reported
+// success.
+func TestProjectResponseCoalescedFailsClosedWhenLinkSetStoreUnsupported(t *testing.T) {
+	store := &unsupportedLinkSetGraphStore{}
+	service := &Service{graphStore: store}
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumer := "urn:cerebro:writer:k8s_service_account:ns/a"
+	set := testProjectedLinkSet("writer-vulnview", owner, map[string]string{"at": "2026-11-02T10:00:00Z"}, consumer)
+	coveredPlainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "writer-vulnview",
+		FromURN: owner, ToURN: consumer, Relation: "associated_with",
+	}
+	projector := linkSetProjector{
+		recordProjectorFunc: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}},
+				[]*ports.ProjectedLink{coveredPlainLink}, nil
+		},
+		linkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set}, nil
+		},
+	}
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{SourceID: "vulnview", RuntimeID: "writer-vulnview", TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "vulnview"}},
+	}, projector, nil)
+	if !errors.Is(err, ports.ErrProjectionLinkSetStoreUnsupported) {
+		t.Fatalf("projectResponseCoalesced() error = %v, want ports.ErrProjectionLinkSetStoreUnsupported", err)
+	}
+	coveredKey := coveredPlainLink.FromURN + "|" + coveredPlainLink.Relation + "|" + coveredPlainLink.ToURN
+	if _, ok := store.links[coveredKey]; ok {
+		t.Fatalf("covered plain link reached the plain upsert path despite the failure: %#v", store.links)
+	}
 }

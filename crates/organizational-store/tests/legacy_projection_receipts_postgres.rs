@@ -37,6 +37,7 @@ async fn record(ledger: &PostgresLedger, event_id: &str, delta: &Value) -> Resul
             0,
             0,
             0,
+            0,
             &format!(
                 "digest-{}",
                 delta["entities"][0]["attributes"]["source_collection_id"]

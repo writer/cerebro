@@ -199,7 +199,6 @@ func inventorySurfaceRules(surface string) inventorySurfaceFilter {
 				"sentinelone.exclusion",
 				"sentinelone.threat",
 				"twilio.secret",
-				"vulnview.dns_alert_type",
 			},
 			Prefixes: []string{
 				"aurelius.",

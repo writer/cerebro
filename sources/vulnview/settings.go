@@ -21,9 +21,8 @@ func (settings settings) query() url.Values {
 }
 
 const (
-	defaultBaseURL  = "https://vulnview.writer-security.com/api"
 	defaultScope    = "vulnview"
-	defaultFamily   = familyVulnerability
+	defaultFamily   = familyAsset
 	defaultPageSize = 100
 	maxPageSize     = 500
 )
@@ -31,11 +30,28 @@ const (
 var (
 	errMissingTenantID       = errors.New("missing vulnview tenant_id")
 	errUnsupportedFamily     = errors.New("unsupported vulnview family")
+	errMissingBaseURL        = errors.New("missing vulnview base_url")
 	errMissingClientID       = errors.New("missing vulnview client_id")
 	errMissingClientSecret   = errors.New("missing vulnview client_secret")
 	errInvalidURLComponents  = errors.New("invalid vulnview url components")
 	errInvalidBaseComponents = errors.New("invalid vulnview base_url components")
+	errMissingSource         = errors.New("missing vulnview source")
+	errUnsupportedSource     = errors.New("unsupported vulnview source")
 )
+
+// vulnViewFindingSources lists Contract C7's finding_lifecycle.SOURCES: the
+// seven VulnView finding sources the "finding" family's required source
+// setting must be one of (one runtime per source).
+var vulnViewFindingSources = []string{"nuclei", "caido", "port", "dns", "prowler", "cloud_identity", "github"}
+
+func isSupportedVulnViewFindingSource(source string) bool {
+	for _, candidate := range vulnViewFindingSources {
+		if candidate == source {
+			return true
+		}
+	}
+	return false
+}
 
 type settings struct {
 	tenantID     string
@@ -49,20 +65,8 @@ type settings struct {
 	scanName     string
 	severity     string
 	search       string
+	source       string
 	perPage      int
-}
-
-type responseError struct {
-	statusCode int
-	message    string
-}
-
-func (e *responseError) Error() string {
-	return e.message
-}
-
-func (e *responseError) StatusCode() int {
-	return e.statusCode
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -94,14 +98,14 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		return resolved, fmt.Errorf("%w: vulnview family must be one of %s", errUnsupportedFamily, strings.Join(supportedFamilies(), ", "))
 	}
 	if resolved.baseURL == "" {
-		resolved.baseURL = defaultBaseURL
+		return resolved, fmt.Errorf("%w: vulnview base_url is required", errMissingBaseURL)
 	}
-	normalizedBase, err := normalizeBaseURL(resolved.baseURL, allowLoopback)
+	normalizedBase, err := sourcecdk.NormalizeTrustedURL("vulnview", "base_url", resolved.baseURL, allowLoopback, errInvalidBaseComponents)
 	if err != nil {
 		return resolved, err
 	}
 	resolved.baseURL = normalizedBase
-	if err := validateBaseURL(resolved.baseURL, allowLoopback); err != nil {
+	if err := validateBaseURL(cfg, resolved.baseURL, allowLoopback); err != nil {
 		return resolved, err
 	}
 	if resolved.scope == "" {
@@ -123,7 +127,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		}
 		resolved.tokenURL = issuer + "/v1/token"
 	}
-	normalizedTokenURL, err := normalizeAbsoluteURL(resolved.tokenURL, allowLoopback)
+	normalizedTokenURL, err := sourcecdk.NormalizeTrustedURL("vulnview", "url", resolved.tokenURL, allowLoopback, errInvalidURLComponents)
 	if err != nil {
 		return resolved, err
 	}
@@ -141,25 +145,23 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		}
 		resolved.perPage = perPage
 	}
+	if resolved.family == familyFinding {
+		resolved.source = sourcecdk.ConfigValue(cfg, "source")
+		if resolved.source == "" {
+			return resolved, fmt.Errorf("%w: vulnview source is required for the finding family", errMissingSource)
+		}
+		if !isSupportedVulnViewFindingSource(resolved.source) {
+			return resolved, fmt.Errorf("%w: vulnview source must be one of %s", errUnsupportedSource, strings.Join(vulnViewFindingSources, ", "))
+		}
+	}
 	return resolved, nil
 }
 
-func validateBaseURL(baseURL string, allowLoopback bool) error {
+func validateBaseURL(cfg sourcecdk.Config, baseURL string, allowLoopback bool) error {
 	if allowLoopback {
 		return nil
 	}
-	parsed, err := url.Parse(baseURL)
-	if err != nil {
-		return fmt.Errorf("parse vulnview base_url: %w", err)
-	}
-	trusted, err := url.Parse(defaultBaseURL)
-	if err != nil {
-		return fmt.Errorf("parse default VulnView base_url: %w", err)
-	}
-	if !strings.EqualFold(parsed.Scheme, trusted.Scheme) || !strings.EqualFold(parsed.Host, trusted.Host) {
-		return fmt.Errorf("vulnview base_url must use the trusted VulnView origin")
-	}
-	return nil
+	return sourcecdk.RequireTrustedOriginFromDeploymentAllowlist(cfg, sourceID, "base_url", "VulnView", baseURL)
 }
 
 func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool) error {
@@ -170,57 +172,5 @@ func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool)
 		}
 		return fmt.Errorf("vulnview okta_issuer is required")
 	}
-	expected, err := normalizeAbsoluteURL(issuer+"/v1/token", allowLoopback)
-	if err != nil {
-		return err
-	}
-	if tokenURL != expected {
-		return fmt.Errorf("vulnview token_url must match okta_issuer token endpoint")
-	}
-	return nil
-}
-
-func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse vulnview base_url: %w", err)
-	}
-	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.User != nil {
-		return "", fmt.Errorf("%w: vulnview base_url must not include user info, query, or fragment", errInvalidBaseComponents)
-	}
-	normalized, err := normalizeParsedURL(parsed, allowLoopback)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimRight(normalized, "/"), nil
-}
-
-func normalizeAbsoluteURL(raw string, allowLoopback bool) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse vulnview url: %w", err)
-	}
-	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.User != nil {
-		return "", fmt.Errorf("%w: vulnview url must not include user info, query, or fragment", errInvalidURLComponents)
-	}
-	return normalizeParsedURL(parsed, allowLoopback)
-}
-
-func normalizeParsedURL(parsed *url.URL, allowLoopback bool) (string, error) {
-	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && sourcecdk.IsLoopbackHost(host)
-	if parsed.Scheme != "https" && !allowInsecureLoopback {
-		return "", fmt.Errorf("vulnview url must use https")
-	}
-	if host == "" {
-		return "", fmt.Errorf("vulnview url must include a host")
-	}
-	allowCustomPort := allowLoopback && sourcecdk.IsLoopbackHost(host)
-	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && !allowCustomPort {
-		return "", fmt.Errorf("vulnview url must not include a custom port")
-	}
-	if sourcecdk.IsUnsafeHost(host) && (!allowLoopback || !sourcecdk.IsLoopbackHost(host)) {
-		return "", fmt.Errorf("vulnview url must not target loopback, private, or link-local hosts")
-	}
-	return strings.TrimRight(parsed.String(), "/"), nil
+	return sourcecdk.RequireIssuerTokenURL("vulnview", "okta_issuer", issuer, "/v1/token", tokenURL, allowLoopback)
 }

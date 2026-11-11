@@ -1,12 +1,11 @@
 id: vulnview
 name: VulnView
-description: VulnView attack-surface, scan, vulnerability, asset, and DNS alert source.
+description: VulnView attack-surface, scan, asset, and standardized-finding source.
 emitted_kinds:
   - vulnview.site
   - vulnview.scan
-  - vulnview.vulnerability
   - vulnview.asset
-  - vulnview.dns_alert
+  - vulnview.finding
 event_contracts:
   - kind: vulnview.site
     schema_ref: vulnview/site/v1
@@ -16,16 +15,12 @@ event_contracts:
     schema_ref: vulnview/scan/v1
     required_attributes:
       - family
-  - kind: vulnview.vulnerability
-    schema_ref: vulnview/vulnerability/v1
-    required_attributes:
-      - family
   - kind: vulnview.asset
     schema_ref: vulnview/asset/v1
     required_attributes:
       - family
-  - kind: vulnview.dns_alert
-    schema_ref: vulnview/dns_alert/v1
+  - kind: vulnview.finding
+    schema_ref: vulnview/finding/v1
     required_attributes:
       - family
 coverage_contract:
@@ -48,14 +43,6 @@ coverage_contract:
       high_value: true
       evidence_types: [configuration_state]
       control_domains: [security_operations]
-    - id: vulnerabilities
-      type: entity_family
-      title: Vulnerabilities
-      families: [vulnerability]
-      support: supported
-      high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
     - id: assets
       type: entity_family
       title: Attack-surface assets
@@ -64,24 +51,14 @@ coverage_contract:
       high_value: true
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
-    - id: dns_alerts
+    - id: findings
       type: entity_family
-      title: DNS alerts
-      families: [dns_alert]
+      title: VulnView standardized findings (nuclei, caido, port, dns, prowler, cloud_identity, github)
+      families: [finding]
       support: supported
       high_value: true
-      evidence_types: [source_snapshot]
-      control_domains: [asset_inventory]
-    - id: remediation_state
-      type: remediation_state
-      title: Vulnerability remediation lifecycle state
-      families: [vulnerability, dns_alert]
-      support: partial
-      high_value: true
-      evidence_types: [remediation_state]
-      control_domains: [remediation]
-      known_unsupported_fields:
-        - Cerebro remediation workflow assignment, exception, SLA, and approval state
+      evidence_types: [source_snapshot, remediation_state]
+      control_domains: [asset_inventory, identity_access, remediation]
       notes:
-        - VulnView vulnerability and DNS alert state attributes are surfaced as provider lifecycle evidence.
-        - Cerebro finding remediation lifecycle remains owned by the finding/workflow surfaces and their typed action boundaries.
+        - VulnView is the detection authority for every finding source it exports; Cerebro imports its standardized, lifecycle-tracked findings through one export route per source rather than collecting or re-deriving them.
+        - VulnView is also the detection authority for cloud-identity excess-privilege and shared-principal posture; cloud_identity findings join the graph through the canonical AWS role / GCP service account principal they are about, never a scan-scoped entity Cerebro's own rule engine re-derives.

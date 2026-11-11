@@ -218,6 +218,3 @@ rules:
   sentinelone-mitigation-failed:
     risk_statement: A threat mitigation failed, leaving the endpoint potentially compromised.
     remediation_intent: Manually remediate the threat, confirm endpoint health, and retain response evidence.
-  vulnview-actionable-external-finding:
-    risk_statement: An actionable external finding indicates an internet-exposed weakness that may be exploitable.
-    remediation_intent: Remediate or remove the exposed surface, validate closure, and retain external-scan evidence.

@@ -303,30 +303,51 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 	}
 }
 
-func TestDefaultRegistryComesFromGeneratedCatalogMetadata(t *testing.T) {
+// TestDefaultRegistryCoversEveryKnownActionSpec verifies that every action
+// the generated catalog publishes through KnownActionSpecs is actually wired
+// into DefaultRegistry with the execution hooks Execute depends on: a
+// non-empty provider/provider-action/target-kind triple, a target resolver,
+// an eligibility check, and (when the action is reversible) a ReversibleBy
+// reference that itself resolves through the registry. It intentionally
+// avoids asserting a fixed action count, since that drifts on every
+// generated-catalog change and says nothing about whether coverage is
+// actually complete.
+func TestDefaultRegistryCoversEveryKnownActionSpec(t *testing.T) {
 	specs := KnownActionSpecs()
-	if len(specs) != 3 {
-		t.Fatalf("KnownActionSpecs() len = %d, want 3", len(specs))
+	if len(specs) == 0 {
+		t.Fatal("KnownActionSpecs() returned no actions")
 	}
-	spec, err := DefaultRegistry().Lookup(ActionIdentityOktaSuspendUser)
-	if err != nil {
-		t.Fatalf("Lookup() error = %v", err)
-	}
-	if spec.Provider != ProviderAccessApprovals || spec.ProviderAction != AccessApprovalsActionSuspend || spec.TargetKind != TargetKindOktaUser {
-		t.Fatalf("generated suspend spec = %#v, want access-approvals suspend Okta user", spec)
-	}
-	if spec.Effect != "deny_access" || !spec.Destructive || spec.ReversibleBy != ActionIdentityOktaUnsuspendUser {
-		t.Fatalf("generated suspend metadata = %#v, want destructive deny_access with unsuspend reversal", spec)
-	}
-	deviceSpec, err := DefaultRegistry().Lookup(ActionEndpointCerebroRevokeDevice)
-	if err != nil {
-		t.Fatalf("Lookup(device) error = %v", err)
-	}
-	if deviceSpec.Provider != ProviderCerebroDeviceAuth || deviceSpec.ProviderAction != CerebroDeviceActionRevoke || deviceSpec.TargetKind != TargetKindCerebroDevice {
-		t.Fatalf("generated device spec = %#v, want cerebro-device-auth revoke Cerebro device", deviceSpec)
-	}
-	if deviceSpec.Effect != "deny_device_access" || !deviceSpec.Destructive || deviceSpec.ReversibleBy != "" {
-		t.Fatalf("generated device metadata = %#v, want destructive deny_device_access without reversal", deviceSpec)
+	registry := DefaultRegistry()
+	for _, spec := range specs {
+		looked, err := registry.Lookup(spec.ID)
+		if err != nil {
+			t.Fatalf("DefaultRegistry().Lookup(%q) error = %v", spec.ID, err)
+		}
+		if looked.Provider != spec.Provider || looked.ProviderAction != spec.ProviderAction || looked.TargetKind != spec.TargetKind {
+			t.Fatalf("DefaultRegistry() spec for %q = %#v, want %#v", spec.ID, looked, spec)
+		}
+		if spec.Provider == "" || spec.ProviderAction == "" || spec.TargetKind == "" {
+			t.Fatalf("action %q is missing provider/provider-action/target-kind coverage: %#v", spec.ID, spec)
+		}
+		if spec.Effect == "" {
+			t.Fatalf("action %q declares no effect", spec.ID)
+		}
+		if spec.ResolveTarget == nil {
+			t.Fatalf("action %q has no target resolver wired", spec.ID)
+		}
+		if spec.CheckEligibility == nil {
+			t.Fatalf("action %q has no eligibility check wired", spec.ID)
+		}
+		if spec.ReversibleBy == "" {
+			continue
+		}
+		reversal, err := registry.Lookup(spec.ReversibleBy)
+		if err != nil {
+			t.Fatalf("action %q declares ReversibleBy %q, which does not resolve: %v", spec.ID, spec.ReversibleBy, err)
+		}
+		if reversal.ID != spec.ReversibleBy {
+			t.Fatalf("action %q reversal lookup returned %#v, want ID %q", spec.ID, reversal, spec.ReversibleBy)
+		}
 	}
 }
 

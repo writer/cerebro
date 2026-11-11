@@ -323,7 +323,7 @@ func TestBuiltinPublicDetectionCatalogPublishesGRCFingerprintSalts(t *testing.T)
 func TestBuiltinPublicDetectionCatalogPublishesGraphInputKinds(t *testing.T) {
 	wantByID := map[string][]string{
 		sentinelOneEndpointActiveInfectionRuleID:      {"sentinelone.agent", "sentinelone.threat"},
-		vulnViewExternalAssetConcentratedSignalRuleID: {"vulnview.dns_alert", "vulnview.vulnerability"},
+		vulnViewExternalAssetConcentratedSignalRuleID: {"vulnview.finding"},
 	}
 	catalog := BuiltinPublicDetectionCatalog()
 	for _, detection := range catalog.Detections {

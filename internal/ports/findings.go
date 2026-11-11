@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -311,27 +312,37 @@ type FindingTombstoneWorkflowEmitter func(ctx context.Context, finding *FindingR
 // FindingTombstoneAtomicRequest carries the full per-candidate closeout mutation
 // that must commit or roll back as one unit.
 type FindingTombstoneAtomicRequest struct {
-	FindingID         string
-	ExpectedStatus    string
-	Status            string
-	Reason            string
-	Actor             string
-	RunID             string
-	AnchorURI         string
-	EventIDs          []string
-	UpdatedAt         time.Time
+	FindingID      string
+	ExpectedStatus string
+	Status         string
+	Reason         string
+	Actor          string
+	RunID          string
+	AnchorURI      string
+	EventIDs       []string
+	UpdatedAt      time.Time
+	// RuntimeIDs, when non-empty, must still be satisfied by the row the
+	// store re-reads/locks immediately before mutating it (see
+	// FindingMatchesRuntimeIDs). This closes the race where a different,
+	// still-active runtime re-asserts the same finding (updating its
+	// source_runtime_id attribute, status unchanged) between candidate
+	// listing and this atomic mutation: the stale, listing-time copy of
+	// the finding must never be trusted for this check.
+	RuntimeIDs        []string
 	EmitWorkflowEvent FindingTombstoneWorkflowEmitter
 }
 
 // FindingTombstoneAtomicResult describes whether a transaction actually
 // tombstoned the candidate. Applied is false when the live row was already
-// tombstoned or its status changed after candidate listing.
+// tombstoned, its status changed, or it no longer satisfies RuntimeIDs,
+// after candidate listing.
 type FindingTombstoneAtomicResult struct {
-	Finding       *FindingRecord
-	Applied       bool
-	StatusChanged bool
-	PriorStatus   string
-	TombstonedAt  time.Time
+	Finding           *FindingRecord
+	Applied           bool
+	StatusChanged     bool
+	RuntimeIDsChanged bool
+	PriorStatus       string
+	TombstonedAt      time.Time
 }
 
 // FindingTombstoneAtomicStore performs a per-candidate closeout mutation in one
@@ -340,6 +351,39 @@ type FindingTombstoneAtomicResult struct {
 // commits.
 type FindingTombstoneAtomicStore interface {
 	TombstoneFindingAtomic(ctx context.Context, request FindingTombstoneAtomicRequest) (*FindingTombstoneAtomicResult, error)
+}
+
+// FindingMatchesRuntimeIDs reports whether finding satisfies a closeout
+// RuntimeIDs scope: finding.RuntimeID (the pinned, first-writer-wins
+// creating runtime) must be in runtimeIDs, and when finding carries a
+// non-empty Attributes["source_runtime_id"] (the runtime that most
+// recently re-asserted it), that must also be in runtimeIDs. A finding
+// with no source_runtime_id attribute matches on RuntimeID alone. An
+// empty runtimeIDs scope always matches (unscoped). Shared by candidate
+// listing and by every mutation path's immediately-before-write recheck,
+// so a re-assertion landing between listing and mutation is never missed.
+func FindingMatchesRuntimeIDs(finding *FindingRecord, runtimeIDs []string) bool {
+	set := make(map[string]struct{}, len(runtimeIDs))
+	for _, id := range runtimeIDs {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			set[trimmed] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return true
+	}
+	if finding == nil {
+		return false
+	}
+	if _, ok := set[strings.TrimSpace(finding.RuntimeID)]; !ok {
+		return false
+	}
+	if sourceRuntimeID := strings.TrimSpace(finding.Attributes["source_runtime_id"]); sourceRuntimeID != "" {
+		if _, ok := set[sourceRuntimeID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // FindingTombstoneApply carries the tombstone-column writes performed alongside a

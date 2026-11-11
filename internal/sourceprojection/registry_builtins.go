@@ -1,6 +1,8 @@
 package sourceprojection
 
-import "github.com/writer/cerebro/internal/attestedcompute"
+import (
+	"github.com/writer/cerebro/internal/attestedcompute"
+)
 
 // This table keeps static event-kind wiring separate from registry lifecycle,
 // connector-definition overlays, dispatch, and tenant-scope validation.
@@ -525,10 +527,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"trusted_endpoint.security_finding":             trustedEndpointProjections,
 	"trusted_endpoint.trust_gate_decision":          trustedEndpointProjections,
 	"vulnview.asset":                                vulnViewAssetProjections,
-	"vulnview.dns_alert":                            vulnViewDNSAlertProjections,
+	"vulnview.finding":                              vulnViewFindingProjections,
 	"vulnview.scan":                                 vulnViewScanProjections,
 	"vulnview.site":                                 vulnViewSiteProjections,
-	"vulnview.vulnerability":                        vulnViewVulnerabilityProjections,
 	// hashicorp_vault generated projectors (sourcegen promotion)
 	// akeyless generated projectors (sourcegen promotion)
 	// conjur generated projectors (sourcegen promotion)
@@ -5531,6 +5532,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 }, contextProjectors: map[string]ContextProjectFunc{
 	"panopticon.alert": panopticonAlertProjectionsContext,
 	"panopticon.case":  panopticonCaseProjectionsContext,
+}, linkSetProjectors: map[string]LinkSetProjectFunc{
+	"vulnview.finding": vulnViewFindingLinkSetProjections,
 }, enforceRustAuthority: true}
 
 func init() {

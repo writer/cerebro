@@ -1,11 +1,13 @@
 sourceId: vulnview
 secretKeys:
+  - VULNVIEW_BASE_URL
   - VULNVIEW_CLIENT_ID
   - VULNVIEW_CLIENT_SECRET
   - VULNVIEW_OKTA_ISSUER
 runtimes:
   - localId: site
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: site
@@ -13,29 +15,80 @@ runtimes:
       per_page: "100"
   - localId: scan
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: scan
       okta_issuer: env:VULNVIEW_OKTA_ISSUER
       per_page: "100"
-  - localId: vulnerability
-    config:
-      client_id: env:VULNVIEW_CLIENT_ID
-      client_secret: env:VULNVIEW_CLIENT_SECRET
-      family: vulnerability
-      okta_issuer: env:VULNVIEW_OKTA_ISSUER
-      per_page: "100"
   - localId: asset
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
       family: asset
       okta_issuer: env:VULNVIEW_OKTA_ISSUER
       per_page: "100"
-  - localId: dns-alert
+  - localId: finding-nuclei
     config:
+      base_url: env:VULNVIEW_BASE_URL
       client_id: env:VULNVIEW_CLIENT_ID
       client_secret: env:VULNVIEW_CLIENT_SECRET
-      family: dns_alert
+      family: finding
+      source: nuclei
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: finding-caido
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: caido
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: finding-port
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: port
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: finding-dns
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: dns
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: finding-prowler
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: prowler
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "100"
+  - localId: finding-cloud-identity
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: cloud_identity
+      okta_issuer: env:VULNVIEW_OKTA_ISSUER
+      per_page: "200"
+  - localId: finding-github
+    config:
+      base_url: env:VULNVIEW_BASE_URL
+      client_id: env:VULNVIEW_CLIENT_ID
+      client_secret: env:VULNVIEW_CLIENT_SECRET
+      family: finding
+      source: github
       okta_issuer: env:VULNVIEW_OKTA_ISSUER
       per_page: "100"

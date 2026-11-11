@@ -84,6 +84,18 @@ type CloseoutSelector struct {
 	OlderThan      time.Duration `json:"older_than,omitempty"`
 	Statuses       []string      `json:"statuses"`
 	AnchorURIRegex string        `json:"anchor_uri_regex,omitempty"`
+	// RuntimeIDs restricts candidates to findings created by one of these
+	// runtimes (the pinned findings.runtime_id column) AND, when the
+	// finding's attributes carry a source_runtime_id (the runtime that most
+	// recently asserted it, set by every emit regardless of runtime_id's
+	// first-writer-wins pin), that attribute must also be in this set. A
+	// finding with no source_runtime_id attribute matches on runtime_id
+	// alone. This is how a retired runtime's orphaned rows (never
+	// reasserted by any other runtime) are distinguished from a row a
+	// currently-active runtime keeps reasserting onto the same fingerprint
+	// id -- runtime_id is pinned at creation and never changes, so it alone
+	// cannot tell the two apart.
+	RuntimeIDs []string `json:"runtime_ids,omitempty"`
 }
 
 // CloseoutBatchEvent carries per-batch progress emitted by TombstoneFindingsBulk
@@ -128,9 +140,17 @@ type CloseoutResult struct {
 	Proposed      []*ports.FindingRecord
 	ProposedCount int
 	AppliedCount  int
-	BatchSizes    []int
-	BatchErrors   []error
-	PerRule       []CloseoutPerRuleCount
+	// SkippedCount counts proposed candidates whose per-finding mutation
+	// (atomic or fallback) found, at the immediately-before-write recheck,
+	// that the row no longer matched the expected status or RuntimeIDs
+	// scope -- for example a different, still-active runtime re-asserted
+	// it between listing and mutation. Not persisted to closeout_run; a
+	// reloaded prior run reports 0 for it, matching S3SummaryKey/
+	// BatchSizes/BatchErrors, which are also run-local only.
+	SkippedCount int
+	BatchSizes   []int
+	BatchErrors  []error
+	PerRule      []CloseoutPerRuleCount
 	// S3SummaryKey is populated when a caller reloads an existing closeout_run
 	// row so the CLI can report the persisted audit object without overwriting it.
 	S3SummaryKey string
@@ -453,10 +473,12 @@ func (s *Service) executeCloseoutRun(ctx context.Context, req CloseoutRequest, s
 			return result, cerr
 		}
 		for _, candidate := range batch {
-			appliedCandidate, applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason)
+			appliedCandidate, applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason, selector.RuntimeIDs)
 			if appliedCandidate {
 				applied++
 				perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
+			} else if applyErr == nil {
+				result.SkippedCount++
 			}
 			if applyErr != nil {
 				result.BatchErrors = append(result.BatchErrors, applyErr)
@@ -522,7 +544,7 @@ func maxInt(left, right int) int {
 	return right
 }
 
-func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) (bool, error) {
+func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string, runtimeIDs []string) (bool, error) {
 	if finding == nil {
 		return false, errors.New("finding is required")
 	}
@@ -543,6 +565,7 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 			AnchorURI:      findingTombstoneAnchorURI(finding),
 			EventIDs:       append([]string(nil), finding.EventIDs...),
 			UpdatedAt:      now,
+			RuntimeIDs:     runtimeIDs,
 			EmitWorkflowEvent: func(ctx context.Context, updated *ports.FindingRecord, priorStatus string, tombstonedAt time.Time) error {
 				return s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, tombstonedAt)
 			},
@@ -561,6 +584,17 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 	}
 	priorStatus := normalizedFindingStatus(live.Status)
 	if expectedStatus != "" && priorStatus != expectedStatus {
+		return false, nil
+	}
+	// Re-check the runtime-identity scope against the freshly reloaded
+	// row, not the stale copy candidate listing saw: a different, still-
+	// active runtime may have re-asserted this exact finding (updating
+	// its source_runtime_id attribute, status unchanged) in the window
+	// between listing and this reload. Non-transactional stores cannot
+	// close the remaining reload-to-write gap, but this still rejects the
+	// overwhelming majority of the race window the same way the atomic
+	// path's locked re-read does.
+	if !ports.FindingMatchesRuntimeIDs(live, runtimeIDs) {
 		return false, nil
 	}
 	anchorURI := findingTombstoneAnchorURI(live)
@@ -675,6 +709,9 @@ func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutS
 				if anchorMatcher != nil && !anchorMatcher.MatchString(findingTombstoneAnchorURI(finding)) {
 					continue
 				}
+				if !ports.FindingMatchesRuntimeIDs(finding, selector.RuntimeIDs) {
+					continue
+				}
 				seen[key] = struct{}{}
 				out = append(out, finding)
 			}
@@ -766,6 +803,16 @@ func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
 			}
 		}
 		out.Sources = sources
+	}
+	if len(out.RuntimeIDs) > 0 {
+		runtimeIDs := make([]string, 0, len(out.RuntimeIDs))
+		for _, runtimeID := range out.RuntimeIDs {
+			trimmed := strings.TrimSpace(runtimeID)
+			if trimmed != "" {
+				runtimeIDs = append(runtimeIDs, trimmed)
+			}
+		}
+		out.RuntimeIDs = runtimeIDs
 	}
 	out.AnchorURIRegex = strings.TrimSpace(out.AnchorURIRegex)
 	return out

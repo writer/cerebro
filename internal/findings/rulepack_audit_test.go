@@ -34,8 +34,17 @@ type rulepackAuditClassification struct {
 func TestRulepackAllRulesDeclareLifecycle(t *testing.T) {
 	classifications := loadRulepackAuditClassifications(t)
 	metadataByID := rulepackAuditMetadataByID(t)
-	if got, want := len(metadataByID), len(classifications); got != want {
-		t.Fatalf("BuiltinRuleMetadata count = %d, want %d from rule classification plan", got, want)
+	seenClassificationIDs := make(map[string]struct{}, len(classifications))
+	for _, entry := range classifications {
+		if _, duplicate := seenClassificationIDs[entry.RuleID]; duplicate {
+			t.Fatalf("rule classification plan declares %q more than once", entry.RuleID)
+		}
+		seenClassificationIDs[entry.RuleID] = struct{}{}
+	}
+	for id := range metadataByID {
+		if _, ok := seenClassificationIDs[id]; !ok {
+			t.Fatalf("BuiltinRuleMetadata rule %q has no entry in the rule classification plan", id)
+		}
 	}
 	validKinds := map[LifecycleKind]struct{}{
 		LifecycleDurableState:  {},
@@ -64,7 +73,7 @@ func TestRulepackAllRulesDeclareLifecycle(t *testing.T) {
 func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	convertRules := rulepackAuditRulesByClass(t, rulepackAuditClassConvert)
-	if got, want := len(convertRules), 17; got != want {
+	if got, want := len(convertRules), 16; got != want {
 		t.Fatalf("CONVERT_TO_CURRENT_STATE rule count = %d, want %d", got, want)
 	}
 	rows := make([]string, 0, len(convertRules))
@@ -85,7 +94,7 @@ func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 	targets := append(rulepackAuditRulesByClass(t, rulepackAuditClassConvert), rulepackAuditRulesByClass(t, rulepackAuditClassRetire)...)
 	sort.Slice(targets, func(i, j int) bool { return targets[i].RuleID < targets[j].RuleID })
-	if got, want := len(targets), 28; got != want {
+	if got, want := len(targets), 29; got != want {
 		t.Fatalf("CONVERT+RETIRE closeout target count = %d, want %d", got, want)
 	}
 	for i, entry := range targets {
@@ -393,21 +402,6 @@ func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
 				"computer_name":    "host-99",
 				"control_type":     "firewall",
 				"firewall_enabled": "false",
-			},
-		},
-		vulnViewActionableExternalFindingRuleID: {
-			runtime: rulepackConvertRuntime("vulnview", "vulnerability"),
-			kind:    "vulnview.vulnerability",
-			attributes: map[string]string{
-				"asset_urn":              "urn:cerebro:writer:external_asset:admin.writer.com",
-				"external_id":            "scan-1:exposed-panel:admin.writer.com",
-				"host":                   "admin.writer.com",
-				"name":                   "Exposed Admin Panel",
-				"severity":               "high",
-				"target_id":              "admin.writer.com",
-				"template_id":            "exposed-panel",
-				"vulnview_finding_state": "open",
-				"vulnview_status":        "open",
 			},
 		},
 	}
@@ -1080,8 +1074,8 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cerebro-high-risk-api-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cerebro"},
 		{RuleID: "backstage-critical-component-missing-owner", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "backstage"},
 		{RuleID: "aurelius-promoted-vulnerability-active", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "aurelius"},
-		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
-		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
+		{RuleID: "vulnview-actionable-external-finding", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "vulnview"},
+		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "RETIRE", BulkCloseoutThreshold: ">24h", Source: "vulnview"},
 	}
 }
 

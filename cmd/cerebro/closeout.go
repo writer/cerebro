@@ -110,6 +110,7 @@ type closeoutFlags struct {
 	RuleIDs         []string
 	RuleIDFile      string
 	Sources         []string
+	RuntimeIDs      []string
 	OlderThanRaw    string
 	OlderThan       time.Duration
 	StatusFilter    []string
@@ -232,11 +233,12 @@ func executeCloseout(flags closeoutFlags, env *closeoutEnv) error {
 
 	req := findings.CloseoutRequest{
 		Selector: findings.CloseoutSelector{
-			TenantID:  flags.TenantID,
-			RuleIDs:   append([]string(nil), flags.RuleIDs...),
-			Sources:   append([]string(nil), flags.Sources...),
-			OlderThan: flags.OlderThan,
-			Statuses:  append([]string(nil), flags.StatusFilter...),
+			TenantID:   flags.TenantID,
+			RuleIDs:    append([]string(nil), flags.RuleIDs...),
+			Sources:    append([]string(nil), flags.Sources...),
+			RuntimeIDs: append([]string(nil), flags.RuntimeIDs...),
+			OlderThan:  flags.OlderThan,
+			Statuses:   append([]string(nil), flags.StatusFilter...),
 		},
 		Reason:       flags.Reason,
 		Actor:        actor,
@@ -370,9 +372,11 @@ func parseCloseoutFlags(args []string, env *closeoutEnv) (closeoutFlags, bool, e
 
 	var ruleIDs multiValueFlag
 	var sources multiValueFlag
+	var runtimeIDs multiValueFlag
 	fs.Var(&ruleIDs, "rule-id", "rule id to close out (repeatable)")
 	fs.StringVar(&out.RuleIDFile, "rule-id-file", "", "newline-delimited file of rule ids")
 	fs.Var(&sources, "source", "source family (repeatable)")
+	fs.Var(&runtimeIDs, "runtime-id", "restrict to findings whose creating runtime_id, and (when present) most-recent asserting source_runtime_id attribute, is one of these (repeatable)")
 	fs.StringVar(&out.OlderThanRaw, "older-than", "", "select only findings whose last_observed_at is older than this duration")
 	fs.StringVar(&out.StatusRaw, "status-filter", "open", "comma-separated statuses to include (default: open)")
 	fs.StringVar(&out.MaxBatchRaw, "max-batch-size", strconv.Itoa(closeoutDefaultBatchSize), "maximum findings per batch")
@@ -410,6 +414,7 @@ func parseCloseoutFlags(args []string, env *closeoutEnv) (closeoutFlags, bool, e
 	})
 	out.RuleIDs = ruleIDs.values()
 	out.Sources = sources.values()
+	out.RuntimeIDs = runtimeIDs.values()
 	out.TenantID = strings.TrimSpace(out.TenantID)
 	out.AllowEnv = strings.TrimSpace(out.AllowEnv)
 	out.AuditS3Bucket = strings.TrimSpace(out.AuditS3Bucket)
@@ -745,6 +750,8 @@ Flags:
   --rule-id <id>            Rule ID to close out. Repeatable.
   --rule-id-file <path>     Newline-delimited rule IDs. Comments (#) and blank lines allowed.
   --source <name>           Source family (e.g. github, okta). Repeatable.
+  --runtime-id <id>         Restrict to findings whose creating runtime_id, and (when present) most-recent
+                            asserting source_runtime_id attribute, is one of these. Repeatable.
   --older-than <duration>   Only close findings whose last_observed_at is older than this duration (e.g. 7d, 24h).
   --status-filter <list>    Comma-separated statuses to include (default: open).
   --max-batch-size <int>    Maximum findings per batch (default: 1000).

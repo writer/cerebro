@@ -52,6 +52,159 @@ and inventory-fetch requests with one bounded opaque cursor. SentinelOne source
 preview remains on its compatibility path until the preview credential adapter
 is promoted separately.
 
+## Cloud identity scan
+
+Cloud-identity collection, scheduled scanning, excess-privilege/shared-principal
+detection, and triage are owned entirely by VulnView (the private Security
+monorepo). Cerebro's former `cloud_identity` source -- its Kubernetes
+manifest/Helm/Argo CD/Crossplane/Terraform collection pipeline, federated
+GCP identity resolution, and the S3 evidence handoff that published
+principal evidence to VulnView -- is retired; Cerebro no longer collects
+cloud-identity evidence itself. VulnView's own collector, detector, and
+plan catalog (`platforms/services/vulnview/cloud-identity-*`) own that
+pipeline now; see the Security repo's own docs for how it collects,
+schedules, and detects.
+
+Cerebro imports VulnView's output -- cloud-identity findings alongside
+every other VulnView finding source -- through the standardized export
+described next.
+
+## VulnView standardized findings
+
+The `vulnview` source's single `finding` family reads VulnView's
+standardized, lifecycle-tracked finding export,
+`GET /exports/findings?source=<source>`, one runtime per VulnView finding
+source (`nuclei`, `caido`, `port`, `dns`, `prowler`, `cloud_identity`,
+`github`; the required `source` setting selects it). It replaces the
+former per-provider `vulnerability`, `dns_alert`, `cloud_identity_finding`,
+and `cloud_identity_assessment` families and events: VulnView is the
+detection authority for every source it exports, including cloud-identity
+posture, and Cerebro's rule engine never re-derives a verdict from an
+imported finding. See
+[`sources/vulnview/finding_exports.go`](../../sources/vulnview/finding_exports.go)
+and
+[`internal/sourceprojection/vulnview.go`](../../internal/sourceprojection/vulnview.go).
+
+Cerebro used to derive two standalone native findings from this feed
+directly: `vulnview-actionable-external-finding` (one Cerebro finding per
+open, actionable-severity external-attack-surface `vulnview.finding`) and
+`vulnview-external-asset-concentrated-signal` (one Cerebro finding per
+external asset with concentrated graph evidence). Both are retired
+(`internal/findings/vulnview_signal_rule.go`,
+`internal/findings/vulnview_graph_rule.go`): no lifecycle transition of any
+`vulnview.finding` -- open, fixed, reopened, accepted-risk,
+false-positive-triaged, triage-expired, or a replayed/reordered version --
+ever opens or reopens either rule's finding again. A single upstream
+VulnView finding is a source observation and graph evidence, not a
+standalone Cerebro verdict; a genuinely distinct composed attack path has
+its own existing graph-rule contract. Rows opened before retirement,
+including ones owned by a legacy runtime
+(`writer-vulnview-vulnerability`, `writer-vulnview-dns-alert`) that no
+longer emits events, are closed through the existing `cerebro closeout`
+procedure (`internal/findings/closeout.go`'s `CloseoutSelector`) scoped to
+the tenant and the two retired rule IDs; no runtime filter is required.
+
+The family pages VulnView's cursor-feed export route
+(`sourcecdk.CursorFeedPage`: `items`, `nextCursor`, `hasMore`) and
+implements `sourcecdk.CheckpointAwareSource`/`Family.ReadWithCheckpoint`
+rather than the plain `Read` path, so every pull -- including an empty
+page or VulnView's terminal (`hasMore:false`) page -- returns a resumable
+`sourcecdk.CursorEnvelope` checkpoint carrying VulnView's raw `nextCursor`
+as `Token`. A later sync resumes from that exact VulnView cursor instead
+of restarting the whole feed. The checkpoint watermark is the max of the
+prior checkpoint's watermark and the newest emitted event's `OccurredAt`,
+so it never regresses. Within one page, only the highest `version` per
+`findingId` is kept (the feed can repeat a finding across a read-resume
+lookback).
+
+Each `vulnview.finding` event's `OccurredAt` is the export item's
+`updatedAt`. The projected `vulnview.finding` entity carries strict
+`observation_version` set to VulnView's per-finding `version`, which
+orders writes: VulnView samples `updatedAt` before its conditional write
+commits, so a concurrent writer can commit a higher version with an
+earlier `updatedAt`, and `observation_version` (not `at`) is what must
+order those writes (see
+[`internal/projectionmeta/observation.go`](../../internal/projectionmeta/observation.go)).
+A stale observation changes nothing -- not its attributes, typed
+`source_id`/`runtime_id`, or label -- whether it reaches the graph store
+directly or within the same graph-ingest page as the newer one.
+
+Each export item's `provenance` object also carries VulnView's durable
+integration attribution, flattened onto bounded event attributes and
+registered as finding-owned (retractable) attributes:
+`provenance_integrations` and `provenance_repository_integrations` (sorted,
+comma-joined `kind:id` pairs naming VulnView integration records, for
+example `cloud_account:prof-example` or `github:<integration-id>`, from
+`provenance.integrations`/`provenance.repositoryIntegrations`) and
+`provenance_integration_attribution` (`run`, `not_applicable`, or
+`unknown`, from `provenance.integrationAttribution`). Like every other
+owned attribute, a newer version that omits one retracts it -- an
+attribution change never fabricates an identity for a source with no
+integration concept (`nuclei`, `caido`, `port`, `dns`) or a historical row
+with no provable attribution, and it never reopens or changes the
+finding's status. See
+[`sources/vulnview/records.go`](../../sources/vulnview/records.go)'s
+`attributesForFinding` and
+[`internal/sourceprojection/vulnview.go`](../../internal/sourceprojection/vulnview.go)'s
+`vulnViewFindingAttributesOwnedKeys`.
+
+An external attack-surface finding (`nuclei`, `caido`, `port`, `dns`) links
+from the existing VulnView `external.asset` entity via `has_evidence`, the
+same asset-URN scheme the `asset` family already mints. Other sources'
+`asset` values (cloud principals, cloud resource IDs, repositories) are not
+network hosts, so they stay finding attributes rather than minting
+`external.asset` nodes. A `cloud_identity` finding links from the canonical
+AWS role / GCP service account principal via `has_evidence` -- the same
+URN other provider projections already mint for that principal -- and,
+only when the export marks its consumer list `consumersComplete` AND
+every member canonicalizes to an actual `kubernetes_service_account` URN
+(a valid, non-null cluster/namespace/serviceAccount plus a cloud account
+or project qualifier that itself resolves through the same canonical
+parser other provider projections use -- a nonblank but malformed
+qualifier, e.g. an AWS `cloudAccount` that is not a 12-digit account id,
+does not canonicalize; optional descriptive fields are not required), to
+each consumer Kubernetes service account via `associated_with`, asserted as one Contract C9 guarded link
+set owned by the finding rather than a plain link. The set also carries
+each consumer's minimal Kubernetes service account stub as a CreateOnly
+`Endpoints` entry instead of an ordinary projected entity: the store
+materializes an absent endpoint only inside the same guarded operation
+that accepts this exact set, after retracting superseded assertions and
+before asserting the new links, so a stale or losing observation can
+never leak a consumer stub into the graph ahead of (or instead of) the
+winning decision, and an existing (provider-owned or previously accepted)
+endpoint is left untouched. The finding owns the set because its own
+version orders it; a principal's several findings have independent
+version sequences. A guarded link set's apply is atomic and complete: the
+store retracts this tenant/source/runtime's other `associated_with`
+assertions from the finding and asserts exactly the desired set, so a
+consumer VulnView no longer reports is correctly dropped instead of
+accumulating forever. A partial/unavailable consumer list
+(`consumersComplete: false`), an absent/null consumers container, or any
+member that fails to canonicalize (missing identity field, missing both
+cloud account/project, a cloud account/project qualifier present but not
+parseable into a real canonical identity, or an explicit null member)
+downgrades the whole observation to an `Incomplete` set instead of
+silently dropping just that
+member: the store advances the scope's ordering guard for this
+observation without touching any previously accepted links or
+materializing any endpoint, so an older complete replay can never undo a
+newer downgraded observation. A genuinely complete, empty consumer list
+still clears the scope authoritatively, and valid duplicate consumers
+dedupe into one link/endpoint. The projector only canonicalizes a
+principal subject that is well-formed for its claimed provider and kind: a
+raw `k8s://` placeholder subject, a Kubernetes-placeholder `principal_kind`
+(`aws_kubernetes_service_account` / `gcp_kubernetes_service_account`), a
+non-ARN AWS value, or a non-email/non-`principal://` GCP value all leave
+the finding's `gap_codes` attribute as the only signal, never a dangling
+`has_evidence` link. A fully resolved GCP `principal://` subject always
+canonicalizes, regardless of kind. See
+[`internal/sourceprojection/vulnview_cloud_identity.go`](../../internal/sourceprojection/vulnview_cloud_identity.go)
+and [`internal/ports/projection.go`](../../internal/ports/projection.go)
+for the `ProjectedLinkSet.Endpoints` contract.
+
+Inventory families `site`, `scan`, and `asset` are unchanged: they are not
+findings, and AWS exposure corroboration continues to consume them.
+
 ## Source preview
 
 Preview source behavior before creating a persisted runtime:
@@ -244,6 +397,8 @@ export SOURCE_RUNTIMES_JSON='[
 ```
 
 Use this for local experiments and platform-driven bootstrap flows. Do not put live provider tokens in the JSON. Use `env:` references for sensitive values.
+
+Linux limits a single environment string to 128 KiB on 4 KiB-page hosts, and a larger value fails the container's exec before the CLI starts. For a larger document, set the variable to `gzip+base64:` followed by the standard padded base64 encoding of the gzip-compressed JSON; the CLI decompresses it (up to 16 MiB) before parsing. Plain JSON stays supported.
 
 ## Secrets and `env:` references
 

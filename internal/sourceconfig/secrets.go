@@ -11,6 +11,7 @@ const (
 	credentialPrefix          = "credential:" // #nosec G101 -- runtime reference prefix, not secret material.
 	AWSAssumeRoleAllowlistKey = "__cerebro_aws_assume_role_arns"
 	GCPWIFAllowlistKey        = "__cerebro_gcp_wif_bindings" // #nosec G101 -- internal allowlist key, not secret material.
+	SourceTrustedOriginsKey   = "__cerebro_source_trusted_origins"
 	RuntimeIDKey              = "__cerebro_runtime_id"
 	RuntimeTenantIDKey        = "__cerebro_runtime_tenant_id"
 )
@@ -214,6 +215,36 @@ func GCPWIFBindingAllowed(tenantID string, audience string, serviceAccount strin
 		}
 	}
 	return false
+}
+
+// SourceTrustedOrigins parses a comma-separated "<source_id>=<https origin>"
+// allowlist (as injected into SourceTrustedOriginsKey from the deployment
+// environment) and returns, in list order, the trusted origins configured
+// for sourceID. Entries for other source IDs are ignored. The allowlist is
+// deployment-controlled, never caller-supplied, so a malformed entry (no
+// "=", empty source id, empty origin, or an origin not starting with
+// "https://") is a hard error rather than being silently dropped: failing
+// closed surfaces a deployment typo as a configuration error instead of
+// quietly granting an incomplete or absent allowlist.
+func SourceTrustedOrigins(sourceID string, allowlist string) ([]string, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	var origins []string
+	for _, entry := range strings.Split(allowlist, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		id, origin, ok := strings.Cut(entry, "=")
+		id = strings.TrimSpace(id)
+		origin = strings.TrimSpace(origin)
+		if !ok || id == "" || origin == "" || !strings.HasPrefix(strings.ToLower(origin), "https://") {
+			return nil, sourceConfigError("invalid trusted origin entry: " + entry)
+		}
+		if strings.EqualFold(id, sourceID) {
+			origins = append(origins, origin)
+		}
+	}
+	return origins, nil
 }
 
 func sourceConfigError(message string) error {

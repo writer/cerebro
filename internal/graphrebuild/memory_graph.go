@@ -9,29 +9,60 @@ import (
 
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 )
 
 type memoryGraphStore struct {
 	mu       sync.RWMutex
 	entities map[string]memoryEntity
-	links    map[string]memoryLink
+	// links is the materialized logical view: at most one entry per
+	// (from_urn, relation, to_urn), kept in sync with linkAssertions by
+	// reconcileMemoryLink so every other read path (Counts,
+	// IntegrityChecks, PathPatterns, Topology, SampleTraversals) can keep
+	// reading it unchanged.
+	links map[string]memoryLink
+	// linkAssertions tracks each independent (tenant, source, runtime)
+	// assertion of a logical link separately, keyed by logical link key
+	// (linkKey) and then by assertion scope key
+	// (memoryLinkAssertionKey): a logical link survives in links iff at
+	// least one assertion remains, so one source/runtime retracting its
+	// own assertion (via UpsertProjectedLink replay or a narrowed
+	// ReplaceProjectedLinkSets) can never remove another source/
+	// runtime's independently asserted fact.
+	linkAssertions map[string]map[string]memoryLink
+
+	// linkSetObservations models Contract C9's guarded replace semantics
+	// even though this scratch dry-run store otherwise has no other
+	// entity observation-precedence concept: a marker per owner/
+	// relation/direction/tenant/source/runtime scope keeps the last
+	// applied Observation. A narrowed or authoritative-empty set
+	// retracts exactly this (tenant, source, runtime) scope's own
+	// linkAssertions entries for the set's (owner, relation, direction)
+	// by scanning linkAssertions directly (see
+	// ReplaceProjectedLinkSets), so it never touches another scope's
+	// assertion of the same logical link regardless of whether that
+	// assertion was written by a previous link set or a plain
+	// UpsertProjectedLink.
+	linkSetObservations map[string]map[string]string
 }
 
 type memoryEntity struct {
 	URN        string
 	TenantID   string
 	SourceID   string
+	RuntimeID  string
 	EntityType string
 	Label      string
 	Attributes map[string]string
 }
 
 type memoryLink struct {
-	TenantID string
-	SourceID string
-	FromURN  string
-	ToURN    string
-	Relation string
+	TenantID  string
+	SourceID  string
+	RuntimeID string
+	FromURN   string
+	ToURN     string
+	Relation  string
 }
 
 type memoryURNPair struct {
@@ -51,8 +82,9 @@ type memoryTraversalSampler struct {
 
 func newMemoryGraphStore() (graphStore, error) {
 	return &memoryGraphStore{
-		entities: make(map[string]memoryEntity),
-		links:    make(map[string]memoryLink),
+		entities:       make(map[string]memoryEntity),
+		links:          make(map[string]memoryLink),
+		linkAssertions: make(map[string]map[string]memoryLink),
 	}, nil
 }
 
@@ -67,51 +99,93 @@ func (s *memoryGraphStore) Close() error {
 	return nil
 }
 
+// UpsertProjectedEntity applies Contract G's G1 semantics for the scratch
+// store: entity.CreateOnly only creates the entity when absent and
+// otherwise changes nothing (not even typed source/runtime ownership,
+// label, or attributes); a stale strict-precedence observation
+// (projectionmeta.StaleStrictObservation) against an existing entity
+// changes nothing at all; an accepted observation merges attributes and
+// then deletes each entity.RetractedAttributes key absent from the
+// incoming Attributes.
 func (s *memoryGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
-	if entity == nil {
-		return errors.New("projected entity is required")
-	}
-	urn := strings.TrimSpace(entity.URN)
-	if urn == "" {
-		return errors.New("projected entity urn is required")
-	}
-	tenantID := strings.TrimSpace(entity.TenantID)
-	if tenantID == "" {
-		return errors.New("projected entity tenant id is required")
-	}
-	sourceID := strings.TrimSpace(entity.SourceID)
-	if sourceID == "" {
-		return errors.New("projected entity source id is required")
-	}
-	entityType := strings.TrimSpace(entity.EntityType)
-	if entityType == "" {
-		return errors.New("projected entity type is required")
+	if err := validateMemoryProjectedEntity(entity); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.upsertProjectedEntityLocked(entity)
+	return nil
+}
+
+// validateMemoryProjectedEntity rejects an entity missing required
+// identity fields, shared by UpsertProjectedEntity and
+// ReplaceProjectedLinkSets' Endpoints materialization (R06).
+func validateMemoryProjectedEntity(entity *ports.ProjectedEntity) error {
+	if entity == nil {
+		return errors.New("projected entity is required")
+	}
+	if strings.TrimSpace(entity.URN) == "" {
+		return errors.New("projected entity urn is required")
+	}
+	if strings.TrimSpace(entity.TenantID) == "" {
+		return errors.New("projected entity tenant id is required")
+	}
+	if strings.TrimSpace(entity.SourceID) == "" {
+		return errors.New("projected entity source id is required")
+	}
+	if strings.TrimSpace(entity.EntityType) == "" {
+		return errors.New("projected entity type is required")
+	}
+	return nil
+}
+
+// upsertProjectedEntityLocked applies one already-validated entity's G1
+// semantics; callers must already hold s.mu.
+func (s *memoryGraphStore) upsertProjectedEntityLocked(entity *ports.ProjectedEntity) {
+	urn := strings.TrimSpace(entity.URN)
+	tenantID := strings.TrimSpace(entity.TenantID)
+	sourceID := strings.TrimSpace(entity.SourceID)
+	entityType := strings.TrimSpace(entity.EntityType)
+	existing, exists := s.entities[urn]
+	if entity.CreateOnly && exists {
+		return
+	}
+	incoming := cloneMemoryAttributes(entity.Attributes)
+	if exists && projectionmeta.StaleStrictObservation(existing.Attributes, incoming) {
+		return
+	}
 	label := strings.TrimSpace(entity.Label)
 	fallbackLabel := label == ""
 	if label == "" {
 		label = urn
 	}
-	if existing, ok := s.entities[urn]; ok && fallbackLabel {
+	if exists && fallbackLabel {
 		label = existing.Label
 	}
-	attributes := cloneMemoryAttributes(entity.Attributes)
-	if existing, ok := s.entities[urn]; ok {
-		attributes = mergeMemoryAttributes(existing.Attributes, attributes)
+	attributes := incoming
+	if exists {
+		attributes = ports.ApplyRetractedAttributes(mergeMemoryAttributes(existing.Attributes, incoming), entity.Attributes, entity.RetractedAttributes)
+	}
+	runtimeID := strings.TrimSpace(entity.RuntimeID)
+	if runtimeID == "" && exists {
+		runtimeID = existing.RuntimeID
 	}
 	s.entities[urn] = memoryEntity{
 		URN:        urn,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
+		RuntimeID:  runtimeID,
 		EntityType: entityType,
 		Label:      label,
 		Attributes: attributes,
 	}
-	return nil
 }
 
+// UpsertProjectedLink records one independent (tenant, source, runtime)
+// assertion of a logical link and reconciles the materialized logical view
+// from every assertion still on record, so retracting or replaying one
+// source/runtime's assertion (including an identical replay) never affects
+// another's.
 func (s *memoryGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
 	if link == nil {
 		return errors.New("projected link is required")
@@ -136,16 +210,139 @@ func (s *memoryGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Pr
 	if sourceID == "" {
 		return errors.New("projected link source id is required")
 	}
+	runtimeID := strings.TrimSpace(link.RuntimeID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.links[linkKey(fromURN, relation, toURN)] = memoryLink{
-		TenantID: tenantID,
-		SourceID: sourceID,
-		FromURN:  fromURN,
-		ToURN:    toURN,
-		Relation: relation,
-	}
+	s.setMemoryLinkAssertion(fromURN, relation, toURN, tenantID, sourceID, runtimeID)
 	return nil
+}
+
+// ReplaceProjectedLinkSets applies each guarded link set (Contract C9),
+// keyed by owner/relation/direction/tenant/source/runtime scope. See the
+// linkSetObservations field for how the Observation guard is enforced
+// without any other entity/link observation-precedence concept in this
+// scratch store. A narrowed or authoritative-empty set retracts only this
+// exact (tenant, source, runtime) scope's own linkAssertions entries for
+// the set's (owner, relation, direction), found by scanning linkAssertions
+// rather than any separately cached ownership set, so the retraction
+// always matches live assertion state (whether created by a previous link
+// set or a plain UpsertProjectedLink) and another source/runtime's
+// assertion of the exact same logical link is never touched. An Incomplete
+// set must carry no links or endpoints: it only advances the scope's
+// Observation guard and never retracts, asserts, or materializes
+// anything. Once a set is accepted and not Incomplete, its Endpoints are
+// CreateOnly-materialized (R06, never overwriting an existing entity)
+// before links are asserted, matching the real stores' guarantee that a
+// stale or losing set's Endpoints can never reach the scratch graph.
+func (s *memoryGraphStore) ReplaceProjectedLinkSets(_ context.Context, sets []*ports.ProjectedLinkSet) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.replaceProjectedLinkSetsLocked(sets)
+	return err
+}
+
+// ReplaceProjectedLinkSetsReportingAccepted applies the exact same guarded
+// semantics as ReplaceProjectedLinkSets and additionally returns the
+// subset of sets this call actually accepted (not rejected as stale),
+// computed by the same guard evaluated here rather than re-implemented by
+// a caller (R06 P2): previewGraphStore uses this to count only genuinely
+// accepted endpoints/links instead of showing a stale set's requested
+// content in the preview.
+func (s *memoryGraphStore) ReplaceProjectedLinkSetsReportingAccepted(_ context.Context, sets []*ports.ProjectedLinkSet) ([]*ports.ProjectedLinkSet, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.replaceProjectedLinkSetsLocked(sets)
+}
+
+// replaceProjectedLinkSetsLocked is the single guarded implementation both
+// public methods share; callers must already hold s.mu. It returns exactly
+// the input sets this call did not reject as stale, in the same order.
+func (s *memoryGraphStore) replaceProjectedLinkSetsLocked(sets []*ports.ProjectedLinkSet) ([]*ports.ProjectedLinkSet, error) {
+	if s.linkSetObservations == nil {
+		s.linkSetObservations = map[string]map[string]string{}
+	}
+	if s.linkAssertions == nil {
+		s.linkAssertions = map[string]map[string]memoryLink{}
+	}
+	if s.entities == nil {
+		s.entities = map[string]memoryEntity{}
+	}
+	accepted := make([]*ports.ProjectedLinkSet, 0, len(sets))
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		ownerURN := strings.TrimSpace(set.OwnerURN)
+		relation := strings.TrimSpace(set.Relation)
+		tenantID := strings.TrimSpace(set.TenantID)
+		sourceID := strings.TrimSpace(set.SourceID)
+		runtimeID := strings.TrimSpace(set.RuntimeID)
+		if ownerURN == "" || relation == "" || tenantID == "" || sourceID == "" {
+			return accepted, errors.New("projected link set owner urn, relation, tenant id, and source id are required")
+		}
+		if err := ports.ValidateProjectedLinkSetIncomplete(set); err != nil {
+			return accepted, err
+		}
+		if err := ports.ValidateProjectedLinkSetEndpoints(set); err != nil {
+			return accepted, err
+		}
+		key := ports.ProjectedLinkSetOwnerKey(set)
+		if stored, ok := s.linkSetObservations[key]; ok && projectionmeta.CompareObservations(stored, set.Observation) == projectionmeta.ObservationOlder {
+			continue
+		}
+		accepted = append(accepted, set)
+		if set.Incomplete {
+			// An accepted incomplete observation advances the scope's
+			// ordering guard but neither retracts nor asserts any link,
+			// nor materializes any endpoint.
+			s.linkSetObservations[key] = set.Observation
+			continue
+		}
+		for _, endpoint := range set.Endpoints {
+			if endpoint == nil {
+				continue
+			}
+			if err := validateMemoryProjectedEntity(endpoint); err != nil {
+				return accepted, err
+			}
+			s.upsertProjectedEntityLocked(endpoint)
+		}
+		assertionKey := memoryLinkAssertionKey(tenantID, sourceID, runtimeID)
+		desiredKeys := make(map[string]struct{}, len(set.Links))
+		for _, link := range set.Links {
+			if link == nil {
+				continue
+			}
+			desiredKeys[linkKey(strings.TrimSpace(link.FromURN), relation, strings.TrimSpace(link.ToURN))] = struct{}{}
+		}
+		for logicalKey, assertions := range s.linkAssertions {
+			current, ok := assertions[assertionKey]
+			if !ok || current.Relation != relation {
+				continue
+			}
+			ownerSide := current.ToURN
+			if set.Outgoing {
+				ownerSide = current.FromURN
+			}
+			if ownerSide != ownerURN {
+				continue
+			}
+			if _, desired := desiredKeys[logicalKey]; desired {
+				continue
+			}
+			s.clearMemoryLinkAssertion(logicalKey, assertionKey)
+		}
+		for _, link := range set.Links {
+			if link == nil {
+				continue
+			}
+			fromURN := strings.TrimSpace(link.FromURN)
+			toURN := strings.TrimSpace(link.ToURN)
+			s.setMemoryLinkAssertion(fromURN, relation, toURN, tenantID, sourceID, runtimeID)
+		}
+		s.linkSetObservations[key] = set.Observation
+	}
+	return accepted, nil
 }
 
 func (s *memoryGraphStore) Counts(context.Context) (graphstore.Counts, error) {
@@ -481,6 +678,70 @@ func (s *memoryTraversalSampler) Traversals() []graphstore.Traversal {
 
 func linkKey(fromURN string, relation string, toURN string) string {
 	return strings.Join([]string{fromURN, relation, toURN}, "|")
+}
+
+// memoryLinkAssertionKey identifies one independent (tenant, source,
+// runtime) assertion scope of a logical link.
+func memoryLinkAssertionKey(tenantID string, sourceID string, runtimeID string) string {
+	return strings.Join([]string{tenantID, sourceID, runtimeID}, "\x00")
+}
+
+// setMemoryLinkAssertion records one (tenant, source, runtime) assertion of
+// a logical link and reconciles the materialized view. Callers must hold
+// s.mu for writing.
+func (s *memoryGraphStore) setMemoryLinkAssertion(fromURN string, relation string, toURN string, tenantID string, sourceID string, runtimeID string) {
+	logicalKey := linkKey(fromURN, relation, toURN)
+	if s.linkAssertions == nil {
+		s.linkAssertions = map[string]map[string]memoryLink{}
+	}
+	if s.linkAssertions[logicalKey] == nil {
+		s.linkAssertions[logicalKey] = map[string]memoryLink{}
+	}
+	s.linkAssertions[logicalKey][memoryLinkAssertionKey(tenantID, sourceID, runtimeID)] = memoryLink{
+		TenantID:  tenantID,
+		SourceID:  sourceID,
+		RuntimeID: runtimeID,
+		FromURN:   fromURN,
+		ToURN:     toURN,
+		Relation:  relation,
+	}
+	s.reconcileMemoryLink(logicalKey)
+}
+
+// clearMemoryLinkAssertion removes one (tenant, source, runtime) assertion
+// of a logical link (identified by its already-built assertionKey) and
+// reconciles the materialized view. Callers must hold s.mu for writing.
+func (s *memoryGraphStore) clearMemoryLinkAssertion(logicalKey string, assertionKey string) {
+	assertions := s.linkAssertions[logicalKey]
+	if assertions == nil {
+		return
+	}
+	delete(assertions, assertionKey)
+	if len(assertions) == 0 {
+		delete(s.linkAssertions, logicalKey)
+	}
+	s.reconcileMemoryLink(logicalKey)
+}
+
+// reconcileMemoryLink materializes s.links[logicalKey] from whichever
+// assertions still cover it: a logical link survives iff at least one
+// (tenant, source, runtime) assertion remains, independent of which
+// assertion was written or retracted last. The deterministic choice among
+// multiple surviving assertions (lexicographically smallest assertion key)
+// only affects which assertion's provenance is reflected in the
+// materialized view; it never affects whether the link exists.
+func (s *memoryGraphStore) reconcileMemoryLink(logicalKey string) {
+	assertions := s.linkAssertions[logicalKey]
+	if len(assertions) == 0 {
+		delete(s.links, logicalKey)
+		return
+	}
+	keys := make([]string, 0, len(assertions))
+	for assertionKey := range assertions {
+		keys = append(keys, assertionKey)
+	}
+	sort.Strings(keys)
+	s.links[logicalKey] = assertions[keys[0]]
 }
 
 func pathPatternKey(pattern graphstore.PathPattern) string {

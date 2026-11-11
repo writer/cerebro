@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "schema": "vulnview-finding-export/v1",
+      "findingId": "6f1d2c0000000000000000000000000000000000000000000000000000000000",
+      "source": "cloud_identity",
+      "checkId": "cloud_identity_excess_privilege",
+      "title": "Role grants unused write access",
+      "severity": "high",
+      "status": "open",
+      "resource": {
+        "provider": "aws",
+        "account": "111111111111",
+        "resourceType": "iam_role"
+      },
+      "lifecycle": {
+        "firstSeenAt": "2026-11-01T09:10:00.000000Z",
+        "lastSeenAt": "2026-11-03T09:10:00.000000Z",
+        "lastEvaluatedAt": "2026-11-03T09:10:00.000000Z",
+        "reopenCount": 0
+      },
+      "provenance": {
+        "lastScanId": "scan-a",
+        "lastRunId": "run-1",
+        "integrations": [
+          {"kind": "cloud_account", "id": "222222222222"},
+          {"kind": "cloud_account", "id": "111111111111"}
+        ],
+        "repositoryIntegrations": [
+          {"kind": "github", "id": "gh-2"}
+        ],
+        "integrationAttribution": "run"
+      },
+      "version": 2,
+      "updatedAt": "2026-11-03T09:10:00.000000Z",
+      "details": {
+        "principalId": "arn:aws:iam::111111111111:role/svc-0",
+        "principalKind": "aws_role",
+        "cohortScope": "writer",
+        "checkVersion": 1,
+        "detectorVersion": "1.0.0",
+        "side": "iac",
+        "drift": false,
+        "consumers": [
+          {
+            "cluster": "cluster-a",
+            "namespace": "payments",
+            "serviceAccount": "worker",
+            "service": "billing"
+          }
+        ],
+        "consumersComplete": true,
+        "gapCodes": [],
+        "evidence": {
+          "bundleKey": "cloud-identity/staging/writer/20261103T090000Z-ab12.json.gz",
+          "bundleSha256": "ab12cd34",
+          "principalEvidenceSha256": "sha256:ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34",
+          "collectedAt": "2026-11-03T09:00:00Z"
+        }
+      }
+    }
+  ],
+  "nextCursor": "eyJyb3V0ZSI6ImZpbmRpbmdzIiwic291cmNlIjoiY2xvdWRfaWRlbnRpdHkiLCJ3YXRlcm1hcmsiOiIyMDI2LTExLTAzVDA5OjEwOjAwLjAwMDAwMFoifQ==",
+  "hasMore": false
+}

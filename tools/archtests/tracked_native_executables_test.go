@@ -1,36 +1,113 @@
 package archtests
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
+// trackedEntry is one Git index entry the guard reads from the object store.
+type trackedEntry struct {
+	mode string
+	sha  string
+	path string
+}
+
 func TestRepositoryDoesNotTrackNativeExecutables(t *testing.T) {
 	root := repoRoot(t)
-	command := exec.Command("git", "ls-files", "-z")
+
+	// Read each tracked path's content from the Git index (the staged
+	// blob the next commit would contain), not from the working tree.
+	// This both avoids false passes when a tracked file has been deleted
+	// (staged or unstaged) on disk without being removed from the index,
+	// and avoids any need to write to the working tree or index to check.
+	command := exec.Command("git", "ls-files", "-s", "-z")
 	command.Dir = root
 	output, err := command.Output()
 	if err != nil {
 		t.Fatalf("list tracked files: %v", err)
 	}
 
-	var nativeExecutables []string
-	for _, trackedPath := range bytes.Split(output, []byte{0}) {
-		if len(trackedPath) == 0 {
+	var entries []trackedEntry
+	for _, record := range bytes.Split(output, []byte{0}) {
+		if len(record) == 0 {
 			continue
 		}
-		name := string(trackedPath)
-		contents, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		// Format: "<mode> <sha> <stage>\t<path>"
+		fields := strings.SplitN(string(record), "\t", 2)
+		if len(fields) != 2 {
+			t.Fatalf("unexpected git ls-files -s record: %q", record)
+		}
+		meta := strings.Fields(fields[0])
+		if len(meta) != 3 {
+			t.Fatalf("unexpected git ls-files -s metadata: %q", fields[0])
+		}
+		mode, sha, path := meta[0], meta[1], fields[1]
+		// Gitlinks (submodules, mode 160000) are not blobs; there is
+		// nothing in the object database to read their content from.
+		if mode == "160000" {
+			continue
+		}
+		entries = append(entries, trackedEntry{mode: mode, sha: sha, path: path})
+	}
+
+	batch := exec.Command("git", "cat-file", "--batch")
+	batch.Dir = root
+	stdin, err := batch.StdinPipe()
+	if err != nil {
+		t.Fatalf("open cat-file stdin: %v", err)
+	}
+	stdout, err := batch.StdoutPipe()
+	if err != nil {
+		t.Fatalf("open cat-file stdout: %v", err)
+	}
+	if err := batch.Start(); err != nil {
+		t.Fatalf("start git cat-file --batch: %v", err)
+	}
+	requestErr := make(chan error, 1)
+	go func() {
+		requestErr <- writeCatFileRequests(stdin, entries)
+	}()
+
+	var nativeExecutables []string
+	reader := bufio.NewReader(stdout)
+	for _, entry := range entries {
+		header, err := reader.ReadString('\n')
 		if err != nil {
-			t.Fatalf("read tracked file %q: %v", name, err)
+			t.Fatalf("read cat-file header for %q (%s): %v", entry.path, entry.sha, err)
+		}
+		header = strings.TrimSuffix(header, "\n")
+		fields := strings.Fields(header)
+		if len(fields) != 3 || fields[0] != entry.sha || fields[1] != "blob" {
+			t.Fatalf("missing tracked blob %s for %q (git reported %q); a tracked path must always resolve to an object in the index", entry.sha, entry.path, header)
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil {
+			t.Fatalf("unparseable blob size for %q: %q", entry.path, header)
+		}
+		contents := make([]byte, size)
+		if _, err := io.ReadFull(reader, contents); err != nil {
+			t.Fatalf("read tracked blob content for %q: %v", entry.path, err)
+		}
+		if _, err := reader.ReadByte(); err != nil { // trailing newline after blob content
+			t.Fatalf("read cat-file trailing newline for %q: %v", entry.path, err)
 		}
 		if isNativeExecutable(contents) {
-			nativeExecutables = append(nativeExecutables, name)
+			nativeExecutables = append(nativeExecutables, entry.path)
 		}
+	}
+	if err := <-requestErr; err != nil {
+		t.Fatalf("write git cat-file --batch requests: %v", err)
+	}
+	if err := batch.Wait(); err != nil {
+		t.Fatalf("git cat-file --batch: %v", err)
 	}
 
 	if len(nativeExecutables) != 0 {
@@ -39,6 +116,24 @@ func TestRepositoryDoesNotTrackNativeExecutables(t *testing.T) {
 			strings.Join(nativeExecutables, "\n- "),
 		)
 	}
+}
+
+// writeCatFileRequests streams one object request per tracked entry and
+// closes the batch's stdin so git cat-file terminates; any write failure is
+// returned so the guard fails closed rather than reading a short batch.
+func writeCatFileRequests(stdin io.WriteCloser, entries []trackedEntry) error {
+	writer := bufio.NewWriter(stdin)
+	for _, entry := range entries {
+		if _, err := fmt.Fprintln(writer, entry.sha); err != nil {
+			_ = stdin.Close()
+			return err
+		}
+	}
+	if err := writer.Flush(); err != nil {
+		_ = stdin.Close()
+		return err
+	}
+	return stdin.Close()
 }
 
 func isNativeExecutable(contents []byte) bool {

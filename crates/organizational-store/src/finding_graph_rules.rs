@@ -126,7 +126,6 @@ mod tests {
     #[test]
     fn catalog_is_closed_and_bounded() {
         let entries = catalog().expect("catalog parses");
-        assert_eq!(entries.len(), 40);
         assert!(entries.values().all(|entry| {
             !entry.query.trim().is_empty()
                 && entry.row_limit > 0

@@ -194,3 +194,41 @@ func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
 		t.Fatal("direct source config injected runtime GCP WIF allowlist")
 	}
 }
+
+func TestResolveSourceRuntimeConfigInjectsSourceTrustedOrigins(t *testing.T) {
+	t.Setenv(sourceTrustedOriginsEnv, "vulnview=https://vulnview.example.test")
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "vulnview", map[string]string{
+		sourceconfig.SourceTrustedOriginsKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.SourceTrustedOriginsKey]; got != "vulnview=https://vulnview.example.test" {
+		t.Fatalf("resolved trusted origins = %q, want deployment env value", got)
+	}
+}
+
+func TestResolveSourceConfigInjectsSourceTrustedOrigins(t *testing.T) {
+	t.Setenv(sourceTrustedOriginsEnv, "vulnview=https://vulnview.example.test")
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "vulnview", map[string]string{
+		sourceconfig.SourceTrustedOriginsKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.SourceTrustedOriginsKey]; got != "vulnview=https://vulnview.example.test" {
+		t.Fatalf("resolved trusted origins = %q, want deployment env value", got)
+	}
+}
+
+func TestResolveSourceConfigInjectsEmptySourceTrustedOriginsWhenUnset(t *testing.T) {
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "vulnview", map[string]string{
+		sourceconfig.SourceTrustedOriginsKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.SourceTrustedOriginsKey]; got != "" {
+		t.Fatalf("resolved trusted origins = %q, want empty", got)
+	}
+}

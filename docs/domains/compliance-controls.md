@@ -260,6 +260,11 @@ make control-index-generate
 make control-index-check
 ```
 
+These targets and `catalog-check` run the control-index generator with
+`GO_TOOLCHAIN` from the Makefile. Gzip output can differ between Go versions
+even when the JSON is identical; use these targets rather than an unpinned
+`go run` so the checked-in artifact matches CI byte for byte.
+
 ## Control Posture
 
 Control posture turns a selected control scope into an auditor-facing operating status. It combines:

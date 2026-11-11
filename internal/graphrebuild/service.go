@@ -35,12 +35,21 @@ const (
 
 type graphStore interface {
 	ports.ProjectionGraphStore
+	ports.ProjectionLinkSetStore
 	Close() error
 	Counts(context.Context) (graphstore.Counts, error)
 	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
 	PathPatterns(context.Context, int) ([]graphstore.PathPattern, error)
 	Topology(context.Context) (graphstore.Topology, error)
 	SampleTraversals(context.Context, int) ([]graphstore.Traversal, error)
+	// ReplaceProjectedLinkSetsReportingAccepted applies the exact same
+	// guarded Contract C9 semantics as ReplaceProjectedLinkSets and
+	// additionally returns the subset of sets this call actually accepted
+	// (not rejected as stale), computed by the store's own guard rather
+	// than re-evaluated by any caller (R06 P2): previewGraphStore uses this
+	// to count only genuinely accepted endpoints/links instead of showing
+	// a stale set's rejected content in the preview.
+	ReplaceProjectedLinkSetsReportingAccepted(context.Context, []*ports.ProjectedLinkSet) ([]*ports.ProjectedLinkSet, error)
 }
 
 type graphSummaryStore interface {
@@ -841,6 +850,86 @@ func (s *previewGraphStore) UpsertProjectedLink(ctx context.Context, link *ports
 		FromURN:  strings.TrimSpace(link.FromURN),
 		Relation: strings.TrimSpace(link.Relation),
 		ToURN:    strings.TrimSpace(link.ToURN),
+	}
+	return nil
+}
+
+// ReplaceProjectedLinkSets forwards to the scratch graph and keeps the
+// preview's entity/link/relation counters consistent with endpoints and
+// links asserted through Contract C9's guarded path, not only the plain
+// upsert paths. Counting is derived from ReplaceProjectedLinkSetsReportingAccepted's
+// returned accepted subset, not the raw request (R06 P2): a set the
+// scratch store rejects as stale (for example a v2 replay after an
+// authoritative v3) must never show its requested endpoints/links in the
+// preview, and this reuses the store's own guard instead of
+// re-implementing it here.
+func (s *previewGraphStore) ReplaceProjectedLinkSets(ctx context.Context, sets []*ports.ProjectedLinkSet) error {
+	accepted, err := s.store.ReplaceProjectedLinkSetsReportingAccepted(ctx, sets)
+	if err != nil {
+		return err
+	}
+	for _, set := range accepted {
+		if set == nil {
+			continue
+		}
+		for _, endpoint := range set.Endpoints {
+			if endpoint == nil {
+				continue
+			}
+			urn := strings.TrimSpace(endpoint.URN)
+			if urn == "" {
+				continue
+			}
+			if _, exists := s.seenEntities[urn]; !exists {
+				s.seenEntities[urn] = struct{}{}
+				entityType := strings.TrimSpace(endpoint.EntityType)
+				if entityType != "" {
+					s.entityTypeCounts[entityType]++
+				}
+			}
+			if len(s.entitiesBy) >= s.limit {
+				continue
+			}
+			if _, exists := s.entitiesBy[urn]; exists {
+				continue
+			}
+			s.entitiesBy[urn] = &EntityPreview{
+				URN:        urn,
+				EntityType: strings.TrimSpace(endpoint.EntityType),
+				Label:      strings.TrimSpace(endpoint.Label),
+			}
+		}
+		for _, link := range set.Links {
+			if link == nil {
+				continue
+			}
+			key := strings.Join([]string{
+				strings.TrimSpace(link.FromURN),
+				strings.TrimSpace(link.Relation),
+				strings.TrimSpace(link.ToURN),
+			}, "|")
+			if key == "||" {
+				continue
+			}
+			if _, exists := s.seenLinks[key]; !exists {
+				s.seenLinks[key] = struct{}{}
+				relation := strings.TrimSpace(link.Relation)
+				if relation != "" {
+					s.relationCounts[relation]++
+				}
+			}
+			if len(s.linksBy) >= s.limit {
+				continue
+			}
+			if _, exists := s.linksBy[key]; exists {
+				continue
+			}
+			s.linksBy[key] = &LinkPreview{
+				FromURN:  strings.TrimSpace(link.FromURN),
+				Relation: strings.TrimSpace(link.Relation),
+				ToURN:    strings.TrimSpace(link.ToURN),
+			}
+		}
 	}
 	return nil
 }

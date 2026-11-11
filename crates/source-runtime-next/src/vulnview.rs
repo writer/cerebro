@@ -1,15 +1,22 @@
-//! Portable VulnView request, response, and DNS-alert fanout kernel.
+//! Portable VulnView request and response kernel.
 //!
 //! This module models the public provider contract without embedding a
 //! deployment origin, OAuth issuer, credential value, or egress decision.
 //! Callers authorize the planned URL and supply a leased bearer token before
 //! I/O; the kernel only owns family planning and deterministic normalization.
+//!
+//! Only the inventory families (site, scan, asset) are modeled here: the
+//! standardized finding export (Contract C8, `vulnview.finding` via
+//! `GET /exports/findings`) has no Rust parity requirement today (no
+//! consumer of this crate exercises it), so it is intentionally not
+//! modeled as a `VulnViewFamily` variant. The former `vulnerability` and
+//! `dns_alert` families -- and the DNS-alert cursor fanout they needed --
+//! are gone: VulnView now exports them, among others, through that single
+//! standardized finding route instead.
 
 use std::{collections::BTreeMap, error::Error, fmt, net::IpAddr, str::FromStr};
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use time::{Date, OffsetDateTime, Time, format_description::well_known::Rfc3339};
 
@@ -17,10 +24,6 @@ const DEFAULT_PAGE_SIZE: usize = 100;
 const MAX_PAGE_SIZE: usize = 500;
 const MAX_FILTER_BYTES: usize = 2_048;
 const MAX_PROVIDER_CURSOR_BYTES: usize = 4_096;
-const DNS_CURSOR_PREFIX: &str = "dns:";
-const MAX_DNS_CURSOR_PAYLOAD_BYTES: usize = MAX_PROVIDER_CURSOR_BYTES * 2 + 96;
-const MAX_DNS_CURSOR_BYTES: usize =
-    DNS_CURSOR_PREFIX.len() + MAX_DNS_CURSOR_PAYLOAD_BYTES.div_ceil(3) * 4;
 
 /// One portable VulnView source family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,12 +32,8 @@ pub enum VulnViewFamily {
     Site,
     /// Scan lifecycle records.
     Scan,
-    /// Vulnerability findings.
-    Vulnerability,
     /// External assets.
     Asset,
-    /// DNS findings expanded from asset records.
-    DnsAlert,
 }
 
 impl VulnViewFamily {
@@ -43,9 +42,7 @@ impl VulnViewFamily {
         match self {
             Self::Site => "site",
             Self::Scan => "scan",
-            Self::Vulnerability => "vulnerability",
             Self::Asset => "asset",
-            Self::DnsAlert => "dns_alert",
         }
     }
 
@@ -54,9 +51,7 @@ impl VulnViewFamily {
         match self {
             Self::Site => "vulnview.site",
             Self::Scan => "vulnview.scan",
-            Self::Vulnerability => "vulnview.vulnerability",
             Self::Asset => "vulnview.asset",
-            Self::DnsAlert => "vulnview.dns_alert",
         }
     }
 
@@ -64,8 +59,7 @@ impl VulnViewFamily {
         match self {
             Self::Site => "/sites",
             Self::Scan => "/scans",
-            Self::Vulnerability => "/vulnerabilities",
-            Self::Asset | Self::DnsAlert => "/assets",
+            Self::Asset => "/assets",
         }
     }
 }
@@ -77,9 +71,7 @@ impl FromStr for VulnViewFamily {
         match value.trim() {
             "site" => Ok(Self::Site),
             "scan" => Ok(Self::Scan),
-            "vulnerability" => Ok(Self::Vulnerability),
             "asset" => Ok(Self::Asset),
-            "dns_alert" => Ok(Self::DnsAlert),
             _ => Err(VulnViewError::InvalidFamily),
         }
     }
@@ -104,7 +96,6 @@ pub struct VulnViewRequest {
     url: Url,
     family: VulnViewFamily,
     cursor: Option<String>,
-    dns_state: Option<DnsCursor>,
 }
 
 impl VulnViewRequest {
@@ -137,7 +128,7 @@ pub struct VulnViewRecord {
     pub occurred_at: Option<String>,
     /// Portable scalar attributes used by source projection.
     pub fields: BTreeMap<String, String>,
-    /// Original provider record, or the portable DNS-alert fanout object.
+    /// Original provider record.
     pub payload: Value,
 }
 
@@ -146,7 +137,7 @@ pub struct VulnViewRecord {
 pub struct VulnViewPage {
     /// Normalized records in provider order.
     pub records: Vec<VulnViewRecord>,
-    /// Provider cursor, local offset, or versioned DNS fanout cursor.
+    /// Provider cursor or local offset.
     pub next_cursor: Option<String>,
 }
 
@@ -187,21 +178,7 @@ impl VulnViewKernel {
 
     /// Plan one credential-free provider request.
     pub fn plan(&self, cursor: Option<&str>) -> Result<VulnViewRequest, VulnViewError> {
-        let cursor = if self.family == VulnViewFamily::DnsAlert {
-            bounded_dns_cursor(cursor)?
-        } else {
-            bounded_provider_cursor(cursor)?
-        };
-        let dns_state = if self.family == VulnViewFamily::DnsAlert {
-            Some(decode_dns_cursor(cursor.as_deref())?)
-        } else {
-            None
-        };
-        let provider_cursor = dns_state
-            .as_ref()
-            .map(|state| state.asset_cursor.as_str())
-            .or(cursor.as_deref())
-            .filter(|value| !value.is_empty());
+        let cursor = bounded_provider_cursor(cursor)?;
         let mut url = self.endpoint(self.family.path())?;
         {
             let mut query = url.query_pairs_mut();
@@ -219,7 +196,7 @@ impl VulnViewKernel {
                 query.append_pair("search", value);
             }
             query.append_pair("limit", &self.page_size.to_string());
-            if let Some(cursor) = provider_cursor {
+            if let Some(cursor) = cursor.as_deref() {
                 query.append_pair("cursor", cursor);
             }
         }
@@ -227,7 +204,6 @@ impl VulnViewKernel {
             url,
             family: self.family,
             cursor,
-            dns_state,
         })
     }
 
@@ -239,9 +215,6 @@ impl VulnViewKernel {
     ) -> Result<VulnViewPage, VulnViewError> {
         self.validate_request(request)?;
         let (items, next_cursor) = decode_list(body)?;
-        if self.family == VulnViewFamily::DnsAlert {
-            return self.decode_dns_alerts(request, items, next_cursor);
-        }
         let records = items
             .into_iter()
             .map(|item| normalize_record(self.family, item, None))
@@ -257,76 +230,6 @@ impl VulnViewKernel {
             });
         }
         let (records, next_cursor) = page_by_offset(records, cursor, self.page_size)?;
-        Ok(VulnViewPage {
-            records,
-            next_cursor,
-        })
-    }
-
-    fn decode_dns_alerts(
-        &self,
-        request: &VulnViewRequest,
-        assets: Vec<Value>,
-        next_asset_cursor: Option<String>,
-    ) -> Result<VulnViewPage, VulnViewError> {
-        let state = request
-            .dns_state
-            .as_ref()
-            .ok_or(VulnViewError::RequestScopeMismatch)?;
-        let mut records = Vec::new();
-        for asset in assets {
-            let asset = asset.as_object().ok_or(VulnViewError::InvalidResponse)?;
-            let alerts = match asset.get("dnsAlerts") {
-                Some(Value::Array(alerts)) => alerts,
-                _ => continue,
-            };
-            for (index, alert) in alerts.iter().enumerate() {
-                let Some(alert) = alert.as_object() else {
-                    continue;
-                };
-                let mut values = Map::new();
-                values.insert(
-                    "asset".to_owned(),
-                    asset.get("asset").cloned().unwrap_or(Value::Null),
-                );
-                values.insert(
-                    "siteNames".to_owned(),
-                    asset.get("sites").cloned().unwrap_or(Value::Null),
-                );
-                values.insert(
-                    "scanNames".to_owned(),
-                    asset.get("scanNames").cloned().unwrap_or(Value::Null),
-                );
-                values.extend(alert.clone());
-                let asset_id = value_string(values.get("asset"));
-                let alert_id = first_value(&values, &["id", "alert", "name", "type"]);
-                let provider_id = stable_id(&[&asset_id, &alert_id, &index.to_string()]);
-                let record = normalize_record(
-                    VulnViewFamily::DnsAlert,
-                    Value::Object(values),
-                    Some(provider_id),
-                )?
-                .ok_or(VulnViewError::InvalidResponse)?;
-                records.push(record);
-            }
-        }
-        let (records, next_offset) =
-            page_by_offset(records, &state.alert_offset.to_string(), self.page_size)?;
-        let next_cursor = if let Some(next_offset) = next_offset {
-            Some(encode_dns_cursor(&DnsCursor {
-                asset_cursor: state.asset_cursor.clone(),
-                alert_offset: next_offset
-                    .parse()
-                    .map_err(|_| VulnViewError::InvalidCursor)?,
-            })?)
-        } else if let Some(asset_cursor) = next_asset_cursor {
-            Some(encode_dns_cursor(&DnsCursor {
-                asset_cursor,
-                alert_offset: 0,
-            })?)
-        } else {
-            None
-        };
         Ok(VulnViewPage {
             records,
             next_cursor,
@@ -353,7 +256,7 @@ impl VulnViewKernel {
 /// Safe VulnView planning and decoding failures.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VulnViewError {
-    /// Family identifier is outside the five portable contracts.
+    /// Family identifier is outside the three portable contracts.
     InvalidFamily,
     /// Base URL is not an absolute, credential-free HTTPS URL.
     InvalidBaseUrl,
@@ -387,19 +290,6 @@ impl fmt::Display for VulnViewError {
 }
 
 impl Error for VulnViewError {}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DnsCursor {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    asset_cursor: String,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    alert_offset: usize,
-}
-
-fn is_zero(value: &usize) -> bool {
-    *value == 0
-}
 
 fn validate_base_url(value: &str) -> Result<Url, VulnViewError> {
     let mut url = Url::parse(value.trim()).map_err(|_| VulnViewError::InvalidBaseUrl)?;
@@ -475,20 +365,10 @@ fn validate_filters(filters: &VulnViewFilters) -> Result<(), VulnViewError> {
 }
 
 fn bounded_provider_cursor(cursor: Option<&str>) -> Result<Option<String>, VulnViewError> {
-    bounded_cursor(cursor, MAX_PROVIDER_CURSOR_BYTES)
-}
-
-fn bounded_dns_cursor(cursor: Option<&str>) -> Result<Option<String>, VulnViewError> {
-    let max_bytes = cursor
-        .map(str::trim)
-        .filter(|value| value.starts_with(DNS_CURSOR_PREFIX))
-        .map_or(MAX_PROVIDER_CURSOR_BYTES, |_| MAX_DNS_CURSOR_BYTES);
-    bounded_cursor(cursor, max_bytes)
-}
-
-fn bounded_cursor(cursor: Option<&str>, max_bytes: usize) -> Result<Option<String>, VulnViewError> {
     let cursor = cursor.map(str::trim).filter(|value| !value.is_empty());
-    if cursor.is_some_and(|value| value.len() > max_bytes || value.chars().any(char::is_control)) {
+    if cursor.is_some_and(|value| {
+        value.len() > MAX_PROVIDER_CURSOR_BYTES || value.chars().any(char::is_control)
+    }) {
         return Err(VulnViewError::InvalidCursor);
     }
     Ok(cursor.map(str::to_owned))
@@ -550,50 +430,6 @@ fn normalize_record(
                 ("cloud_account_id", "cloudAccountId"),
             ],
         ),
-        VulnViewFamily::Vulnerability => {
-            copy_fields(
-                &mut fields,
-                values,
-                &[
-                    ("vulnerability_id", "templateId"),
-                    ("template_id", "templateId"),
-                    ("name", "name"),
-                    ("severity", "severity"),
-                    ("type", "type"),
-                    ("target_id", "host"),
-                    ("target_name", "host"),
-                    ("host", "host"),
-                    ("matched_at", "matchedAt"),
-                    ("description", "description"),
-                    ("remediation", "remediation"),
-                    ("scan_id", "scanId"),
-                    ("scan_name", "scanName"),
-                    ("site_id", "siteId"),
-                    ("site_name", "siteName"),
-                    ("timestamp", "timestamp"),
-                ],
-            );
-            if !fields.contains_key("template_id") {
-                copy_fields(
-                    &mut fields,
-                    values,
-                    &[
-                        ("template_id", "template-id"),
-                        ("vulnerability_id", "template-id"),
-                    ],
-                );
-            }
-            if !fields.contains_key("matched_at") {
-                copy_fields(&mut fields, values, &[("matched_at", "matched-at")]);
-            }
-            add_finding_state(&mut fields, values);
-            fields.insert("target_type".to_owned(), "external_asset".to_owned());
-            let vulnerability_type = fields
-                .get("type")
-                .cloned()
-                .unwrap_or_else(|| "vulnview".to_owned());
-            fields.insert("vulnerability_type".to_owned(), vulnerability_type);
-        }
         VulnViewFamily::Asset => {
             copy_fields(
                 &mut fields,
@@ -612,32 +448,8 @@ fn normalize_record(
                     ("medium_count", "severityCounts.medium"),
                     ("low_count", "severityCounts.low"),
                     ("info_count", "severityCounts.info"),
-                    ("dns_alerts_count", "dnsAlertSummary.total"),
-                    ("dns_highest_alert", "dnsAlertSummary.highestSeverity"),
                 ],
             );
-            fields.insert("target_type".to_owned(), "external_asset".to_owned());
-        }
-        VulnViewFamily::DnsAlert => {
-            copy_fields(
-                &mut fields,
-                values,
-                &[
-                    ("asset_id", "asset"),
-                    ("asset_name", "asset"),
-                    ("target_id", "asset"),
-                    ("target_name", "asset"),
-                    ("alert", "alert"),
-                    ("name", "alert"),
-                    ("severity", "severity"),
-                    ("description", "description"),
-                    ("record_type", "recordType"),
-                    ("record_value", "recordValue"),
-                    ("sites", "siteNames"),
-                    ("scan_names", "scanNames"),
-                ],
-            );
-            add_finding_state(&mut fields, values);
             fields.insert("target_type".to_owned(), "external_asset".to_owned());
         }
     }
@@ -656,13 +468,7 @@ fn record_id(family: VulnViewFamily, values: &Map<String, Value>) -> String {
     match family {
         VulnViewFamily::Site => first_value(values, &["siteId", "id", "name"]),
         VulnViewFamily::Scan => first_value(values, &["scanId", "id", "name"]),
-        VulnViewFamily::Vulnerability => stable_id(&[
-            &first_value(values, &["scanId"]),
-            &first_value(values, &["templateId", "template-id", "id", "name"]),
-            &first_value(values, &["matchedAt", "matched-at", "host"]),
-        ]),
         VulnViewFamily::Asset => first_value(values, &["asset", "host", "matchedAt", "matched-at"]),
-        VulnViewFamily::DnsAlert => first_value(values, &["id", "name"]),
     }
 }
 
@@ -675,42 +481,6 @@ fn copy_fields(
         let value = value_string(value_at(values, path));
         if !value.is_empty() {
             fields.insert((*attribute).to_owned(), value);
-        }
-    }
-}
-
-fn add_finding_state(fields: &mut BTreeMap<String, String>, values: &Map<String, Value>) {
-    for (attribute, paths) in [
-        ("vulnview_status", &["status"][..]),
-        ("vulnview_state", &["state"][..]),
-        (
-            "vulnview_finding_status",
-            &["findingStatus", "finding_status"][..],
-        ),
-        (
-            "vulnview_remediation_state",
-            &["remediationState", "remediation_state"][..],
-        ),
-        (
-            "vulnview_lifecycle_state",
-            &["lifecycleState", "lifecycle_state"][..],
-        ),
-    ] {
-        let value = first_value(values, paths);
-        if !value.is_empty() {
-            fields.insert(attribute.to_owned(), value);
-        }
-    }
-    for attribute in [
-        "vulnview_status",
-        "vulnview_state",
-        "vulnview_finding_status",
-        "vulnview_remediation_state",
-        "vulnview_lifecycle_state",
-    ] {
-        if let Some(value) = fields.get(attribute).cloned() {
-            fields.insert("vulnview_finding_state".to_owned(), value);
-            break;
         }
     }
 }
@@ -752,15 +522,6 @@ fn value_string(value: Option<&Value>) -> String {
             format!("map[{}]", pairs.join(" "))
         }
     }
-}
-
-fn stable_id(parts: &[&str]) -> String {
-    parts
-        .iter()
-        .map(|part| part.trim())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(":")
 }
 
 fn occurred_at(values: &Map<String, Value>) -> Option<String> {
@@ -815,39 +576,6 @@ fn page_by_offset<T>(
     ))
 }
 
-fn decode_dns_cursor(cursor: Option<&str>) -> Result<DnsCursor, VulnViewError> {
-    let cursor = bounded_dns_cursor(cursor)?;
-    let Some(cursor) = cursor else {
-        return Ok(DnsCursor::default());
-    };
-    let Some(encoded) = cursor.strip_prefix(DNS_CURSOR_PREFIX) else {
-        return Ok(DnsCursor {
-            asset_cursor: cursor.to_owned(),
-            alert_offset: 0,
-        });
-    };
-    let payload = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|_| VulnViewError::InvalidCursor)?;
-    let mut state: DnsCursor =
-        serde_json::from_slice(&payload).map_err(|_| VulnViewError::InvalidCursor)?;
-    state.asset_cursor = bounded_provider_cursor(Some(&state.asset_cursor))?.unwrap_or_default();
-    Ok(state)
-}
-
-fn encode_dns_cursor(state: &DnsCursor) -> Result<String, VulnViewError> {
-    let state = DnsCursor {
-        asset_cursor: bounded_provider_cursor(Some(&state.asset_cursor))?.unwrap_or_default(),
-        alert_offset: state.alert_offset,
-    };
-    let payload = serde_json::to_vec(&state).map_err(|_| VulnViewError::InvalidCursor)?;
-    let cursor = format!("{DNS_CURSOR_PREFIX}{}", URL_SAFE_NO_PAD.encode(payload));
-    if cursor.len() > MAX_DNS_CURSOR_BYTES {
-        return Err(VulnViewError::InvalidCursor);
-    }
-    Ok(cursor)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -868,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn all_five_families_plan_exact_paths_filters_and_auth_contract() {
+    fn all_three_families_plan_exact_paths_filters_and_auth_contract() {
         let filters = VulnViewFilters {
             site_id: Some(" site-1 ".to_owned()),
             scan_name: Some(" prod ".to_owned()),
@@ -878,9 +606,7 @@ mod tests {
         for (family, path) in [
             (VulnViewFamily::Site, "/v1/sites"),
             (VulnViewFamily::Scan, "/v1/scans"),
-            (VulnViewFamily::Vulnerability, "/v1/vulnerabilities"),
             (VulnViewFamily::Asset, "/v1/assets"),
-            (VulnViewFamily::DnsAlert, "/v1/assets"),
         ] {
             let request = VulnViewKernel::new(
                 "https://api.example.test/v1/",
@@ -922,12 +648,6 @@ mod tests {
                 json!({"scanId":"scan-1","siteId":"site-1","status":"complete","completedAt":"2026-05-11T00:00:00Z","createdAt":"2026-05-01T00:00:00Z"}),
                 "scan-1",
                 "scan_id",
-            ),
-            (
-                VulnViewFamily::Vulnerability,
-                json!({"scanId":"scan-1","templateId":"cve-1","host":"app.example","matchedAt":"https://app.example/login","timestamp":"2026-05-12T00:00:00Z","severity":"high"}),
-                "scan-1:cve-1:https://app.example/login",
-                "template_id",
             ),
             (
                 VulnViewFamily::Asset,
@@ -984,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn emitted_provider_and_dns_cursors_roundtrip_at_their_bounds() {
+    fn emitted_provider_cursors_roundtrip_at_their_bounds() {
         let provider_cursor = "a".repeat(MAX_PROVIDER_CURSOR_BYTES);
         let direct = kernel(VulnViewFamily::Site, 10);
         let direct_request = direct.plan(None).unwrap();
@@ -999,28 +719,6 @@ mod tests {
             Some(provider_cursor.as_str())
         );
         direct.plan(direct_page.next_cursor.as_deref()).unwrap();
-
-        let dns = kernel(VulnViewFamily::DnsAlert, 10);
-        let dns_request = dns.plan(None).unwrap();
-        let dns_page = dns
-            .decode(
-                &dns_request,
-                &body(json!({"items":[], "nextCursor": provider_cursor})),
-            )
-            .unwrap();
-        let dns_cursor = dns_page.next_cursor.as_deref().unwrap();
-        assert!(dns_cursor.len() > MAX_PROVIDER_CURSOR_BYTES);
-        assert!(dns_cursor.len() <= MAX_DNS_CURSOR_BYTES);
-        let next_request = dns.plan(Some(dns_cursor)).unwrap();
-        assert_eq!(
-            next_request
-                .url()
-                .query_pairs()
-                .find(|(key, _)| key == "cursor")
-                .unwrap()
-                .1,
-            provider_cursor
-        );
     }
 
     #[test]
@@ -1036,92 +734,6 @@ mod tests {
                 Err(VulnViewError::InvalidCursor)
             );
         }
-
-        let oversized_wrapper = format!("{DNS_CURSOR_PREFIX}{}", "a".repeat(MAX_DNS_CURSOR_BYTES));
-        assert_eq!(
-            kernel(VulnViewFamily::DnsAlert, 10).plan(Some(&oversized_wrapper)),
-            Err(VulnViewError::InvalidCursor)
-        );
-    }
-
-    #[test]
-    fn vulnerability_and_dns_states_remain_provider_namespaced() {
-        let kernel = kernel(VulnViewFamily::Vulnerability, 100);
-        let request = kernel.plan(None).unwrap();
-        let page = kernel
-            .decode(
-                &request,
-                &body(json!({"items":[{
-                    "scanId":"scan-1","template-id":"cve-1","matched-at":"app.example",
-                    "status":"resolved","finding_status":"closed"
-                }]})),
-            )
-            .unwrap();
-        let fields = &page.records[0].fields;
-        assert_eq!(fields["vulnview_status"], "resolved");
-        assert_eq!(fields["vulnview_finding_state"], "resolved");
-        assert!(!fields.contains_key("status"));
-        assert_eq!(fields["template_id"], "cve-1");
-        assert_eq!(fields["matched_at"], "app.example");
-    }
-
-    #[test]
-    fn dns_alert_fanout_pages_within_one_asset_without_losing_scope() {
-        let kernel = kernel(VulnViewFamily::DnsAlert, 1);
-        let request = kernel.plan(None).unwrap();
-        let response = body(json!({"items":[{
-            "asset":"staging.example","sites":["prod"],"scanNames":["external"],
-            "dnsAlerts":[
-                {"alert":"dangling-cname","severity":"high","state":"open"},
-                {"alert":"stale-a-record","severity":"medium","state":"closed"}
-            ]
-        }]}));
-        let first = kernel.decode(&request, &response).unwrap();
-        assert_eq!(
-            first.records[0].provider_id,
-            "staging.example:dangling-cname:0"
-        );
-        assert_eq!(first.records[0].fields["asset_id"], "staging.example");
-        assert_eq!(first.records[0].fields["sites"], "prod");
-        assert_eq!(first.records[0].fields["vulnview_state"], "open");
-        assert!(!first.records[0].fields.contains_key("state"));
-        let second_request = kernel.plan(first.next_cursor.as_deref()).unwrap();
-        let second = kernel.decode(&second_request, &response).unwrap();
-        assert_eq!(
-            second.records[0].provider_id,
-            "staging.example:stale-a-record:1"
-        );
-        assert_eq!(second.next_cursor, None);
-    }
-
-    #[test]
-    fn dns_alert_cursor_advances_across_empty_asset_pages() {
-        let kernel = kernel(VulnViewFamily::DnsAlert, 10);
-        let request = kernel.plan(None).unwrap();
-        let first = kernel
-            .decode(
-                &request,
-                &body(json!({"items":[{"asset":"empty","dnsAlerts":[]}],"nextCursor":"asset-2"})),
-            )
-            .unwrap();
-        assert!(first.records.is_empty());
-        let next_request = kernel.plan(first.next_cursor.as_deref()).unwrap();
-        assert_eq!(
-            next_request
-                .url()
-                .query_pairs()
-                .find(|(key, _)| key == "cursor")
-                .unwrap()
-                .1,
-            "asset-2"
-        );
-        let second = kernel
-            .decode(
-                &next_request,
-                &body(json!({"items":[{"asset":"live","dnsAlerts":[{"alert":"dangling"}]}]})),
-            )
-            .unwrap();
-        assert_eq!(second.records[0].provider_id, "live:dangling:0");
     }
 
     #[test]
@@ -1170,11 +782,6 @@ mod tests {
             ),
             Err(VulnViewError::InvalidPageSize)
         ));
-        let dns_kernel = kernel(VulnViewFamily::DnsAlert, 10);
-        assert_eq!(
-            dns_kernel.plan(Some("dns:not-base64")),
-            Err(VulnViewError::InvalidCursor)
-        );
         let direct = kernel(VulnViewFamily::Site, 10);
         assert_eq!(
             direct.decode(&direct.plan(None).unwrap(), b"[]"),
