@@ -116,7 +116,7 @@ func TestParseSettingsRejectsBaseURLWithNoTrustedOriginConfigured(t *testing.T) 
 	}
 }
 
-func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
+func TestReadAssetsPaginatesAndMapsAttributes(t *testing.T) {
 	var tokenRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -130,7 +130,7 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 				t.Fatalf("grant_type = %q, want client_credentials", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/vulnerabilities":
+		case "/assets":
 			if got := r.Header.Get("Authorization"); got != "Bearer access" {
 				t.Fatalf("Authorization = %q, want bearer token", got)
 			}
@@ -139,26 +139,13 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
 				{
-					"type":        "vulnerability",
-					"templateId":  "cve-2026-1234",
-					"name":        "Test CVE",
-					"severity":    "high",
-					"host":        "app.writer.com",
-					"matchedAt":   "https://app.writer.com/login",
-					"scanId":      "scan-1",
-					"scanName":    "prod-web",
-					"siteId":      "site-1",
-					"siteName":    "prod",
-					"description": "test finding",
-					"timestamp":   "2026-05-12T00:00:00Z",
+					"asset":           "app.writer.com",
+					"highestSeverity": "high",
+					"findingsCount":   3,
+					"sites":           "prod",
 				},
 				{
-					"type":       "vulnerability",
-					"templateId": "exposed-panel",
-					"name":       "Exposed Panel",
-					"severity":   "medium",
-					"host":       "admin.writer.com",
-					"scanId":     "scan-2",
+					"asset": "admin.writer.com",
 				},
 			}})
 		default:
@@ -178,7 +165,7 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 		"site_id":       "site-1",
 		"per_page":      "1",
 	})
@@ -193,14 +180,14 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 		t.Fatalf("first.NextCursor = %q, want 1", first.NextCursor.GetOpaque())
 	}
 	event := first.Events[0]
-	if got, want := event.Kind, "vulnview.vulnerability"; got != want {
+	if got, want := event.Kind, "vulnview.asset"; got != want {
 		t.Fatalf("event.Kind = %q, want %q", got, want)
 	}
-	if got, want := event.Attributes["template_id"], "cve-2026-1234"; got != want {
-		t.Fatalf("template_id = %q, want %q", got, want)
+	if got, want := event.Attributes["asset_id"], "app.writer.com"; got != want {
+		t.Fatalf("asset_id = %q, want %q", got, want)
 	}
-	if got, want := event.Attributes["target_id"], "app.writer.com"; got != want {
-		t.Fatalf("target_id = %q, want %q", got, want)
+	if got, want := event.Attributes["highest_severity"], "high"; got != want {
+		t.Fatalf("highest_severity = %q, want %q", got, want)
 	}
 	second, err := source.Read(context.Background(), cfg, first.NextCursor)
 	if err != nil {
@@ -217,19 +204,19 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 	}
 }
 
-func TestReadVulnerabilitiesMapsFindingStateAttributes(t *testing.T) {
+func TestReadScansLinksSiteAndCloudAccountContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/vulnerabilities":
+		case "/scans":
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"type":       "vulnerability",
-				"templateId": "cve-2026-1234",
-				"name":       "Test CVE",
-				"severity":   "high",
-				"host":       "app.writer.com",
-				"status":     "resolved",
+				"scanId":         "scan-1",
+				"siteId":         "site-1",
+				"name":           "prod-web",
+				"scanType":       "dns",
+				"status":         "complete",
+				"cloudAccountId": "123456789012",
 			}}})
 		default:
 			http.NotFound(w, r)
@@ -248,7 +235,7 @@ func TestReadVulnerabilitiesMapsFindingStateAttributes(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "scan",
 	}), nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
@@ -257,14 +244,11 @@ func TestReadVulnerabilitiesMapsFindingStateAttributes(t *testing.T) {
 		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
 	}
 	attrs := pull.Events[0].Attributes
-	if got := attrs["vulnview_status"]; got != "resolved" {
-		t.Fatalf("vulnview_status = %q, want resolved", got)
+	if got := attrs["scan_id"]; got != "scan-1" {
+		t.Fatalf("scan_id = %q, want scan-1", got)
 	}
-	if got := attrs["vulnview_finding_state"]; got != "resolved" {
-		t.Fatalf("vulnview_finding_state = %q, want resolved", got)
-	}
-	if _, ok := attrs["status"]; ok {
-		t.Fatalf("generic status attribute = %q, want status to stay namespaced for vulnerability records", attrs["status"])
+	if got := attrs["cloud_account_id"]; got != "123456789012" {
+		t.Fatalf("cloud_account_id = %q, want 123456789012", got)
 	}
 }
 
@@ -280,16 +264,13 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 			secret := r.Form.Get("client_secret")
 			tokenRequests[secret]++
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access-" + secret, "token_type": "Bearer", "expires_in": 3600})
-		case "/vulnerabilities":
+		case "/assets":
 			want := "Bearer access-" + r.URL.Query().Get("search")
 			if got := r.Header.Get("Authorization"); got != want {
 				t.Fatalf("Authorization = %q, want %q", got, want)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"templateId": "cve-2026-1234",
-				"name":       "Test CVE",
-				"severity":   "high",
-				"host":       "app.writer.com",
+				"asset": "app.writer.com",
 			}}})
 		default:
 			http.NotFound(w, r)
@@ -309,7 +290,7 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 			"token_url":     server.URL + "/token",
 			"client_id":     "client",
 			"client_secret": secret,
-			"family":        "vulnerability",
+			"family":        "asset",
 			"search":        secret,
 		})
 		if _, err := source.Read(context.Background(), cfg, nil); err != nil {
@@ -321,297 +302,12 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 	}
 }
 
-func TestReadDNSAlertsMapsFindingStateAttributes(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/assets":
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset": "staging.writer.com",
-				"dnsAlerts": []map[string]any{{
-					"alert":    "dangling-cname",
-					"severity": "high",
-					"state":    "closed",
-				}},
-			}}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackBaseURL = true
-	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id":     "writer",
-		"base_url":      server.URL,
-		"token_url":     server.URL + "/token",
-		"client_id":     "client",
-		"client_secret": "secret",
-		"family":        "dns_alert",
-	}), nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
-	}
-	attrs := pull.Events[0].Attributes
-	if got := attrs["vulnview_state"]; got != "closed" {
-		t.Fatalf("vulnview_state = %q, want closed", got)
-	}
-	if got := attrs["vulnview_finding_state"]; got != "closed" {
-		t.Fatalf("vulnview_finding_state = %q, want closed", got)
-	}
-	if _, ok := attrs["state"]; ok {
-		t.Fatalf("generic state attribute = %q, want state to stay namespaced for DNS alert records", attrs["state"])
-	}
-}
-
-func TestReadDNSAlertsPaginatesWithinAsset(t *testing.T) {
-	var assetRequests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/assets":
-			assetRequests++
-			if got := r.URL.Query().Get("limit"); got != "1" {
-				t.Fatalf("limit = %q, want 1", got)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset": "staging.writer.com",
-				"dnsAlerts": []map[string]any{
-					{"alert": "dangling-cname", "severity": "high"},
-					{"alert": "stale-a-record", "severity": "medium"},
-				},
-			}}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackBaseURL = true
-	cfg := sourcecdk.NewConfig(map[string]string{
-		"tenant_id":     "writer",
-		"base_url":      server.URL,
-		"token_url":     server.URL + "/token",
-		"client_id":     "client",
-		"client_secret": "secret",
-		"family":        "dns_alert",
-		"per_page":      "1",
-	})
-	first, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read(first) error = %v", err)
-	}
-	if len(first.Events) != 1 {
-		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
-	}
-	if first.NextCursor == nil {
-		t.Fatal("first.NextCursor = nil, want cursor for second alert")
-	}
-	second, err := source.Read(context.Background(), cfg, first.NextCursor)
-	if err != nil {
-		t.Fatalf("Read(second) error = %v", err)
-	}
-	if len(second.Events) != 1 {
-		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
-	}
-	if first.Events[0].Attributes["alert"] == second.Events[0].Attributes["alert"] {
-		t.Fatalf("alerts were not paginated distinctly: %q", first.Events[0].Attributes["alert"])
-	}
-	if assetRequests != 2 {
-		t.Fatalf("assetRequests = %d, want 2", assetRequests)
-	}
-}
-
-func TestReadDNSAlertsBatchesAssetPages(t *testing.T) {
-	var assetRequests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/assets":
-			assetRequests++
-			if got := r.URL.Query().Get("limit"); got != "3" {
-				t.Fatalf("limit = %q, want 3", got)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
-				{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}},
-				{
-					"asset":     "staging.writer.com",
-					"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
-				},
-				{
-					"asset":     "prod.writer.com",
-					"dnsAlerts": []map[string]any{{"alert": "stale-a-record", "severity": "medium"}},
-				},
-			}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackBaseURL = true
-	cfg := sourcecdk.NewConfig(map[string]string{
-		"tenant_id":     "writer",
-		"base_url":      server.URL,
-		"token_url":     server.URL + "/token",
-		"client_id":     "client",
-		"client_secret": "secret",
-		"family":        "dns_alert",
-		"per_page":      "3",
-	})
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 2 {
-		t.Fatalf("len(pull.Events) = %d, want 2", len(pull.Events))
-	}
-	if assetRequests != 1 {
-		t.Fatalf("assetRequests = %d, want 1", assetRequests)
-	}
-}
-
-func TestReadDNSAlertsReturnsCursorForEmptyAssetBatch(t *testing.T) {
-	var assetRequests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/assets":
-			assetRequests++
-			cursor := r.URL.Query().Get("cursor")
-			if cursor == "" {
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
-					"nextCursor": "1",
-				})
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset":     "staging.writer.com",
-				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
-			}}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackBaseURL = true
-	cfg := sourcecdk.NewConfig(map[string]string{
-		"tenant_id":     "writer",
-		"base_url":      server.URL,
-		"token_url":     server.URL + "/token",
-		"client_id":     "client",
-		"client_secret": "secret",
-		"family":        "dns_alert",
-		"per_page":      "1",
-	})
-	pull, err := source.Read(context.Background(), cfg, nil)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if len(pull.Events) != 0 {
-		t.Fatalf("len(pull.Events) = %d, want 0", len(pull.Events))
-	}
-	if pull.NextCursor == nil {
-		t.Fatal("NextCursor = nil, want cursor for next asset page")
-	}
-	next, err := source.Read(context.Background(), cfg, pull.NextCursor)
-	if err != nil {
-		t.Fatalf("Read(next) error = %v", err)
-	}
-	if len(next.Events) != 1 {
-		t.Fatalf("len(next.Events) = %d, want 1", len(next.Events))
-	}
-	if got := next.Events[0].Attributes["asset_id"]; got != "staging.writer.com" {
-		t.Fatalf("asset_id = %q, want staging.writer.com", got)
-	}
-	if assetRequests != 2 {
-		t.Fatalf("assetRequests = %d, want 2", assetRequests)
-	}
-}
-
-func TestDiscoverDNSAlertsAdvancesPastEmptyAssetBatch(t *testing.T) {
-	var assetRequests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
-		case "/assets":
-			assetRequests++
-			cursor := r.URL.Query().Get("cursor")
-			if cursor == "" {
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
-					"nextCursor": "1",
-				})
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset":     "staging.writer.com",
-				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
-			}}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	source.allowLoopbackBaseURL = true
-	cfg := sourcecdk.NewConfig(map[string]string{
-		"tenant_id":     "writer",
-		"base_url":      server.URL,
-		"token_url":     server.URL + "/token",
-		"client_id":     "client",
-		"client_secret": "secret",
-		"family":        "dns_alert",
-		"per_page":      "1",
-	})
-	urns, err := source.Discover(context.Background(), cfg)
-	if err != nil {
-		t.Fatalf("Discover() error = %v", err)
-	}
-	if len(urns) != 1 {
-		t.Fatalf("len(urns) = %d, want 1", len(urns))
-	}
-	if assetRequests != 2 {
-		t.Fatalf("assetRequests = %d, want 2", assetRequests)
-	}
-}
-
 func TestParseSettingsRejectsMissingTenantID(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
 		"base_url":      "http://127.0.0.1/api",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), true)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want tenant_id required")
@@ -626,7 +322,7 @@ func TestParseSettingsRejectsMissingClientID(t *testing.T) {
 		"tenant_id":     "writer",
 		"base_url":      "http://127.0.0.1/api",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), true)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want client_id required")
@@ -641,7 +337,7 @@ func TestParseSettingsRejectsMissingClientSecret(t *testing.T) {
 		"tenant_id": "writer",
 		"base_url":  "http://127.0.0.1/api",
 		"client_id": "client",
-		"family":    "vulnerability",
+		"family":    "asset",
 	}), true)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want client_secret required")
@@ -690,11 +386,60 @@ func TestParseSettingsRejectsInvalidPerPage(t *testing.T) {
 			"base_url":      "http://127.0.0.1/api",
 			"client_id":     "client",
 			"client_secret": "secret",
-			"family":        "vulnerability",
+			"family":        "asset",
 			"per_page":      perPage,
 		}), true)
 		if err == nil {
 			t.Fatalf("parseSettings(per_page=%q) error = nil, want error", perPage)
+		}
+	}
+}
+
+func TestParseSettingsRequiresSourceForFindingFamily(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":     "writer",
+		"base_url":      "http://127.0.0.1/api",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"okta_issuer":   "http://127.0.0.1/oauth2/default",
+		"family":        "finding",
+	}), true)
+	if !errors.Is(err, errMissingSource) {
+		t.Fatalf("error = %v, want errMissingSource", err)
+	}
+}
+
+func TestParseSettingsRejectsUnsupportedSource(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+		"tenant_id":     "writer",
+		"base_url":      "http://127.0.0.1/api",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"okta_issuer":   "http://127.0.0.1/oauth2/default",
+		"family":        "finding",
+		"source":        "not_a_source",
+	}), true)
+	if !errors.Is(err, errUnsupportedSource) {
+		t.Fatalf("error = %v, want errUnsupportedSource", err)
+	}
+}
+
+func TestParseSettingsAcceptsEachFindingSource(t *testing.T) {
+	for _, source := range vulnViewFindingSources {
+		resolved, err := parseSettings(sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- config fixture uses placeholder secret text.
+			"tenant_id":     "writer",
+			"base_url":      "http://127.0.0.1/api",
+			"client_id":     "client",
+			"client_secret": "secret",
+			"okta_issuer":   "http://127.0.0.1/oauth2/default",
+			"family":        "finding",
+			"source":        source,
+		}), true)
+		if err != nil {
+			t.Fatalf("parseSettings(source=%q) error = %v", source, err)
+		}
+		if resolved.source != source {
+			t.Fatalf("resolved.source = %q, want %q", resolved.source, source)
 		}
 	}
 }
@@ -722,7 +467,7 @@ func TestReadReturnsErrorOnHTTP404(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), nil)
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 404 error")
@@ -759,7 +504,7 @@ func TestReadReturnsErrorOnHTTP500(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), nil)
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 500 error")
@@ -796,7 +541,7 @@ func TestReadReturnsErrorOnHTTP429RateLimit(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), nil)
 	if err == nil {
 		t.Fatal("Read() error = nil, want HTTP 429 error")
@@ -828,7 +573,7 @@ func TestTokenEndpointHTTP500ReturnsError(t *testing.T) {
 		"token_url":     server.URL + "/token",
 		"client_id":     "client",
 		"client_secret": "secret2",
-		"family":        "vulnerability",
+		"family":        "asset",
 	}), nil)
 	if err == nil {
 		t.Fatal("Read() error = nil, want token endpoint error")

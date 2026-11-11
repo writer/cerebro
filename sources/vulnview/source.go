@@ -19,16 +19,13 @@ var catalogFS embed.FS
 const (
 	sourceID = "vulnview"
 
-	familySite                    = "site"
-	familyScan                    = "scan"
-	familyVulnerability           = "vulnerability"
-	familyAsset                   = "asset"
-	familyDNSAlert                = "dns_alert"
-	familyCloudIdentityFinding    = "cloud_identity_finding"
-	familyCloudIdentityAssessment = "cloud_identity_assessment"
+	familySite    = "site"
+	familyScan    = "scan"
+	familyAsset   = "asset"
+	familyFinding = "finding"
 )
 
-// Source reads VulnView attack-surface and vulnerability data.
+// Source reads VulnView attack-surface, asset, and standardized-finding data.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
@@ -76,11 +73,8 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
-// ReadWithCheckpoint pages VulnView records and emits vulnview.* events,
-// giving families that need the durable checkpoint (the cloud-identity
-// cursor-feed families, for Contract H resumable checkpointing) access to
-// it. sourcecdk recognizes this as sourcecdk.CheckpointAwareSource and
-// calls it instead of Read.
+// ReadWithCheckpoint gives checkpoint-aware families (the standardized finding
+// export) the durable checkpoint; sourcecdk calls it instead of Read.
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
@@ -95,11 +89,8 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	},
 		s.family(familySite, "/sites"),
 		s.family(familyScan, "/scans"),
-		s.family(familyVulnerability, "/vulnerabilities"),
 		s.family(familyAsset, "/assets"),
-		s.dnsAlertFamily(),
-		s.cloudIdentityFindingFamily(),
-		s.cloudIdentityAssessmentFamily(),
+		s.findingFamily(),
 	)
 }
 
@@ -171,4 +162,13 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 		return records, strings.TrimSpace(response.NextCursor), nil
 	}
 	return sourcecdk.PageByOffset(records, cursor, pageSize)
+}
+
+// serverPaged reports whether the provider's own cursor/offset pagination
+// should be trusted for this page instead of falling back to local
+// offset-based paging: either the provider returned an explicit next
+// cursor, or a resumed page came back at or under the page size (a
+// provider-exhausted page).
+func serverPaged(cursor string, pageSize int, recordCount int, nextCursor string) bool {
+	return strings.TrimSpace(nextCursor) != "" || (strings.TrimSpace(cursor) != "" && recordCount <= pageSize)
 }

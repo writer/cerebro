@@ -324,12 +324,20 @@ FOR UPDATE`,
 		priorStatus = "open"
 	}
 	expectedStatus := strings.TrimSpace(request.ExpectedStatus)
-	if current.Tombstoned || (expectedStatus != "" && priorStatus != expectedStatus) {
+	statusChanged := expectedStatus != "" && priorStatus != expectedStatus
+	// Re-check the runtime-identity scope against the row just locked
+	// (not the stale copy candidate listing saw): a different, still-
+	// active runtime may have re-asserted this exact finding (updating
+	// its source_runtime_id attribute, status unchanged) in the window
+	// between listing and this transaction acquiring the row lock.
+	runtimeIDsChanged := len(request.RuntimeIDs) > 0 && !ports.FindingMatchesRuntimeIDs(current, request.RuntimeIDs)
+	if current.Tombstoned || statusChanged || runtimeIDsChanged {
 		return &ports.FindingTombstoneAtomicResult{
-			Finding:       current,
-			Applied:       false,
-			StatusChanged: expectedStatus != "" && priorStatus != expectedStatus,
-			PriorStatus:   priorStatus,
+			Finding:           current,
+			Applied:           false,
+			StatusChanged:     statusChanged,
+			RuntimeIDsChanged: runtimeIDsChanged,
+			PriorStatus:       priorStatus,
 		}, nil
 	}
 

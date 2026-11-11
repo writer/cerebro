@@ -1193,3 +1193,61 @@ func assertEventProjection(t *testing.T, projection *EventProjectionPreview, wan
 		t.Fatalf("projection.GraphLinksAfter = %d, want %d", projection.GraphLinksAfter, wantGraphLinks)
 	}
 }
+
+// TestPreviewGraphStoreReplaceProjectedLinkSetsCountsOnlyAcceptedSets pins
+// R06 P2: a v3 authoritative-empty set accepted first, then a stale v2
+// replay naming a previously-absent consumer B, must never show B's
+// endpoint or link in the preview -- the preview must derive its counts
+// from the scratch store's own guard (ReplaceProjectedLinkSetsReportingAccepted),
+// not from the raw requested sets.
+func TestPreviewGraphStoreReplaceProjectedLinkSetsCountsOnlyAcceptedSets(t *testing.T) {
+	scratch, err := newMemoryGraphStore()
+	if err != nil {
+		t.Fatalf("newMemoryGraphStore() error = %v", err)
+	}
+	preview := newPreviewGraphStore(scratch, maxPreviewLimit)
+	ctx := context.Background()
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerB := "urn:cerebro:writer:kubernetes_service_account:ns/b"
+
+	if err := preview.ReplaceProjectedLinkSets(ctx, []*ports.ProjectedLinkSet{{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "runtime-1",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "3"},
+	}}); err != nil {
+		t.Fatalf("v3 empty: %v", err)
+	}
+	if err := preview.ReplaceProjectedLinkSets(ctx, []*ports.ProjectedLinkSet{{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "runtime-1",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links: []*ports.ProjectedLink{{
+			TenantID: "writer", SourceID: "vulnview", RuntimeID: "runtime-1",
+			FromURN: owner, ToURN: consumerB, Relation: "associated_with",
+		}},
+		Endpoints:   []*ports.ProjectedEntity{{URN: consumerB, TenantID: "writer", SourceID: "vulnview", RuntimeID: "runtime-1", EntityType: "kubernetes.service_account", Label: "b", CreateOnly: true}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "2"},
+	}}); err != nil {
+		t.Fatalf("stale v2 with B: %v", err)
+	}
+
+	for _, entity := range preview.entities() {
+		if entity.URN == consumerB {
+			t.Fatalf("preview entities included the stale set's rejected endpoint B: %#v", preview.entities())
+		}
+	}
+	for _, link := range preview.links() {
+		if link.ToURN == consumerB {
+			t.Fatalf("preview links included the stale set's rejected link to B: %#v", preview.links())
+		}
+	}
+	for _, count := range preview.entityTypes() {
+		if count.Name == "kubernetes.service_account" {
+			t.Fatalf("entityTypes() counted the stale set's rejected endpoint: %#v", preview.entityTypes())
+		}
+	}
+	for _, count := range preview.relationTypes() {
+		if count.Name == "associated_with" {
+			t.Fatalf("relationTypes() counted the stale set's rejected link: %#v", preview.relationTypes())
+		}
+	}
+}

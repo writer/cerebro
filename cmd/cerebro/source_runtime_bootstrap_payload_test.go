@@ -27,14 +27,14 @@ func TestParseSourceRuntimeBootstrapArgsReadsCompressedEnvDocument(t *testing.T)
 	if err != nil {
 		t.Fatalf("json.Marshal(plan) error = %v", err)
 	}
-	document := `{"runtimes":[{"id":"example-cohort","source_id":"cloud_identity","tenant_id":"example","config":{"scan_plan":` + string(quotedPlan) + `,"token":"env:EXAMPLE_TOKEN"}}]}`
+	document := `{"runtimes":[{"id":"example-cohort","source_id":"github","tenant_id":"example","config":{"scan_plan":` + string(quotedPlan) + `,"token":"env:EXAMPLE_TOKEN"}}]}`
 	t.Setenv("CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", gzipBase64BootstrapValue(t, []byte(document)))
 
 	runtimes, err := parseSourceRuntimeBootstrapArgs([]string{"env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON"})
 	if err != nil {
 		t.Fatalf("parseSourceRuntimeBootstrapArgs() error = %v", err)
 	}
-	if len(runtimes) != 1 || runtimes[0].GetId() != "example-cohort" || runtimes[0].GetSourceId() != "cloud_identity" {
+	if len(runtimes) != 1 || runtimes[0].GetId() != "example-cohort" || runtimes[0].GetSourceId() != "github" {
 		t.Fatalf("runtimes = %#v", runtimes)
 	}
 	if got := runtimes[0].GetConfig()["scan_plan"]; got != plan {

@@ -2,7 +2,6 @@ package sourceprojection
 
 import (
 	"github.com/writer/cerebro/internal/attestedcompute"
-	"github.com/writer/cerebro/internal/cloudidentity"
 )
 
 // This table keeps static event-kind wiring separate from registry lifecycle,
@@ -31,8 +30,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aurelius.image_scan":                           aureliusImageScanProjections,
 	"aurelius.policy_exception":                     aureliusPolicyExceptionProjections,
 	"cerebro.api_access":                            cerebroAPIAccessProjections,
-	cloudidentity.EventKind:                         cloudIdentityPrincipalEvidenceProjections,
-	cloudidentity.CoverageEventKind:                 cloudIdentityCoverageProjections,
 	"aurelius.verdict":                              aureliusVerdictProjections,
 	"github.pull_request":                           githubPullRequestProjections,
 	"github.audit":                                  githubAuditProjections,
@@ -530,13 +527,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"trusted_endpoint.security_finding":             trustedEndpointProjections,
 	"trusted_endpoint.trust_gate_decision":          trustedEndpointProjections,
 	"vulnview.asset":                                vulnViewAssetProjections,
-	"vulnview.cloud_identity_assessment":            vulnViewCloudIdentityAssessmentProjections,
-	"vulnview.cloud_identity_finding":               vulnViewCloudIdentityFindingProjections,
-	"vulnview.cloud_identity_run":                   vulnViewCloudIdentityRunProjections,
-	"vulnview.dns_alert":                            vulnViewDNSAlertProjections,
+	"vulnview.finding":                              vulnViewFindingProjections,
 	"vulnview.scan":                                 vulnViewScanProjections,
 	"vulnview.site":                                 vulnViewSiteProjections,
-	"vulnview.vulnerability":                        vulnViewVulnerabilityProjections,
 	// hashicorp_vault generated projectors (sourcegen promotion)
 	// akeyless generated projectors (sourcegen promotion)
 	// conjur generated projectors (sourcegen promotion)
@@ -5539,6 +5532,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 }, contextProjectors: map[string]ContextProjectFunc{
 	"panopticon.alert": panopticonAlertProjectionsContext,
 	"panopticon.case":  panopticonCaseProjectionsContext,
+}, linkSetProjectors: map[string]LinkSetProjectFunc{
+	"vulnview.finding": vulnViewFindingLinkSetProjections,
 }, enforceRustAuthority: true}
 
 func init() {

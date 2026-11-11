@@ -134,28 +134,11 @@ func discoverProjectionBatchPlan(root, exclusionPath string) (projectionBatchPla
 		if len(implementationSet) == 0 {
 			batch.Blockers = append(batch.Blockers, "no_static_go_projection_path")
 		}
-		for path := range implementationSet {
-			testPath := strings.TrimSuffix(path, ".go") + "_test.go"
-			if _, excluded := exclusions[path]; excluded {
-				batch.ExcludedPaths = append(batch.ExcludedPaths, path)
-				if _, testExcluded := exclusions[testPath]; testExcluded {
-					batch.ExcludedPaths = append(batch.ExcludedPaths, testPath)
-				}
-				continue
-			}
-			if len(fileSourceIDs[path]) != 1 {
-				batch.Blockers = append(batch.Blockers, "shared_go_projection_file:"+path)
-				continue
-			}
-			batch.ImplementationFiles = append(batch.ImplementationFiles, path)
-			if fileExists(filepath.Join(root, filepath.FromSlash(testPath))) {
-				if _, excluded := exclusions[testPath]; excluded {
-					batch.ExcludedPaths = append(batch.ExcludedPaths, testPath)
-				} else {
-					batch.TestFiles = append(batch.TestFiles, testPath)
-				}
-			}
-		}
+		implPaths, testPaths, excludedPaths, blockers := classifyImplementationFiles(root, implementationSet, exclusions, fileSourceIDs)
+		batch.ImplementationFiles = append(batch.ImplementationFiles, implPaths...)
+		batch.TestFiles = append(batch.TestFiles, testPaths...)
+		batch.ExcludedPaths = append(batch.ExcludedPaths, excludedPaths...)
+		batch.Blockers = append(batch.Blockers, blockers...)
 		sort.Strings(batch.ImplementationFiles)
 		sort.Strings(batch.TestFiles)
 		sort.Strings(batch.ExcludedPaths)
@@ -220,4 +203,37 @@ func discoverProjectionBatchPlan(root, exclusionPath string) (projectionBatchPla
 		return projectionBatchPlan{}, err
 	}
 	return plan, nil
+}
+
+// classifyImplementationFiles decides, for each discovered Go implementation
+// path, whether it becomes an eligible deletion candidate (implementation
+// plus its paired test file, if present), stays blocked because more than
+// one source shares the same implementation file, or is excluded by the
+// ownership manifest (in which case the file and its paired test file, if
+// also listed, are recorded as excluded and never reach the candidate
+// pipeline regardless of how many sources reference them).
+func classifyImplementationFiles(root string, implementationSet map[string]struct{}, exclusions map[string]struct{}, fileSourceIDs map[string]map[string]struct{}) (implementationFiles, testFiles, excludedPaths, blockers []string) {
+	for path := range implementationSet {
+		testPath := strings.TrimSuffix(path, ".go") + "_test.go"
+		if _, excluded := exclusions[path]; excluded {
+			excludedPaths = append(excludedPaths, path)
+			if _, testExcluded := exclusions[testPath]; testExcluded {
+				excludedPaths = append(excludedPaths, testPath)
+			}
+			continue
+		}
+		if len(fileSourceIDs[path]) != 1 {
+			blockers = append(blockers, "shared_go_projection_file:"+path)
+			continue
+		}
+		implementationFiles = append(implementationFiles, path)
+		if fileExists(filepath.Join(root, filepath.FromSlash(testPath))) {
+			if _, excluded := exclusions[testPath]; excluded {
+				excludedPaths = append(excludedPaths, testPath)
+			} else {
+				testFiles = append(testFiles, testPath)
+			}
+		}
+	}
+	return implementationFiles, testFiles, excludedPaths, blockers
 }

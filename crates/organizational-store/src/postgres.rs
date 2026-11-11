@@ -196,6 +196,8 @@ CREATE TABLE IF NOT EXISTS organizational_legacy_projection_receipts (
 );
 ALTER TABLE organizational_legacy_projection_receipts
   ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 1 CHECK (revision >= 1);
+ALTER TABLE organizational_legacy_projection_receipts
+  ADD COLUMN IF NOT EXISTS link_set_count BIGINT NOT NULL DEFAULT 0 CHECK (link_set_count >= 0);
 CREATE TABLE IF NOT EXISTS organizational_source_collection_receipts (
   tenant_id TEXT NOT NULL,
   collection_id TEXT NOT NULL,
@@ -2080,6 +2082,7 @@ WHERE id = $1
         entity_retraction_count: usize,
         link_retraction_count: usize,
         cleanup_request_count: usize,
+        link_set_count: usize,
         delta_digest: &str,
         delta_json: &Value,
     ) -> Result<LegacyProjectionReceipt, StoreError> {
@@ -2096,6 +2099,8 @@ WHERE id = $1
         let cleanup_request_count = i64::try_from(cleanup_request_count).map_err(|_| {
             StoreError::Conflict("legacy cleanup request count overflow".to_owned())
         })?;
+        let link_set_count = i64::try_from(link_set_count)
+            .map_err(|_| StoreError::Conflict("legacy link set count overflow".to_owned()))?;
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         set_tenant(&transaction, tenant_id).await?;
@@ -2105,7 +2110,7 @@ WHERE id = $1
                 &[&tenant_id, &event_id],
             )
             .await?;
-        let params: [&(dyn ToSql + Sync); 13] = [
+        let params: [&(dyn ToSql + Sync); 14] = [
             &tenant_id,
             &event_id,
             &source_runtime_id,
@@ -2117,6 +2122,7 @@ WHERE id = $1
             &entity_retraction_count,
             &link_retraction_count,
             &cleanup_request_count,
+            &link_set_count,
             &delta_digest,
             &delta_json,
         ];
@@ -2124,7 +2130,7 @@ WHERE id = $1
             None => {
                 transaction
                     .execute(
-                        "INSERT INTO organizational_legacy_projection_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, observed_at_unix_ms, entity_count, link_count, entity_retraction_count, link_retraction_count, cleanup_request_count, delta_digest, delta_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+                        "INSERT INTO organizational_legacy_projection_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, observed_at_unix_ms, entity_count, link_count, entity_retraction_count, link_retraction_count, cleanup_request_count, link_set_count, delta_digest, delta_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
                         &params,
                     )
                     .await?;
@@ -2137,7 +2143,7 @@ WHERE id = $1
             Some(_) => {
                 transaction
                     .execute(
-                        "UPDATE organizational_legacy_projection_receipts SET source_runtime_id = $3, source_id = $4, family_id = $5, observed_at_unix_ms = $6, entity_count = $7, link_count = $8, entity_retraction_count = $9, link_retraction_count = $10, cleanup_request_count = $11, delta_digest = $12, delta_json = $13, revision = revision + 1 WHERE tenant_id = $1 AND event_id = $2",
+                        "UPDATE organizational_legacy_projection_receipts SET source_runtime_id = $3, source_id = $4, family_id = $5, observed_at_unix_ms = $6, entity_count = $7, link_count = $8, entity_retraction_count = $9, link_retraction_count = $10, cleanup_request_count = $11, link_set_count = $12, delta_digest = $13, delta_json = $14, revision = revision + 1 WHERE tenant_id = $1 AND event_id = $2",
                         &params,
                     )
                     .await?;

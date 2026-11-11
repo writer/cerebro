@@ -96,6 +96,25 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	return result, err
 }
 
+func applyProjectedLinkSets(ctx context.Context, store any, sets []*ports.ProjectedLinkSet) error {
+	linkSetStore, ok := store.(ports.ProjectionLinkSetStore)
+	if !ok {
+		return ports.ErrProjectionLinkSetStoreUnsupported
+	}
+	return linkSetStore.ReplaceProjectedLinkSets(ctx, sets)
+}
+
+func linkSetsLinkCount(sets []*ports.ProjectedLinkSet) uint32 {
+	var count int
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		count += len(set.Links)
+	}
+	return boundedUint32(count)
+}
+
 // ProjectWithDelta applies one source event and returns the exact normalized
 // compatibility records used for the write.
 func (s *Service) ProjectWithDelta(ctx context.Context, event *cerebrov1.EventEnvelope) (result ports.ProjectionResult, delta ports.SourceProjectionDelta, err error) {
@@ -160,12 +179,35 @@ func (s *Service) ProjectWithDelta(ctx context.Context, event *cerebrov1.EventEn
 	if err != nil {
 		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
+	projectedLinkSets, err := s.ProjectLinkSets(event)
+	if err != nil {
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
+	}
+	coalescedLinkSets := map[string]*ports.ProjectedLinkSet{}
+	for _, set := range projectedLinkSets {
+		ports.CoalesceProjectedLinkSet(coalescedLinkSets, set)
+	}
+	linkSets := make([]*ports.ProjectedLinkSet, 0, len(coalescedLinkSets))
+	for _, set := range coalescedLinkSets {
+		linkSets = append(linkSets, set)
+	}
+	if len(linkSets) != 0 {
+		filteredLinks := make([]*ports.ProjectedLink, 0, len(links))
+		for _, link := range links {
+			if ports.ProjectedLinkCoveredByLinkSets(link, linkSets) {
+				continue
+			}
+			filteredLinks = append(filteredLinks, link)
+		}
+		links = filteredLinks
+	}
 	delta = ports.SourceProjectionDelta{
 		Entities:          entities,
 		Links:             links,
 		EntityRetractions: cleanupURNs,
 		LinkRetractions:   retractedLinks,
 		CleanupRequests:   cleanupRequests,
+		LinkSets:          linkSets,
 	}
 	entitiesDeleted, err := s.deleteProjectedEntities(ctx, cleanupURNs)
 	if err != nil {
@@ -212,6 +254,18 @@ func (s *Service) ProjectWithDelta(ctx context.Context, event *cerebrov1.EventEn
 			}
 		}
 	}
+	if len(linkSets) != 0 {
+		if s.state != nil {
+			if err := applyProjectedLinkSets(ctx, s.state, linkSets); err != nil {
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
+			}
+		}
+		if s.graph != nil {
+			if err := applyProjectedLinkSets(ctx, s.graph, linkSets); err != nil {
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
+			}
+		}
+	}
 	for _, link := range links {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedLink(ctx, link); err != nil {
@@ -227,7 +281,7 @@ func (s *Service) ProjectWithDelta(ctx context.Context, event *cerebrov1.EventEn
 	emitRuntimeEvidenceTelemetry(ctx, event, entities, links, "projected", "")
 	return ports.ProjectionResult{
 		EntitiesProjected: boundedUint32(len(entities)),
-		LinksProjected:    boundedUint32(len(links)),
+		LinksProjected:    boundedUint32(len(links)) + linkSetsLinkCount(linkSets),
 		EntitiesDeleted:   entitiesDeleted,
 		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
 	}, delta, nil
@@ -551,6 +605,24 @@ func finalizeProjectedRecords(event *cerebrov1.EventEnvelope, entities []*ports.
 	return entities, links, nil
 }
 
+// finalizeProjectedLinkSets applies finalizeProjectedRecords' trusted
+// application-workspace policy to every guarded set's links and
+// counterpart endpoints: the workspace comes only from the reserved event
+// attribute the source-runtime host sets, and a projector-supplied value is
+// rejected. A guarded consumer edge and the stub it materializes therefore
+// share the scope of the finding that owns them.
+func finalizeProjectedLinkSets(event *cerebrov1.EventEnvelope, sets []*ports.ProjectedLinkSet) error {
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		if err := stampProjectionApplicationWorkspace(event, set.Endpoints, set.Links); err != nil {
+			return fmt.Errorf("projected link set %q %q: %w", set.OwnerURN, set.Relation, err)
+		}
+	}
+	return nil
+}
+
 func stampProjectionApplicationWorkspace(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) error {
 	if event == nil {
 		return nil
@@ -685,6 +757,29 @@ func (s *Service) ProjectRetractions(event *cerebrov1.EventEnvelope) ([]*ports.P
 	links = append(links, tailscaleRetractions...)
 	stampProjectionRuntime(event, nil, links)
 	return links, nil
+}
+
+// ProjectLinkSets returns the guarded link sets (Contract C9) the
+// registered projector emits for one event, so graph ingest can apply them
+// as single guarded replacements instead of flowing their links through the
+// plain link upsert path. Like ProjectRecordsContext, it finalizes them with
+// the event's trusted application workspace before any caller coalesces or
+// persists them. Most event kinds have none registered.
+func (s *Service) ProjectLinkSets(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is required")
+	}
+	if s == nil || s.registry == nil {
+		return nil, nil
+	}
+	sets, err := s.registry.ProjectLinkSets(event)
+	if err != nil {
+		return nil, err
+	}
+	if err := finalizeProjectedLinkSets(event, sets); err != nil {
+		return nil, err
+	}
+	return sets, nil
 }
 
 func (s *Service) deleteProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) (uint32, error) {
@@ -886,6 +981,17 @@ func addEntity(entities map[string]*ports.ProjectedEntity, entity *ports.Project
 		return
 	}
 	if existing := entities[entity.URN]; existing != nil {
+		// Contract G1 page/batch coalescing: an ordinary entity always wins
+		// over a CreateOnly stub sharing a URN, in either arrival order (a
+		// stub never contributes attributes, label, or ownership), and two
+		// stubs for the same URN keep the first.
+		if existing.CreateOnly && !entity.CreateOnly {
+			entities[entity.URN] = entity
+			return
+		}
+		if entity.CreateOnly {
+			return
+		}
 		if strings.TrimSpace(entity.TenantID) != "" {
 			existing.TenantID = entity.TenantID
 		}
@@ -906,6 +1012,8 @@ func addEntity(entities map[string]*ports.ProjectedEntity, entity *ports.Project
 				existing.Attributes[key] = value
 			}
 		}
+		ports.ApplyRetractedAttributes(existing.Attributes, entity.Attributes, entity.RetractedAttributes)
+		existing.RetractedAttributes = ports.CoalesceRetractedAttributes(existing.Attributes, existing.RetractedAttributes, entity.RetractedAttributes)
 		return
 	}
 	entities[entity.URN] = entity

@@ -303,6 +303,54 @@ func TestServiceExecuteAllowsExplicitTargetMatchingFinding(t *testing.T) {
 	}
 }
 
+// TestDefaultRegistryCoversEveryKnownActionSpec verifies that every action
+// the generated catalog publishes through KnownActionSpecs is actually wired
+// into DefaultRegistry with the execution hooks Execute depends on: a
+// non-empty provider/provider-action/target-kind triple, a target resolver,
+// an eligibility check, and (when the action is reversible) a ReversibleBy
+// reference that itself resolves through the registry. It intentionally
+// avoids asserting a fixed action count, since that drifts on every
+// generated-catalog change and says nothing about whether coverage is
+// actually complete.
+func TestDefaultRegistryCoversEveryKnownActionSpec(t *testing.T) {
+	specs := KnownActionSpecs()
+	if len(specs) == 0 {
+		t.Fatal("KnownActionSpecs() returned no actions")
+	}
+	registry := DefaultRegistry()
+	for _, spec := range specs {
+		looked, err := registry.Lookup(spec.ID)
+		if err != nil {
+			t.Fatalf("DefaultRegistry().Lookup(%q) error = %v", spec.ID, err)
+		}
+		if looked.Provider != spec.Provider || looked.ProviderAction != spec.ProviderAction || looked.TargetKind != spec.TargetKind {
+			t.Fatalf("DefaultRegistry() spec for %q = %#v, want %#v", spec.ID, looked, spec)
+		}
+		if spec.Provider == "" || spec.ProviderAction == "" || spec.TargetKind == "" {
+			t.Fatalf("action %q is missing provider/provider-action/target-kind coverage: %#v", spec.ID, spec)
+		}
+		if spec.Effect == "" {
+			t.Fatalf("action %q declares no effect", spec.ID)
+		}
+		if spec.ResolveTarget == nil {
+			t.Fatalf("action %q has no target resolver wired", spec.ID)
+		}
+		if spec.CheckEligibility == nil {
+			t.Fatalf("action %q has no eligibility check wired", spec.ID)
+		}
+		if spec.ReversibleBy == "" {
+			continue
+		}
+		reversal, err := registry.Lookup(spec.ReversibleBy)
+		if err != nil {
+			t.Fatalf("action %q declares ReversibleBy %q, which does not resolve: %v", spec.ID, spec.ReversibleBy, err)
+		}
+		if reversal.ID != spec.ReversibleBy {
+			t.Fatalf("action %q reversal lookup returned %#v, want ID %q", spec.ID, reversal, spec.ReversibleBy)
+		}
+	}
+}
+
 func TestTargetForActionSpecUsesProvidedSpec(t *testing.T) {
 	target, err := TargetForActionSpec(ActionSpec{
 		ID: "custom.unregistered",

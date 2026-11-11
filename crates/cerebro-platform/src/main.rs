@@ -866,6 +866,7 @@ impl ProjectionRuntime {
                 request.delta.entity_retractions.len(),
                 request.delta.link_retractions.len(),
                 request.delta.cleanup_requests.len(),
+                request.delta.link_sets.len(),
                 &delta_digest,
                 &delta_json,
             )
@@ -1396,6 +1397,14 @@ struct ProjectEventResponse {
     assertions_upserted: usize,
 }
 
+// is_false reports whether a bool-defaulted field should be omitted on
+// serialization: a defaulted-off Contract G1 field must re-serialize an
+// old-format delta (recorded before the field existed) byte-identically,
+// so delta_digest stays stable across the format change.
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LegacyEntityDeltaRecord {
@@ -1409,6 +1418,10 @@ struct LegacyEntityDeltaRecord {
     label: String,
     #[serde(default)]
     attributes: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    create_only: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    retracted_attributes: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1424,6 +1437,33 @@ struct LegacyLinkDeltaRecord {
     relation: String,
     #[serde(default)]
     attributes: BTreeMap<String, String>,
+}
+
+// LegacyLinkSetDeltaRecord is one guarded link-set replacement recorded in a
+// legacy projection delta: the complete desired links of one relation and
+// direction that the projector applied for an owner entity instead of
+// individual link upserts. Rust records it for parity tracking only and does
+// not materialize it into its own graph. endpoints (R06) carries each
+// link's counterpart as a create-only stub the guarded set's own write may
+// materialize; defaulted/omitted so a delta recorded before this field
+// existed re-serializes byte-identically.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyLinkSetDeltaRecord {
+    tenant_id: String,
+    source_id: String,
+    runtime_id: String,
+    owner_urn: String,
+    relation: String,
+    outgoing: bool,
+    #[serde(default)]
+    links: Vec<LegacyLinkDeltaRecord>,
+    #[serde(default)]
+    observation: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    incomplete: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    endpoints: Vec<LegacyEntityDeltaRecord>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1455,6 +1495,8 @@ struct LegacyProjectionDelta {
     link_retractions: Vec<LegacyLinkDeltaRecord>,
     #[serde(default)]
     cleanup_requests: Vec<LegacyCleanupRequest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    link_sets: Vec<LegacyLinkSetDeltaRecord>,
 }
 
 #[derive(Deserialize)]
@@ -2500,6 +2542,18 @@ fn validate_legacy_projection(
             "source_id and family_id are required.",
         ));
     }
+    let link_set_link_count: usize = request
+        .delta
+        .link_sets
+        .iter()
+        .map(|set| set.links.len())
+        .fold(0usize, usize::saturating_add);
+    let link_set_endpoint_count: usize = request
+        .delta
+        .link_sets
+        .iter()
+        .map(|set| set.endpoints.len())
+        .fold(0usize, usize::saturating_add);
     let record_count = request
         .delta
         .entities
@@ -2507,7 +2561,10 @@ fn validate_legacy_projection(
         .saturating_add(request.delta.links.len())
         .saturating_add(request.delta.entity_retractions.len())
         .saturating_add(request.delta.link_retractions.len())
-        .saturating_add(request.delta.cleanup_requests.len());
+        .saturating_add(request.delta.cleanup_requests.len())
+        .saturating_add(request.delta.link_sets.len())
+        .saturating_add(link_set_link_count)
+        .saturating_add(link_set_endpoint_count);
     if record_count > MAX_LEGACY_DELTA_RECORDS {
         return Err(bad_request(
             "legacy_projection_too_large",
@@ -2577,6 +2634,49 @@ fn validate_legacy_projection(
                 "legacy_projection_scope_mismatch",
                 "Every cleanup request must match the request tenant, source, and runtime.",
             ));
+        }
+    }
+    for set in &request.delta.link_sets {
+        if set.tenant_id.trim() != expected_tenant
+            || set.source_id.trim() != source_id
+            || set.runtime_id.trim() != expected_runtime
+            || set.relation.trim().is_empty()
+            || !legacy_urn_matches_tenant(expected_tenant, &set.owner_urn)
+        {
+            return Err(bad_request(
+                "legacy_projection_scope_mismatch",
+                "Every link set must match the request tenant, source, and runtime.",
+            ));
+        }
+        for link in &set.links {
+            if link.tenant_id.trim() != expected_tenant
+                || !valid_legacy_application_workspace_id(&link.application_workspace_id)
+                || link.source_id.trim() != source_id
+                || link.runtime_id.trim() != expected_runtime
+                || link.relation.trim().is_empty()
+                || !legacy_urn_matches_tenant(expected_tenant, &link.from_urn)
+                || !legacy_urn_matches_tenant(expected_tenant, &link.to_urn)
+            {
+                return Err(bad_request(
+                    "legacy_projection_scope_mismatch",
+                    "Every link set's links must match the request tenant, source, and runtime.",
+                ));
+            }
+        }
+        for endpoint in &set.endpoints {
+            if endpoint.tenant_id.trim() != expected_tenant
+                || !valid_legacy_application_workspace_id(&endpoint.application_workspace_id)
+                || endpoint.source_id.trim() != source_id
+                || endpoint.runtime_id.trim() != expected_runtime
+                || endpoint.urn.trim().is_empty()
+                || endpoint.entity_type.trim().is_empty()
+                || !legacy_urn_matches_tenant(expected_tenant, &endpoint.urn)
+            {
+                return Err(bad_request(
+                    "legacy_projection_scope_mismatch",
+                    "Every link set's endpoints must match the request tenant, source, and runtime.",
+                ));
+            }
         }
     }
     Ok(())
@@ -6342,11 +6442,14 @@ mod tests {
                     entity_type: "box.asset".to_owned(),
                     label: "One".to_owned(),
                     attributes: BTreeMap::new(),
+                    create_only: false,
+                    retracted_attributes: Vec::new(),
                 }],
                 links: Vec::new(),
                 entity_retractions: Vec::new(),
                 link_retractions: Vec::new(),
                 cleanup_requests: Vec::new(),
+                link_sets: Vec::new(),
             },
         };
         assert!(validate_legacy_projection(&tenant_id, &request).is_ok());
@@ -6357,6 +6460,217 @@ mod tests {
         request.delta.entities[0].application_workspace_id = "workspace-a".to_owned();
         request.delta.entities[0].tenant_id = "tenant-other".to_owned();
         assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+    }
+
+    #[test]
+    fn legacy_projection_rejects_cross_scope_link_sets() {
+        let tenant_id = TenantId::parse("tenant-demo").unwrap();
+        let mut request = LegacyProjectionRequest {
+            tenant_id: tenant_id.as_str().to_owned(),
+            source_runtime_id: "vulnview-runtime".to_owned(),
+            source_id: "vulnview".to_owned(),
+            family_id: "finding".to_owned(),
+            event_id: "event-one".to_owned(),
+            observed_at_unix_ms: 100,
+            append_log_committed: true,
+            delta: LegacyProjectionDelta {
+                entities: Vec::new(),
+                links: Vec::new(),
+                entity_retractions: Vec::new(),
+                link_retractions: Vec::new(),
+                cleanup_requests: Vec::new(),
+                link_sets: vec![LegacyLinkSetDeltaRecord {
+                    tenant_id: tenant_id.as_str().to_owned(),
+                    source_id: "vulnview".to_owned(),
+                    runtime_id: "vulnview-runtime".to_owned(),
+                    owner_urn: "urn:cerebro:tenant-demo:aws_role:principal".to_owned(),
+                    relation: "associated_with".to_owned(),
+                    outgoing: true,
+                    links: vec![LegacyLinkDeltaRecord {
+                        tenant_id: tenant_id.as_str().to_owned(),
+                        application_workspace_id: String::new(),
+                        source_id: "vulnview".to_owned(),
+                        runtime_id: "vulnview-runtime".to_owned(),
+                        from_urn: "urn:cerebro:tenant-demo:aws_role:principal".to_owned(),
+                        to_urn: "urn:cerebro:tenant-demo:kubernetes_service_account:ns/a"
+                            .to_owned(),
+                        relation: "associated_with".to_owned(),
+                        attributes: BTreeMap::new(),
+                    }],
+                    observation: BTreeMap::from([(
+                        "observation_version".to_owned(),
+                        "3".to_owned(),
+                    )]),
+                    incomplete: false,
+                    endpoints: vec![LegacyEntityDeltaRecord {
+                        urn: "urn:cerebro:tenant-demo:kubernetes_service_account:ns/a".to_owned(),
+                        tenant_id: tenant_id.as_str().to_owned(),
+                        application_workspace_id: String::new(),
+                        source_id: "vulnview".to_owned(),
+                        runtime_id: "vulnview-runtime".to_owned(),
+                        entity_type: "kubernetes.service_account".to_owned(),
+                        label: "a".to_owned(),
+                        attributes: BTreeMap::new(),
+                        create_only: true,
+                        retracted_attributes: Vec::new(),
+                    }],
+                }],
+            },
+        };
+        assert!(validate_legacy_projection(&tenant_id, &request).is_ok());
+        request.delta.link_sets[0].owner_urn =
+            "urn:cerebro:tenant-other:aws_role:principal".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+        request.delta.link_sets[0].owner_urn =
+            "urn:cerebro:tenant-demo:aws_role:principal".to_owned();
+        request.delta.link_sets[0].links[0].to_urn =
+            "urn:cerebro:tenant-other:kubernetes_service_account:ns/a".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+        request.delta.link_sets[0].links[0].to_urn =
+            "urn:cerebro:tenant-demo:kubernetes_service_account:ns/a".to_owned();
+        request.delta.link_sets[0].endpoints[0].urn =
+            "urn:cerebro:tenant-other:kubernetes_service_account:ns/a".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+        request.delta.link_sets[0].endpoints[0].urn =
+            "urn:cerebro:tenant-demo:kubernetes_service_account:ns/a".to_owned();
+        request.delta.link_sets[0].endpoints[0].tenant_id = "tenant-other".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+        request.delta.link_sets[0].endpoints[0].tenant_id = tenant_id.as_str().to_owned();
+        request.delta.link_sets[0].source_id = "other-source".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+    }
+
+    // Contract G1 added create_only/retracted_attributes/incomplete with
+    // serde defaults and skip_serializing_if, so a record re-serialized
+    // after this change must digest byte-identically to the exact "old"
+    // JSON shape a pre-G1 recorder observed (a shape that never had these
+    // keys at all) whenever the new fields hold their default value;
+    // content that actually uses a new field must still digest
+    // differently, proving the fields are not silently ignored.
+    #[test]
+    fn legacy_delta_g1_fields_have_stable_digests() {
+        let old_entity = serde_json::json!({
+            "urn": "urn:cerebro:tenant-demo:aws_role:principal",
+            "tenant_id": "tenant-demo",
+            "application_workspace_id": "",
+            "source_id": "vulnview",
+            "runtime_id": "vulnview-runtime",
+            "entity_type": "aws.role",
+            "label": "principal",
+            "attributes": {}
+        });
+        let old_entity_digest = json_digest(&old_entity);
+        let record: LegacyEntityDeltaRecord = serde_json::from_value(old_entity).unwrap();
+        assert!(!record.create_only);
+        assert!(record.retracted_attributes.is_empty());
+        let reserialized_digest = json_digest(&serde_json::to_value(&record).unwrap());
+        assert_eq!(
+            old_entity_digest, reserialized_digest,
+            "a defaulted entity record must re-serialize byte-identically to the pre-G1 shape"
+        );
+
+        let old_link_set = serde_json::json!({
+            "tenant_id": "tenant-demo",
+            "source_id": "vulnview",
+            "runtime_id": "vulnview-runtime",
+            "owner_urn": "urn:cerebro:tenant-demo:aws_role:principal",
+            "relation": "associated_with",
+            "outgoing": true,
+            "links": [],
+            "observation": {}
+        });
+        let old_set_digest = json_digest(&old_link_set);
+        let set: LegacyLinkSetDeltaRecord = serde_json::from_value(old_link_set).unwrap();
+        assert!(!set.incomplete);
+        assert!(set.endpoints.is_empty());
+        let reserialized_set_digest = json_digest(&serde_json::to_value(&set).unwrap());
+        assert_eq!(
+            old_set_digest, reserialized_set_digest,
+            "a defaulted link-set record must re-serialize byte-identically to the pre-G1 shape"
+        );
+
+        // A record naming an actual retraction or an incomplete observation
+        // must digest differently from the all-defaults record above: the
+        // new fields are not silently ignored once they carry real content.
+        let retracting_entity = serde_json::json!({
+            "urn": "urn:cerebro:tenant-demo:aws_role:principal",
+            "tenant_id": "tenant-demo",
+            "application_workspace_id": "",
+            "source_id": "vulnview",
+            "runtime_id": "vulnview-runtime",
+            "entity_type": "aws.role",
+            "label": "principal",
+            "attributes": {},
+            "create_only": false,
+            "retracted_attributes": ["triage_reason"]
+        });
+        let retracting_record: LegacyEntityDeltaRecord =
+            serde_json::from_value(retracting_entity).unwrap();
+        let retracting_digest = json_digest(&serde_json::to_value(&retracting_record).unwrap());
+        assert_ne!(old_entity_digest, retracting_digest);
+
+        let incomplete_link_set = serde_json::json!({
+            "tenant_id": "tenant-demo",
+            "source_id": "vulnview",
+            "runtime_id": "vulnview-runtime",
+            "owner_urn": "urn:cerebro:tenant-demo:aws_role:principal",
+            "relation": "associated_with",
+            "outgoing": true,
+            "links": [],
+            "observation": {},
+            "incomplete": true
+        });
+        let incomplete_set: LegacyLinkSetDeltaRecord =
+            serde_json::from_value(incomplete_link_set).unwrap();
+        let incomplete_digest = json_digest(&serde_json::to_value(&incomplete_set).unwrap());
+        assert_ne!(old_set_digest, incomplete_digest);
+
+        let link_set_with_endpoint = serde_json::json!({
+            "tenant_id": "tenant-demo",
+            "source_id": "vulnview",
+            "runtime_id": "vulnview-runtime",
+            "owner_urn": "urn:cerebro:tenant-demo:aws_role:principal",
+            "relation": "associated_with",
+            "outgoing": true,
+            "links": [],
+            "observation": {},
+            "endpoints": [{
+                "urn": "urn:cerebro:tenant-demo:kubernetes_service_account:ns/a",
+                "tenant_id": "tenant-demo",
+                "application_workspace_id": "",
+                "source_id": "vulnview",
+                "runtime_id": "vulnview-runtime",
+                "entity_type": "kubernetes.service_account",
+                "label": "a",
+                "attributes": {}
+            }]
+        });
+        let set_with_endpoint: LegacyLinkSetDeltaRecord =
+            serde_json::from_value(link_set_with_endpoint).unwrap();
+        assert_eq!(set_with_endpoint.endpoints.len(), 1);
+        let endpoint_digest = json_digest(&serde_json::to_value(&set_with_endpoint).unwrap());
+        assert_ne!(
+            old_set_digest, endpoint_digest,
+            "a link set carrying a real endpoint must not silently ignore it"
+        );
+
+        // A delta recorded before link sets existed has no `link_sets` key;
+        // replaying it must reproduce the receipt digest it was recorded with.
+        let old_delta = serde_json::json!({
+            "entities": [],
+            "links": [],
+            "entity_retractions": [],
+            "link_retractions": [],
+            "cleanup_requests": []
+        });
+        let old_delta_digest = json_digest(&old_delta);
+        let delta: LegacyProjectionDelta = serde_json::from_value(old_delta).unwrap();
+        assert!(delta.link_sets.is_empty());
+        assert_eq!(
+            old_delta_digest,
+            json_digest(&serde_json::to_value(&delta).unwrap()),
+            "a delta without link sets must re-serialize byte-identically to its recorded shape"
+        );
     }
 
     #[test]

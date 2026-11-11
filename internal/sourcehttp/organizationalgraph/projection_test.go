@@ -651,6 +651,214 @@ func TestLegacyDeltaRequestEncodesEmptyRetractionsAsArray(t *testing.T) {
 	if !strings.Contains(string(body), `"entity_retractions":[]`) {
 		t.Fatalf("entity_retractions missing empty array encoding: %s", body)
 	}
+	if strings.Contains(string(body), `"link_sets":null`) {
+		t.Fatalf("link_sets encoded as null, want []: %s", body)
+	}
+	if !strings.Contains(string(body), `"link_sets":[]`) {
+		t.Fatalf("link_sets missing empty array encoding: %s", body)
+	}
+}
+
+// A projector's guarded Contract C9 link set must survive translation into
+// the Rust parity delta intact: Rust has no other way to see links the
+// plain `links` field never carried (they were excluded as covered).
+func TestLegacyDeltaRequestEncodesLinkSets(t *testing.T) {
+	body, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{
+		LinkSets: []*ports.ProjectedLinkSet{{
+			TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			OwnerURN: "urn:cerebro:tenant-a:aws_role:principal", Relation: "associated_with", Outgoing: true,
+			Links: []*ports.ProjectedLink{{
+				TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+				FromURN: "urn:cerebro:tenant-a:aws_role:principal", ToURN: "urn:cerebro:tenant-a:k8s_service_account:ns/a",
+				Relation: "associated_with",
+			}},
+			Observation: map[string]string{"observation_precedence": "strict", "observation_version": "3"},
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var decoded struct {
+		LinkSets []struct {
+			TenantID  string `json:"tenant_id"`
+			SourceID  string `json:"source_id"`
+			RuntimeID string `json:"runtime_id"`
+			OwnerURN  string `json:"owner_urn"`
+			Relation  string `json:"relation"`
+			Outgoing  bool   `json:"outgoing"`
+			Links     []struct {
+				FromURN string `json:"from_urn"`
+				ToURN   string `json:"to_urn"`
+			} `json:"links"`
+			Observation map[string]string `json:"observation"`
+		} `json:"link_sets"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("Unmarshal() error = %v: %s", err, body)
+	}
+	if len(decoded.LinkSets) != 1 {
+		t.Fatalf("link_sets = %#v, want 1", decoded.LinkSets)
+	}
+	set := decoded.LinkSets[0]
+	if set.OwnerURN != "urn:cerebro:tenant-a:aws_role:principal" || set.Relation != "associated_with" || !set.Outgoing {
+		t.Fatalf("link_sets[0] = %#v, want owner/relation/outgoing preserved", set)
+	}
+	if len(set.Links) != 1 || set.Links[0].ToURN != "urn:cerebro:tenant-a:k8s_service_account:ns/a" {
+		t.Fatalf("link_sets[0].links = %#v, want the one consumer link", set.Links)
+	}
+	if set.Observation["observation_version"] != "3" {
+		t.Fatalf("link_sets[0].observation = %#v, want observation_version=3", set.Observation)
+	}
+}
+
+// Contract G1's new port fields must survive translation into the Rust
+// parity delta: before they were added to legacyProjectedEntity/
+// legacyProjectedLinkSet, a CreateOnly stub's and a retraction's and an
+// Incomplete link set's markers were silently dropped on the wire.
+func TestLegacyDeltaRequestEncodesCreateOnlyRetractionsAndIncomplete(t *testing.T) {
+	body, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "principal",
+			CreateOnly:          true,
+			RetractedAttributes: []string{"triage_reason", "triage_by"},
+		}},
+		LinkSets: []*ports.ProjectedLinkSet{{
+			TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			OwnerURN: "urn:cerebro:tenant-a:aws_role:principal", Relation: "associated_with", Outgoing: true,
+			Observation: map[string]string{"observation_version": "3"},
+			Incomplete:  true,
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var decoded struct {
+		Entities []struct {
+			URN                 string   `json:"urn"`
+			CreateOnly          bool     `json:"create_only"`
+			RetractedAttributes []string `json:"retracted_attributes"`
+		} `json:"entities"`
+		LinkSets []struct {
+			OwnerURN   string `json:"owner_urn"`
+			Incomplete bool   `json:"incomplete"`
+		} `json:"link_sets"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("Unmarshal() error = %v: %s", err, body)
+	}
+	if len(decoded.Entities) != 1 || !decoded.Entities[0].CreateOnly {
+		t.Fatalf("entities[0].create_only = %#v, want true: %s", decoded.Entities, body)
+	}
+	if len(decoded.Entities[0].RetractedAttributes) != 2 {
+		t.Fatalf("entities[0].retracted_attributes = %#v, want 2 keys: %s", decoded.Entities[0].RetractedAttributes, body)
+	}
+	if len(decoded.LinkSets) != 1 || !decoded.LinkSets[0].Incomplete {
+		t.Fatalf("link_sets[0].incomplete = %#v, want true: %s", decoded.LinkSets, body)
+	}
+}
+
+// TestLegacyDeltaRequestEncodesLinkSetEndpoints pins R06: a link set's
+// Endpoints must survive translation into the Rust parity delta, and an
+// empty/nil Endpoints list must be omitted entirely (not encoded as a
+// null or empty array key) so a pre-R06 recorded delta still re-encodes
+// byte-identically.
+func TestLegacyDeltaRequestEncodesLinkSetEndpoints(t *testing.T) {
+	set := &ports.ProjectedLinkSet{
+		TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: "urn:cerebro:tenant-a:aws_role:principal", Relation: "associated_with", Outgoing: true,
+		Links: []*ports.ProjectedLink{{
+			TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			FromURN: "urn:cerebro:tenant-a:aws_role:principal", ToURN: "urn:cerebro:tenant-a:k8s_service_account:ns/a",
+			Relation: "associated_with",
+		}},
+		Endpoints: []*ports.ProjectedEntity{{
+			URN: "urn:cerebro:tenant-a:k8s_service_account:ns/a", TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			EntityType: "kubernetes.service_account", Label: "a", CreateOnly: true,
+		}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "3"},
+	}
+	// The same scope rules Rust's validate_legacy_projection enforces
+	// (endpoint tenant/source/runtime equal to the set's own) must already
+	// hold for the generated set before it ever reaches the wire.
+	if err := ports.ValidateProjectedLinkSetEndpoints(set); err != nil {
+		t.Fatalf("ValidateProjectedLinkSetEndpoints() error = %v", err)
+	}
+	body, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{
+		LinkSets: []*ports.ProjectedLinkSet{set},
+	}))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	var decoded struct {
+		LinkSets []struct {
+			SourceID  string `json:"source_id"`
+			RuntimeID string `json:"runtime_id"`
+			Endpoints []struct {
+				URN        string `json:"urn"`
+				EntityType string `json:"entity_type"`
+				SourceID   string `json:"source_id"`
+				RuntimeID  string `json:"runtime_id"`
+				CreateOnly bool   `json:"create_only"`
+			} `json:"endpoints"`
+		} `json:"link_sets"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("Unmarshal() error = %v: %s", err, body)
+	}
+	if len(decoded.LinkSets) != 1 || len(decoded.LinkSets[0].Endpoints) != 1 {
+		t.Fatalf("link_sets[0].endpoints = %#v, want 1: %s", decoded.LinkSets, body)
+	}
+	endpoint := decoded.LinkSets[0].Endpoints[0]
+	if endpoint.URN != "urn:cerebro:tenant-a:k8s_service_account:ns/a" || endpoint.EntityType != "kubernetes.service_account" || !endpoint.CreateOnly {
+		t.Fatalf("endpoints[0] = %#v, want the CreateOnly consumer stub preserved", endpoint)
+	}
+	if endpoint.SourceID != decoded.LinkSets[0].SourceID || endpoint.RuntimeID != decoded.LinkSets[0].RuntimeID {
+		t.Fatalf("endpoints[0] source/runtime = %q/%q, want them to equal the set's own %q/%q (the scope Rust enforces)", endpoint.SourceID, endpoint.RuntimeID, decoded.LinkSets[0].SourceID, decoded.LinkSets[0].RuntimeID)
+	}
+
+	emptyBody, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{
+		LinkSets: []*ports.ProjectedLinkSet{{
+			TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			OwnerURN: "urn:cerebro:tenant-a:aws_role:principal", Relation: "associated_with", Outgoing: true,
+			Observation: map[string]string{"observation_version": "4"},
+			Incomplete:  true,
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("Marshal(empty) error = %v", err)
+	}
+	if strings.Contains(string(emptyBody), `"endpoints"`) {
+		t.Fatalf("empty endpoints must be omitted from the wire shape, not encoded as null/[]: %s", emptyBody)
+	}
+}
+
+// Contract G1 digest stability: a delta recorded before create_only/
+// retracted_attributes/incomplete existed must re-encode byte-identically
+// to what a recorder with those fields at their default (zero) value
+// produces, or every prior delta's digest would spuriously change on
+// replay. omitempty must drop each field entirely rather than encode a
+// `false`/`[]` zero value.
+func TestLegacyDeltaRequestOmitsDefaultG1Fields(t *testing.T) {
+	body, err := json.Marshal(legacyDeltaRequest(ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "principal",
+		}},
+		LinkSets: []*ports.ProjectedLinkSet{{
+			TenantID: "tenant-a", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			OwnerURN: "urn:cerebro:tenant-a:aws_role:principal", Relation: "associated_with", Outgoing: true,
+			Observation: map[string]string{"observation_version": "3"},
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	for _, field := range []string{"create_only", "retracted_attributes", "incomplete"} {
+		if strings.Contains(string(body), `"`+field+`"`) {
+			t.Fatalf("default-valued %q was encoded, want omitted entirely: %s", field, body)
+		}
+	}
 }
 
 // The append-log subject is "<prefix>.<kind>" and Rust reads it back as

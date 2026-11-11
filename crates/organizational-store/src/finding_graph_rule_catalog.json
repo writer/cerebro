@@ -323,15 +323,5 @@
       "row_limit": "integer",
       "tenant_id": "string"
     }
-  },
-  "vulnview-external-asset-concentrated-signal": {
-    "query": "MATCH (asset:Entity {entity_type: 'external.asset', tenant_id: $tenant_id, source_id: 'vulnview'})\nMATCH (asset)-[evidence_rel:RELATION {relation: 'has_evidence', source_id: 'vulnview'}]-\u003e(evidence:Entity {tenant_id: $tenant_id, source_id: 'vulnview'})\nWHERE evidence.entity_type IN ['vulnview.finding', 'vulnview.dns_alert']\nWITH asset, collect({\n       urn: evidence.urn,\n       label: coalesce(evidence.label, ''),\n       entity_type: coalesce(evidence.entity_type, ''),\n       attributes_json: coalesce(evidence.attributes_json, ''),\n       evidence_attributes_json: coalesce(evidence_rel.attributes_json, '')\n     }) AS evidence,\n     count(evidence) AS evidence_count,\n     max(CASE\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"critical\"' THEN 5\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"high\"' THEN 4\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"medium\"' THEN 3\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"moderate\"' THEN 3\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"low\"' THEN 2\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"info\"' THEN 1\n       WHEN toLower(coalesce(evidence.attributes_json, '')) CONTAINS '\"severity\":\"informational\"' THEN 1\n       ELSE 0\n     END) AS max_severity_rank\nWHERE evidence_count \u003e= $evidence_threshold OR max_severity_rank \u003e= $severity_threshold\nRETURN asset.urn AS asset_urn,\n       asset.label AS asset_label,\n       coalesce(asset.attributes_json, '') AS asset_attributes_json,\n       evidence\nORDER BY max_severity_rank DESC, evidence_count DESC, asset.urn\nLIMIT $row_limit",
-    "row_limit": 2000,
-    "param_types": {
-      "evidence_threshold": "integer",
-      "row_limit": "integer",
-      "severity_threshold": "integer",
-      "tenant_id": "string"
-    }
   }
 }

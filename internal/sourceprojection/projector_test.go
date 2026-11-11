@@ -15,6 +15,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/projectionmeta"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -24,6 +25,15 @@ type projectionRecorder struct {
 	deletedEntities map[string]struct{}
 	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
+
+	// linkSetObservations/linkSetLinks model Contract C9's guarded replace
+	// semantics faithfully (not just recording calls): each owner/
+	// relation/direction/tenant/source/runtime scope keeps the last
+	// applied Observation and desired links, keyed by the other
+	// endpoint's URN.
+	linkSetObservations map[string]map[string]string
+	linkSetLinks        map[string]map[string]*ports.ProjectedLink
+	linkSetCalls        int
 }
 
 func TestFinalizeProjectedRecordsStampsTrustedApplicationWorkspace(t *testing.T) {
@@ -135,6 +145,97 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	if r.links != nil {
 		delete(r.links, key)
 	}
+	return nil
+}
+
+// ReplaceProjectedLinkSets applies each set only when its Observation is
+// not older than the scope's last applied one, then replaces that scope's
+// desired links wholesale — mirroring the Neo4j store's guarded
+// transaction. It also materializes each accepted (non-Incomplete) set's
+// Endpoints as CreateOnly stubs inside this same guard (R06), never
+// overwriting an entity already recorded for that URN, so tests can prove
+// a stale or losing set's Endpoints never reach r.entities.
+func (r *projectionRecorder) ReplaceProjectedLinkSets(_ context.Context, sets []*ports.ProjectedLinkSet) error {
+	r.linkSetCalls++
+	if r.linkSetObservations == nil {
+		r.linkSetObservations = map[string]map[string]string{}
+	}
+	if r.linkSetLinks == nil {
+		r.linkSetLinks = map[string]map[string]*ports.ProjectedLink{}
+	}
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		if err := ports.ValidateProjectedLinkSetEndpoints(set); err != nil {
+			return err
+		}
+		key := ports.ProjectedLinkSetOwnerKey(set)
+		if stored, ok := r.linkSetObservations[key]; ok && projectionmeta.CompareObservations(stored, set.Observation) == projectionmeta.ObservationOlder {
+			continue
+		}
+		if set.Incomplete {
+			r.linkSetObservations[key] = set.Observation
+			continue
+		}
+		if r.entities == nil {
+			r.entities = map[string]*ports.ProjectedEntity{}
+		}
+		for _, endpoint := range set.Endpoints {
+			if endpoint == nil {
+				continue
+			}
+			if _, exists := r.entities[endpoint.URN]; exists {
+				continue
+			}
+			r.entities[endpoint.URN] = cloneProjectedEntity(endpoint)
+		}
+		desired := make(map[string]*ports.ProjectedLink, len(set.Links))
+		for _, link := range set.Links {
+			other := link.ToURN
+			if !set.Outgoing {
+				other = link.FromURN
+			}
+			desired[other] = cloneProjectedLink(link)
+		}
+		r.linkSetLinks[key] = desired
+		r.linkSetObservations[key] = set.Observation
+	}
+	return nil
+}
+
+var _ ports.ProjectionLinkSetStore = (*projectionRecorder)(nil)
+
+// unsupportedLinkSetProjectionStore implements only the bare minimum of
+// ports.ProjectionStateStore/ports.ProjectionGraphStore — notably NOT
+// ports.ProjectionLinkSetStore — so tests can prove an event that carries
+// link sets fails closed against a store that cannot apply them.
+type unsupportedLinkSetProjectionStore struct {
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *unsupportedLinkSetProjectionStore) Ping(context.Context) error { return nil }
+
+func (s *unsupportedLinkSetProjectionStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = map[string]*ports.ProjectedEntity{}
+	}
+	s.entities[entity.URN] = cloneProjectedEntity(entity)
+	return nil
+}
+
+func (s *unsupportedLinkSetProjectionStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = map[string]*ports.ProjectedLink{}
+	}
+	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
 	return nil
 }
 
@@ -7245,6 +7346,119 @@ func mustJSON(t *testing.T, value any) []byte {
 	return payload
 }
 
+// Contract G1 page/batch coalescing: a CreateOnly stub must never overwrite
+// an ordinary entity's attributes/label/ownership for the same URN in
+// either arrival order, and two stubs for the same URN keep the first.
+// Before this fix addEntity blindly overwrote fields regardless of
+// CreateOnly, so a later stub could erase an ordinary entity's label.
+func TestAddEntityOrdinaryWinsOverCreateOnlyStub(t *testing.T) {
+	t.Run("ordinary then stub keeps the ordinary entity untouched", func(t *testing.T) {
+		entities := map[string]*ports.ProjectedEntity{}
+		ordinary := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "aws",
+			EntityType: "aws.role", Label: "arn:aws:iam::111:role/principal",
+			Attributes: map[string]string{"account_id": "111"},
+		}
+		stub := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "urn:cerebro:tenant-a:aws_role:principal",
+			CreateOnly: true,
+		}
+		addEntity(entities, ordinary)
+		addEntity(entities, stub)
+		got := entities[ordinary.URN]
+		if got.SourceID != "aws" || got.Label != ordinary.Label || got.Attributes["account_id"] != "111" {
+			t.Fatalf("addEntity() = %#v, want ordinary entity untouched by stub", got)
+		}
+	})
+	t.Run("stub then ordinary replaces the stub outright", func(t *testing.T) {
+		entities := map[string]*ports.ProjectedEntity{}
+		stub := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "urn:cerebro:tenant-a:aws_role:principal",
+			CreateOnly: true,
+		}
+		ordinary := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "aws",
+			EntityType: "aws.role", Label: "arn:aws:iam::111:role/principal",
+			Attributes: map[string]string{"account_id": "111"},
+		}
+		addEntity(entities, stub)
+		addEntity(entities, ordinary)
+		got := entities[ordinary.URN]
+		if got.SourceID != "aws" || got.Label != ordinary.Label || got.Attributes["account_id"] != "111" || got.CreateOnly {
+			t.Fatalf("addEntity() = %#v, want the ordinary entity to replace the stub", got)
+		}
+	})
+	t.Run("two stubs keep the first", func(t *testing.T) {
+		entities := map[string]*ports.ProjectedEntity{}
+		first := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "first", CreateOnly: true,
+		}
+		second := &ports.ProjectedEntity{
+			URN: "urn:cerebro:tenant-a:aws_role:principal", TenantID: "tenant-a", SourceID: "vulnview",
+			EntityType: "aws.role", Label: "second", CreateOnly: true,
+		}
+		addEntity(entities, first)
+		addEntity(entities, second)
+		if got := entities[first.URN]; got.Label != "first" {
+			t.Fatalf("addEntity() label = %q, want %q (first stub retained)", got.Label, "first")
+		}
+	})
+}
+
+// Contract G1 entity merge: an accepted observation's RetractedAttributes
+// keys that it does not carry in Attributes must be deleted from the
+// coalesced attributes, and the field itself coalesces to the union of
+// both observations' retracted keys minus whatever the final attributes
+// still carry.
+func TestAddEntityAppliesAndCoalescesRetractedAttributes(t *testing.T) {
+	entities := map[string]*ports.ProjectedEntity{}
+	first := &ports.ProjectedEntity{
+		URN: "urn:cerebro:tenant-a:finding:f-1", TenantID: "tenant-a", SourceID: "vulnview",
+		EntityType: "finding",
+		Attributes: map[string]string{"triage_state": "accepted", "triage_reason": "reviewed", "status": "open"},
+	}
+	second := &ports.ProjectedEntity{
+		URN: "urn:cerebro:tenant-a:finding:f-1", TenantID: "tenant-a", SourceID: "vulnview",
+		EntityType:          "finding",
+		Attributes:          map[string]string{"triage_state": "none", "status": "open"},
+		RetractedAttributes: []string{"triage_reason"},
+	}
+	addEntity(entities, first)
+	addEntity(entities, second)
+	got := entities[first.URN]
+	if _, present := got.Attributes["triage_reason"]; present {
+		t.Fatalf("attributes = %#v, want triage_reason retracted", got.Attributes)
+	}
+	if got.Attributes["triage_state"] != "none" || got.Attributes["status"] != "open" {
+		t.Fatalf("attributes = %#v, want triage_state=none and status preserved", got.Attributes)
+	}
+	if len(got.RetractedAttributes) != 1 || got.RetractedAttributes[0] != "triage_reason" {
+		t.Fatalf("retracted attributes = %#v, want [triage_reason]", got.RetractedAttributes)
+	}
+	// A key the coalesced attributes still carry must never be listed as
+	// retracted, even if an earlier observation in the page retracted it.
+	entities2 := map[string]*ports.ProjectedEntity{}
+	addEntity(entities2, &ports.ProjectedEntity{
+		URN: "urn:cerebro:tenant-a:finding:f-2", TenantID: "tenant-a", SourceID: "vulnview",
+		EntityType: "finding", Attributes: map[string]string{"triage_state": "none"},
+		RetractedAttributes: []string{"triage_reason"},
+	})
+	addEntity(entities2, &ports.ProjectedEntity{
+		URN: "urn:cerebro:tenant-a:finding:f-2", TenantID: "tenant-a", SourceID: "vulnview",
+		EntityType: "finding", Attributes: map[string]string{"triage_reason": "reinstated"},
+	})
+	got2 := entities2["urn:cerebro:tenant-a:finding:f-2"]
+	if got2.Attributes["triage_reason"] != "reinstated" {
+		t.Fatalf("attributes = %#v, want triage_reason reinstated", got2.Attributes)
+	}
+	if len(got2.RetractedAttributes) != 0 {
+		t.Fatalf("retracted attributes = %#v, want none (key now present)", got2.RetractedAttributes)
+	}
+}
+
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
 	if entity == nil {
 		return nil
@@ -7262,6 +7476,8 @@ func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity 
 		EntityType:             entity.EntityType,
 		Label:                  entity.Label,
 		Attributes:             attributes,
+		CreateOnly:             entity.CreateOnly,
+		RetractedAttributes:    append([]string(nil), entity.RetractedAttributes...),
 	}
 }
 
@@ -7296,4 +7512,497 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A projector's guarded Contract C9 link set must be applied after entity
+// upserts, must exclude its covered links from the plain link upsert path
+// while leaving uncovered plain links untouched, and must be carried in
+// the compatibility delta Rust uses for parity tracking.
+func TestProjectWithDeltaAppliesLinkSetsAfterEntitiesAndExcludesCoveredLinks(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerA := "urn:cerebro:writer:kubernetes_service_account:ns/a"
+	uncoveredTarget := "urn:cerebro:writer:external_asset:other"
+	set := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links: []*ports.ProjectedLink{{
+			TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			FromURN: owner, ToURN: consumerA, Relation: "associated_with",
+		}},
+		Observation: map[string]string{"at": "2026-11-02T10:00:00Z"},
+	}
+	coveredPlainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		FromURN: owner, ToURN: consumerA, Relation: "associated_with",
+	}
+	uncoveredPlainLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		FromURN: owner, ToURN: uncoveredTarget, Relation: "has_evidence",
+	}
+	registry, err := NewRegistry(EventProjector{
+		Kind: "test.linkset",
+		Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}},
+				[]*ports.ProjectedLink{coveredPlainLink, uncoveredPlainLink}, nil
+		},
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graph := &projectionRecorder{}
+	service := NewWithRegistry(nil, graph, registry)
+	result, delta, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-1", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	})
+	if err != nil {
+		t.Fatalf("ProjectWithDelta() error = %v", err)
+	}
+	if graph.linkSetCalls != 1 {
+		t.Fatalf("ReplaceProjectedLinkSets called %d times, want 1", graph.linkSetCalls)
+	}
+	key := ports.ProjectedLinkSetOwnerKey(set)
+	stored := graph.linkSetLinks[key]
+	if len(stored) != 1 || stored[consumerA] == nil {
+		t.Fatalf("stored link set links = %#v, want only consumerA", stored)
+	}
+	if _, ok := graph.links[projectedLinkKey(coveredPlainLink)]; ok {
+		t.Fatalf("covered plain link reached the plain upsert path: %#v", graph.links)
+	}
+	if _, ok := graph.links[projectedLinkKey(uncoveredPlainLink)]; !ok {
+		t.Fatalf("uncovered plain link did not reach the plain upsert path: %#v", graph.links)
+	}
+	if result.LinksProjected != 2 {
+		t.Fatalf("LinksProjected = %d, want 2 (1 uncovered plain link + 1 from the applied set)", result.LinksProjected)
+	}
+	if len(delta.LinkSets) != 1 || delta.LinkSets[0].OwnerURN != owner {
+		t.Fatalf("delta.LinkSets = %#v, want the applied set carried for Rust parity tracking", delta.LinkSets)
+	}
+	if len(delta.Links) != 1 || delta.Links[0] != uncoveredPlainLink {
+		t.Fatalf("delta.Links = %#v, want only the uncovered plain link", delta.Links)
+	}
+}
+
+// TestProjectWithDeltaStaleLinkSetReplayCreatesNeitherEndpointNorLink pins
+// R06's confirmed failure sequence through the actual Service.ProjectWithDelta
+// path: a winning v3 complete-empty observation accepted first, then a
+// stale v2 replay naming a previously-absent consumer B, must create
+// neither B's entity nor its link -- the finding stays on the winning
+// observation and B is never materialized at all.
+func TestProjectWithDeltaStaleLinkSetReplayCreatesNeitherEndpointNorLink(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerB := "urn:cerebro:writer:kubernetes_service_account:ns/b"
+	linkSet := func(version string, consumers ...string) *ports.ProjectedLinkSet {
+		links := make([]*ports.ProjectedLink, 0, len(consumers))
+		endpoints := make([]*ports.ProjectedEntity, 0, len(consumers))
+		for _, consumer := range consumers {
+			links = append(links, &ports.ProjectedLink{
+				TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+				FromURN: owner, ToURN: consumer, Relation: "associated_with",
+			})
+			endpoints = append(endpoints, &ports.ProjectedEntity{
+				URN: consumer, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account",
+				Label: consumer, CreateOnly: true,
+			})
+		}
+		return &ports.ProjectedLinkSet{
+			TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+			Links: links, Endpoints: endpoints,
+			Observation: map[string]string{"observation_precedence": "strict", "observation_version": version},
+		}
+	}
+	project := func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}}, nil, nil
+	}
+	graph := &projectionRecorder{}
+
+	registryV3Empty, err := NewRegistry(EventProjector{
+		Kind: "test.linkset", Project: project,
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{linkSet("3")}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(v3) error = %v", err)
+	}
+	service := NewWithRegistry(nil, graph, registryV3Empty)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-v3", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(v3 empty) error = %v", err)
+	}
+
+	registryV2WithB, err := NewRegistry(EventProjector{
+		Kind: "test.linkset", Project: project,
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{linkSet("2", consumerB)}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(v2) error = %v", err)
+	}
+	service = NewWithRegistry(nil, graph, registryV2WithB)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-v2", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(stale v2 with B) error = %v", err)
+	}
+
+	if _, exists := graph.entities[consumerB]; exists {
+		t.Fatalf("a stale replay materialized consumer B's entity: %#v", graph.entities[consumerB])
+	}
+	key := ports.ProjectedLinkSetOwnerKey(linkSet("0"))
+	if stored := graph.linkSetLinks[key]; len(stored) != 0 {
+		t.Fatalf("a stale replay asserted B's link: %#v", stored)
+	}
+}
+
+// TestProjectWithDeltaIncompleteAfterCompleteKeepsExistingEndpointAndRejectsLaterStaleLink
+// pins R06's second confirmed sequence: v1 asserts a complete {A} set and
+// creates A's endpoint, v3 is accepted but Incomplete (advancing the guard
+// without touching links or endpoints), and a reordered stale v2 naming a
+// new consumer B must keep A and never create B.
+func TestProjectWithDeltaIncompleteAfterCompleteKeepsExistingEndpointAndRejectsLaterStaleLink(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerA := "urn:cerebro:writer:kubernetes_service_account:ns/a"
+	consumerB := "urn:cerebro:writer:kubernetes_service_account:ns/b"
+	project := func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}}, nil, nil
+	}
+	graph := &projectionRecorder{}
+
+	v1Set := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links:       []*ports.ProjectedLink{{TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", FromURN: owner, ToURN: consumerA, Relation: "associated_with"}},
+		Endpoints:   []*ports.ProjectedEntity{{URN: consumerA, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account", Label: "a", CreateOnly: true}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "1"},
+	}
+	registryV1, err := NewRegistry(EventProjector{
+		Kind: "test.linkset", Project: project,
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{v1Set}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(v1) error = %v", err)
+	}
+	service := NewWithRegistry(nil, graph, registryV1)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-v1", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(v1) error = %v", err)
+	}
+	if _, exists := graph.entities[consumerA]; !exists {
+		t.Fatal("v1 did not create consumer A's endpoint")
+	}
+
+	v3IncompleteSet := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Incomplete:  true,
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "3"},
+	}
+	registryV3Incomplete, err := NewRegistry(EventProjector{
+		Kind: "test.linkset", Project: project,
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{v3IncompleteSet}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(v3 incomplete) error = %v", err)
+	}
+	service = NewWithRegistry(nil, graph, registryV3Incomplete)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-v3", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(v3 incomplete) error = %v", err)
+	}
+
+	v2SetWithB := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links:       []*ports.ProjectedLink{{TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", FromURN: owner, ToURN: consumerB, Relation: "associated_with"}},
+		Endpoints:   []*ports.ProjectedEntity{{URN: consumerB, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account", Label: "b", CreateOnly: true}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "2"},
+	}
+	registryV2, err := NewRegistry(EventProjector{
+		Kind: "test.linkset", Project: project,
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{v2SetWithB}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(v2) error = %v", err)
+	}
+	service = NewWithRegistry(nil, graph, registryV2)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-v2", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(stale v2 with B) error = %v", err)
+	}
+
+	if _, exists := graph.entities[consumerA]; !exists {
+		t.Fatal("A's endpoint was removed")
+	}
+	if _, exists := graph.entities[consumerB]; exists {
+		t.Fatal("a stale replay materialized consumer B's entity")
+	}
+	key := ports.ProjectedLinkSetOwnerKey(v1Set)
+	stored := graph.linkSetLinks[key]
+	if len(stored) != 1 || stored[consumerA] == nil {
+		t.Fatalf("stored link set links = %#v, want only A to survive", stored)
+	}
+}
+
+// TestProjectWithDeltaAcceptedLinkSetCreatesMissingEndpointLeavesProviderEntityUntouchedAndAllowsLaterEnrichment
+// pins three further R06 controls through the actual Service path: an
+// accepted set still creates a genuinely missing endpoint; a
+// provider-projected (non-CreateOnly) entity sharing the endpoint's URN is
+// never touched by the CreateOnly stub; and a later ordinary provider
+// projection for that same URN still enriches it normally afterward.
+func TestProjectWithDeltaAcceptedLinkSetCreatesMissingEndpointLeavesProviderEntityUntouchedAndAllowsLaterEnrichment(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	providerOwned := "urn:cerebro:writer:kubernetes_service_account:ns/provider-owned"
+	graph := &projectionRecorder{}
+
+	// The provider connector projects its entity first, with real facts.
+	if err := graph.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN: providerOwned, TenantID: "writer", SourceID: "kubernetes", EntityType: "kubernetes.service_account",
+		Label: "provider-label", Attributes: map[string]string{"owner": "platform-team"},
+	}); err != nil {
+		t.Fatalf("seed provider entity: %v", err)
+	}
+
+	set := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links:       []*ports.ProjectedLink{{TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", FromURN: owner, ToURN: providerOwned, Relation: "associated_with"}},
+		Endpoints:   []*ports.ProjectedEntity{{URN: providerOwned, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account", Label: "stub-label", CreateOnly: true}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "1"},
+	}
+	registry, err := NewRegistry(EventProjector{
+		Kind: "test.linkset",
+		Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}}, nil, nil
+		},
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(nil, graph, registry)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-1", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta() error = %v", err)
+	}
+	// The provider-first entity must be untouched: still the provider's
+	// own label/attributes/source, not overwritten by the stub.
+	if got := graph.entities[providerOwned]; got == nil || got.Label != "provider-label" || got.SourceID != "kubernetes" || got.Attributes["owner"] != "platform-team" {
+		t.Fatalf("provider-owned entity was touched by the CreateOnly stub: %#v", got)
+	}
+
+	missingEndpointURN := "urn:cerebro:writer:kubernetes_service_account:ns/missing"
+	set2 := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links:       []*ports.ProjectedLink{{TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", FromURN: owner, ToURN: missingEndpointURN, Relation: "associated_with"}},
+		Endpoints:   []*ports.ProjectedEntity{{URN: missingEndpointURN, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account", Label: "missing-stub", CreateOnly: true}},
+		Observation: map[string]string{"observation_precedence": "strict", "observation_version": "2"},
+	}
+	registry2, err := NewRegistry(EventProjector{
+		Kind: "test.linkset",
+		Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "aws_role"}}, nil, nil
+		},
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set2}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(2) error = %v", err)
+	}
+	service = NewWithRegistry(nil, graph, registry2)
+	if _, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-2", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+		Attributes: map[string]string{ports.EventAttributeSourceRuntimeID: "vulnview-runtime"},
+	}); err != nil {
+		t.Fatalf("ProjectWithDelta(2) error = %v", err)
+	}
+	if got := graph.entities[missingEndpointURN]; got == nil {
+		t.Fatal("an accepted observation did not create its genuinely missing endpoint")
+	} else if !got.CreateOnly {
+		t.Fatalf("created endpoint = %#v, want CreateOnly recorded true", got)
+	}
+
+	// Later ordinary provider enrichment for the same stub URN must still
+	// apply normally afterward.
+	if err := graph.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN: missingEndpointURN, TenantID: "writer", SourceID: "kubernetes", EntityType: "kubernetes.service_account",
+		Label: "enriched-label", Attributes: map[string]string{"owner": "platform-team"},
+	}); err != nil {
+		t.Fatalf("enrich stub entity: %v", err)
+	}
+	if got := graph.entities[missingEndpointURN]; got == nil || got.Label != "enriched-label" || got.SourceID != "kubernetes" {
+		t.Fatalf("later provider enrichment did not apply: %#v", got)
+	}
+}
+
+// A configured store that cannot apply a guarded link set must fail the
+// whole event closed rather than silently falling back to a plain upsert
+// that would reintroduce links a newer observation already retracted (B2).
+func TestProjectWithDeltaFailsClosedWhenGraphStoreDoesNotSupportLinkSets(t *testing.T) {
+	owner := "urn:cerebro:writer:aws_role:principal"
+	consumerA := "urn:cerebro:writer:kubernetes_service_account:ns/a"
+	set := &ports.ProjectedLinkSet{
+		TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+		OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+		Links: []*ports.ProjectedLink{{
+			TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+			FromURN: owner, ToURN: consumerA, Relation: "associated_with",
+		}},
+		Observation: map[string]string{"at": "2026-11-02T10:00:00Z"},
+	}
+	registry, err := NewRegistry(EventProjector{
+		Kind: "test.linkset",
+		Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return nil, nil, nil
+		},
+		ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+			return []*ports.ProjectedLinkSet{set}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graph := &unsupportedLinkSetProjectionStore{}
+	service := NewWithRegistry(nil, graph, registry)
+	_, _, err = service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-1", Kind: "test.linkset", TenantId: "writer",
+	})
+	if !errors.Is(err, ports.ErrProjectionLinkSetStoreUnsupported) {
+		t.Fatalf("ProjectWithDelta() error = %v, want ports.ErrProjectionLinkSetStoreUnsupported", err)
+	}
+}
+
+// An event that emits no link sets must succeed normally even against a
+// store that cannot apply them: the guard only affects events that
+// actually carry link sets.
+func TestProjectWithDeltaSucceedsWithoutLinkSetSupportWhenNoneEmitted(t *testing.T) {
+	registry, err := NewRegistry(EventProjector{
+		Kind: "test.plain",
+		Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{URN: "urn:cerebro:writer:asset:one", TenantID: "writer", SourceID: "aws", EntityType: "asset"}}, nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graph := &unsupportedLinkSetProjectionStore{}
+	service := NewWithRegistry(nil, graph, registry)
+	result, _, err := service.ProjectWithDelta(context.Background(), &cerebrov1.EventEnvelope{
+		Id: "event-1", Kind: "test.plain", TenantId: "writer",
+	})
+	if err != nil {
+		t.Fatalf("ProjectWithDelta() error = %v, want nil since no link sets were emitted", err)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	}
+}
+
+// Guarded sets follow finalizeProjectedRecords' workspace policy: an
+// invalid trusted workspace (even on an incomplete observation with nothing
+// to stamp) or any workspace a projector chooses for a set's link or
+// endpoint (even one equal to the trusted value) is rejected by
+// ProjectLinkSets, and fails ProjectWithDelta before anything is written.
+func TestProjectLinkSetsRejectsUntrustedApplicationWorkspaceBeforeWrites(t *testing.T) {
+	owner := "urn:cerebro:writer:vulnview_finding:f1"
+	consumer := "urn:cerebro:writer:kubernetes_service_account:ns/a"
+	for _, tc := range []struct {
+		name         string
+		trusted      string
+		mutate       func(*ports.ProjectedLinkSet)
+		wantConflict bool
+	}{
+		{
+			name:    "invalid trusted workspace on an incomplete observation",
+			trusted: "workspace,a",
+			mutate: func(set *ports.ProjectedLinkSet) {
+				set.Links, set.Endpoints, set.Incomplete = nil, nil, true
+			},
+		},
+		{
+			name:         "projector-supplied link workspace",
+			trusted:      "workspace-a",
+			mutate:       func(set *ports.ProjectedLinkSet) { set.Links[0].ApplicationWorkspaceID = "workspace-a" },
+			wantConflict: true,
+		},
+		{
+			name:         "projector-supplied endpoint workspace",
+			trusted:      "workspace-a",
+			mutate:       func(set *ports.ProjectedLinkSet) { set.Endpoints[0].ApplicationWorkspaceID = "workspace-b" },
+			wantConflict: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry, err := NewRegistry(EventProjector{
+				Kind: "test.linkset",
+				Project: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+					return []*ports.ProjectedEntity{{URN: owner, TenantID: "writer", SourceID: "vulnview", EntityType: "vulnview.finding"}}, nil, nil
+				},
+				ProjectLinkSets: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error) {
+					set := &ports.ProjectedLinkSet{
+						TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime",
+						OwnerURN: owner, Relation: "associated_with", Outgoing: true,
+						Links:       []*ports.ProjectedLink{{TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", FromURN: owner, ToURN: consumer, Relation: "associated_with"}},
+						Endpoints:   []*ports.ProjectedEntity{{URN: consumer, TenantID: "writer", SourceID: "vulnview", RuntimeID: "vulnview-runtime", EntityType: "kubernetes.service_account", CreateOnly: true}},
+						Observation: map[string]string{"observation_precedence": "strict", "observation_version": "1"},
+					}
+					tc.mutate(set)
+					return []*ports.ProjectedLinkSet{set}, nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewRegistry() error = %v", err)
+			}
+			event := &cerebrov1.EventEnvelope{
+				Id: "event-1", Kind: "test.linkset", TenantId: "writer", SourceId: "vulnview",
+				Attributes: map[string]string{
+					ports.EventAttributeSourceRuntimeID:        "vulnview-runtime",
+					ports.EventAttributeApplicationWorkspaceID: tc.trusted,
+				},
+			}
+			rejected := func(err error) bool {
+				if tc.wantConflict {
+					return errors.Is(err, ports.ErrApplicationWorkspaceConflict)
+				}
+				return err != nil
+			}
+			graph := &projectionRecorder{}
+			service := NewWithRegistry(nil, graph, registry)
+			if _, err := service.ProjectLinkSets(event); !rejected(err) {
+				t.Fatalf("ProjectLinkSets() error = %v, want rejection (conflict=%v)", err, tc.wantConflict)
+			}
+			if _, _, err := service.ProjectWithDelta(context.Background(), event); !rejected(err) {
+				t.Fatalf("ProjectWithDelta() error = %v, want rejection (conflict=%v)", err, tc.wantConflict)
+			}
+			if graph.linkSetCalls != 0 || len(graph.entities) != 0 || len(graph.links) != 0 {
+				t.Fatalf("rejected projection wrote state: linkSetCalls=%d entities=%#v links=%#v", graph.linkSetCalls, graph.entities, graph.links)
+			}
+		})
+	}
 }

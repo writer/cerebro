@@ -164,6 +164,8 @@ type legacyProjectedEntity struct {
 	EntityType             string            `json:"entity_type"`
 	Label                  string            `json:"label"`
 	Attributes             map[string]string `json:"attributes"`
+	CreateOnly             bool              `json:"create_only,omitempty"`
+	RetractedAttributes    []string          `json:"retracted_attributes,omitempty"`
 }
 
 type legacyProjectedLink struct {
@@ -175,6 +177,28 @@ type legacyProjectedLink struct {
 	ToURN                  string            `json:"to_urn"`
 	Relation               string            `json:"relation"`
 	Attributes             map[string]string `json:"attributes"`
+}
+
+// legacyProjectedLinkSet mirrors ports.ProjectedLinkSet (Contract C9): the
+// complete desired link set a projector asked the graph pipeline to apply
+// as one guarded replacement rather than individual link upserts. Carrying
+// it in the parity delta keeps the Rust audit trail complete even though
+// its links never flow through legacyProjectionDelta.links. Endpoints
+// (R06) mirrors ports.ProjectedLinkSet.Endpoints: the CreateOnly
+// counterpart stubs the guarded set's own transaction may materialize,
+// omitted when empty so a delta recorded before this field existed
+// replays to an identical digest.
+type legacyProjectedLinkSet struct {
+	TenantID    string                  `json:"tenant_id"`
+	SourceID    string                  `json:"source_id"`
+	RuntimeID   string                  `json:"runtime_id"`
+	OwnerURN    string                  `json:"owner_urn"`
+	Relation    string                  `json:"relation"`
+	Outgoing    bool                    `json:"outgoing"`
+	Links       []legacyProjectedLink   `json:"links"`
+	Observation map[string]string       `json:"observation"`
+	Incomplete  bool                    `json:"incomplete,omitempty"`
+	Endpoints   []legacyProjectedEntity `json:"endpoints,omitempty"`
 }
 
 type legacyCleanupRequest struct {
@@ -190,11 +214,12 @@ type legacyCleanupRequest struct {
 }
 
 type legacyProjectionDelta struct {
-	Entities          []legacyProjectedEntity `json:"entities"`
-	Links             []legacyProjectedLink   `json:"links"`
-	EntityRetractions []string                `json:"entity_retractions"`
-	LinkRetractions   []legacyProjectedLink   `json:"link_retractions"`
-	CleanupRequests   []legacyCleanupRequest  `json:"cleanup_requests"`
+	Entities          []legacyProjectedEntity  `json:"entities"`
+	Links             []legacyProjectedLink    `json:"links"`
+	EntityRetractions []string                 `json:"entity_retractions"`
+	LinkRetractions   []legacyProjectedLink    `json:"link_retractions"`
+	CleanupRequests   []legacyCleanupRequest   `json:"cleanup_requests"`
+	LinkSets          []legacyProjectedLinkSet `json:"link_sets"`
 }
 
 type legacyProjectionRequest struct {
@@ -616,6 +641,7 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 		EntityRetractions: stringListRequest(delta.EntityRetractions),
 		LinkRetractions:   make([]legacyProjectedLink, 0, len(delta.LinkRetractions)),
 		CleanupRequests:   make([]legacyCleanupRequest, 0, len(delta.CleanupRequests)),
+		LinkSets:          make([]legacyProjectedLinkSet, 0, len(delta.LinkSets)),
 	}
 	for _, entity := range delta.Entities {
 		if entity == nil {
@@ -630,6 +656,8 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 			EntityType:             entity.EntityType,
 			Label:                  entity.Label,
 			Attributes:             cloneAttributes(entity.Attributes),
+			CreateOnly:             entity.CreateOnly,
+			RetractedAttributes:    entity.RetractedAttributes,
 		})
 	}
 	for _, link := range delta.Links {
@@ -641,6 +669,47 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 		if link != nil {
 			result.LinkRetractions = append(result.LinkRetractions, legacyLinkRequest(link))
 		}
+	}
+	for _, set := range delta.LinkSets {
+		if set == nil {
+			continue
+		}
+		links := make([]legacyProjectedLink, 0, len(set.Links))
+		for _, link := range set.Links {
+			if link != nil {
+				links = append(links, legacyLinkRequest(link))
+			}
+		}
+		endpoints := make([]legacyProjectedEntity, 0, len(set.Endpoints))
+		for _, endpoint := range set.Endpoints {
+			if endpoint == nil {
+				continue
+			}
+			endpoints = append(endpoints, legacyProjectedEntity{
+				URN:                    endpoint.URN,
+				TenantID:               endpoint.TenantID,
+				ApplicationWorkspaceID: endpoint.ApplicationWorkspaceID,
+				SourceID:               endpoint.SourceID,
+				RuntimeID:              endpoint.RuntimeID,
+				EntityType:             endpoint.EntityType,
+				Label:                  endpoint.Label,
+				Attributes:             cloneAttributes(endpoint.Attributes),
+				CreateOnly:             endpoint.CreateOnly,
+				RetractedAttributes:    endpoint.RetractedAttributes,
+			})
+		}
+		result.LinkSets = append(result.LinkSets, legacyProjectedLinkSet{
+			TenantID:    set.TenantID,
+			SourceID:    set.SourceID,
+			RuntimeID:   set.RuntimeID,
+			OwnerURN:    set.OwnerURN,
+			Relation:    set.Relation,
+			Outgoing:    set.Outgoing,
+			Links:       links,
+			Observation: cloneAttributes(set.Observation),
+			Incomplete:  set.Incomplete,
+			Endpoints:   endpoints,
+		})
 	}
 	for _, cleanup := range delta.CleanupRequests {
 		result.CleanupRequests = append(result.CleanupRequests, legacyCleanupRequest{

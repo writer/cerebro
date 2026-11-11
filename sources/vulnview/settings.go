@@ -22,7 +22,7 @@ func (settings settings) query() url.Values {
 
 const (
 	defaultScope    = "vulnview"
-	defaultFamily   = familyVulnerability
+	defaultFamily   = familyAsset
 	defaultPageSize = 100
 	maxPageSize     = 500
 )
@@ -35,7 +35,23 @@ var (
 	errMissingClientSecret   = errors.New("missing vulnview client_secret")
 	errInvalidURLComponents  = errors.New("invalid vulnview url components")
 	errInvalidBaseComponents = errors.New("invalid vulnview base_url components")
+	errMissingSource         = errors.New("missing vulnview source")
+	errUnsupportedSource     = errors.New("unsupported vulnview source")
 )
+
+// vulnViewFindingSources lists Contract C7's finding_lifecycle.SOURCES: the
+// seven VulnView finding sources the "finding" family's required source
+// setting must be one of (one runtime per source).
+var vulnViewFindingSources = []string{"nuclei", "caido", "port", "dns", "prowler", "cloud_identity", "github"}
+
+func isSupportedVulnViewFindingSource(source string) bool {
+	for _, candidate := range vulnViewFindingSources {
+		if candidate == source {
+			return true
+		}
+	}
+	return false
+}
 
 type settings struct {
 	tenantID     string
@@ -49,6 +65,7 @@ type settings struct {
 	scanName     string
 	severity     string
 	search       string
+	source       string
 	perPage      int
 }
 
@@ -127,6 +144,15 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 			return resolved, fmt.Errorf("vulnview per_page must be between 1 and %d", maxPageSize)
 		}
 		resolved.perPage = perPage
+	}
+	if resolved.family == familyFinding {
+		resolved.source = sourcecdk.ConfigValue(cfg, "source")
+		if resolved.source == "" {
+			return resolved, fmt.Errorf("%w: vulnview source is required for the finding family", errMissingSource)
+		}
+		if !isSupportedVulnViewFindingSource(resolved.source) {
+			return resolved, fmt.Errorf("%w: vulnview source must be one of %s", errUnsupportedSource, strings.Join(vulnViewFindingSources, ", "))
+		}
 	}
 	return resolved, nil
 }

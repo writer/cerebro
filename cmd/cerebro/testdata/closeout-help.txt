@@ -7,6 +7,8 @@ Flags:
   --rule-id <id>            Rule ID to close out. Repeatable.
   --rule-id-file <path>     Newline-delimited rule IDs. Comments (#) and blank lines allowed.
   --source <name>           Source family (e.g. github, okta). Repeatable.
+  --runtime-id <id>         Restrict to findings whose creating runtime_id, and (when present) most-recent
+                            asserting source_runtime_id attribute, is one of these. Repeatable.
   --older-than <duration>   Only close findings whose last_observed_at is older than this duration (e.g. 7d, 24h).
   --status-filter <list>    Comma-separated statuses to include (default: open).
   --max-batch-size <int>    Maximum findings per batch (default: 1000).

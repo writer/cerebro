@@ -114,6 +114,39 @@ the task exits 1 — but they need opposite fixes:
 Unsetting the origin to escape the 503 does not help; it just swaps one failure
 for the other. The service has to be able to answer.
 
+### Activating the `vulnview` source (`CEREBRO_SOURCE_TRUSTED_ORIGINS`)
+
+`vulnview` ships with no built-in default API origin, so it is unusable until
+a deployment opts it in. Activation has two parts:
+
+1. **Deployment allowlist (env var, this host only).** Add a `vulnview=`
+   entry to `CEREBRO_SOURCE_TRUSTED_ORIGINS`, for example:
+
+   ```
+   CEREBRO_SOURCE_TRUSTED_ORIGINS=vulnview=https://vulnview.example
+   ```
+
+   Multiple sources are comma-separated, e.g.
+   `vulnview=https://vulnview.example,some_other_source=https://other.example`.
+2. **Per-tenant connector configuration (`base_url`, `okta_issuer`, OAuth
+   client credentials).** Configure the tenant's `vulnview` connector with a
+   `base_url` whose scheme and host exactly match one of the origins from
+   step 1 (for example `https://vulnview.example/api`) and an `okta_issuer`
+   (for example `https://writer.okta.com/oauth2/default`) used to derive and
+   pin the OAuth token endpoint. A `base_url` or token URL pointing anywhere
+   else is rejected.
+
+Both checks run from `sourcecdk.RequireTrustedOriginFromDeploymentAllowlist`
+and `sourcecdk.RequireIssuerTokenURL`, called from `vulnview`'s settings
+parser. That parser runs on every `Check`/`Discover`/`Read`/
+`ReadWithCheckpoint` call for that source runtime, each with the
+tenant-specific `cfg` for that call. `vulnview.New()` only loads the
+embedded, cfg-independent catalog spec (`sources/vulnview/catalog.yaml`) and
+never touches `cfg`, so an unconfigured or misconfigured `vulnview`
+integration does not fail process startup: it fails closed the first time,
+and every time, that specific tenant/source runtime is checked or read,
+leaving unrelated sources and tenants unaffected.
+
 ## Rust Slack agent
 
 The Rust platform process loads these bindings for the evidence-backed Slack

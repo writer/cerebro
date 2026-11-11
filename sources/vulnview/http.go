@@ -28,7 +28,7 @@ var responseMessageKeys = []string{"message", "error_description", "error", "det
 
 func isSupportedFamily(family string) bool {
 	switch family {
-	case familySite, familyScan, familyVulnerability, familyAsset, familyDNSAlert, familyCloudIdentityFinding, familyCloudIdentityAssessment:
+	case familySite, familyScan, familyAsset, familyFinding:
 		return true
 	default:
 		return false
@@ -36,7 +36,7 @@ func isSupportedFamily(family string) bool {
 }
 
 func supportedFamilies() []string {
-	return []string{familySite, familyScan, familyVulnerability, familyAsset, familyDNSAlert, familyCloudIdentityFinding, familyCloudIdentityAssessment}
+	return []string{familySite, familyScan, familyAsset, familyFinding}
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, requestPath string, query url.Values, target any) error {

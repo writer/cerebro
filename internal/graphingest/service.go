@@ -89,6 +89,10 @@ type projectionRetractionProjector interface {
 	ProjectRetractions(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error)
 }
 
+type projectionLinkSetProjector interface {
+	ProjectLinkSets(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLinkSet, error)
+}
+
 type pageProjectionResult struct {
 	EventsRead        uint32
 	EntitiesProjected uint32
@@ -842,10 +846,12 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
+	linkSets := map[string]*ports.ProjectedLinkSet{}
 	cleanupURNs := map[string]struct{}{}
 	cleanupRequests := map[string]ports.ProjectionCleanupRequest{}
 	retractedLinks := map[string]*ports.ProjectedLink{}
 	retractionProjector, canProjectRetractions := projector.(projectionRetractionProjector)
+	linkSetProjector, canProjectLinkSets := projector.(projectionLinkSetProjector)
 	result := pageProjectionResult{}
 	for _, event := range response.GetEvents() {
 		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
@@ -875,6 +881,15 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 		for _, link := range projectedLinks {
 			mergeProjectedLink(links, link)
+		}
+		if canProjectLinkSets {
+			projectedLinkSets, err := linkSetProjector.ProjectLinkSets(ingested)
+			if err != nil {
+				return result, fmt.Errorf("project source event link sets %q: %w", event.GetId(), err)
+			}
+			for _, set := range projectedLinkSets {
+				mergeProjectedLinkSet(linkSets, set)
+			}
 		}
 		if cleanupProjector, ok := projector.(projectionRecordCleanupProjector); ok {
 			projectedCleanupURNs, err := cleanupProjector.ProjectCleanupRecords(ingested)
@@ -967,7 +982,37 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 	}
 	entityKeys := sortedMapKeys(entities)
-	linkKeys := sortedMapKeys(links)
+	orderedLinkSets := make([]*ports.ProjectedLinkSet, 0, len(linkSets))
+	for _, key := range sortedMapKeys(linkSets) {
+		orderedLinkSets = append(orderedLinkSets, linkSets[key])
+	}
+	linkKeys := make([]string, 0, len(links))
+	for _, key := range sortedMapKeys(links) {
+		if linkCoveredByProjectedLinkSet(links[key], linkSets) {
+			continue
+		}
+		linkKeys = append(linkKeys, key)
+	}
+	linkSetStore, canReplaceLinkSets := graphStore.(ports.ProjectionLinkSetStore)
+	applyLinkSets := func() error {
+		if len(orderedLinkSets) == 0 {
+			return nil
+		}
+		if !canReplaceLinkSets {
+			// Falling back to the plain link upsert path would silently
+			// reintroduce links a newer observation already retracted:
+			// fail closed instead of reporting success while the
+			// covered consumer links never reach the store.
+			return fmt.Errorf("replace coalesced projected link sets: %w", ports.ErrProjectionLinkSetStoreUnsupported)
+		}
+		if err := linkSetStore.ReplaceProjectedLinkSets(ctx, orderedLinkSets); err != nil {
+			return fmt.Errorf("replace coalesced projected link sets: %w", err)
+		}
+		for _, set := range orderedLinkSets {
+			result.LinksProjected += boundedUint32(len(set.Links))
+		}
+		return nil
+	}
 	if batchStore, ok := graphStore.(ports.ProjectionGraphBatchStore); ok {
 		orderedEntities := make([]*ports.ProjectedEntity, 0, len(entityKeys))
 		for _, key := range entityKeys {
@@ -979,6 +1024,9 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 		if err := batchStore.UpsertProjectedEntities(ctx, orderedEntities); err != nil {
 			return result, fmt.Errorf("upsert coalesced projected entities: %w", err)
+		}
+		if err := applyLinkSets(); err != nil {
+			return result, err
 		}
 		if err := batchStore.UpsertProjectedLinks(ctx, orderedLinks); err != nil {
 			return result, fmt.Errorf("upsert coalesced projected links: %w", err)
@@ -996,6 +1044,9 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 			return result, fmt.Errorf("upsert coalesced projected entity %q: %w", key, err)
 		}
 		result.EntitiesProjected++
+	}
+	if err := applyLinkSets(); err != nil {
+		return result, err
 	}
 	for _, key := range linkKeys {
 		if err := graphStore.UpsertProjectedLink(ctx, links[key]); err != nil {
@@ -1047,6 +1098,55 @@ func projectionCleanupRequestKey(request ports.ProjectionCleanupRequest) string 
 	return strings.Join(values, "|")
 }
 
+// projectedLinkSetOwnerKey identifies one (tenant, source, runtime, owner,
+// relation, direction) link-set scope. Plain links derive the same key from
+// their own endpoint on the owner side to test coverage.
+func projectedLinkSetOwnerKey(tenantID string, sourceID string, runtimeID string, ownerURN string, relation string, outgoing bool) string {
+	direction := "0"
+	if outgoing {
+		direction = "1"
+	}
+	return strings.Join([]string{tenantID, sourceID, runtimeID, ownerURN, relation, direction}, "\x00")
+}
+
+func projectedLinkSetKey(set *ports.ProjectedLinkSet) string {
+	if set == nil {
+		return ""
+	}
+	return projectedLinkSetOwnerKey(set.TenantID, set.SourceID, set.RuntimeID, set.OwnerURN, set.Relation, set.Outgoing)
+}
+
+// mergeProjectedLinkSet keeps only the winning observation for one owner
+// key within a page: projectionmeta orders every pair of observations the
+// same way the store orders an incoming set against stored state, so the
+// two can never disagree about which observation the page's eventual
+// single store write reflects.
+func mergeProjectedLinkSet(sets map[string]*ports.ProjectedLinkSet, set *ports.ProjectedLinkSet) {
+	if set == nil {
+		return
+	}
+	key := projectedLinkSetKey(set)
+	if existing, ok := sets[key]; ok && projectionmeta.CompareObservations(existing.Observation, set.Observation) == projectionmeta.ObservationOlder {
+		return
+	}
+	sets[key] = set
+}
+
+// linkCoveredByProjectedLinkSet reports whether a plain link falls inside
+// the (tenant, source, runtime, owner, relation, direction) scope of a
+// link set coalesced for this page. Covered links never flow through the
+// plain link upsert path; the link set is authoritative for that scope.
+func linkCoveredByProjectedLinkSet(link *ports.ProjectedLink, sets map[string]*ports.ProjectedLinkSet) bool {
+	if link == nil || len(sets) == 0 {
+		return false
+	}
+	if _, ok := sets[projectedLinkSetOwnerKey(link.TenantID, link.SourceID, link.RuntimeID, link.FromURN, link.Relation, true)]; ok {
+		return true
+	}
+	_, ok := sets[projectedLinkSetOwnerKey(link.TenantID, link.SourceID, link.RuntimeID, link.ToURN, link.Relation, false)]
+	return ok
+}
+
 func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *ports.ProjectedEntity) {
 	if entity == nil {
 		return
@@ -1058,6 +1158,17 @@ func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *po
 	existing, ok := entities[urn]
 	if !ok {
 		entities[urn] = cloneProjectedEntity(entity)
+		return
+	}
+	// Contract G1 page/batch coalescing: an ordinary entity always wins over
+	// a CreateOnly stub sharing a URN, in either arrival order (a stub never
+	// contributes attributes, label, or ownership), and two stubs for the
+	// same URN keep the first.
+	if existing.CreateOnly && !entity.CreateOnly {
+		entities[urn] = cloneProjectedEntity(entity)
+		return
+	}
+	if entity.CreateOnly {
 		return
 	}
 	// The page is coalesced before the graph store sees it, so a stale strict
@@ -1082,6 +1193,8 @@ func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *po
 		existing.Label = value
 	}
 	existing.Attributes = mergeStringMap(existing.Attributes, entity.Attributes)
+	ports.ApplyRetractedAttributes(existing.Attributes, entity.Attributes, entity.RetractedAttributes)
+	existing.RetractedAttributes = ports.CoalesceRetractedAttributes(existing.Attributes, existing.RetractedAttributes, entity.RetractedAttributes)
 }
 
 func mergeProjectedLink(links map[string]*ports.ProjectedLink, link *ports.ProjectedLink) {

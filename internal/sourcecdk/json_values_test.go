@@ -106,3 +106,24 @@ func TestJSONObjectFirstFieldStringReturnsFirstNonEmpty(t *testing.T) {
 		t.Fatalf("FirstFieldString(missing) = %q, want empty", got)
 	}
 }
+
+func TestJSONArrayJoinObjectsSkipsNonObjectsAndEmptyRenderings(t *testing.T) {
+	values := JSONObject(map[string]any{"items": []any{
+		map[string]any{"name": "a", "role": "x"},
+		"not-an-object",
+		map[string]any{"name": ""},
+		map[string]any{"name": "b", "role": "y"},
+	}})
+	got := values.Array("items").JoinObjects(";", func(item JSONObject) string {
+		if item.FieldString("name") == "" {
+			return ""
+		}
+		return item.FieldString("name") + "=" + item.FieldString("role")
+	})
+	if got != "a=x;b=y" {
+		t.Fatalf("JoinObjects() = %q, want a=x;b=y", got)
+	}
+	if got := JSONObject(nil).Array("items").JoinObjects(",", func(JSONObject) string { return "unexpected" }); got != "" {
+		t.Fatalf("JoinObjects() over a missing array = %q, want empty", got)
+	}
+}

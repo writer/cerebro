@@ -296,6 +296,23 @@ mod tests {
     }
 
     #[test]
+    fn policy_and_detection_definition_ids_do_not_collide() {
+        let policy_ids: BTreeSet<_> = definitions()
+            .iter()
+            .map(|definition| definition.id)
+            .collect();
+        let detection_ids: BTreeSet<_> = detection_definitions()
+            .iter()
+            .map(|definition| definition.id)
+            .collect();
+        let overlap: Vec<_> = policy_ids.intersection(&detection_ids).collect();
+        assert!(
+            overlap.is_empty(),
+            "policy and detection definitions share IDs, which makes rule-ID references ambiguous: {overlap:?}"
+        );
+    }
+
+    #[test]
     fn generated_detection_definitions_preserve_go_rule_semantics() {
         let mut ids = BTreeSet::new();
         let mut previous = None;

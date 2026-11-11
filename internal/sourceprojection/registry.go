@@ -40,6 +40,8 @@ type projectionCall struct {
 type EventProjector struct {
 	Kind    string
 	Project ProjectFunc
+	// ProjectLinkSets is optional (registry_link_sets.go).
+	ProjectLinkSets LinkSetProjectFunc
 }
 
 // Registry indexes projectors by event kind.
@@ -47,6 +49,7 @@ type Registry struct {
 	mu                              sync.RWMutex
 	projectors                      map[string]ProjectFunc
 	contextProjectors               map[string]ContextProjectFunc
+	linkSetProjectors               map[string]LinkSetProjectFunc
 	handlers                        map[string]ProjectionHandler
 	connectorDefinitionFingerprints map[string]string
 	connectorDefinitionKinds        map[string]map[string]struct{}
@@ -83,6 +86,7 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 			return nil, fmt.Errorf("duplicate projector kind %q", kind)
 		}
 		registry.projectors[kind] = projector.Project
+		registry.registerLinkSetProjector(kind, projector.ProjectLinkSets)
 	}
 	return registry, nil
 }
