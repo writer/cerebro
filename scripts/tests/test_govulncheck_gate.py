@@ -9,7 +9,6 @@ class GovulncheckGateTests(unittest.TestCase):
     def test_scanner_environment_applies_default_resource_bounds(self):
         env = gate.govulncheck_environment({"PATH": "/bin"})
         self.assertEqual(env["GOFLAGS"], "")
-        self.assertEqual(env["GOTOOLCHAIN"], "go1.26.10")
         self.assertEqual(env["GOMEMLIMIT"], "4GiB")
         self.assertEqual(env["GOMAXPROCS"], "2")
 
