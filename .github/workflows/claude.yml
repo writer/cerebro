@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Claude Code
-        uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1
+        uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Public PR data safety: agent-authored PR metadata must stay
