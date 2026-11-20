@@ -48,7 +48,7 @@ Use [`release-notes-template.md`](release-notes-template.md) for the required co
 
 A release can include:
 
-- CLI archives for Linux and macOS on amd64 and arm64,
+- CLI archives for Linux on amd64 and arm64,
 - multi-arch runtime image,
 - multi-arch web image,
 - multi-arch native Rust platform image,
