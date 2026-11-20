@@ -64,6 +64,22 @@ WEB_INTEGRATION_PREFIXES = (
     "internal/sourceruntime/",
     "internal/statestore/postgres/",
 )
+# The runtime image build can only break independently of the Go and Rust jobs
+# through its Dockerfiles, toolchains, or dependency graphs; main always runs it.
+RUNTIME_IMAGE_EXACT_PATHS = frozenset(
+    {
+        ".dockerignore",
+        "Cargo.lock",
+        "Cargo.toml",
+        "Dockerfile",
+        "Dockerfile.runtime",
+        "Dockerfile.rust",
+        "go.mod",
+        "go.sum",
+        "rust-toolchain.toml",
+    }
+)
+RUNTIME_IMAGE_SUFFIXES = ("/Cargo.toml", "/build.rs")
 SLACK_CONTRACT_PREFIXES = (
     "internal/agentplatform/lifecyclecontract/",
     "schemas/agent-service-lifecycle",
@@ -84,6 +100,7 @@ class CIScope:
     web_image: bool
     web_integration: bool = False
     practice_registry: bool = False
+    runtime_image: bool = False
 
     @classmethod
     def all(cls) -> "CIScope":
@@ -95,6 +112,7 @@ class CIScope:
             web_image=True,
             web_integration=True,
             practice_registry=True,
+            runtime_image=True,
         )
 
     def as_outputs(self) -> dict[str, str]:
@@ -180,6 +198,10 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
         web_image=web,
         web_integration=web_integration,
         practice_registry=practice_registry,
+        runtime_image=any(
+            path in RUNTIME_IMAGE_EXACT_PATHS or path.endswith(RUNTIME_IMAGE_SUFFIXES)
+            for path in normalized
+        ),
     )
 
 

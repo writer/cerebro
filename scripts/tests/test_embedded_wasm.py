@@ -250,10 +250,19 @@ class EmbeddedWasmTests(unittest.TestCase):
 
     def test_ci_sets_up_rust_and_release_consumes_a_ci_gated_candidate(self):
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn(
-            "command: make rust-deny graph-action-check rust-wasm-check\n            setup_rust: true",
-            ci,
-        )
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+        def prerequisites(target):
+            line = next(line for line in makefile.splitlines() if line.startswith(f"{target}:"))
+            return line.split(":", 1)[1].split("##", 1)[0].split()
+
+        lines = ci.splitlines()
+        rust_targets = set()
+        for index, line in enumerate(lines):
+            if line.strip().startswith("command: make ") and lines[index + 1].strip() == "setup_rust: true":
+                rust_targets.update(line.split("command: make ", 1)[1].split())
+        required = {"rust-deny", *prerequisites("graph-action-check"), *prerequisites("rust-wasm-check")}
+        self.assertEqual(required - rust_targets, set())
         self.assertIn("if: matrix.setup_rust == true", ci)
         self.assertNotIn("if: matrix.name == 'graph-actions'", ci)
 
