@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS dependencies
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS dependencies
 WORKDIR /workspace
 
 COPY package.json package-lock.json ./
@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     done; \
     exit 1
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
 WORKDIR /workspace
 
 ARG NEXT_PUBLIC_CEREBRO_WEB_VERSION
@@ -32,7 +32,7 @@ COPY apps/web ./apps/web
 
 RUN npm run build --workspace @writer/cerebro-web
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runner
 WORKDIR /app/apps/web
 
 ARG SOURCE_REVISION=unknown
