@@ -5717,6 +5717,109 @@ export type SourceRuntimeRecentSync = {
   records_scanned?: number;
 };
 
+export type VulnerabilityIngestEnvelope = {
+  ingest: VulnerabilityIngestResult;
+};
+
+export type VulnerabilityIngestResult = {
+  accepted: number;
+  batch_id: string;
+  draft_mapping?: Record<string, unknown>;
+  drift_ratio: number;
+  error?: string;
+  format: string;
+  idempotent_replay: boolean;
+  problems?: string[];
+  profile_id: string;
+  quarantined: number;
+  received: number;
+  resolved: number;
+  source_id: string;
+  status: string;
+};
+
+/** Declarative field mapping from a scanner document to the normalized observation. */
+export type VulnerabilityMapping = Record<string, unknown>;
+
+export type VulnerabilityObservation = {
+  asset: Record<string, unknown>;
+  attributes?: Record<string, string>;
+  batch_id?: string;
+  class: string;
+  correlation_key: string;
+  cvss_score?: number;
+  cvss_vector?: string;
+  cwes?: string[];
+  description?: string;
+  first_seen_at?: string;
+  format: string;
+  id: string;
+  ingested_at: string;
+  last_seen_at?: string;
+  location?: string;
+  mapping_version?: number;
+  observed_at: string;
+  package?: Record<string, unknown>;
+  primary_vulnerability_id?: string;
+  profile_id: string;
+  references?: string[];
+  resolution?: string;
+  resolved_at?: string;
+  scanner?: string;
+  severity: string;
+  source_id: string;
+  source_record_id: string;
+  source_severity?: string;
+  source_status?: string;
+  status: string;
+  title: string;
+  vulnerability_ids?: string[];
+};
+
+export type VulnerabilityProfile = {
+  created_at: string;
+  created_by?: string;
+  description?: string;
+  display_name: string;
+  draft_created_at?: string;
+  draft_mapping?: Record<string, unknown>;
+  enabled: boolean;
+  format: string;
+  id: string;
+  last_error?: string;
+  last_ingest_at?: string;
+  last_status?: string;
+  mapping?: VulnerabilityMapping;
+  mapping_activated_at?: string;
+  mapping_activated_by?: string;
+  mapping_version: number;
+  next_pull_at?: string;
+  pull_config?: Record<string, string>;
+  pull_interval_seconds?: number;
+  pull_kind?: string;
+  pull_secret_keys?: string[];
+  source_id: string;
+  tenant_id: string;
+  transports: string[];
+  updated_at: string;
+};
+
+export type VulnerabilityProfileEnvelope = {
+  profile: VulnerabilityProfile;
+};
+
+export type VulnerabilityProfileInput = {
+  description?: string;
+  display_name?: string;
+  enabled?: boolean;
+  format?: string;
+  id?: string;
+  mapping?: VulnerabilityMapping;
+  pull?: { config?: Record<string, string>; interval_seconds?: number; kind?: string };
+  remove_pull?: boolean;
+  source_id?: string;
+};
+
 export type WriteClaimsRequest = {
   claims: Claim[];
   replace_existing?: boolean;

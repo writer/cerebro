@@ -525,12 +525,18 @@ func (s *Service) resolveAbsentGuarded(ctx context.Context, profile *ports.Vulne
 	return resolved, "", nil
 }
 
+// logValue strips line breaks from values that can carry caller input, such
+// as payload decode errors, so one log entry cannot forge another.
+func logValue(value string) string {
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(value)
+}
+
 func (s *Service) failBatch(ctx context.Context, profile *ports.VulnerabilityProfile, batch *ports.VulnerabilityIngestBatch, cause error) (*IngestResult, error) {
 	batch.Status = BatchFailed
 	batch.Error = truncate(cause.Error(), 1024)
 	slog.WarnContext(ctx, "vulnerability ingest batch failed",
-		"tenant_id", profile.TenantID, "profile_id", profile.ID, "source_id", profile.SourceID, "batch_id", batch.ID,
-		"transport", batch.Transport, "format", batch.Format, "error", batch.Error)
+		"tenant_id", logValue(profile.TenantID), "profile_id", logValue(profile.ID), "source_id", logValue(profile.SourceID),
+		"batch_id", logValue(batch.ID), "transport", logValue(batch.Transport), "format", logValue(batch.Format), "error", logValue(batch.Error))
 	completed := s.clock()
 	batch.CompletedAt = &completed
 	if err := s.store.PutVulnerabilityIngestBatch(ctx, batch); err != nil {

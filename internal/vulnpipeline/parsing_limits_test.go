@@ -335,3 +335,9 @@ func TestSourceRecordIdentityDoesNotCollide(t *testing.T) {
 		}
 	}
 }
+
+func TestLogValueStripsLineBreaks(t *testing.T) {
+	if got := logValue("decode failed\nlevel=ERROR msg=forged\r\n"); strings.ContainsAny(got, "\r\n") {
+		t.Fatalf("logValue kept line breaks: %q", got)
+	}
+}
