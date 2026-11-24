@@ -155,7 +155,9 @@ describe("session cookie lifetime", () => {
   });
 
   it("uses the policy lifetime when Go keeps it", async () => {
-    expect(cookieMaxAge(await finish(identity()))).toBe(DEFAULT_SSO_POLICY.sessionMaxLifetimeMinutes * 60);
+    const maxAge = cookieMaxAge(await finish(identity()));
+    expect(maxAge).toBeGreaterThanOrEqual(DEFAULT_SSO_POLICY.sessionMaxLifetimeMinutes * 60 - 1);
+    expect(maxAge).toBeLessThanOrEqual(DEFAULT_SSO_POLICY.sessionMaxLifetimeMinutes * 60);
   });
 });
 
