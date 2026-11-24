@@ -118,6 +118,12 @@ describe("Cerebro proxy route permissions", () => {
     expect(permissionForCerebroProxyRequest("PATCH", "grc/dashboards/dashboard-1")).toBe("dashboards:write");
     expect(permissionForCerebroProxyRequest("DELETE", "grc/dashboards/dashboard-1")).toBe("dashboards:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/dashboards/dashboard-1/clone")).toBe("dashboards:write");
+    expect(permissionForCerebroProxyRequest("GET", "vulnerabilities")).toBe("cerebro:read");
+    expect(permissionForCerebroProxyRequest("POST", "vulnerabilities/profiles")).toBe("vulnerabilities:write");
+    expect(permissionForCerebroProxyRequest("PATCH", "vulnerabilities/profiles/strix")).toBe("vulnerabilities:write");
+    expect(permissionForCerebroProxyRequest("DELETE", "vulnerabilities/profiles/strix")).toBe("vulnerabilities:write");
+    expect(permissionForCerebroProxyRequest("POST", "vulnerabilities/profiles/strix/mapping/activate")).toBe("vulnerabilities:write");
+    expect(permissionForCerebroProxyRequest("POST", "vulnerabilities/preview")).toBe("vulnerabilities:write");
     expect(permissionForCerebroProxyRequest("POST", "platform/runtime-response/actions")).toBe("runtime-response:write");
     expect(permissionForCerebroProxyRequest("PUT", "user/preferences")).toBe("preferences:write");
     expect(permissionForCerebroProxyRequest("PUT", "grc/framework-settings")).toBe("grc:inventory:write");

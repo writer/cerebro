@@ -25,6 +25,8 @@ const (
 	scopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	scopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	scopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	scopeVulnerabilitiesWrite      = "cerebro.vulnerabilities.write"
+	scopeVulnerabilitiesIngest     = "cerebro.vulnerabilities.ingest"
 	scopeIdentitySSORead           = "cerebro.identity.sso.read"
 	scopeIdentitySSOWrite          = "cerebro.identity.sso.write"
 	// scopeIdentitySSOService guards the login-internal identity routes used by

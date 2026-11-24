@@ -630,6 +630,9 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.assessments.remediation.propose": {Markers: []string{"POST /grc/work-items"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
 	"cerebro.source_runtimes.refresh.propose": {Markers: []string{"POST /source-runtimes/{runtimeID}/sync"}},
+	"cerebro.vulnerabilities.list":            {Markers: []string{"GET /vulnerabilities"}},
+	"cerebro.vulnerabilities.summary":         {Markers: []string{"GET /vulnerabilities/summary"}},
+	"cerebro.vulnerabilities.ingest":          {Markers: []string{"POST /vulnerabilities/profiles/{profileID}/ingest"}},
 }
 
 func mcpDomainSurfaceCorpus(t *testing.T) string {

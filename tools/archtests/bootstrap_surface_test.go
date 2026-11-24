@@ -190,7 +190,14 @@ import (
 // The identity SSO service scope adds route-policy rows, one scope constant,
 // and the SAML replay route registration; replay and session checks stay in
 // identitysso and the store.
-const bootstrapProductionGoLineBudget = 29888
+// The vulnerability pipeline adds service composition with tenant-scoped
+// secret resolution adapters, route/auth/scope registration, MCP tool
+// dispatch with tenant and error mapping, and a pull scheduler loop.
+// Normalization, format detection, mapping inference, pulling, and storage
+// stay in internal/vulnpipeline, internal/sourcehttp/vulnerabilities,
+// internal/sourcehttp/vulnfetch, and the VulnerabilityPipelineStore port, as
+// documented in docs/engineering/vulnerability-pipeline.md.
+const bootstrapProductionGoLineBudget = 30030
 
 type bootstrapFileLineCount struct {
 	path  string

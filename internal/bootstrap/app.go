@@ -72,6 +72,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
+	"github.com/writer/cerebro/internal/vulnpipeline"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
@@ -141,6 +142,7 @@ type appServices struct {
 	impactProcessor *complianceimpact.Processor
 	remediation     *complianceremediation.Service
 	decisionPackets *decisionpacket.Service
+	vulnerabilities *vulnpipeline.Service
 }
 
 type bootstrapService struct {
@@ -344,6 +346,7 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 	app.services.evidence = app.newEvidenceLedgerService()
 	app.services.remediation = app.newComplianceRemediationService()
 	app.services.decisionPackets = app.newDecisionPacketService()
+	app.services.vulnerabilities = app.newVulnerabilityService()
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)

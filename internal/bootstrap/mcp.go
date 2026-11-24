@@ -674,6 +674,8 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpProposeFindingAction(r, args)
 	case "cerebro.source_runtimes.refresh.propose":
 		return app.mcpProposeRuntimeRefresh(r, args)
+	case "cerebro.vulnerabilities.list", "cerebro.vulnerabilities.summary", "cerebro.vulnerabilities.ingest":
+		return app.mcpVulnerabilityTool(r, name, args)
 	default:
 		return nil, fmt.Errorf("%w: unknown tool %q", errInvalidHTTPRequest, name)
 	}
@@ -2839,6 +2841,7 @@ func mcpTools() []mcpTool {
 		},
 	}
 	tools = append(tools, mcpAssessmentTools()...)
+	tools = append(tools, mcpVulnerabilityTools()...)
 	tools = append(tools, decisionPacketMCPTool())
 	for _, definition := range mcpoperations.TaskToolDefinitions(mcpoperations.TaskToolLimits{Evidence: maxMCPEvidenceLimit, Assets: maxMCPAssetLimit, Actions: riskplan.MaxCandidateLimit, Findings: maxMCPRiskLimit, ResourceRoots: maxMCPRiskActionRoots, Graph: maxMCPRiskActionGraph}) {
 		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: mcpoperations.TaskOutputSchema(), Annotations: mcpReadOnlyAnnotations(definition.Title)})

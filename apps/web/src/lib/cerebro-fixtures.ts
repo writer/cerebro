@@ -1662,6 +1662,130 @@ const reportSchedulesFixture = () => ({
   generated_at: generatedAt,
 });
 
+const vulnerabilityObservationFixtures = [
+  {
+    id: "vobs-strix-1",
+    profile_id: "strix",
+    source_id: "strix",
+    scanner: "strix",
+    source_record_id: "strix-finding-1",
+    correlation_key: "cve-2024-3094|payments-api",
+    format: "strix",
+    title: "Backdoored xz-utils in base image",
+    class: "container_image",
+    primary_vulnerability_id: "CVE-2024-3094",
+    vulnerability_ids: ["CVE-2024-3094"],
+    severity: "critical",
+    source_severity: "CRITICAL",
+    cvss_score: 10,
+    status: "open",
+    asset: { type: "service", identifier: "payments-api", name: "payments-api" },
+    package: { ecosystem: "apk", name: "xz-libs", version: "5.6.0", fixed_version: "5.6.2" },
+    first_seen_at: generatedAt,
+    last_seen_at: generatedAt,
+    observed_at: generatedAt,
+    ingested_at: generatedAt,
+  },
+  {
+    id: "vobs-scanner-1",
+    profile_id: "internal-scanner",
+    source_id: "internal-scanner",
+    source_record_id: "scan-77",
+    correlation_key: "cve-2024-3094|payments-api",
+    format: "generic",
+    title: "xz-utils supply chain compromise",
+    class: "package",
+    primary_vulnerability_id: "CVE-2024-3094",
+    vulnerability_ids: ["CVE-2024-3094"],
+    severity: "high",
+    status: "open",
+    asset: { type: "service", identifier: "payments-api", name: "payments-api" },
+    observed_at: generatedAt,
+    ingested_at: generatedAt,
+  },
+];
+
+const vulnerabilitySummaryFixture = () => ({
+  total: 2,
+  open: 2,
+  distinct_open_vulnerabilities: 1,
+  multi_source_open: 2,
+  oldest_open_seen_at: generatedAt,
+  by_severity: { critical: 1, high: 1, medium: 0, low: 0, info: 0, unknown: 0 },
+  by_class: { container_image: 1, package: 1 },
+  by_status: { open: 2 },
+  by_source: [
+    { source_id: "internal-scanner", total: 1, open: 1, by_severity: { high: 1 }, last_ingest_at: generatedAt },
+    { source_id: "strix", total: 1, open: 1, by_severity: { critical: 1 }, last_ingest_at: generatedAt },
+  ],
+  profiles: 2,
+  profiles_needing_attention: 1,
+});
+
+const vulnerabilityProfileFixtures = () => [
+  {
+    tenant_id: "writer",
+    id: "strix",
+    source_id: "strix",
+    display_name: "Strix",
+    format: "strix",
+    enabled: true,
+    mapping_version: 0,
+    transports: ["push_api", "mcp"],
+    pull_kind: "strix",
+    pull_interval_seconds: 3600,
+    last_ingest_at: generatedAt,
+    last_status: "healthy",
+    created_at: generatedAt,
+    updated_at: generatedAt,
+  },
+  {
+    tenant_id: "writer",
+    id: "internal-scanner",
+    source_id: "internal-scanner",
+    display_name: "Internal scanner",
+    format: "generic",
+    enabled: true,
+    mapping_version: 0,
+    transports: ["push_api", "mcp"],
+    last_ingest_at: generatedAt,
+    last_status: "pending_mapping",
+    draft_created_at: generatedAt,
+    draft_mapping: {
+      mapping: { records_path: "results", fields: { title: { path: "name" }, severity: { path: "risk" } } },
+      report: {
+        detected_format: "generic",
+        records_path: "results",
+        sample_size: 12,
+        fields: {
+          asset_identifier: { path: "host", confidence: 0.82, coverage: 1, reason: "name matches asset" },
+          severity: { path: "risk", confidence: 0.9, coverage: 1, reason: "values look like severities" },
+          title: { path: "name", confidence: 0.95, coverage: 1, reason: "name matches title" },
+        },
+        confidence: 0.88,
+        ready_to_activate: true,
+      },
+    },
+    created_at: generatedAt,
+    updated_at: generatedAt,
+  },
+];
+
+const vulnerabilityFixtureFor = (path: string, searchParams?: URLSearchParams) => {
+  if (path === "vulnerabilities/summary") return vulnerabilitySummaryFixture();
+  if (path === "vulnerabilities/profiles") return { profiles: vulnerabilityProfileFixtures() };
+  if (path !== "vulnerabilities") return null;
+  const sourceID = searchParams?.get("source_id") ?? "";
+  const severity = searchParams?.get("severity") ?? "";
+  const status = searchParams?.get("status") ?? "";
+  return {
+    observations: vulnerabilityObservationFixtures.filter((observation) =>
+      (!sourceID || observation.source_id === sourceID) &&
+      (!severity || observation.severity === severity) &&
+      (!status || observation.status === status)),
+  };
+};
+
 const customDashboardsFixture = () => ({
   dashboards: [
     {
@@ -4535,6 +4659,15 @@ const writeFixture = (path: string, body?: string) => {
     return jsonFixture({ ok: true, finding: findings[0], generated_at: generatedAt });
   }
 
+  const vulnerabilityProfileAction = /^vulnerabilities\/profiles\/([^/]+)\/(sync|mapping\/activate)$/.exec(path);
+  if (vulnerabilityProfileAction) {
+    const profile = vulnerabilityProfileFixtures().find((candidate) => candidate.id === safeDecode(vulnerabilityProfileAction[1]));
+    if (!profile) return jsonFixture({ error: "not_found" }, 404);
+    return jsonFixture(vulnerabilityProfileAction[2] === "sync"
+      ? { sync: { profile_id: profile.id, pages: 1, results: [] } }
+      : { profile: { ...profile, draft_mapping: undefined, mapping_version: profile.mapping_version + 1, last_status: "healthy" }, replayed: [] });
+  }
+
   if (path === "grc/dashboards") {
     return jsonFixture({ dashboard: { id: "fixture-dashboard", ...parsed, created_at: generatedAt, updated_at: generatedAt }, generated_at: generatedAt }, 201);
   }
@@ -4863,6 +4996,11 @@ export const cerebroFixtureResponseFor = ({
       persisted: false,
       generated_at: generatedAt,
     });
+  }
+
+  const vulnerabilityFixture = vulnerabilityFixtureFor(normalizedPath, searchParams);
+  if (vulnerabilityFixture) {
+    return jsonFixture(vulnerabilityFixture);
   }
 
   if (normalizedPath === "grc/dashboard") {

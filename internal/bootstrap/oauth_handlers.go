@@ -96,6 +96,8 @@ func supportedOAuthScopes() []string {
 		scopeRuntimeResponseWrite,
 		scopeSourceRuntimesWrite,
 		scopeUserPreferencesWrite,
+		scopeVulnerabilitiesIngest,
+		scopeVulnerabilitiesWrite,
 		scopeWorkflowReplay,
 	}
 }

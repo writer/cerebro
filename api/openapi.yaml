@@ -24,6 +24,7 @@ tags:
   - name: Connectors
   - name: Sources
   - name: Telemetry
+  - name: Vulnerabilities
   - name: Workflow
 paths:
   /v1/security/lifecycle:
@@ -8688,12 +8689,558 @@ paths:
                           type: integer
                         connectionId:
                           type: string
+  /vulnerabilities:
+    get:
+      summary: List normalized vulnerability observations
+      description: Returns one keyset page of normalized observations from every connected scanner, ordered by severity then recency. Every record carries the source tag of the profile that ingested it.
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+        - name: source_id
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+          description: Only observations with these source tags.
+        - name: profile_id
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [critical, high, medium, low, info, unknown]
+        - name: status
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [open, resolved, suppressed]
+        - name: class
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: vulnerability_id
+          in: query
+          schema:
+            type: string
+          description: CVE, GHSA, or other advisory identifier.
+        - name: asset
+          in: query
+          schema:
+            type: string
+        - name: correlation_key
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 500
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of observations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [observations]
+                properties:
+                  observations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VulnerabilityObservation'
+                  next_cursor:
+                    type: string
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+        '403':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/summary:
+    get:
+      summary: Summarize vulnerability observations
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      responses:
+        '200':
+          description: Counts by severity, class, status, and source, plus profile health.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, open, by_severity, by_class, by_status, by_source, profiles, profiles_needing_attention]
+                properties:
+                  total:
+                    type: integer
+                  open:
+                    type: integer
+                  distinct_open_vulnerabilities:
+                    type: integer
+                  multi_source_open:
+                    type: integer
+                  oldest_open_seen_at:
+                    type: string
+                    format: date-time
+                  by_severity:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  by_class:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  by_status:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  by_source:
+                    type: array
+                    items:
+                      type: object
+                      required: [source_id, total, open, by_severity]
+                      properties:
+                        source_id:
+                          type: string
+                        total:
+                          type: integer
+                        open:
+                          type: integer
+                        by_severity:
+                          type: object
+                          additionalProperties:
+                            type: integer
+                        last_ingest_at:
+                          type: string
+                          format: date-time
+                  profiles:
+                    type: integer
+                  profiles_needing_attention:
+                    type: integer
+  /vulnerabilities/catalog:
+    get:
+      summary: List supported vulnerability formats and vocabularies
+      tags:
+        - Vulnerabilities
+      responses:
+        '200':
+          description: Formats, pull kinds, mapping fields, and normalized vocabularies this runtime supports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [formats, pull_kinds, mapping_fields, severities, statuses, classes, native_schema, max_payload_bytes]
+                properties:
+                  formats:
+                    type: array
+                    items:
+                      type: string
+                  pull_kinds:
+                    type: array
+                    items:
+                      type: string
+                  mapping_fields:
+                    type: array
+                    items:
+                      type: string
+                  severities:
+                    type: array
+                    items:
+                      type: string
+                  statuses:
+                    type: array
+                    items:
+                      type: string
+                  classes:
+                    type: array
+                    items:
+                      type: string
+                  native_schema:
+                    type: string
+                  max_payload_bytes:
+                    type: integer
+  /vulnerabilities/observations/{observationID}:
+    get:
+      summary: Get one vulnerability observation
+      tags:
+        - Vulnerabilities
+      parameters:
+        - name: observationID
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      responses:
+        '200':
+          description: The observation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [observation]
+                properties:
+                  observation:
+                    $ref: '#/components/schemas/VulnerabilityObservation'
+        '404':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/preview:
+    post:
+      summary: Preview vulnerability normalization
+      description: Detects the format of a sample, learns or applies a mapping, and normalizes up to ten records without persisting anything.
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sample:
+                  description: Sample scanner output as JSON.
+                sample_text:
+                  type: string
+                  description: Sample scanner output as text, for example NDJSON.
+                content_type:
+                  type: string
+                format:
+                  type: string
+                mapping:
+                  $ref: '#/components/schemas/VulnerabilityMapping'
+      responses:
+        '200':
+          description: Detected format, mapping, and normalized sample.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [preview, observations]
+                properties:
+                  preview:
+                    type: object
+                    additionalProperties: true
+                  observations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VulnerabilityObservation'
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles:
+    get:
+      summary: List vulnerability ingestion profiles
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      responses:
+        '200':
+          description: Profiles for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VulnerabilityProfile'
+    post:
+      summary: Create a vulnerability ingestion profile
+      description: A profile binds one source tag to a format, an optional mapping, and an optional pull schedule. Pull credentials must be secret references scoped to the profile.
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VulnerabilityProfileInput'
+      responses:
+        '201':
+          description: The created profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityProfileEnvelope'
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+        '409':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles/{profileID}:
+    parameters:
+      - $ref: '#/components/parameters/vulnerabilityProfileID'
+      - $ref: '#/components/parameters/vulnerabilityTenantID'
+    get:
+      summary: Get a vulnerability ingestion profile
+      tags:
+        - Vulnerabilities
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityProfileEnvelope'
+        '404':
+          $ref: '#/components/responses/VulnerabilityError'
+    patch:
+      summary: Update a vulnerability ingestion profile
+      description: The source tag is immutable so existing observations keep their attribution.
+      tags:
+        - Vulnerabilities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VulnerabilityProfileInput'
+      responses:
+        '200':
+          description: The updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityProfileEnvelope'
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+        '404':
+          $ref: '#/components/responses/VulnerabilityError'
+    delete:
+      summary: Delete a vulnerability ingestion profile
+      tags:
+        - Vulnerabilities
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles/{profileID}/ingest:
+    post:
+      summary: Push a scanner payload to a profile
+      description: The body is the scanner's own JSON or NDJSON document. Known formats are normalized immediately; unknown formats are held until a learned mapping is reviewed and activated. Reusing an Idempotency-Key with the same body returns the original result.
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityProfileID'
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+        - name: full_snapshot
+          in: query
+          schema:
+            type: boolean
+          description: The payload is the complete current set; open observations absent from it are resolved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+          application/x-ndjson:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Idempotent replay of an earlier delivery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityIngestEnvelope'
+        '202':
+          description: Delivery processed or held for mapping review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityIngestEnvelope'
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+        '409':
+          $ref: '#/components/responses/VulnerabilityError'
+        '413':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles/{profileID}/sync:
+    post:
+      summary: Run a profile's pull now
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityProfileID'
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      responses:
+        '200':
+          description: Pull run result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sync]
+                properties:
+                  sync:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles/{profileID}/mapping/activate:
+    post:
+      summary: Activate a profile's learned or reviewed mapping
+      description: Activates the draft mapping, or the reviewed mapping in the body, and replays deliveries held for review.
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityProfileID'
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mapping:
+                  $ref: '#/components/schemas/VulnerabilityMapping'
+      responses:
+        '200':
+          description: Updated profile and replayed deliveries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile, replayed]
+                properties:
+                  profile:
+                    $ref: '#/components/schemas/VulnerabilityProfile'
+                  replayed:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VulnerabilityIngestResult'
+        '400':
+          $ref: '#/components/responses/VulnerabilityError'
+  /vulnerabilities/profiles/{profileID}/batches:
+    get:
+      summary: List a profile's recent deliveries
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityProfileID'
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Recent delivery batches.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+  /vulnerabilities/profiles/{profileID}/quarantine:
+    get:
+      summary: List records a profile could not normalize
+      tags:
+        - Vulnerabilities
+      parameters:
+        - $ref: '#/components/parameters/vulnerabilityProfileID'
+        - $ref: '#/components/parameters/vulnerabilityTenantID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Quarantined records with the reason each was rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, batch_id, reason, created_at]
+                      properties:
+                        id:
+                          type: string
+                        batch_id:
+                          type: string
+                        reason:
+                          type: string
+                        record: {}
+                        created_at:
+                          type: string
+                          format: date-time
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
   parameters:
+    vulnerabilityTenantID:
+      name: tenant_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional tenant override constrained by the authenticated principal.
+    vulnerabilityProfileID:
+      name: profileID
+      in: path
+      required: true
+      schema:
+        type: string
     sourceID:
       name: sourceID
       in: path
@@ -8854,6 +9401,16 @@ components:
         minimum: 0
       description: Page size; values above 200 are clamped to 200.
   responses:
+    VulnerabilityError:
+      description: The request was rejected.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: string
     SCIMUnauthorized:
       description: Missing or invalid SCIM token.
       content:
@@ -8867,6 +9424,241 @@ components:
           schema:
             $ref: '#/components/schemas/SCIMError'
   schemas:
+    VulnerabilityMapping:
+      type: object
+      description: Declarative field mapping from a scanner document to the normalized observation.
+      additionalProperties: true
+    VulnerabilityObservation:
+      type: object
+      required: [id, profile_id, source_id, source_record_id, correlation_key, format, title, class, severity, status, asset, observed_at, ingested_at]
+      properties:
+        id:
+          type: string
+        profile_id:
+          type: string
+        source_id:
+          type: string
+          description: Source tag of the profile that reported this observation.
+        scanner:
+          type: string
+        source_record_id:
+          type: string
+        correlation_key:
+          type: string
+        format:
+          type: string
+        mapping_version:
+          type: integer
+        batch_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        class:
+          type: string
+        primary_vulnerability_id:
+          type: string
+        vulnerability_ids:
+          type: array
+          items:
+            type: string
+        cwes:
+          type: array
+          items:
+            type: string
+        severity:
+          type: string
+        source_severity:
+          type: string
+        cvss_score:
+          type: number
+        cvss_vector:
+          type: string
+        status:
+          type: string
+        source_status:
+          type: string
+        asset:
+          type: object
+          additionalProperties: true
+        package:
+          type: object
+          additionalProperties: true
+        location:
+          type: string
+        references:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        observed_at:
+          type: string
+          format: date-time
+        ingested_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        resolution:
+          type: string
+    VulnerabilityProfile:
+      type: object
+      required: [tenant_id, id, source_id, display_name, format, enabled, mapping_version, transports, created_at, updated_at]
+      properties:
+        tenant_id:
+          type: string
+        id:
+          type: string
+        source_id:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        format:
+          type: string
+        enabled:
+          type: boolean
+        mapping:
+          $ref: '#/components/schemas/VulnerabilityMapping'
+        mapping_version:
+          type: integer
+        mapping_activated_by:
+          type: string
+        mapping_activated_at:
+          type: string
+          format: date-time
+        draft_mapping:
+          type: object
+          additionalProperties: true
+        draft_created_at:
+          type: string
+          format: date-time
+        transports:
+          type: array
+          items:
+            type: string
+        pull_kind:
+          type: string
+        pull_config:
+          type: object
+          description: Pull settings. Secret values are always references, never raw credentials.
+          additionalProperties:
+            type: string
+        pull_secret_keys:
+          type: array
+          items:
+            type: string
+        pull_interval_seconds:
+          type: integer
+        next_pull_at:
+          type: string
+          format: date-time
+        last_ingest_at:
+          type: string
+          format: date-time
+        last_status:
+          type: string
+        last_error:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    VulnerabilityProfileEnvelope:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          $ref: '#/components/schemas/VulnerabilityProfile'
+    VulnerabilityProfileInput:
+      type: object
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+          description: Source tag stamped on every observation. Required on create and immutable afterwards.
+        display_name:
+          type: string
+        description:
+          type: string
+        format:
+          type: string
+        enabled:
+          type: boolean
+        mapping:
+          $ref: '#/components/schemas/VulnerabilityMapping'
+        pull:
+          type: object
+          required: [kind]
+          properties:
+            kind:
+              type: string
+            config:
+              type: object
+              additionalProperties:
+                type: string
+            interval_seconds:
+              type: integer
+        remove_pull:
+          type: boolean
+    VulnerabilityIngestResult:
+      type: object
+      required: [batch_id, profile_id, source_id, format, status, received, accepted, quarantined, resolved, drift_ratio, idempotent_replay]
+      properties:
+        batch_id:
+          type: string
+        profile_id:
+          type: string
+        source_id:
+          type: string
+        format:
+          type: string
+        status:
+          type: string
+        received:
+          type: integer
+        accepted:
+          type: integer
+        quarantined:
+          type: integer
+        resolved:
+          type: integer
+        drift_ratio:
+          type: number
+        idempotent_replay:
+          type: boolean
+        problems:
+          type: array
+          items:
+            type: string
+        draft_mapping:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+    VulnerabilityIngestEnvelope:
+      type: object
+      required: [ingest]
+      properties:
+        ingest:
+          $ref: '#/components/schemas/VulnerabilityIngestResult'
     IdentitySSOError:
       type: object
       required: [error, code]
