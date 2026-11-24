@@ -855,12 +855,14 @@ async function validateBackend() {
   expect(evidence.status === 200, `evidence status ${evidence.status}`);
   expect(evidence.json.evidence.length === 3, "evidence count mismatch");
 
-  const impact = await requestJSON(`${apiBase}/grc/entities/${encodeURIComponent(adminURN)}/impact?tenant_id=${tenantID}&limit=10`);
-  expect(impact.status === 200, `impact status ${impact.status}`);
-  expect(impact.json.graph.root.urn === adminURN, "impact root mismatch");
-  expect(impact.json.graph.neighbors.length >= 2, "impact neighbors missing");
-  expect(impact.json.graph.relations.length >= 2, "impact relations missing");
-  expect(impact.json.findings.some((finding) => finding.id === "e2e-finding-critical"), "impact finding missing");
+  await waitFor("backend GRC impact", async () => {
+    const impact = await requestJSON(`${apiBase}/grc/entities/${encodeURIComponent(adminURN)}/impact?tenant_id=${tenantID}&limit=10`);
+    expect(impact.status === 200, `impact status ${impact.status}`);
+    expect(impact.json.graph.root.urn === adminURN, "impact root mismatch");
+    expect(impact.json.graph.neighbors.length >= 2, "impact neighbors missing");
+    expect(impact.json.graph.relations.length >= 2, "impact relations missing");
+    expect(impact.json.findings.some((finding) => finding.id === "e2e-finding-critical"), "impact finding missing");
+  }, Math.min(60_000, remainingValidationMs()), backendProcess);
 
   const missingImpact = await request(`${apiBase}/grc/entities/${encodeURIComponent(`urn:cerebro:${tenantID}:missing:node`)}/impact?tenant_id=${tenantID}&limit=10`);
   expect(missingImpact.status === 404, `missing impact status ${missingImpact.status}`);
