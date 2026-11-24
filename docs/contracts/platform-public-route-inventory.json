@@ -9,29 +9,29 @@
     "gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go"
   ],
   "summary": {
-    "http_routes": 324,
+    "http_routes": 339,
     "connect_mounts": 1,
     "connect_rpcs": 47,
     "by_surface": {
       "bridged-to-rust-authority": 22,
-      "protected": 332,
+      "protected": 347,
       "public-exempt": 15,
       "rust-authority": 3
     },
     "by_authority_owner": {
       "bridged-to-rust-authority": 22,
-      "go-compatibility": 347,
+      "go-compatibility": 362,
       "rust-authority": 3
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
-      "api-key-or-bearer": 307,
+      "api-key-or-bearer": 322,
       "connect-api-key-or-bearer": 48,
       "public-exempt": 15
     },
     "by_contract_source": {
       "MCP schema": 2,
-      "OpenAPI": 322,
+      "OpenAPI": 337,
       "proto": 48
     },
     "deprecated_surfaces": 0
@@ -799,6 +799,18 @@
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "report",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "DELETE /vulnerabilities/profiles/{profileID}",
+      "kind": "http",
+      "method": "DELETE",
+      "path": "/vulnerabilities/profiles/{profileID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",
       "contract_source": "OpenAPI"
@@ -2844,6 +2856,102 @@
       "contract_source": "OpenAPI"
     },
     {
+      "identity": "GET /vulnerabilities",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/catalog",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/catalog",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/observations/{observationID}",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/observations/{observationID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/profiles",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/profiles",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/profiles/{profileID}",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/profiles/{profileID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/profiles/{profileID}/batches",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/profiles/{profileID}/batches",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/profiles/{profileID}/quarantine",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/profiles/{profileID}/quarantine",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "GET /vulnerabilities/summary",
+      "kind": "http",
+      "method": "GET",
+      "path": "/vulnerabilities/summary",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
       "identity": "PATCH /ask-queries/{queryID}",
       "kind": "http",
       "method": "PATCH",
@@ -2911,6 +3019,18 @@
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "report",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "PATCH /vulnerabilities/profiles/{profileID}",
+      "kind": "http",
+      "method": "PATCH",
+      "path": "/vulnerabilities/profiles/{profileID}",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",
       "contract_source": "OpenAPI"
@@ -4375,6 +4495,66 @@
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "source-runtime",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /vulnerabilities/preview",
+      "kind": "http",
+      "method": "POST",
+      "path": "/vulnerabilities/preview",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /vulnerabilities/profiles",
+      "kind": "http",
+      "method": "POST",
+      "path": "/vulnerabilities/profiles",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /vulnerabilities/profiles/{profileID}/ingest",
+      "kind": "http",
+      "method": "POST",
+      "path": "/vulnerabilities/profiles/{profileID}/ingest",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /vulnerabilities/profiles/{profileID}/mapping/activate",
+      "kind": "http",
+      "method": "POST",
+      "path": "/vulnerabilities/profiles/{profileID}/mapping/activate",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /vulnerabilities/profiles/{profileID}/sync",
+      "kind": "http",
+      "method": "POST",
+      "path": "/vulnerabilities/profiles/{profileID}/sync",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "platform",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",
       "contract_source": "OpenAPI"

@@ -29,6 +29,7 @@ import (
 	identityssohttp "github.com/writer/cerebro/internal/sourcehttp/identitysso"
 	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
+	vulnhttp "github.com/writer/cerebro/internal/sourcehttp/vulnerabilities"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -48,6 +49,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerAgentPlatformRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerAskQueryRoutes(mux)
+	app.registerVulnerabilityRoutes(mux)
 	preferencesHandler := userpreferences.NewHandler(app.deps.StateStore, effectiveTenantFilter, userPreferenceActorID)
 	registerHTTPRoute(mux, "GET /user/preferences", routeSurfacePlatformHTTP, preferencesHandler.Get)
 	registerHTTPRoute(mux, "PUT /user/preferences", routeSurfacePlatformHTTP, preferencesHandler.Put)
@@ -147,6 +149,26 @@ func (app *App) registerReportRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /report-schedules", routeSurfacePlatformHTTP, app.handleCreateReportSchedule)
 	registerHTTPRoute(mux, "PATCH /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleUpdateReportSchedule)
 	registerHTTPRoute(mux, "DELETE /report-schedules/{scheduleID}", routeSurfacePlatformHTTP, app.handleDeleteReportSchedule)
+}
+func (app *App) registerVulnerabilityRoutes(mux *http.ServeMux) {
+	h := vulnhttp.NewHandler(app.services.vulnerabilities, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
+		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
+	})
+	registerHTTPRoute(mux, "GET /vulnerabilities", routeSurfacePlatformHTTP, h.ListObservations)
+	registerHTTPRoute(mux, "GET /vulnerabilities/summary", routeSurfacePlatformHTTP, h.Summary)
+	registerHTTPRoute(mux, "GET /vulnerabilities/catalog", routeSurfacePlatformHTTP, h.Catalog)
+	registerHTTPRoute(mux, "GET /vulnerabilities/observations/{observationID}", routeSurfacePlatformHTTP, h.GetObservation)
+	registerHTTPRoute(mux, "POST /vulnerabilities/preview", routeSurfacePlatformHTTP, h.Preview)
+	registerHTTPRoute(mux, "GET /vulnerabilities/profiles", routeSurfacePlatformHTTP, h.ListProfiles)
+	registerHTTPRoute(mux, "POST /vulnerabilities/profiles", routeSurfacePlatformHTTP, h.CreateProfile)
+	registerHTTPRoute(mux, "GET /vulnerabilities/profiles/{profileID}", routeSurfacePlatformHTTP, h.GetProfile)
+	registerHTTPRoute(mux, "PATCH /vulnerabilities/profiles/{profileID}", routeSurfacePlatformHTTP, h.UpdateProfile)
+	registerHTTPRoute(mux, "DELETE /vulnerabilities/profiles/{profileID}", routeSurfacePlatformHTTP, h.DeleteProfile)
+	registerHTTPRoute(mux, "POST /vulnerabilities/profiles/{profileID}/ingest", routeSurfacePlatformHTTP, h.Ingest)
+	registerHTTPRoute(mux, "POST /vulnerabilities/profiles/{profileID}/sync", routeSurfacePlatformHTTP, h.Sync)
+	registerHTTPRoute(mux, "POST /vulnerabilities/profiles/{profileID}/mapping/activate", routeSurfacePlatformHTTP, h.ActivateMapping)
+	registerHTTPRoute(mux, "GET /vulnerabilities/profiles/{profileID}/batches", routeSurfacePlatformHTTP, h.ListBatches)
+	registerHTTPRoute(mux, "GET /vulnerabilities/profiles/{profileID}/quarantine", routeSurfacePlatformHTTP, h.ListQuarantine)
 }
 func (app *App) registerAskQueryRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /ask-queries", routeSurfacePlatformHTTP, app.handleListAskQueries)

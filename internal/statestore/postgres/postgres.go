@@ -107,7 +107,7 @@ type Store struct {
 	findingEvidenceReady      bool
 	findingEvaluationRunReady bool
 	findingIntel              findingIntelReady
-	vulnDBTablesReady         bool
+	vulnerability             vulnerabilityTablesReady
 	deviceAuthTablesReady     bool
 	mcpOAuthTablesReady       bool
 	startupLeaseTableReady    bool
@@ -121,6 +121,11 @@ type Store struct {
 	connector                 connectorTablesReady
 	appendLog                 appendLogTablesReady
 	settings                  settingsTablesReady
+}
+
+type vulnerabilityTablesReady struct {
+	vulnDB   bool
+	pipeline bool
 }
 
 type settingsTablesReady struct {

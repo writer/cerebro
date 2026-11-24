@@ -148,6 +148,7 @@ func serve() error {
 	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
 	reportSchedulerDone := app.StartReportScheduler(ctx, log.Printf)
 	complianceMonitorSchedulerDone := app.StartComplianceMonitorScheduler(ctx, log.Printf)
+	vulnerabilityPullSchedulerDone := app.StartVulnerabilityPullScheduler(ctx, log.Printf)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -169,7 +170,7 @@ func serve() error {
 		if err := <-errCh; err != nil {
 			return fmt.Errorf("serve: %w", err)
 		}
-		waitForStartupJobs(shutdownCtx, jobRecoveryDone, grcWarmupDone, riskBackfillDone, reportSchedulerDone, complianceMonitorSchedulerDone)
+		waitForStartupJobs(shutdownCtx, jobRecoveryDone, grcWarmupDone, riskBackfillDone, reportSchedulerDone, complianceMonitorSchedulerDone, vulnerabilityPullSchedulerDone)
 		return nil
 	}
 }

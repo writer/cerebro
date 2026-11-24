@@ -25,6 +25,8 @@ const (
 	ScopeRiskScoringWrite          = "cerebro.risk_scoring.write"
 	ScopePolicyCandidatesWrite     = "cerebro.policy_candidates.write"
 	ScopeUserPreferencesWrite      = "cerebro.user_preferences.write"
+	ScopeVulnerabilitiesWrite      = "cerebro.vulnerabilities.write"
+	ScopeVulnerabilitiesIngest     = "cerebro.vulnerabilities.ingest"
 	ScopeIdentitySSORead           = "cerebro.identity.sso.read"
 	ScopeIdentitySSOWrite          = "cerebro.identity.sso.write"
 
@@ -71,6 +73,8 @@ var allScopes = []string{
 	ScopeUserPreferencesWrite,
 	ScopeIdentitySSORead,
 	ScopeIdentitySSOWrite,
+	ScopeVulnerabilitiesWrite,
+	ScopeVulnerabilitiesIngest,
 }
 
 var roleAliases = map[string]string{
@@ -95,6 +99,7 @@ var roleScopes = map[string][]string{
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
+		ScopeVulnerabilitiesIngest,
 	},
 	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite, ScopePolicyCandidatesWrite, ScopePolicyEvaluationDatasetsRead, ScopePolicyEvaluationDatasetsPropose, ScopePolicyEvaluationDatasetsApprove},
 	RoleCerebroGRCReviewer:    {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeGRCInventoryWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeDashboardsWrite, ScopeRiskScoringWrite},
@@ -113,6 +118,8 @@ var roleScopes = map[string][]string{
 		ScopeReportsRun,
 		ScopeSourcesPreview,
 		ScopeSourceRuntimesWrite,
+		ScopeVulnerabilitiesWrite,
+		ScopeVulnerabilitiesIngest,
 	},
 	RoleCerebroJobManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeJobsWrite},
 	RoleCerebroAdmin:      allScopes,

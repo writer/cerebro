@@ -23,6 +23,7 @@ export type AuthorizationPermission =
   | "sources:preview"
   | "source-runtimes:write"
   | "jobs:write"
+  | "vulnerabilities:write"
   | "identity:admin";
 
 const permissionOrder: AuthorizationPermission[] = [
@@ -46,6 +47,7 @@ const permissionOrder: AuthorizationPermission[] = [
   "sources:preview",
   "source-runtimes:write",
   "jobs:write",
+  "vulnerabilities:write",
   "identity:admin",
   "admin:read",
 ];
@@ -107,6 +109,7 @@ const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
     "reports:run",
     "sources:preview",
     "source-runtimes:write",
+    "vulnerabilities:write",
   ],
   "cerebro.job_manager": [
     ...viewerPermissions,
@@ -167,6 +170,7 @@ const scopePermissionBundles: Record<string, AuthorizationPermission[]> = {
   "cerebro.connectors.write": ["connectors:write"],
   "cerebro.jobs.write": ["jobs:write"],
   "cerebro.source_runtimes.write": ["source-runtimes:write"],
+  "cerebro.vulnerabilities.write": ["vulnerabilities:write"],
 };
 
 const directPermissionScopes = new Set<AuthorizationPermission>(permissionOrder);
@@ -369,6 +373,7 @@ export const permissionForCerebroProxyRequest = (
 
   if (normalizedMethod === "PATCH") {
     if (normalizedPath.startsWith("grc/dashboards/")) return "dashboards:write";
+    if (normalizedPath.startsWith("vulnerabilities/profiles/")) return "vulnerabilities:write";
     if (normalizedPath.startsWith("grc/inventory/")) return "grc:inventory:write";
     if (normalizedPath.startsWith("grc/policy-lifecycle/")) return "grc:policies:write";
     return "cerebro:write";
@@ -386,6 +391,7 @@ export const permissionForCerebroProxyRequest = (
 
   if (normalizedMethod === "DELETE") {
     if (normalizedPath.startsWith("grc/dashboards/")) return "dashboards:write";
+    if (normalizedPath.startsWith("vulnerabilities/profiles/")) return "vulnerabilities:write";
     if (normalizedPath.startsWith("finding-rules/custom/")) return "findings:write";
     return "cerebro:write";
   }
@@ -395,6 +401,7 @@ export const permissionForCerebroProxyRequest = (
   }
 
   if (normalizedPath === "grc/ask") return "agent:ask";
+  if (normalizedPath === "vulnerabilities/preview" || normalizedPath.startsWith("vulnerabilities/profiles")) return "vulnerabilities:write";
   if (normalizedPath === "grc/dashboards") return "dashboards:write";
   if (normalizedPath.startsWith("grc/dashboards/") && normalizedPath.endsWith("/clone")) return "dashboards:write";
   if (normalizedPath === "grc/findings/triage") return "findings:write";

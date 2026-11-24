@@ -94,6 +94,9 @@ func buildOperationRegistry() map[string]Operation {
 		taskRead("cerebro.decision.packet", "decision-packet", "canonical persisted DecisionPacket resolved from authoritative server records"),
 		taskRead("cerebro.sources.health", "source-runtime", "task result with source coverage and blind spots"),
 		taskPropose("cerebro.action.plan", "risk", "task result with ranked non-mutating action candidates"),
+		expertRead("cerebro.vulnerabilities.list", "vulnerabilities", "normalized vulnerability observation page"),
+		expertRead("cerebro.vulnerabilities.summary", "vulnerabilities", "vulnerability counts by severity, source, and class"),
+		vulnerabilityIngest("cerebro.vulnerabilities.ingest"),
 	}
 	registry := make(map[string]Operation, len(operations))
 	for _, operation := range operations {
@@ -121,6 +124,12 @@ func expertPropose(name string, domain string, response string) Operation {
 func expertExecute(name string, domain string, response string) Operation {
 	result := operation(name, domain, BehaviorExecute, ClassificationExpert, response)
 	result.RequiredScopes = []string{ScopeSecurityRead, ScopeGRCInventoryWrite}
+	return result
+}
+
+func vulnerabilityIngest(name string) Operation {
+	result := operation(name, "vulnerabilities", BehaviorExecute, ClassificationExpert, "vulnerability ingest batch result")
+	result.RequiredScopes = []string{ScopeSecurityRead, ScopeVulnerabilitiesIngest}
 	return result
 }
 
@@ -235,6 +244,8 @@ func ToolsetForName(name string) string {
 		return "assets"
 	case strings.HasPrefix(name, "assessments."):
 		return "assessments"
+	case strings.HasPrefix(name, "vulnerabilities."):
+		return "vulnerabilities"
 	case strings.HasPrefix(name, "compliance_"):
 		return "compliance"
 	case strings.HasPrefix(name, "sources."), strings.HasPrefix(name, "connectors."), strings.HasPrefix(name, "source_runtimes."), strings.HasPrefix(name, "runtimes."), strings.HasPrefix(name, "connector_definitions."):

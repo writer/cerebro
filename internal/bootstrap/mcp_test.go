@@ -267,6 +267,9 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		if annotations["readOnlyHint"] != expectedReadOnly {
 			t.Fatalf("%s readOnlyHint = %#v, want %v", name, annotations["readOnlyHint"], expectedReadOnly)
 		}
+		if name == "cerebro.vulnerabilities.ingest" && annotations["destructiveHint"] != true {
+			t.Fatalf("%s can resolve observations, destructiveHint = %#v", name, annotations["destructiveHint"])
+		}
 		if strings.HasSuffix(name, ".propose") {
 			inputSchema := tool["inputSchema"].(map[string]any)
 			dryRun := inputSchema["properties"].(map[string]any)["dry_run"].(map[string]any)
@@ -630,6 +633,9 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.assessments.remediation.propose": {Markers: []string{"POST /grc/work-items"}},
 	"cerebro.findings.action.propose":         {Markers: []string{"POST /findings/{findingID}/resolve", "POST /findings/{findingID}/suppress", "POST /findings/{findingID}/notes", "POST /findings/{findingID}/tickets"}},
 	"cerebro.source_runtimes.refresh.propose": {Markers: []string{"POST /source-runtimes/{runtimeID}/sync"}},
+	"cerebro.vulnerabilities.list":            {Markers: []string{"GET /vulnerabilities"}},
+	"cerebro.vulnerabilities.summary":         {Markers: []string{"GET /vulnerabilities/summary"}},
+	"cerebro.vulnerabilities.ingest":          {Markers: []string{"POST /vulnerabilities/profiles/{profileID}/ingest"}},
 }
 
 func mcpDomainSurfaceCorpus(t *testing.T) string {

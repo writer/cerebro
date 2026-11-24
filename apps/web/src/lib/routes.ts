@@ -25,6 +25,13 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["issues", "findings", "risk", "sla", "triage", "owner", "framework", ...supportedGRCFrameworkNames],
   },
   {
+    label: "Vulnerabilities",
+    href: "/vulnerabilities",
+    description: "Scanner vulnerabilities from every source, tagged by source.",
+    section: "Operator",
+    keywords: ["vulnerabilities", "vulnerability management", "cve", "scanner", "strix", "tenable", "sca", "dast", "sast", "patch", "source tag"],
+  },
+  {
     label: "Verified Findings",
     href: "/verified",
     description: "Agent-confirmed findings and their fixes.",

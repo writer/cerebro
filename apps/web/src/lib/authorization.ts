@@ -52,6 +52,7 @@ const permissionEnvPrefix: Record<AuthorizationPermission, string> = {
   "sources:preview": "CEREBRO_AUTHZ_SOURCES_PREVIEW",
   "source-runtimes:write": "CEREBRO_AUTHZ_SOURCE_RUNTIMES_WRITE",
   "jobs:write": "CEREBRO_AUTHZ_JOBS_WRITE",
+  "vulnerabilities:write": "CEREBRO_AUTHZ_VULNERABILITIES_WRITE",
   "identity:admin": "CEREBRO_AUTHZ_IDENTITY_ADMIN",
 };
 

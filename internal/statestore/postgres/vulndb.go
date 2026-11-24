@@ -759,7 +759,7 @@ func (s *Store) ensureVulnDBTables(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
-	return s.ensureStatements(ctx, &s.vulnDBTablesReady, "vulndb", ensureVulnDBStatements)
+	return s.ensureStatements(ctx, &s.vulnerability.vulnDB, "vulndb", ensureVulnDBStatements)
 }
 
 type syncJobScanner interface {

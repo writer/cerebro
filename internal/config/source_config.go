@@ -13,7 +13,15 @@ const (
 	sourceConfigEnvAllowlistEnv = "CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"
 	awsAssumeRoleARNsEnv        = "CEREBRO_AWS_ASSUME_ROLE_ARNS"
 	gcpWIFBindingsEnv           = "CEREBRO_GCP_WIF_BINDINGS" // #nosec G101 -- env var name, not credential material.
+	vulnerabilityPullS3Env      = "CEREBRO_VULNERABILITY_PULL_S3_SOURCES"
 )
+
+// VulnerabilityPullS3Sources returns the allowlist that binds tenants to the
+// role and bucket locations vulnerability S3 pull profiles may read, as
+// "tenant=role_arn|bucket[/prefix]" entries.
+func VulnerabilityPullS3Sources() string {
+	return strings.TrimSpace(os.Getenv(vulnerabilityPullS3Env))
+}
 
 func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
 	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true, false)
