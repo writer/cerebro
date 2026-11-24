@@ -5,6 +5,7 @@ package vulnfetch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -52,6 +53,11 @@ func (f *Fetcher) Get(ctx context.Context, endpoint string, header string, value
 	}
 	response, err := sourcehttp.DoWithRetry(ctx, f.client, request, sourcehttp.RetryOptions{MaxBodyBytes: f.maxBodyBytes})
 	if err != nil {
+		// *url.Error prints the full request URL, query included.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		return nil, "", fmt.Errorf("fetch %s: %w", redactedEndpoint(endpoint), err)
 	}
 	if response.StatusCode < 200 || response.StatusCode > 299 {

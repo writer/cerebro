@@ -136,6 +136,21 @@ func TestIdentitySSOScopesAreAdminOnly(t *testing.T) {
 	}
 }
 
+// Vulnerability profile writes can store pull destinations and credential
+// references, so they stay with the roles that already manage source runtimes.
+func TestVulnerabilitiesWriteScopeIsSourceManagerOrAdmin(t *testing.T) {
+	for _, role := range []string{RoleCerebroSourceManager, RoleCerebroAdmin} {
+		if !contains(ScopesForRoles([]string{role}), ScopeVulnerabilitiesWrite) {
+			t.Fatalf("%s missing %s", role, ScopeVulnerabilitiesWrite)
+		}
+	}
+	for _, role := range []string{RoleCerebroViewer, RoleCerebroAnalyst, "analyst", "editor", RoleCerebroFindingManager, RoleCerebroGRCReviewer} {
+		if contains(ScopesForRoles([]string{role}), ScopeVulnerabilitiesWrite) {
+			t.Fatalf("%s must not grant %s", role, ScopeVulnerabilitiesWrite)
+		}
+	}
+}
+
 func TestIsKnownRole(t *testing.T) {
 	for _, role := range []string{RoleCerebroAdmin, RoleCerebroViewer, "admin", " viewer "} {
 		if !IsKnownRole(role) {

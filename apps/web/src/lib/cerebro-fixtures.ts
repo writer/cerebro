@@ -4664,7 +4664,7 @@ const writeFixture = (path: string, body?: string) => {
     const profile = vulnerabilityProfileFixtures().find((candidate) => candidate.id === safeDecode(vulnerabilityProfileAction[1]));
     if (!profile) return jsonFixture({ error: "not_found" }, 404);
     return jsonFixture(vulnerabilityProfileAction[2] === "sync"
-      ? { sync: { profile_id: profile.id, pages: 1, results: [] } }
+      ? { sync: { profile_id: profile.id, source_id: profile.source_id, kind: profile.pull_kind, status: "queued", queued_at: generatedAt, pages: 0, received: 0, accepted: 0, quarantined: 0, resolved: 0, snapshot: false } }
       : { profile: { ...profile, draft_mapping: undefined, mapping_version: profile.mapping_version + 1, last_status: "healthy" }, replayed: [] });
   }
 

@@ -267,6 +267,9 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		if annotations["readOnlyHint"] != expectedReadOnly {
 			t.Fatalf("%s readOnlyHint = %#v, want %v", name, annotations["readOnlyHint"], expectedReadOnly)
 		}
+		if name == "cerebro.vulnerabilities.ingest" && annotations["destructiveHint"] != true {
+			t.Fatalf("%s can resolve observations, destructiveHint = %#v", name, annotations["destructiveHint"])
+		}
 		if strings.HasSuffix(name, ".propose") {
 			inputSchema := tool["inputSchema"].(map[string]any)
 			dryRun := inputSchema["properties"].(map[string]any)["dry_run"].(map[string]any)

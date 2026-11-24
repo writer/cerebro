@@ -15,6 +15,9 @@ const (
 	minFieldConfidence    = 0.45
 	activationConfidence  = 0.6
 	maxUnmappedPathReport = 40
+	maxInferencePaths     = 2048
+	maxLearnedValues      = 64
+	maxLearnedValueBytes  = 64
 )
 
 // FieldInference explains how one target field was learned.
@@ -105,10 +108,15 @@ func inferMapping(document any) (*Mapping, InferenceReport) {
 	}
 	flattened := make([]map[string][]string, 0, len(records))
 	allPaths := map[string]bool{}
+	pathsCapped := false
 	for _, record := range records {
 		flat := flattenRecord(record)
 		flattened = append(flattened, flat)
-		for path := range flat {
+		for _, path := range sortedPathKeys(flat) {
+			if len(allPaths) >= maxInferencePaths && !allPaths[path] {
+				pathsCapped = true
+				break
+			}
 			allPaths[path] = true
 		}
 	}
@@ -136,7 +144,10 @@ func inferMapping(document any) (*Mapping, InferenceReport) {
 		if len(candidates[i].path) != len(candidates[j].path) {
 			return len(candidates[i].path) < len(candidates[j].path)
 		}
-		return candidates[i].path < candidates[j].path
+		if candidates[i].path != candidates[j].path {
+			return candidates[i].path < candidates[j].path
+		}
+		return candidates[i].field < candidates[j].field
 	})
 	usedPaths := map[string]bool{}
 	for _, candidate := range candidates {
@@ -148,13 +159,25 @@ func inferMapping(document any) (*Mapping, InferenceReport) {
 		report.Fields[candidate.field] = FieldInference{Path: candidate.path, Confidence: round2(candidate.score), Coverage: round2(candidate.coverage), Reason: candidate.reason}
 	}
 
+	learnWarnings := []string{}
+	if pathsCapped {
+		learnWarnings = append(learnWarnings, "records have more distinct fields than inference examines; only the first "+strconv.Itoa(maxInferencePaths)+" were considered")
+	}
 	if inference, ok := report.Fields[FieldSeverity]; ok {
-		mapping.SeverityScale, mapping.SeverityValues = learnSeverity(flattened, inference.Path)
+		var capped bool
+		mapping.SeverityScale, mapping.SeverityValues, capped = learnSeverity(flattened, inference.Path)
 		report.SeverityValues = mapping.SeverityValues
+		if capped {
+			learnWarnings = append(learnWarnings, "severity has more distinct unrecognized values than a mapping keeps; review severity_values")
+		}
 	}
 	if inference, ok := report.Fields[FieldStatus]; ok {
-		mapping.StatusValues = learnStatus(flattened, inference.Path)
+		var capped bool
+		mapping.StatusValues, capped = learnStatus(flattened, inference.Path)
 		report.StatusValues = mapping.StatusValues
+		if capped {
+			learnWarnings = append(learnWarnings, "status has more distinct unrecognized values than a mapping keeps; review status_values")
+		}
 	}
 	for _, path := range paths {
 		if !usedPaths[path] && len(report.UnmappedPaths) < maxUnmappedPathReport {
@@ -162,6 +185,7 @@ func inferMapping(document any) (*Mapping, InferenceReport) {
 		}
 	}
 	report.Confidence, report.ReadyToActivate, report.Warnings = assessInference(report)
+	report.Warnings = append(report.Warnings, learnWarnings...)
 	return mapping, report
 }
 
@@ -189,6 +213,9 @@ func scoreCandidate(field string, spec fieldSpec, path string, records []map[str
 				break
 			}
 		}
+	}
+	if nameScore == 0 && !spec.shapeOnly {
+		return candidateScore{}, false
 	}
 	present, matching, total := 0, 0, 0
 	distinct := map[string]bool{}
@@ -330,7 +357,7 @@ func objectsOnly(values []any) []any {
 	return out
 }
 
-func learnSeverity(records []map[string][]string, path string) (string, map[string]string) {
+func learnSeverity(records []map[string][]string, path string) (string, map[string]string, bool) {
 	values := map[string]bool{}
 	numeric := true
 	integers := true
@@ -338,12 +365,12 @@ func learnSeverity(records []map[string][]string, path string) (string, map[stri
 	for _, record := range records {
 		for _, value := range record[path] {
 			lower := strings.ToLower(strings.TrimSpace(value))
-			if lower == "" {
+			if lower == "" || len(lower) > maxLearnedValueBytes {
 				continue
 			}
 			values[lower] = true
 			number, err := strconv.ParseFloat(lower, 64)
-			if err != nil {
+			if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
 				numeric = false
 				continue
 			}
@@ -364,36 +391,62 @@ func learnSeverity(records []map[string][]string, path string) (string, map[stri
 			scale = SeverityScaleCVSS
 		}
 	}
-	learned := map[string]string{}
+	unknown := map[string]bool{}
 	for value := range values {
-		if _, err := strconv.ParseFloat(value, 64); err == nil {
+		if number, err := strconv.ParseFloat(value, 64); err == nil && !math.IsNaN(number) && !math.IsInf(number, 0) {
 			continue
 		}
 		if !knownSeverityLabel(value) {
-			learned[value] = SeverityUnknown
+			unknown[value] = true
 		}
 	}
-	if len(learned) == 0 {
-		learned = nil
-	}
-	return scale, learned
+	learned, capped := boundedValueMap(unknown, SeverityUnknown)
+	return scale, learned, capped
 }
 
-func learnStatus(records []map[string][]string, path string) map[string]string {
-	learned := map[string]string{}
+func learnStatus(records []map[string][]string, path string) (map[string]string, bool) {
+	unknown := map[string]bool{}
 	for _, record := range records {
 		for _, value := range record[path] {
 			lower := strings.ToLower(strings.TrimSpace(value))
-			if lower == "" || knownStatusLabel(lower) {
+			if lower == "" || len(lower) > maxLearnedValueBytes || knownStatusLabel(lower) {
 				continue
 			}
-			learned[lower] = StatusOpen
+			unknown[lower] = true
 		}
 	}
-	if len(learned) == 0 {
-		return nil
+	return boundedValueMap(unknown, StatusOpen)
+}
+
+// boundedValueMap maps the first maxLearnedValues raw values, in sorted order,
+// to target and reports whether any were left out.
+func boundedValueMap(values map[string]bool, target string) (map[string]string, bool) {
+	if len(values) == 0 {
+		return nil, false
 	}
-	return learned
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	sort.Strings(keys)
+	capped := len(keys) > maxLearnedValues
+	if capped {
+		keys = keys[:maxLearnedValues]
+	}
+	learned := make(map[string]string, len(keys))
+	for _, key := range keys {
+		learned[key] = target
+	}
+	return learned, capped
+}
+
+func sortedPathKeys(values map[string][]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func round2(value float64) float64 {

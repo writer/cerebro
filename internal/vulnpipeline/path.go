@@ -74,7 +74,15 @@ func parsePath(raw string) ([]pathSegment, error) {
 }
 
 func resolvePath(value any, segments []pathSegment) []any {
+	values, _ := resolvePathLimit(value, segments, maxResolvedValues)
+	return values
+}
+
+// resolvePathLimit resolves segments and reports whether any step had to drop
+// values to stay within limit.
+func resolvePathLimit(value any, segments []pathSegment, limit int) ([]any, bool) {
 	current := []any{value}
+	overflow := false
 	for _, segment := range segments {
 		next := []any{}
 		for _, item := range current {
@@ -94,17 +102,18 @@ func resolvePath(value any, segments []pathSegment) []any {
 					}
 				}
 			}
-			if len(next) > maxResolvedValues {
-				next = next[:maxResolvedValues]
+			if len(next) > limit {
+				next = next[:limit]
+				overflow = true
 				break
 			}
 		}
 		current = next
 		if len(current) == 0 {
-			return nil
+			return nil, overflow
 		}
 	}
-	return current
+	return current, overflow
 }
 
 func resolveStrings(value any, raw string) []string {

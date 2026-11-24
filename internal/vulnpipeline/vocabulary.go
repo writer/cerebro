@@ -53,7 +53,10 @@ var (
 	vulnIDPattern = regexp.MustCompile(`(?i)^(CVE-\d{4}-\d{4,}|GHSA(-[23456789cfghjmpqrvwx]{4}){3}|(OSV|PYSEC|GO|RUSTSEC|SNYK|ALAS|RHSA|DSA|USN|ELSA|DLA|MAL)-[A-Za-z0-9._:-]+)$`)
 	cwePattern    = regexp.MustCompile(`(?i)^(CWE-)?\d{1,5}$`)
 	digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	vectorPattern = regexp.MustCompile(`^(CVSS:\d\.\d/)?AV:[NALP]/`)
+	// vulnIDTokenPattern is the permissive shape any stored identifier must
+	// have; vulnIDPattern is the stricter one inference uses to recognize IDs.
+	vulnIDTokenPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
+	vectorPattern      = regexp.MustCompile(`^(CVSS:\d\.\d/)?AV:[NALP]/`)
 )
 
 var severityRanks = map[string]int{
@@ -234,15 +237,16 @@ func validClass(value string) bool {
 	return false
 }
 
-// NormalizeVulnerabilityIDs uppercases, dedupes, and orders vulnerability
-// identifiers so CVE IDs come first, then GHSA, then everything else.
+// NormalizeVulnerabilityIDs cleans, uppercases, dedupes, and orders
+// vulnerability identifiers so CVE IDs come first, then GHSA, then everything
+// else. Values that do not look like identifiers are dropped.
 func NormalizeVulnerabilityIDs(values []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, value := range values {
-		for _, part := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' || r == ';' || r == '\n' }) {
-			id := strings.TrimSpace(part)
-			if id == "" {
+		for _, part := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' || r == ';' || r == '\n' || r == '\t' }) {
+			id := clean(part, 0)
+			if !vulnIDTokenPattern.MatchString(id) {
 				continue
 			}
 			upper := strings.ToUpper(id)
@@ -252,7 +256,7 @@ func NormalizeVulnerabilityIDs(values []string) []string {
 					id = "GHSA-" + strings.ToLower(upper[5:])
 				}
 			}
-			if len(id) > 128 || seen[id] {
+			if seen[id] {
 				continue
 			}
 			seen[id] = true

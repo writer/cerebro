@@ -199,8 +199,10 @@ func (s *Service) applyPull(ctx context.Context, profile *ports.VulnerabilityPro
 		return fmt.Errorf("%w: unknown pull kind %q", ErrInvalidRequest, kind)
 	}
 	config := map[string]string{}
+	previous := map[string]string{}
 	if kind == profile.PullKind {
 		_ = json.Unmarshal([]byte(profile.PullConfigJSON), &config)
+		_ = json.Unmarshal([]byte(profile.PullConfigJSON), &previous)
 	} else {
 		profile.PullCursor = ""
 	}
@@ -213,6 +215,7 @@ func (s *Service) applyPull(ctx context.Context, profile *ports.VulnerabilityPro
 		}
 		config[key] = value
 	}
+	scopePullConfigChange(puller, previous, config, input.Config)
 	for _, key := range puller.SecretKeys() {
 		if value, ok := config[key]; ok && !s.isSecretReference(value) {
 			return fmt.Errorf("%w: %w: pull config %q must be a credential or secret-store reference, not a raw secret", ErrInvalidRequest, ErrRawSecret, key)
@@ -392,43 +395,75 @@ func (s *Service) ActivateMapping(ctx context.Context, tenantID string, profileI
 	return &ActivationResult{Profile: s.view(profile), Replayed: replayed}, nil
 }
 
+// maxReplayPages bounds one activation's replay loop; the store caps held
+// batches per profile well below maxReplayPages*maxReplayBatches.
+const maxReplayPages = 10
+
+// replayHeld replays every held delivery oldest first, so later deliveries
+// win for repeated records, paging through the held set without loading more
+// than one payload at a time. Held batches without a payload are expired.
 func (s *Service) replayHeld(ctx context.Context, profile *ports.VulnerabilityProfile, actor string) ([]*IngestResult, error) {
-	held, err := s.store.ListVulnerabilityIngestBatches(ctx, profile.TenantID, profile.ID, BatchPendingMapping, maxReplayBatches)
-	if err != nil {
-		return nil, err
-	}
-	// Replay oldest first so later deliveries win for repeated records.
-	sort.SliceStable(held, func(i, j int) bool { return held[i].CreatedAt.Before(held[j].CreatedAt) })
 	results := []*IngestResult{}
-	for _, original := range held {
-		if len(original.RawPayload) == 0 {
-			continue
-		}
-		batch := &ports.VulnerabilityIngestBatch{
-			TenantID:      profile.TenantID,
-			ID:            newID("vbat"),
-			ProfileID:     profile.ID,
-			Transport:     TransportReplay,
-			ContentType:   original.ContentType,
-			ContentDigest: original.ContentDigest,
-			FullSnapshot:  original.FullSnapshot,
-			Actor:         clean(actor, 240),
-			ReplayOf:      original.ID,
-			CreatedAt:     s.clock(),
-		}
-		result, err := s.process(ctx, profile, batch, original.RawPayload, "", original.FullSnapshot, batch.CreatedAt)
-		if err != nil && result == nil {
+	for range maxReplayPages {
+		held, err := s.store.ListHeldVulnerabilityIngestBatches(ctx, profile.TenantID, profile.ID, maxReplayBatches)
+		if err != nil {
 			return results, err
 		}
-		results = append(results, result)
-		original.Status = BatchReplayed
-		original.RawPayload = nil
-		original.Error = ""
-		if err := s.store.PutVulnerabilityIngestBatch(ctx, original); err != nil {
-			return results, err
+		if len(held) == 0 {
+			return results, nil
+		}
+		for _, original := range held {
+			result, err := s.replayHeldBatch(ctx, profile, original, actor)
+			if err != nil {
+				return results, err
+			}
+			if result != nil {
+				results = append(results, result)
+			}
 		}
 	}
 	return results, nil
+}
+
+func (s *Service) replayHeldBatch(ctx context.Context, profile *ports.VulnerabilityProfile, original *ports.VulnerabilityIngestBatch, actor string) (*IngestResult, error) {
+	payload, err := s.store.GetVulnerabilityIngestBatchPayload(ctx, profile.TenantID, original.ID)
+	if errors.Is(err, ports.ErrVulnerabilityBatchNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) == 0 {
+		original.Status = BatchExpired
+		original.RawPayload = nil
+		if original.Error == "" {
+			original.Error = "payload was not retained; resend the delivery"
+		}
+		return nil, s.store.PutVulnerabilityIngestBatch(ctx, original)
+	}
+	batch := &ports.VulnerabilityIngestBatch{
+		TenantID:      profile.TenantID,
+		ID:            newID("vbat"),
+		ProfileID:     profile.ID,
+		Transport:     TransportReplay,
+		ContentType:   original.ContentType,
+		ContentDigest: original.ContentDigest,
+		FullSnapshot:  original.FullSnapshot,
+		Actor:         clean(actor, 240),
+		ReplayOf:      original.ID,
+		CreatedAt:     s.clock(),
+	}
+	result, err := s.process(ctx, profile, batch, payload, "", original.FullSnapshot, batch.CreatedAt)
+	if err != nil && result == nil {
+		return nil, err
+	}
+	original.Status = BatchReplayed
+	original.RawPayload = nil
+	original.Error = ""
+	if err := s.store.PutVulnerabilityIngestBatch(ctx, original); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // BatchView is the API representation of an ingest batch.

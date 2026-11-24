@@ -12,6 +12,8 @@ type VulnerabilityToolDefinition struct {
 	InputSchema  InputSchema
 	OutputSchema OutputSchema
 	Idempotent   bool
+	// Destructive marks tools that can resolve or overwrite existing records.
+	Destructive bool
 }
 
 // VulnerabilityToolDefinitions returns the vulnerability pipeline tools.
@@ -64,6 +66,7 @@ func VulnerabilityToolDefinitions() []VulnerabilityToolDefinition {
 			}, []string{"profile_id", "payload"}),
 			OutputSchema: output(map[string]any{"batch_id": map[string]any{"type": "string"}, "status": map[string]any{"type": "string"}, "accepted": map[string]any{"type": "integer"}, "quarantined": map[string]any{"type": "integer"}}),
 			Idempotent:   true,
+			Destructive:  true,
 		},
 	}
 }

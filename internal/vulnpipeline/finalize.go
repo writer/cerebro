@@ -48,6 +48,9 @@ func finalizeDraft(draft Draft, ctx finalizeContext) (*ports.VulnerabilityObserv
 		return nil, draft.Problem
 	}
 	obs := draft.Observation
+	if obs.CVSSScore != nil && !validScore(*obs.CVSSScore) {
+		obs.CVSSScore = nil
+	}
 	obs.Title = clean(obs.Title, maxTitleBytes)
 	obs.Description = clean(obs.Description, maxDescriptionBytes)
 	obs.SourceRecordID = clean(obs.SourceRecordID, maxShortFieldBytes)
@@ -140,7 +143,34 @@ func finalizeDraft(draft Draft, ctx finalizeContext) (*ports.VulnerabilityObserv
 		obs.ResolvedAt = &resolvedAt
 		obs.Resolution = ResolutionSourceReported
 	}
+	// Postgres rejects NUL and invalid UTF-8 for the whole upsert chunk, so a
+	// record that still carries either is quarantined on its own.
+	if !storableText(obs) {
+		return nil, "record contains NUL characters or invalid UTF-8"
+	}
 	return &obs, ""
+}
+
+func storableText(obs ports.VulnerabilityObservation) bool {
+	values := []string{
+		obs.SourceRecordID, obs.Title, obs.Description, obs.Class, obs.PrimaryVulnerabilityID,
+		obs.Severity, obs.SourceSeverity, obs.CVSSVector, obs.Status, obs.SourceStatus,
+		obs.AssetType, obs.AssetIdentifier, obs.AssetName, obs.ImageDigest,
+		obs.PackageEcosystem, obs.PackageName, obs.PackageVersion, obs.FixedVersion, obs.PackageURL,
+		obs.Location, obs.Scanner, obs.CorrelationKey,
+	}
+	values = append(values, obs.VulnerabilityIDs...)
+	values = append(values, obs.CWEs...)
+	values = append(values, obs.References...)
+	for key, value := range obs.Attributes {
+		values = append(values, key, value)
+	}
+	for _, value := range values {
+		if strings.IndexByte(value, 0) >= 0 || !utf8.ValidString(value) {
+			return false
+		}
+	}
+	return true
 }
 
 // ObservationID is the stable identity of one source record inside one

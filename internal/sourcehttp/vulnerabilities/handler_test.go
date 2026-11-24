@@ -262,3 +262,28 @@ func TestMCPToolIngestsAndLists(t *testing.T) {
 		t.Fatalf("summary result JSON = %s, %v", encoded, err)
 	}
 }
+
+func TestMCPToolReturnsFailedBatchResult(t *testing.T) {
+	s := newTestServer(t)
+	s.createProfile(`{"source_id":"strix"}`)
+	result, err := MCPTool(context.Background(), s.service, "cerebro.vulnerabilities.ingest", "tenant-a", "agent", json.RawMessage(`{"profile_id":"strix","payload":"{not json"}`))
+	if err != nil {
+		t.Fatalf("failed batch should be returned as a result, got error %v", err)
+	}
+	if result.Ingest == nil || result.Ingest.BatchID == "" || result.Ingest.Error == "" {
+		t.Fatalf("ingest = %+v", result.Ingest)
+	}
+}
+
+func TestIsClientErrorClassifiesPipelineErrors(t *testing.T) {
+	for _, err := range []error{vulnpipeline.ErrInvalidRequest, vulnpipeline.ErrInvalidPayload, vulnpipeline.ErrInvalidMapping, vulnpipeline.ErrConflict, errBodyTooLarge} {
+		if !IsClientError(err) {
+			t.Fatalf("%v should be a client error", err)
+		}
+	}
+	for _, err := range []error{vulnpipeline.ErrUnavailable, vulnpipeline.ErrNotFound, errors.New("boom")} {
+		if IsClientError(err) {
+			t.Fatalf("%v should not be a client error", err)
+		}
+	}
+}

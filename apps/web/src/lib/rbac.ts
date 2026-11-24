@@ -76,7 +76,6 @@ const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
     "grc:inventory:write",
     "grc:policies:write",
     "dashboards:write",
-    "vulnerabilities:write",
   ],
   analyst: [
     ...viewerPermissions,
@@ -84,7 +83,6 @@ const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
     "grc:inventory:write",
     "grc:policies:write",
     "dashboards:write",
-    "vulnerabilities:write",
   ],
   editor: [
     ...viewerPermissions,
@@ -92,7 +90,6 @@ const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
     "grc:inventory:write",
     "grc:policies:write",
     "dashboards:write",
-    "vulnerabilities:write",
   ],
   "cerebro.finding_manager": findingManagerPermissions,
   "cerebro.grc_reviewer": grcReviewerPermissions,

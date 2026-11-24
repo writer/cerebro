@@ -155,4 +155,22 @@ describe("Vulnerabilities page", () => {
     expect(mocks.mutate).toHaveBeenCalledWith("/vulnerabilities/profiles/internal-scanner/mapping/activate?tenant_id=tenant-a", {});
     expect(mocks.reload).toHaveBeenCalled();
   });
+
+  it("tells the user a sync was queued rather than finished", async () => {
+    mocks.user = { actorId: "manager", actorLabel: "Manager", displayName: "Manager", initials: "M", source: "sso-session", entitlements: { scopes: ["cerebro.vulnerabilities.write"] } } as CurrentUser;
+    const pulledProfile: VulnerabilityProfile = { ...draftProfile, id: "strix-pull", source_id: "strix", display_name: "Strix", pull_kind: "strix", draft_mapping: undefined, last_status: "failed" };
+    mocks.useGRCQuery.mockImplementation((path: string) => {
+      if (path.startsWith("/vulnerabilities/summary")) return ready(summary);
+      if (path.startsWith("/vulnerabilities/profiles")) return ready({ profiles: [pulledProfile] });
+      return ready(page);
+    });
+    await act(async () => root.render(<VulnerabilitiesPage />));
+
+    const sync = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-vulnerability-profile='strix-pull'] button"))
+      .find((button) => button.textContent === "Sync now");
+    await act(async () => sync?.click());
+
+    expect(mocks.mutate).toHaveBeenCalledWith("/vulnerabilities/profiles/strix-pull/sync?tenant_id=tenant-a", {});
+    expect(container.querySelector("[role='status']")?.textContent).toContain("Sync queued for Strix");
+  });
 });

@@ -9098,15 +9098,15 @@ paths:
           $ref: '#/components/responses/VulnerabilityError'
   /vulnerabilities/profiles/{profileID}/sync:
     post:
-      summary: Run a profile's pull now
+      summary: Queue a profile's pull to run now
       tags:
         - Vulnerabilities
       parameters:
         - $ref: '#/components/parameters/vulnerabilityProfileID'
         - $ref: '#/components/parameters/vulnerabilityTenantID'
       responses:
-        '200':
-          description: Pull run result.
+        '202':
+          description: The pull is queued for the scheduler; results appear on the profile and its batches.
           content:
             application/json:
               schema:
@@ -9117,6 +9117,8 @@ paths:
                     type: object
                     additionalProperties: true
         '400':
+          $ref: '#/components/responses/VulnerabilityError'
+        '409':
           $ref: '#/components/responses/VulnerabilityError'
   /vulnerabilities/profiles/{profileID}/mapping/activate:
     post:

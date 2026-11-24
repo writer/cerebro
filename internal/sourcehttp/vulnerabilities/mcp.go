@@ -110,7 +110,9 @@ func MCPTool(ctx context.Context, service *vulnpipeline.Service, name string, te
 			FullSnapshot:   fullSnapshot,
 			Payload:        payload,
 		})
-		if err != nil {
+		// A failed batch is still a recorded delivery; return it so the agent
+		// sees the batch ID and error instead of a bare tool failure.
+		if err != nil && result == nil {
 			return nil, err
 		}
 		return &MCPResult{Ingest: result}, nil

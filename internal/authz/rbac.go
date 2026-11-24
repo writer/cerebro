@@ -99,7 +99,6 @@ var roleScopes = map[string][]string{
 		ScopeAskQueriesWrite,
 		ScopeDashboardsWrite,
 		ScopeRiskScoringWrite,
-		ScopeVulnerabilitiesWrite,
 		ScopeVulnerabilitiesIngest,
 	},
 	RoleCerebroFindingManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeFindingCandidatePromote, ScopeFindingLifecycleWrite, ScopeGRCPolicyLifecycleWrite, ScopeAskQueriesWrite, ScopeRiskScoringWrite, ScopePolicyCandidatesWrite, ScopePolicyEvaluationDatasetsRead, ScopePolicyEvaluationDatasetsPropose, ScopePolicyEvaluationDatasetsApprove},

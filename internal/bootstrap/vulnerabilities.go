@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
 	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/panicsafe"
@@ -22,7 +23,7 @@ const vulnerabilityPullPollInterval = 30 * time.Second
 func (app *App) newVulnerabilityService() *vulnpipeline.Service {
 	store, _ := app.deps.StateStore.(ports.VulnerabilityPipelineStore)
 	return vulnpipeline.NewService(store, vulnpipeline.Options{
-		Pullers: []vulnpipeline.Puller{vulnpipeline.StrixPuller{}, vulnpipeline.HTTPPuller{}, vulnpipeline.S3Puller{}},
+		Pullers: []vulnpipeline.Puller{vulnpipeline.StrixPuller{}, vulnpipeline.HTTPPuller{}, vulnpipeline.S3Puller{Sources: config.VulnerabilityPullS3Sources}},
 		ResolveConfig: func(ctx context.Context, profile *ports.VulnerabilityProfile, values map[string]string) (map[string]string, error) {
 			return resolveRuntimeSourceConfigWithStore(ctx, app.cfg.ConnectorCredentials, app.cfg.ConnectorSecretStores, app.deps.StateStore, vulnpipeline.SecretScopeSourceID, sourceconfig.WithRuntimeContext(values, profile.TenantID, profile.ID))
 		},
@@ -76,7 +77,7 @@ func (app *App) mcpVulnerabilityTool(r *http.Request, name string, args map[stri
 	arguments, _ := json.Marshal(args) // args was decoded from JSON, so it always re-encodes.
 	result, err := vulnhttp.MCPTool(r.Context(), app.services.vulnerabilities, name, tenantID, customDashboardActorID(r.Context()), arguments)
 	switch {
-	case errors.Is(err, vulnpipeline.ErrInvalidRequest), errors.Is(err, vulnpipeline.ErrConflict):
+	case vulnhttp.IsClientError(err):
 		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 	case errors.Is(err, vulnpipeline.ErrNotFound), errors.Is(err, ports.ErrVulnerabilityProfileNotFound):
 		return nil, fmt.Errorf("%w: vulnerability record not found", errInvalidHTTPRequest)
@@ -93,6 +94,7 @@ func mcpVulnerabilityTools() []mcpTool {
 		annotations := mcpReadOnlyAnnotations(definition.Title)
 		if operation, ok := mcpoperations.Lookup(definition.Name); ok && operation.Behavior == mcpoperations.BehaviorExecute {
 			annotations = mcpWriteAnnotations(definition.Title, definition.Idempotent)
+			annotations["destructiveHint"] = definition.Destructive
 		}
 		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: definition.OutputSchema, Annotations: annotations})
 	}

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -41,6 +42,12 @@ const (
 	BatchPendingMapping = "pending_mapping"
 	BatchFailed         = "failed"
 	BatchReplayed       = "replayed"
+	// BatchProcessing marks a delivery whose idempotency key is reserved
+	// while it is being processed.
+	BatchProcessing = "processing"
+	// BatchExpired marks a held delivery dropped before a mapping was
+	// activated (retention cap, age, or no retained payload).
+	BatchExpired = "expired"
 )
 
 // Profile ingest statuses.
@@ -74,13 +81,19 @@ const (
 var (
 	// ErrUnavailable reports that no vulnerability store is configured.
 	ErrUnavailable = errors.New("vulnerability pipeline is not configured")
-	// ErrInvalidRequest reports a caller error.
-	ErrInvalidRequest = errors.New("invalid vulnerability pipeline request")
+	// ErrInvalidRequest reports a caller error. It is the ports sentinel so
+	// store-detected caller errors (such as a tampered cursor) match it.
+	ErrInvalidRequest = ports.ErrVulnerabilityPipelineInvalidRequest
 	// ErrInvalidPayload reports a payload that could not be decoded.
 	ErrInvalidPayload = errors.New("invalid vulnerability payload")
 	// ErrConflict reports an idempotency key reused with a different payload,
-	// or a duplicate profile.
-	ErrConflict = errors.New("vulnerability pipeline conflict")
+	// a delivery whose key is still being processed, or a duplicate or
+	// concurrently replaced profile. It is the ports sentinel so store
+	// conflicts match it.
+	ErrConflict = ports.ErrVulnerabilityPipelineConflict
+	// ErrInProgress reports that another request holds the idempotency key
+	// and is still processing it. Errors wrapping it also wrap ErrConflict.
+	ErrInProgress = errors.New("vulnerability delivery is already being processed")
 	// ErrNotFound reports a missing profile, observation, or batch.
 	ErrNotFound = errors.New("vulnerability pipeline record not found")
 	// ErrRawSecret reports pull config that carries a secret value instead of
@@ -237,20 +250,6 @@ func (s *Service) ingest(ctx context.Context, profile *ports.VulnerabilityProfil
 		return nil, fmt.Errorf("%w: profile %q is disabled", ErrInvalidRequest, profileID)
 	}
 	digest := payloadDigest(request.Payload)
-	if key != "" {
-		existing, err := s.store.GetVulnerabilityIngestBatchByIdempotencyKey(ctx, tenantID, profileID, key)
-		switch {
-		case err == nil && existing != nil:
-			if existing.ContentDigest != digest {
-				return nil, fmt.Errorf("%w: idempotency key was used with a different payload", ErrConflict)
-			}
-			result := resultFromBatch(existing, profile)
-			result.Replayed = true
-			return result, nil
-		case err != nil && !errors.Is(err, ports.ErrVulnerabilityBatchNotFound):
-			return nil, err
-		}
-	}
 	transport := request.Transport
 	if transport == "" {
 		transport = TransportPushAPI
@@ -267,7 +266,54 @@ func (s *Service) ingest(ctx context.Context, profile *ports.VulnerabilityProfil
 		Actor:          clean(request.Actor, 240),
 		CreatedAt:      s.clock(),
 	}
-	return s.process(ctx, profile, batch, request.Payload, request.Format, request.FullSnapshot, batch.CreatedAt)
+	if key != "" {
+		batch.Status = BatchProcessing
+		holder, reserved, err := s.store.ReserveVulnerabilityIngestBatch(ctx, batch, batch.CreatedAt.Add(-ingestReservationTTL))
+		if err != nil {
+			return nil, err
+		}
+		if !reserved {
+			return priorDelivery(holder, digest, profile)
+		}
+	}
+	result, err := s.process(ctx, profile, batch, request.Payload, request.Format, request.FullSnapshot, batch.CreatedAt)
+	if err != nil && batch.Status == BatchProcessing {
+		// Release the reservation even if the caller went away, so a retry is
+		// not blocked until the reservation goes stale.
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		return s.failBatch(releaseCtx, profile, batch, err)
+	}
+	return result, err
+}
+
+const (
+	// ingestReservationTTL is how long a processing reservation blocks
+	// retries of its idempotency key before a retry may take it over.
+	ingestReservationTTL = 15 * time.Minute
+	// A full snapshot may resolve at most this share of a profile's
+	// unresolved observations once it would resolve snapshotResolveGuardMin
+	// or more; larger drops look like a truncated export.
+	snapshotResolveMaxShare = 0.5
+	snapshotResolveGuardMin = 25
+	// snapshotWithheldPrefix marks a profile's last error after a guarded
+	// resolution was withheld, so the next snapshot can confirm it.
+	snapshotWithheldPrefix = "snapshot resolution withheld: "
+)
+
+// priorDelivery answers a delivery whose idempotency key is already held.
+// Only completed outcomes are replayed: failed deliveries release their key
+// during reservation, so a held key is either finished or still running.
+func priorDelivery(holder *ports.VulnerabilityIngestBatch, digest string, profile *ports.VulnerabilityProfile) (*IngestResult, error) {
+	if holder != nil && holder.ContentDigest != digest {
+		return nil, fmt.Errorf("%w: idempotency key was used with a different payload", ErrConflict)
+	}
+	if holder == nil || holder.Status == BatchProcessing || holder.Status == BatchFailed {
+		return nil, fmt.Errorf("%w: %w: retry after the earlier delivery with this idempotency key finishes", ErrConflict, ErrInProgress)
+	}
+	result := resultFromBatch(holder, profile)
+	result.Replayed = true
+	return result, nil
 }
 
 func (s *Service) process(ctx context.Context, profile *ports.VulnerabilityProfile, batch *ports.VulnerabilityIngestBatch, payload []byte, formatOverride string, fullSnapshot bool, ingestedAt time.Time) (*IngestResult, error) {
@@ -287,7 +333,10 @@ func (s *Service) process(ctx context.Context, profile *ports.VulnerabilityProfi
 		if mapping == nil {
 			return s.holdForMapping(ctx, profile, batch, document, payload)
 		}
-		drafts = mapping.apply(document)
+		drafts, err = mapping.apply(document)
+		if err != nil {
+			return s.failBatch(ctx, profile, batch, fmt.Errorf("%w: %w", ErrInvalidPayload, err))
+		}
 		mappingVersion = profile.MappingVersion
 	} else {
 		drafts, err = normalizeBuiltin(format, document)
@@ -337,28 +386,43 @@ func (s *Service) process(ctx context.Context, profile *ports.VulnerabilityProfi
 	if batch.Received > 0 {
 		batch.DriftRatio = round2(float64(batch.Quarantined) / float64(batch.Received))
 	}
+	if fullSnapshot {
+		unlock, err := s.store.LockVulnerabilityProfileSnapshot(ctx, profile.TenantID, profile.ID)
+		if err != nil {
+			return s.failBatch(ctx, profile, batch, fmt.Errorf("lock profile snapshot: %w", err))
+		}
+		defer unlock()
+	}
+	stale := 0
 	for start := 0; start < len(observations); start += upsertChunk {
 		end := min(start+upsertChunk, len(observations))
-		if err := s.store.UpsertVulnerabilityObservations(ctx, observations[start:end]); err != nil {
+		written, err := s.store.UpsertVulnerabilityObservations(ctx, observations[start:end])
+		if err != nil {
 			return s.failBatch(ctx, profile, batch, fmt.Errorf("persist observations: %w", err))
 		}
+		stale += written.SkippedStale
+	}
+	if stale > 0 {
+		problems = append(problems, fmt.Sprintf("%d records were not applied because a newer delivery already updated them", stale))
 	}
 	if len(quarantine) > 0 {
 		if err := s.store.PutVulnerabilityQuarantineRecords(ctx, quarantine); err != nil {
 			return s.failBatch(ctx, profile, batch, fmt.Errorf("persist quarantine: %w", err))
 		}
 	}
-	// A snapshot that normalized nothing from a learned mapping more likely
-	// means the mapping broke than that every vulnerability was fixed.
-	snapshotTrusted := batch.Accepted > 0 || (batch.Received == 0 && format != FormatGeneric)
-	if fullSnapshot && snapshotTrusted {
-		resolved, err := s.store.ResolveAbsentVulnerabilityObservations(ctx, profile.TenantID, profile.ID, ingestedAt, ingestedAt)
+	profileError := ""
+	if fullSnapshot {
+		resolved, warning, err := s.resolveSnapshot(ctx, profile, batch, stale, ingestedAt)
 		if err != nil {
 			return s.failBatch(ctx, profile, batch, fmt.Errorf("resolve absent observations: %w", err))
 		}
 		batch.Resolved = resolved
-	} else if fullSnapshot {
-		problems = append(problems, "full snapshot did not resolve absent observations because no record normalized")
+		if warning != "" {
+			problems = append(problems, warning)
+		}
+		if strings.HasPrefix(warning, snapshotWithheldPrefix) {
+			profileError = warning
+		}
 	}
 	switch {
 	case batch.Received > 0 && batch.Accepted == 0:
@@ -377,7 +441,7 @@ func (s *Service) process(ctx context.Context, profile *ports.VulnerabilityProfi
 	if format == FormatGeneric && batch.DriftRatio > driftThreshold {
 		status = ProfileStatusDrift
 	}
-	if err := s.store.RecordVulnerabilityProfileIngest(ctx, profile.TenantID, profile.ID, ports.VulnerabilityProfileIngestUpdate{At: completed, Status: status}); err != nil {
+	if err := s.store.RecordVulnerabilityProfileIngest(ctx, profile.TenantID, profile.ID, ports.VulnerabilityProfileIngestUpdate{At: completed, Status: status, Error: profileError}); err != nil {
 		return nil, err
 	}
 	result := resultFromBatch(batch, profile)
@@ -416,9 +480,57 @@ func (s *Service) holdForMapping(ctx context.Context, profile *ports.Vulnerabili
 	return result, nil
 }
 
+// resolveSnapshot resolves observations a full snapshot no longer contains,
+// unless the snapshot is not trustworthy enough to imply remediation. It
+// returns a warning instead when resolution is withheld. Callers hold the
+// profile snapshot lock.
+func (s *Service) resolveSnapshot(ctx context.Context, profile *ports.VulnerabilityProfile, batch *ports.VulnerabilityIngestBatch, stale int, ingestedAt time.Time) (int, string, error) {
+	switch {
+	case batch.Accepted == 0:
+		// An empty or fully rejected snapshot more likely means a broken
+		// export or mapping than that every vulnerability was fixed.
+		return 0, "full snapshot did not resolve absent observations because no record normalized", nil
+	case batch.Quarantined > 0:
+		return 0, fmt.Sprintf("full snapshot did not resolve absent observations because %d records were quarantined; fix the mapping or records and resend", batch.Quarantined), nil
+	case stale > 0:
+		return 0, "full snapshot did not resolve absent observations because a newer delivery already updated this profile", nil
+	}
+	return s.resolveAbsentGuarded(ctx, profile, ingestedAt, ingestedAt)
+}
+
+// resolveAbsentGuarded resolves a profile's observations ingested before
+// ingestedBefore unless that would close an implausibly large share of them,
+// in which case it returns a warning and resolves nothing. Callers hold the
+// profile snapshot lock (LockVulnerabilityProfileSnapshot).
+func (s *Service) resolveAbsentGuarded(ctx context.Context, profile *ports.VulnerabilityProfile, ingestedBefore time.Time, resolvedAt time.Time) (int, string, error) {
+	candidates, err := s.store.CountVulnerabilityResolutionCandidates(ctx, profile.TenantID, profile.ID, ingestedBefore)
+	if err != nil {
+		return 0, "", err
+	}
+	if candidates.Absent == 0 {
+		return 0, "", nil
+	}
+	// A large drop is withheld once. If the next snapshot confirms it, the
+	// remediation is real; otherwise a profile whose findings were mostly
+	// fixed at once could never resolve them.
+	confirmed := strings.HasPrefix(profile.LastError, snapshotWithheldPrefix)
+	if !confirmed && candidates.Absent >= snapshotResolveGuardMin && float64(candidates.Absent) > snapshotResolveMaxShare*float64(candidates.Unresolved) {
+		return 0, fmt.Sprintf("%ssnapshot would resolve %d of %d open observations (more than %.0f%%); verify the export is complete, and the next complete snapshot will confirm the resolution",
+			snapshotWithheldPrefix, candidates.Absent, candidates.Unresolved, snapshotResolveMaxShare*100), nil
+	}
+	resolved, err := s.store.ResolveAbsentVulnerabilityObservations(ctx, profile.TenantID, profile.ID, ingestedBefore, resolvedAt)
+	if err != nil {
+		return 0, "", err
+	}
+	return resolved, "", nil
+}
+
 func (s *Service) failBatch(ctx context.Context, profile *ports.VulnerabilityProfile, batch *ports.VulnerabilityIngestBatch, cause error) (*IngestResult, error) {
 	batch.Status = BatchFailed
 	batch.Error = truncate(cause.Error(), 1024)
+	slog.WarnContext(ctx, "vulnerability ingest batch failed",
+		"tenant_id", profile.TenantID, "profile_id", profile.ID, "source_id", profile.SourceID, "batch_id", batch.ID,
+		"transport", batch.Transport, "format", batch.Format, "error", batch.Error)
 	completed := s.clock()
 	batch.CompletedAt = &completed
 	if err := s.store.PutVulnerabilityIngestBatch(ctx, batch); err != nil {
@@ -486,6 +598,9 @@ func decodeDocument(payload []byte, contentType string) (any, error) {
 	trimmed := bytes.TrimSpace(payload)
 	if len(trimmed) == 0 {
 		return nil, errors.New("payload is empty")
+	}
+	if countJSONValues(trimmed) > maxDocumentValues {
+		return nil, errTooManyValues
 	}
 	lowerType := strings.ToLower(contentType)
 	ndjson := strings.Contains(lowerType, "ndjson") || strings.Contains(lowerType, "jsonl") || strings.Contains(lowerType, "json-seq")
@@ -609,13 +724,17 @@ func (s *Service) Preview(request PreviewRequest) (*PreviewResult, error) {
 		}
 		result.Format = FormatGeneric
 		result.Mapping = mapping
-		drafts = mapping.apply(document)
+		if drafts, err = mapping.apply(document); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+		}
 	default:
 		result.Format = chooseFormat("", request.Format, document)
 		if result.Format == FormatGeneric {
 			mapping, report := inferMapping(document)
 			result.Mapping, result.Report = mapping, &report
-			drafts = mapping.apply(document)
+			if drafts, err = mapping.apply(document); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+			}
 		} else {
 			drafts, err = normalizeBuiltin(result.Format, document)
 			if err != nil {

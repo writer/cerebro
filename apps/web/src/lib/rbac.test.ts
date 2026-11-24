@@ -41,6 +41,15 @@ describe("RBAC permissions", () => {
     ]);
   });
 
+  it("keeps vulnerability profile writes with source managers and admins", () => {
+    for (const role of ["cerebro.analyst", "analyst", "editor", "cerebro.viewer"]) {
+      expect(effectiveAuthorizationPermissionsForUser(user([role]))).not.toContain("vulnerabilities:write");
+    }
+    for (const role of ["cerebro.source_manager", "cerebro.admin"]) {
+      expect(effectiveAuthorizationPermissionsForUser(user([role]))).toContain("vulnerabilities:write");
+    }
+  });
+
   it("expands backend scopes into web permissions", () => {
     expect(effectiveAuthorizationPermissionsForUser(user([], [
       "cerebro.cosmo.security.read",

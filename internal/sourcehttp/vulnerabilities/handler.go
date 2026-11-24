@@ -277,7 +277,8 @@ func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sync": result})
+	// The scheduler runs the pull; the response only confirms it is queued.
+	writeJSON(w, http.StatusAccepted, map[string]any{"sync": result})
 }
 
 type activateRequest struct {
@@ -467,6 +468,17 @@ func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, target any) erro
 		return fmt.Errorf("%w: invalid JSON body: %w", vulnpipeline.ErrInvalidRequest, err)
 	}
 	return nil
+}
+
+// IsClientError reports errors caused by the caller's request rather than
+// the runtime, so transports other than HTTP can classify them the same way.
+func IsClientError(err error) bool {
+	switch statusFor(err, nil) {
+	case http.StatusBadRequest, http.StatusConflict, http.StatusRequestEntityTooLarge:
+		return true
+	default:
+		return false
+	}
 }
 
 func statusFor(err error, forbidden ForbiddenChecker) int {

@@ -2,13 +2,17 @@ package vulnpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
 	"github.com/writer/cerebro/internal/sourcehttp/vulnfetch"
 )
@@ -30,6 +34,10 @@ const (
 	defaultHTTPAuthHeader = "Authorization"
 	defaultHTTPAuthScheme = "Bearer"
 )
+
+// DefaultStrixHosts are the API hosts a Strix profile may send its token to
+// when StrixPuller.AllowedHosts is empty.
+var DefaultStrixHosts = []string{"app.strix.ai"}
 
 // HTTPOptions configures outbound HTTP for API pullers. Tests use them to
 // reach local servers; production leaves them empty so only public HTTPS
@@ -61,6 +69,32 @@ func (o HTTPOptions) validatePullURL(raw string) (string, error) {
 	return normalized, nil
 }
 
+// credentialQueryParam returns the first query parameter of raw whose name
+// looks like a credential. Such values would be stored in plain profile config
+// and could surface in errors, so they must go through token instead.
+func credentialQueryParam(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	names := make([]string, 0, len(parsed.Query()))
+	for name := range parsed.Query() {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		lower := strings.ToLower(name)
+		// Pagination tokens (page_token, nextToken, continuation_token) are not credentials.
+		if strings.Contains(lower, "page") || strings.Contains(lower, "next") || strings.Contains(lower, "cursor") || strings.Contains(lower, "continuation") {
+			continue
+		}
+		if sourceconfig.SensitiveKey(name) || lower == "access_token" || lower == "sig" || lower == "signature" {
+			return name
+		}
+	}
+	return ""
+}
+
 // HTTPPuller fetches JSON or NDJSON from any HTTPS API, following an optional
 // next-URL or cursor pagination scheme.
 type HTTPPuller struct {
@@ -82,6 +116,9 @@ func (p HTTPPuller) ValidateConfig(config map[string]string) error {
 	}
 	if _, err := p.Options.validatePullURL(config["url"]); err != nil {
 		return err
+	}
+	if name := credentialQueryParam(config["url"]); name != "" {
+		return fmt.Errorf("url query parameter %q looks like a credential; send it with token and auth_header instead", name)
 	}
 	if format := config["format"]; format != "" && (!validFormat(format) || format == FormatAuto) {
 		return fmt.Errorf("unknown format %q", format)
@@ -142,12 +179,14 @@ func (p HTTPPuller) Pull(ctx context.Context, request PullRequest, emit func(Pul
 		if err := emit(PullPage{Payload: body, ContentType: contentType, Format: config["format"]}); err != nil {
 			return PullOutcome{}, err
 		}
-		next, err := p.nextEndpoint(config, endpoint, body, contentType)
+		next, complete, err := p.nextEndpoint(config, endpoint, body, contentType)
 		if err != nil {
 			return PullOutcome{}, err
 		}
 		if next == "" {
-			return PullOutcome{Snapshot: snapshot}, nil
+			// A page without its pagination field may be one of many, so
+			// the listing is not known to be complete.
+			return PullOutcome{Snapshot: snapshot && complete}, nil
 		}
 		if page >= maxPages {
 			// A truncated listing is not a complete snapshot.
@@ -157,41 +196,52 @@ func (p HTTPPuller) Pull(ctx context.Context, request PullRequest, emit func(Pul
 	}
 }
 
-func (p HTTPPuller) nextEndpoint(config map[string]string, current string, body []byte, contentType string) (string, error) {
+// nextEndpoint returns the next page URL. When there is none, complete reports
+// whether the page positively said so (the pagination field was present but
+// empty or null) rather than omitting the field.
+func (p HTTPPuller) nextEndpoint(config map[string]string, current string, body []byte, contentType string) (next string, complete bool, err error) {
 	nextURLPath, cursorPath := config["next_url_path"], config["cursor_path"]
 	if nextURLPath == "" && cursorPath == "" {
-		return "", nil
+		return "", true, nil
 	}
 	document, err := decodeDocument(body, contentType)
 	if err != nil {
-		return "", fmt.Errorf("decode page for pagination: %w", err)
+		return "", false, fmt.Errorf("decode page for pagination: %w", err)
 	}
 	if nextURLPath != "" {
-		next := strings.TrimSpace(resolveFirstString(document, nextURLPath))
-		if next == "" {
-			return "", nil
+		value := strings.TrimSpace(resolveFirstString(document, nextURLPath))
+		if value == "" {
+			return "", pathPresent(document, nextURLPath), nil
 		}
 		base, _ := url.Parse(current)
-		reference, err := url.Parse(next)
+		reference, err := url.Parse(value)
 		if err != nil {
-			return "", fmt.Errorf("parse next page url: %w", err)
+			return "", false, fmt.Errorf("parse next page url: %w", err)
 		}
 		resolved := base.ResolveReference(reference).String()
 		sameOrigin, err := sourcehttp.SameOriginAbsoluteURL(pullSourceID, current, resolved)
 		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrUnsafePageURL, err)
+			return "", false, fmt.Errorf("%w: %w", ErrUnsafePageURL, err)
 		}
-		return sameOrigin, nil
+		return sameOrigin, false, nil
 	}
 	cursor := strings.TrimSpace(resolveFirstString(document, cursorPath))
 	if cursor == "" {
-		return "", nil
+		return "", pathPresent(document, cursorPath), nil
 	}
 	parsed, _ := url.Parse(current)
 	query := parsed.Query()
 	query.Set(config["cursor_param"], cursor)
 	parsed.RawQuery = query.Encode()
-	return parsed.String(), nil
+	return parsed.String(), false, nil
+}
+
+func pathPresent(document any, raw string) bool {
+	segments, err := parsePath(raw)
+	if err != nil {
+		return false
+	}
+	return len(resolvePath(document, segments)) > 0
 }
 
 func validHeaderName(value string) bool {
@@ -206,9 +256,11 @@ func validHeaderName(value string) bool {
 	return !strings.EqualFold(value, "host") && !strings.EqualFold(value, "content-length")
 }
 
-// StrixPuller syncs the full vulnerability list from the Strix API.
+// StrixPuller syncs the full vulnerability list from the Strix API. The API
+// token is only ever sent to AllowedHosts (DefaultStrixHosts when empty).
 type StrixPuller struct {
-	Options HTTPOptions
+	Options      HTTPOptions
+	AllowedHosts []string
 }
 
 func (StrixPuller) Kind() string { return PullKindStrix }
@@ -224,11 +276,36 @@ func (p StrixPuller) ValidateConfig(config map[string]string) error {
 	if strings.TrimSpace(config["api_token"]) == "" {
 		return errors.New("api_token is required")
 	}
-	if _, _, err := sourcehttp.NormalizeBaseURL(pullSourceID, configValue(config, "base_url", defaultStrixBaseURL), p.Options.AllowLoopback); err != nil {
+	if _, err := p.baseURL(config); err != nil {
 		return err
 	}
 	_, err := strixTypes(config)
 	return err
+}
+
+func (p StrixPuller) baseURL(config map[string]string) (string, error) {
+	normalized, _, err := sourcehttp.NormalizeBaseURL(pullSourceID, configValue(config, "base_url", defaultStrixBaseURL), p.Options.AllowLoopback)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return "", fmt.Errorf("parse base_url: %w", err)
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if p.Options.AllowLoopback && (host == "127.0.0.1" || host == "localhost" || host == "::1") {
+		return normalized, nil
+	}
+	allowed := p.AllowedHosts
+	if len(allowed) == 0 {
+		allowed = DefaultStrixHosts
+	}
+	for _, candidate := range allowed {
+		if strings.EqualFold(strings.TrimSpace(candidate), host) {
+			return normalized, nil
+		}
+	}
+	return "", fmt.Errorf("base_url host %q is not an allowed Strix API host", host)
 }
 
 func strixTypes(config map[string]string) ([]string, error) {
@@ -253,7 +330,7 @@ func strixTypes(config map[string]string) ([]string, error) {
 }
 
 func (p StrixPuller) Pull(ctx context.Context, request PullRequest, emit func(PullPage) error) (PullOutcome, error) {
-	baseURL, _, err := sourcehttp.NormalizeBaseURL(pullSourceID, configValue(request.Config, "base_url", defaultStrixBaseURL), p.Options.AllowLoopback)
+	baseURL, err := p.baseURL(request.Config)
 	if err != nil {
 		return PullOutcome{}, err
 	}
@@ -266,6 +343,7 @@ func (p StrixPuller) Pull(ctx context.Context, request PullRequest, emit func(Pu
 		return PullOutcome{}, errors.New("api_token is required")
 	}
 	client := p.Options.fetcher()
+	snapshot := true
 	for _, findingType := range types {
 		for page := 1; ; page++ {
 			if page > maxStrixPagesPerType {
@@ -282,29 +360,53 @@ func (p StrixPuller) Pull(ctx context.Context, request PullRequest, emit func(Pu
 			if err := emit(PullPage{Payload: body, ContentType: contentType, Format: FormatStrix}); err != nil {
 				return PullOutcome{}, err
 			}
-			if !strixHasNext(body, page) {
+			hasNext, known := strixPageInfo(body, page)
+			if !known {
+				// Without page info the listing may continue, so absent
+				// records must not be resolved.
+				snapshot = false
+				break
+			}
+			if !hasNext {
 				break
 			}
 		}
 	}
-	return PullOutcome{Snapshot: true}, nil
+	return PullOutcome{Snapshot: snapshot}, nil
 }
 
-func strixHasNext(body []byte, page int) bool {
+// strixPageInfo reads the pagination meta of a Strix page. known is false when
+// the page carries no usable has_next or total_pages.
+func strixPageInfo(body []byte, page int) (hasNext bool, known bool) {
 	document, err := decodeDocument(body, "application/json")
 	if err != nil {
-		return false
+		return false, false
 	}
 	root, _ := document.(map[string]any)
 	meta, _ := root["meta"].(map[string]any)
 	if meta == nil {
-		return false
+		return false, false
 	}
-	if hasNext, ok := meta["has_next"].(bool); ok {
-		return hasNext
+	if value, ok := meta["has_next"].(bool); ok {
+		return value, true
 	}
-	if total := number(meta["total_pages"]); total != nil {
-		return float64(page) < *total
+	if total, ok := wholeNumber(meta["total_pages"]); ok {
+		return int64(page) < total, true
 	}
-	return false
+	return false, false
+}
+
+func wholeNumber(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		number, err := typed.Int64()
+		return number, err == nil && number >= 0
+	case float64:
+		if typed < 0 || typed != math.Trunc(typed) || typed > math.MaxInt32 {
+			return 0, false
+		}
+		return int64(typed), true
+	default:
+		return 0, false
+	}
 }

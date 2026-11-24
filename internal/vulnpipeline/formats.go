@@ -3,9 +3,58 @@ package vulnpipeline
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
+
+// maxRecordsPerBatch bounds the records one delivery may carry. Exceeding it
+// rejects the delivery instead of truncating it, because a truncated full
+// snapshot would resolve every record that was dropped.
+const maxRecordsPerBatch = 50000
+
+var (
+	errTooManyRecords = fmt.Errorf("delivery has more than %d records; split it into smaller deliveries", maxRecordsPerBatch)
+	errTooManyValues  = fmt.Errorf("payload has more than %d JSON values; split it into smaller deliveries", maxDocumentValues)
+)
+
+// maxDocumentValues bounds how many JSON values one delivery may decode into.
+// A 32 MiB payload of "1," would otherwise decode into ~16M boxed values.
+const maxDocumentValues = 4_000_000
+
+// countJSONValues is a linear, allocation-free upper bound on the number of
+// values a payload decodes to: one per separator or container outside strings.
+func countJSONValues(payload []byte) int {
+	count := 1
+	inString, escaped := false, false
+	for _, b := range payload {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case b == '\\':
+				escaped = true
+			case b == '"':
+				inString = false
+			}
+			continue
+		}
+		switch b {
+		case '"':
+			inString = true
+		case ',', '[', '{':
+			count++
+		}
+	}
+	return count
+}
+
+func appendDraft(drafts []Draft, draft Draft) ([]Draft, error) {
+	if len(drafts) >= maxRecordsPerBatch {
+		return nil, errTooManyRecords
+	}
+	return append(drafts, draft), nil
+}
 
 // Formats a profile can declare. FormatAuto detects the format per delivery;
 // FormatGeneric applies the profile's learned or edited mapping.
@@ -97,17 +146,17 @@ func normalizeBuiltin(format string, document any) ([]Draft, error) {
 	case FormatNative:
 		return normalizeNative(document)
 	case FormatStrix:
-		return normalizeStrix(document), nil
+		return normalizeStrix(document)
 	case FormatSARIF:
-		return normalizeSARIF(document), nil
+		return normalizeSARIF(document)
 	case FormatCycloneDX:
-		return normalizeCycloneDX(document), nil
+		return normalizeCycloneDX(document)
 	case FormatOSV:
-		return normalizeOSVScanner(document), nil
+		return normalizeOSVScanner(document)
 	case FormatTrivy:
-		return normalizeTrivy(document), nil
+		return normalizeTrivy(document)
 	case FormatGrype:
-		return normalizeGrype(document), nil
+		return normalizeGrype(document)
 	default:
 		return nil, fmt.Errorf("format %q has no builtin adapter", format)
 	}
@@ -154,7 +203,10 @@ func normalizeNative(document any) ([]Draft, error) {
 		return nil, fmt.Errorf("%s document requires an observations array", NativeSchema)
 	}
 	scanner := text(root, "scanner")
-	drafts := nativeMapping.apply(document)
+	drafts, err := nativeMapping.apply(document)
+	if err != nil {
+		return nil, err
+	}
 	for i := range drafts {
 		if drafts[i].Observation.Scanner == "" {
 			drafts[i].Observation.Scanner = scanner
@@ -168,7 +220,7 @@ func normalizeNative(document any) ([]Draft, error) {
 	return drafts, nil
 }
 
-func normalizeStrix(document any) []Draft {
+func normalizeStrix(document any) ([]Draft, error) {
 	records := []any{}
 	switch typed := document.(type) {
 	case map[string]any:
@@ -180,7 +232,10 @@ func normalizeStrix(document any) []Draft {
 	case []any:
 		records = typed
 	}
-	drafts := make([]Draft, 0, len(records))
+	if len(records) > maxRecordsPerBatch {
+		return nil, errTooManyRecords
+	}
+	drafts := []Draft{}
 	for _, value := range records {
 		record, ok := value.(map[string]any)
 		if !ok {
@@ -246,12 +301,13 @@ func normalizeStrix(document any) []Draft {
 		obs.Observation.Attributes = attributes
 		drafts = append(drafts, obs)
 	}
-	return drafts
+	return drafts, nil
 }
 
-func normalizeSARIF(document any) []Draft {
+func normalizeSARIF(document any) ([]Draft, error) {
 	root, _ := document.(map[string]any)
 	drafts := []Draft{}
+	var err error
 	for _, runValue := range list(root, "runs") {
 		run, _ := runValue.(map[string]any)
 		if run == nil {
@@ -271,7 +327,9 @@ func normalizeSARIF(document any) []Draft {
 		for _, resultValue := range list(run, "results") {
 			result, _ := resultValue.(map[string]any)
 			if result == nil {
-				drafts = append(drafts, Draft{Raw: resultValue, Problem: "result is not a JSON object"})
+				if drafts, err = appendDraft(drafts, Draft{Raw: resultValue, Problem: "result is not a JSON object"}); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			ruleID := text(result, "ruleId")
@@ -296,9 +354,7 @@ func normalizeSARIF(document any) []Draft {
 			obs.Observation.VulnerabilityIDs = append(ExtractVulnerabilityIDs(ruleID), ExtractVulnerabilityIDs(tags...)...)
 			if score := firstNonEmpty(text(resultProperties, "security-severity"), text(ruleProperties, "security-severity")); score != "" {
 				obs.RawSeverity = score
-				if value, err := strconv.ParseFloat(score, 64); err == nil && value >= 0 && value <= 10 {
-					obs.Observation.CVSSScore = &value
-				}
+				obs.Observation.CVSSScore = parseScore(score)
 			} else {
 				level := text(result, "level")
 				if level == "" {
@@ -328,10 +384,12 @@ func normalizeSARIF(document any) []Draft {
 				obs.RawStatus = "fixed"
 			}
 			obs.Observation.Attributes = map[string]string{"sarif.rule_id": ruleID}
-			drafts = append(drafts, obs)
+			if drafts, err = appendDraft(drafts, obs); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return drafts
+	return drafts, nil
 }
 
 func sarifRules(tool map[string]any) map[string]map[string]any {
@@ -397,7 +455,7 @@ func sarifFingerprint(result map[string]any) string {
 	return ""
 }
 
-func normalizeCycloneDX(document any) []Draft {
+func normalizeCycloneDX(document any) ([]Draft, error) {
 	root, _ := document.(map[string]any)
 	components := map[string]map[string]any{}
 	var collect func(values []any)
@@ -435,10 +493,13 @@ func normalizeCycloneDX(document any) []Draft {
 		}
 	}
 	drafts := []Draft{}
+	var err error
 	for _, vulnValue := range list(root, "vulnerabilities") {
 		vuln, _ := vulnValue.(map[string]any)
 		if vuln == nil {
-			drafts = append(drafts, Draft{Raw: vulnValue, Problem: "vulnerability is not a JSON object"})
+			if drafts, err = appendDraft(drafts, Draft{Raw: vulnValue, Problem: "vulnerability is not a JSON object"}); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		id := text(vuln, "id")
@@ -451,6 +512,7 @@ func normalizeCycloneDX(document any) []Draft {
 		severity, score, vector := cyclonedxRating(list(vuln, "ratings"))
 		analysis, _ := vuln["analysis"].(map[string]any)
 		status := text(analysis, "state")
+		fixedVersion := cyclonedxFixedVersion(vuln)
 		affects := list(vuln, "affects")
 		if len(affects) == 0 {
 			affects = []any{map[string]any{}}
@@ -476,23 +538,25 @@ func normalizeCycloneDX(document any) []Draft {
 			obs.Observation.PackageVersion = text(component, "version")
 			obs.Observation.PackageURL = text(component, "purl")
 			obs.Observation.PackageEcosystem = ecosystemFromPURL(obs.Observation.PackageURL)
-			obs.Observation.FixedVersion = cyclonedxFixedVersion(vuln)
+			obs.Observation.FixedVersion = fixedVersion
 			obs.Observation.AssetIdentifier = firstNonEmpty(subjectID, obs.Observation.PackageURL)
 			obs.Observation.AssetType = text(subject, "type")
 			obs.Observation.ImageDigest = subjectDigest
 			if obs.Observation.ImageDigest != "" {
 				obs.Observation.Class = ClassContainerImage
 			}
-			obs.Observation.SourceRecordID = joinNonEmpty("|", id, firstNonEmpty(ref, obs.Observation.PackageURL))
+			obs.Observation.SourceRecordID = recordKey(id, firstNonEmpty(ref, obs.Observation.PackageURL))
 			if source, ok := vuln["source"].(map[string]any); ok {
 				if url := text(source, "url"); url != "" {
 					obs.Observation.References = []string{url}
 				}
 			}
-			drafts = append(drafts, obs)
+			if drafts, err = appendDraft(drafts, obs); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return drafts
+	return drafts, nil
 }
 
 func cyclonedxRating(ratings []any) (string, *float64, string) {
@@ -542,9 +606,10 @@ func cyclonedxFixedVersion(vuln map[string]any) string {
 	return ""
 }
 
-func normalizeOSVScanner(document any) []Draft {
+func normalizeOSVScanner(document any) ([]Draft, error) {
 	root, _ := document.(map[string]any)
 	drafts := []Draft{}
+	var err error
 	for _, resultValue := range list(root, "results") {
 		result, _ := resultValue.(map[string]any)
 		source, _ := result["source"].(map[string]any)
@@ -597,12 +662,14 @@ func normalizeOSVScanner(document any) []Draft {
 						obs.Observation.References = append(obs.Observation.References, text(reference, "url"))
 					}
 				}
-				obs.Observation.SourceRecordID = joinNonEmpty("|", id, sourcePath, text(pkg, "ecosystem"), text(pkg, "name"), text(pkg, "version"))
-				drafts = append(drafts, obs)
+				obs.Observation.SourceRecordID = recordKey(id, sourcePath, text(pkg, "ecosystem"), text(pkg, "name"), text(pkg, "version"))
+				if drafts, err = appendDraft(drafts, obs); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
-	return drafts
+	return drafts, nil
 }
 
 func osvFixedVersion(vuln map[string]any, packageName string) string {
@@ -626,7 +693,7 @@ func osvFixedVersion(vuln map[string]any, packageName string) string {
 	return ""
 }
 
-func normalizeTrivy(document any) []Draft {
+func normalizeTrivy(document any) ([]Draft, error) {
 	root, _ := document.(map[string]any)
 	artifact := text(root, "ArtifactName")
 	artifactType := text(root, "ArtifactType")
@@ -643,6 +710,7 @@ func normalizeTrivy(document any) []Draft {
 		class = ClassContainerImage
 	}
 	drafts := []Draft{}
+	var err error
 	for _, resultValue := range list(root, "Results") {
 		result, _ := resultValue.(map[string]any)
 		target := text(result, "Target")
@@ -678,8 +746,10 @@ func normalizeTrivy(document any) []Draft {
 			if primary := text(vuln, "PrimaryURL"); primary != "" {
 				obs.Observation.References = append([]string{primary}, obs.Observation.References...)
 			}
-			obs.Observation.SourceRecordID = joinNonEmpty("|", artifact, target, id, firstNonEmpty(text(vuln, "PkgID"), obs.Observation.PackageName))
-			drafts = append(drafts, obs)
+			obs.Observation.SourceRecordID = recordKey(artifact, target, id, firstNonEmpty(text(vuln, "PkgID"), obs.Observation.PackageName))
+			if drafts, err = appendDraft(drafts, obs); err != nil {
+				return nil, err
+			}
 		}
 		for _, misconfigValue := range list(result, "Misconfigurations") {
 			misconfig, _ := misconfigValue.(map[string]any)
@@ -697,12 +767,15 @@ func normalizeTrivy(document any) []Draft {
 			obs.Observation.AssetType = artifactType
 			obs.RawSeverity = text(misconfig, "Severity")
 			obs.Observation.References = scalarStrings(misconfig["References"])
-			obs.Observation.SourceRecordID = joinNonEmpty("|", artifact, target, id)
+			cause, _ := misconfig["CauseMetadata"].(map[string]any)
+			obs.Observation.SourceRecordID = recordKey(artifact, target, id, text(cause, "Resource"), text(cause, "StartLine"))
 			obs.Observation.Attributes = map[string]string{"trivy.check_id": id}
-			drafts = append(drafts, obs)
+			if drafts, err = appendDraft(drafts, obs); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return drafts
+	return drafts, nil
 }
 
 func trivyStatus(status string) string {
@@ -732,7 +805,7 @@ func trivyCVSS(vuln map[string]any) (*float64, string) {
 	return nil, ""
 }
 
-func normalizeGrype(document any) []Draft {
+func normalizeGrype(document any) ([]Draft, error) {
 	root, _ := document.(map[string]any)
 	source, _ := root["source"].(map[string]any)
 	target, _ := source["target"].(map[string]any)
@@ -749,8 +822,12 @@ func normalizeGrype(document any) []Draft {
 	if text(source, "type") == "image" {
 		class = ClassContainerImage
 	}
+	matches := list(root, "matches")
+	if len(matches) > maxRecordsPerBatch {
+		return nil, errTooManyRecords
+	}
 	drafts := []Draft{}
-	for _, matchValue := range list(root, "matches") {
+	for _, matchValue := range matches {
 		match, _ := matchValue.(map[string]any)
 		vuln, _ := match["vulnerability"].(map[string]any)
 		artifact, _ := match["artifact"].(map[string]any)
@@ -803,10 +880,11 @@ func normalizeGrype(document any) []Draft {
 		if dataSource := text(vuln, "dataSource"); dataSource != "" {
 			obs.Observation.References = append([]string{dataSource}, obs.Observation.References...)
 		}
-		obs.Observation.SourceRecordID = joinNonEmpty("|", subject, id, firstNonEmpty(obs.Observation.PackageURL, obs.Observation.PackageName+"@"+obs.Observation.PackageVersion))
+		// One package can be installed at several locations in the same subject.
+		obs.Observation.SourceRecordID = recordKey(subject, id, firstNonEmpty(obs.Observation.PackageURL, obs.Observation.PackageName+"@"+obs.Observation.PackageVersion), firstNonEmpty(text(artifact, "id"), obs.Observation.Location))
 		drafts = append(drafts, obs)
 	}
-	return drafts
+	return drafts, nil
 }
 
 func digestFromText(values ...string) string {
@@ -877,29 +955,33 @@ func list(object map[string]any, key string) []any {
 }
 
 func number(value any) *float64 {
-	var parsed float64
 	switch typed := value.(type) {
 	case json.Number:
-		number, err := typed.Float64()
-		if err != nil {
-			return nil
-		}
-		parsed = number
+		return parseScore(typed.String())
 	case float64:
-		parsed = typed
-	case string:
-		number, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		if err != nil {
+		if !validScore(typed) {
 			return nil
 		}
-		parsed = number
+		return &typed
+	case string:
+		return parseScore(typed)
 	default:
 		return nil
 	}
-	if parsed < 0 || parsed > 10 {
+}
+
+// parseScore parses a 0-10 score. ParseFloat accepts "NaN" and "Inf", which
+// cannot be JSON-encoded later, so they are rejected with out-of-range values.
+func parseScore(raw string) *float64 {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || !validScore(parsed) {
 		return nil
 	}
 	return &parsed
+}
+
+func validScore(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 10
 }
 
 func firstNonEmpty(values ...string) string {
@@ -909,6 +991,39 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// recordKey builds a source record ID from identity parts. Parts keep their
+// position even when empty and '|' or '\' inside a part are escaped, so
+// distinct tuples never share a key. Keys that finalize would truncate or
+// alter fall back to a hash so cleaning cannot merge distinct records.
+func recordKey(parts ...string) string {
+	var builder strings.Builder
+	empty := true
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		parts[i] = part
+		if part != "" {
+			empty = false
+		}
+		if i > 0 {
+			builder.WriteByte('|')
+		}
+		for j := 0; j < len(part); j++ {
+			if part[j] == '|' || part[j] == '\\' {
+				builder.WriteByte('\\')
+			}
+			builder.WriteByte(part[j])
+		}
+	}
+	if empty {
+		return ""
+	}
+	key := builder.String()
+	if len(key) > maxShortFieldBytes || clean(key, maxShortFieldBytes) != key {
+		return "key:" + shortHash(parts...)
+	}
+	return key
 }
 
 func joinNonEmpty(separator string, values ...string) string {

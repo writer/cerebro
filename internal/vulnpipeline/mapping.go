@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -40,7 +39,12 @@ const (
 	FieldObservedAt       = "observed_at"
 )
 
-const maxMappingBytes = 64 * 1024
+const (
+	maxMappingBytes      = 64 * 1024
+	maxValueMapEntries   = 64
+	maxValueMapKeyBytes  = 64
+	maxDefaultValueBytes = maxShortFieldBytes
+)
 
 var (
 	// ErrInvalidMapping reports a mapping that cannot be applied.
@@ -145,23 +149,39 @@ func (m *Mapping) Validate() error {
 	default:
 		return fmt.Errorf("%w: unknown severity_scale %q", ErrInvalidMapping, m.SeverityScale)
 	}
-	for raw, severity := range m.SeverityValues {
-		if strings.TrimSpace(raw) == "" || !validSeverity(severity) {
-			return fmt.Errorf("%w: severity_values entry %q -> %q is invalid", ErrInvalidMapping, raw, severity)
-		}
+	if err := validateValueMap("severity_values", m.SeverityValues, validSeverity); err != nil {
+		return err
 	}
-	for raw, status := range m.StatusValues {
-		if strings.TrimSpace(raw) == "" || !validStatus(status) {
-			return fmt.Errorf("%w: status_values entry %q -> %q is invalid", ErrInvalidMapping, raw, status)
-		}
+	if err := validateValueMap("status_values", m.StatusValues, validStatus); err != nil {
+		return err
 	}
-	for name := range m.Defaults {
+	for name, value := range m.Defaults {
 		if !knownField(name) || listFields[name] {
 			return fmt.Errorf("%w: defaults entry %q is not a scalar field", ErrInvalidMapping, name)
+		}
+		if len(value) > maxDefaultValueBytes {
+			return fmt.Errorf("%w: defaults entry %q exceeds %d bytes", ErrInvalidMapping, name, maxDefaultValueBytes)
 		}
 	}
 	if class, ok := m.Defaults[FieldClass]; ok && !validClass(class) {
 		return fmt.Errorf("%w: default class %q is invalid", ErrInvalidMapping, class)
+	}
+	// Activation only validates, while ingest re-parses the stored JSON under
+	// maxMappingBytes, so an oversized mapping must fail here instead.
+	if len(m.JSON()) > maxMappingBytes {
+		return fmt.Errorf("%w: mapping exceeds %d bytes", ErrInvalidMapping, maxMappingBytes)
+	}
+	return nil
+}
+
+func validateValueMap(name string, values map[string]string, valid func(string) bool) error {
+	if len(values) > maxValueMapEntries {
+		return fmt.Errorf("%w: %s has more than %d entries", ErrInvalidMapping, name, maxValueMapEntries)
+	}
+	for raw, mapped := range values {
+		if strings.TrimSpace(raw) == "" || len(raw) > maxValueMapKeyBytes || !valid(mapped) {
+			return fmt.Errorf("%w: %s entry %q -> %q is invalid", ErrInvalidMapping, name, truncate(raw, maxValueMapKeyBytes), mapped)
+		}
 	}
 	return nil
 }
@@ -178,29 +198,43 @@ func (m *Mapping) JSON() string {
 	return string(payload)
 }
 
-// records selects the record list a mapping applies to.
-func (m *Mapping) records(document any) []any {
+// records selects the record list a mapping applies to. Selecting more than
+// maxRecordsPerBatch records is an error rather than a truncation, because a
+// truncated full snapshot would resolve the records it dropped.
+func (m *Mapping) records(document any) ([]any, error) {
 	segments, err := parsePath(m.RecordsPath)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: records_path: %w", ErrInvalidMapping, err)
 	}
-	values := resolvePath(document, segments)
+	values, overflow := resolvePathLimit(document, segments, maxRecordsPerBatch)
+	if overflow {
+		return nil, errTooManyRecords
+	}
 	out := []any{}
 	for _, value := range values {
 		if list, ok := value.([]any); ok {
+			if len(out)+len(list) > maxRecordsPerBatch {
+				return nil, errTooManyRecords
+			}
 			out = append(out, list...)
 			continue
 		}
+		if len(out) >= maxRecordsPerBatch {
+			return nil, errTooManyRecords
+		}
 		out = append(out, value)
 	}
-	return out
+	return out, nil
 }
 
 // apply translates every record in a decoded document into a draft
 // observation. Drafts are finalized and validated by the pipeline.
-func (m *Mapping) apply(document any) []Draft {
-	records := m.records(document)
-	drafts := make([]Draft, 0, len(records))
+func (m *Mapping) apply(document any) ([]Draft, error) {
+	records, err := m.records(document)
+	if err != nil {
+		return nil, err
+	}
+	drafts := []Draft{}
 	for _, record := range records {
 		if _, ok := record.(map[string]any); !ok {
 			drafts = append(drafts, Draft{Raw: record, Problem: "record is not a JSON object"})
@@ -208,7 +242,7 @@ func (m *Mapping) apply(document any) []Draft {
 		}
 		drafts = append(drafts, m.applyRecord(record))
 	}
-	return drafts
+	return drafts, nil
 }
 
 func (m *Mapping) applyRecord(record any) Draft {
@@ -291,9 +325,7 @@ func draftFromValues(values map[string][]string) Draft {
 		References: values[FieldReferences],
 		Scanner:    first(values, FieldScanner),
 	}
-	if score, err := strconv.ParseFloat(first(values, FieldCVSSScore), 64); err == nil && score >= 0 && score <= 10 {
-		obs.CVSSScore = &score
-	}
+	obs.CVSSScore = parseScore(first(values, FieldCVSSScore))
 	return Draft{
 		Observation:   obs,
 		RawSeverity:   first(values, FieldSeverity),

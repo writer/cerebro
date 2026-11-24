@@ -136,9 +136,12 @@ export default function VulnerabilitiesPage() {
     setSourceID(value);
     resetPaging();
   }, [resetPaging, setSourceID]);
+  const [notice, setNotice] = useState("");
   const runProfileAction = useCallback(async (profile: VulnerabilityProfile, action: "sync" | "mapping/activate") => {
+    setNotice("");
     try {
       await mutate(vulnerabilityProfilePath(profile.id, action, tenant || profile.tenant_id), {});
+      if (action === "sync") setNotice(`Sync queued for ${profile.display_name || profile.id}. It starts within a minute; refresh to see the results.`);
       await Promise.all([summary.reload(), profiles.reload(), observations.reload()]);
     } catch {
       // surfaced through mutationError
@@ -195,6 +198,7 @@ export default function VulnerabilitiesPage() {
         <Panel title="Source review" description="Sources with a learned mapping waiting for approval, or with failing deliveries. Records from an unapproved format are held until the mapping is activated.">
           <div className="space-y-3">
             {mutationError && <div className="text-[12px] text-red-600 dark:text-red-300">{mutationError}</div>}
+            {notice && !mutationError && <div className="text-[12px] text-[var(--text-secondary)]" role="status">{notice}</div>}
             {attentionProfiles.map((profile) => (
               <ProfileCard key={profile.id} canWrite={canWrite} onAction={runProfileAction} profile={profile} saving={saving} />
             ))}
