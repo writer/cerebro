@@ -174,10 +174,6 @@ const explicitCerebroRoles = new Set([
   "cerebro.source_manager",
   "cerebro.job_manager",
   "cerebro.admin",
-  "viewer",
-  "analyst",
-  "engineer",
-  "compliance",
 ]);
 
 // Custom roles are defined per deployment in stack config
