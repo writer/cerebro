@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Bug,
   CheckCircle2,
   FileJson2,
   PlugZap,
@@ -18,7 +19,7 @@ import {
 import { Badge, EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Panel, ResultLimitNotice } from "@/components/grc/Primitives";
 import { extractRecords, withQuery } from "@/lib/cerebro-data";
 import { useConnectorLibraryQuery } from "@/lib/connector-library-query";
-import { useGRCQuery } from "@/lib/grc-client";
+import { useGRCQuery, grcPath } from "@/lib/grc-client";
 import { grcBoundedRows } from "@/lib/grc-list";
 import { runtimeStateForError } from "@/lib/runtime-state";
 import {
@@ -56,8 +57,9 @@ import {
   type CredentialStoreListResponse,
   type SourceCredentialHealth,
 } from "@/lib/credential-stores";
+import { VulnerabilityFeedsSection } from "./vulnerability-feeds";
 
-type IntegrationTab = "connected" | "attention" | "available";
+type IntegrationTab = "connected" | "attention" | "available" | "vuln";
 
 type ConnectorRuntimeHealthResponse = {
   runtimes?: unknown[];
@@ -71,12 +73,14 @@ const integrationTabs: Array<{ id: IntegrationTab; label: string; icon: ReactNod
   { id: "connected", label: "Connected", icon: <CheckCircle2 className="h-4 w-4" /> },
   { id: "attention", label: "Needs attention", icon: <AlertTriangle className="h-4 w-4" /> },
   { id: "available", label: "Available", icon: <PlugZap className="h-4 w-4" /> },
+  { id: "vuln", label: "Vulnerability feeds", icon: <Bug className="h-4 w-4" /> },
 ];
 
 const tabEmptyCopy: Record<IntegrationTab, string> = {
   attention: "Every connected integration is healthy.",
   available: "No more integrations are available to connect.",
   connected: "Nothing is connected yet. Open Available to add your first integration.",
+  vuln: "No vulnerability feeds yet. Add a scanner feed and its records will populate the Vulnerabilities dashboard.",
 };
 
 // Status words a person can act on, rather than the runtime's internal readiness names.
@@ -419,6 +423,9 @@ export default function IntegrationsPage() {
   // Viewers without connector-credentials:read get an error here; tiles then
   // show the credential as unknown rather than failing the page.
   const credentialStoresQuery = useGRCQuery<CredentialStoreListResponse>(withQuery("/credential-stores", { limit: 1000 }));
+  // Feeds count for the Vulnerability feeds tab. Same query key as the feeds
+  // section, so react-query serves both from one request.
+  const vulnProfilesQuery = useGRCQuery<{ profiles: Array<{ id: string }> }>(grcPath("/vulnerabilities/profiles"));
   const credentialHealth = useMemo(() => sourceCredentialHealth(credentialStoresQuery.data), [credentialStoresQuery.data]);
 
   const runtimeSummaries = useMemo(
@@ -434,10 +441,15 @@ export default function IntegrationsPage() {
   const tab = (integrationTabs.some((item) => item.id === tabValue) ? tabValue : "connected") as IntegrationTab;
   const counts = useMemo(
     () => integrationTabs.reduce(
-      (acc, item) => ({ ...acc, [item.id]: cards.filter((card) => tabMatches(item.id, card, isConnected(card) ? credentialHealth.get(card.source_id) : undefined)).length }),
+      (acc, item) => ({
+        ...acc,
+        [item.id]: item.id === "vuln"
+          ? (vulnProfilesQuery.data?.profiles ?? []).length
+          : cards.filter((card) => tabMatches(item.id, card, isConnected(card) ? credentialHealth.get(card.source_id) : undefined)).length,
+      }),
       {} as Record<IntegrationTab, number>,
     ),
-    [cards, credentialHealth],
+    [cards, credentialHealth, vulnProfilesQuery.data],
   );
 
   const visibleCards = useMemo(() => {
@@ -517,21 +529,25 @@ export default function IntegrationsPage() {
         />
       )}
 
-      {!loading && (
-        <section aria-label="Integrations" className="space-y-3">
-          {bounded.rows.length < visibleCards.length && (
-            <ResultLimitNotice loaded={bounded.rows.length} meta={bounded.meta} limit={INTEGRATION_RENDER_LIMIT} noun="integrations" />
-          )}
-          {bounded.rows.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {bounded.rows.map((card) => (
-                <IntegrationTile key={card.source_id} card={card} credential={credentialFor(card)} />
-              ))}
-            </div>
-          ) : (
-            <EmptyBlock label={query.trim() ? `No integrations match "${query.trim()}".` : tabEmptyCopy[tab]} />
-          )}
-        </section>
+      {tab === "vuln" ? (
+        <VulnerabilityFeedsSection query={query} />
+      ) : (
+        !loading && (
+          <section aria-label="Integrations" className="space-y-3">
+            {bounded.rows.length < visibleCards.length && (
+              <ResultLimitNotice loaded={bounded.rows.length} meta={bounded.meta} limit={INTEGRATION_RENDER_LIMIT} noun="integrations" />
+            )}
+            {bounded.rows.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {bounded.rows.map((card) => (
+                  <IntegrationTile key={card.source_id} card={card} credential={credentialFor(card)} />
+                ))}
+              </div>
+            ) : (
+              <EmptyBlock label={query.trim() ? `No integrations match "${query.trim()}".` : tabEmptyCopy[tab]} />
+            )}
+          </section>
+        )
       )}
 
       <details className="surface-panel overflow-hidden">
