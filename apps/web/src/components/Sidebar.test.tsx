@@ -86,8 +86,17 @@ describe("isSidebarLinkActive", () => {
 
     expect(risks?.label).toBe("Risks");
     expect(risks?.href).toBe("/risks");
-    expect(risks?.links.map((link) => link.href)).toEqual(["/verified", "/vulnerabilities"]);
+    expect(risks?.links.map((link) => link.href)).toEqual(["/verified"]);
     expect(inventory?.links.map((link) => link.href)).not.toContain("/verified");
+  });
+
+  it("gives vulnerability observations a top-level entry beside Risks", () => {
+    const vulnerabilities = sidebarNavGroups.find((group) => group.id === "vulnerabilities");
+
+    expect(vulnerabilities?.label).toBe("Vulnerabilities");
+    expect(vulnerabilities?.href).toBe("/vulnerabilities");
+    expect(vulnerabilities?.links).toEqual([]);
+    expect(hasSidebarIcon("/vulnerabilities")).toBe(true);
   });
 
   it("gives rule content a home of its own", () => {
