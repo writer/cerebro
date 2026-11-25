@@ -64,20 +64,46 @@ const grcReviewerPermissions: AuthorizationPermission[] = [
   "grc:policies:write",
   "dashboards:write",
 ];
+const analystPermissions: AuthorizationPermission[] = [
+  ...viewerPermissions,
+  "findings:write",
+];
+const engineerPermissions: AuthorizationPermission[] = [
+  ...analystPermissions,
+  "connector-credentials:read",
+  "connector-credentials:write",
+  "connector-definitions:write",
+  "connectors:write",
+  "sources:preview",
+  "source-runtimes:write",
+  "vulnerabilities:write",
+  "jobs:write",
+  "runtime-response:write",
+  "reports:run",
+  "knowledge:write",
+  "workflow:replay",
+];
+const compliancePermissions: AuthorizationPermission[] = [
+  ...viewerPermissions,
+  "grc:inventory:write",
+  "grc:policies:write",
+  "dashboards:write",
+  "reports:run",
+];
 
 const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
-  "cerebro.viewer": viewerPermissions,
+  // Modern capability-oriented bundles. These are the names deployments map
+  // claims to; the cerebro.* bundles below are kept as legacy aliases.
   viewer: viewerPermissions,
+  analyst: analystPermissions,
+  engineer: engineerPermissions,
+  compliance: compliancePermissions,
+  admin: allPermissions,
+  // Legacy bundles, kept so existing claim mappings keep working.
+  "cerebro.viewer": viewerPermissions,
   reader: viewerPermissions,
   read_only: viewerPermissions,
   "cerebro.analyst": [
-    ...viewerPermissions,
-    "findings:write",
-    "grc:inventory:write",
-    "grc:policies:write",
-    "dashboards:write",
-  ],
-  analyst: [
     ...viewerPermissions,
     "findings:write",
     "grc:inventory:write",
@@ -116,7 +142,6 @@ const rolePermissionBundles: Record<string, AuthorizationPermission[]> = {
     "jobs:write",
   ],
   "cerebro.admin": allPermissions,
-  admin: allPermissions,
   owner: allPermissions,
 };
 
@@ -149,7 +174,64 @@ const explicitCerebroRoles = new Set([
   "cerebro.source_manager",
   "cerebro.job_manager",
   "cerebro.admin",
+  "viewer",
+  "analyst",
+  "engineer",
+  "compliance",
 ]);
+
+// Custom roles are defined per deployment in stack config
+// (cerebro:webAuthzCustomRoles), rendered to CEREBRO_AUTHZ_CUSTOM_ROLES as
+// JSON { role: [permission, ...] }. The server reads the env directly; the
+// browser receives the same registry through /api/config and registers it
+// here. Unknown permission names are dropped fail-safe: granting a name the
+// product does not know is meaningless, not an escalation.
+const CUSTOM_ROLES_ENV = "CEREBRO_AUTHZ_CUSTOM_ROLES";
+const knownPermissions = new Set<string>(permissionOrder);
+let registeredCustomRoleBundles: Record<string, AuthorizationPermission[]> = {};
+
+const parseCustomRoleBundles = (raw: unknown): Record<string, AuthorizationPermission[]> => {
+  if (typeof raw !== "string" || !raw.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const bundles: Record<string, AuthorizationPermission[]> = {};
+  for (const [role, permissions] of Object.entries(parsed as Record<string, unknown>)) {
+    const name = role.trim().toLowerCase();
+    if (!name || !Array.isArray(permissions)) continue;
+    const granted = permissions.filter(
+      (permission): permission is AuthorizationPermission =>
+        typeof permission === "string" && knownPermissions.has(permission),
+    );
+    if (granted.length > 0) bundles[name] = orderedPermissions(granted);
+  }
+  return bundles;
+};
+
+const envCustomRoleBundles = (): Record<string, AuthorizationPermission[]> => {
+  if (typeof process === "undefined") return {};
+  return parseCustomRoleBundles(process.env?.[CUSTOM_ROLES_ENV]);
+};
+
+const customRoleBundles = (): Record<string, AuthorizationPermission[]> => ({
+  ...envCustomRoleBundles(),
+  ...registeredCustomRoleBundles,
+});
+
+// The browser registers the deployment's custom roles from the public config
+// payload; the server resolves them from the environment directly.
+export const registerCustomAuthorizationRoleBundles = (raw: unknown) => {
+  registeredCustomRoleBundles = parseCustomRoleBundles(raw);
+};
+
+export const customAuthorizationRoleCatalog = (): { permissions: AuthorizationPermission[]; role: string }[] =>
+  Object.entries(customRoleBundles())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([role, permissions]) => ({ permissions, role }));
 
 const scopePermissionBundles: Record<string, AuthorizationPermission[]> = {
   "cerebro.cosmo.security.read": viewerPermissions,
@@ -303,6 +385,10 @@ const roleDescriptions: Record<string, string> = {
     "Viewer access plus runtime response writes: running a response action and revoking a blocklist entry.",
   "cerebro.source_manager": "Viewer access plus report runs, source previews, and source runtime writes.",
   "cerebro.viewer": "Read-only Cerebro routes, asking questions, and saving personal preferences.",
+  viewer: "Read-only access: dashboards, inventory, findings, vulnerabilities, and compliance.",
+  analyst: "Investigate and triage: everything viewer plus finding triage and lifecycle writes.",
+  engineer: "Configure and operate: everything analyst plus integrations, vulnerability feeds, responses, jobs, and schedules.",
+  compliance: "Audit and attest: GRC inventory and policy writes, dashboards, and report runs.",
 };
 
 export const authorizationRoleCatalog = (): {
@@ -323,9 +409,10 @@ export const effectiveAuthorizationPermissionsForUser = (
 ): AuthorizationPermission[] => {
   const permissions = new Set<AuthorizationPermission>();
   const mappedRoles = rolesFromClaimMappings(user);
+  const bundles = { ...rolePermissionBundles, ...customRoleBundles() };
   for (const role of [...cleanList(user?.entitlements?.roles), ...mappedRoles]) {
-    const rolePermissions = Object.hasOwn(rolePermissionBundles, role)
-      ? rolePermissionBundles[role]
+    const rolePermissions = Object.hasOwn(bundles, role)
+      ? bundles[role]
       : undefined;
     for (const permission of Array.isArray(rolePermissions) ? rolePermissions : []) {
       permissions.add(permission);
@@ -345,11 +432,28 @@ export const effectiveAuthorizationPermissionsForUser = (
   return orderedPermissions(permissions);
 };
 
+const humanizeRoleName = (role: string) =>
+  role
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
 export const authorizationRoleLabelsForUser = (user: CurrentUser | null | undefined) =>
-  Array.from(new Set(cleanList(user?.entitlements?.roles).flatMap((role) => canonicalRoleLabels[role] ?? [])));
+  Array.from(
+    new Set(
+      cleanList(user?.entitlements?.roles).flatMap((role) => {
+        if (Object.hasOwn(canonicalRoleLabels, role)) return [canonicalRoleLabels[role]];
+        if (Object.hasOwn(customRoleBundles(), role)) return [humanizeRoleName(role)];
+        return [];
+      }),
+    ),
+  );
 
 export const hasExplicitCerebroRoleOrScope = (user: CurrentUser | null | undefined) =>
-  cleanList(user?.entitlements?.roles).some((role) => explicitCerebroRoles.has(role)) ||
+  cleanList(user?.entitlements?.roles).some(
+    (role) => explicitCerebroRoles.has(role) || Object.hasOwn(customRoleBundles(), role),
+  ) ||
   cleanList(user?.entitlements?.scopes).some((scope) =>
     hasPermissionScope(scope) || Object.hasOwn(scopePermissionBundles, scope));
 

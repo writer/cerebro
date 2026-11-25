@@ -263,6 +263,10 @@ export const getCerebroPublicConfig = () => ({
   apiBase: "/api/cerebro",
   serverAuthConfigured: Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION),
   forwardRequestAuth,
+  // Role definitions are product metadata (names and permission names), not
+  // assignments, so they are safe in the public config; the browser merges
+  // them into the RBAC bundles for client-side gating.
+  customRoles: process.env.CEREBRO_AUTHZ_CUSTOM_ROLES ?? "",
 });
 
 export const rustOwnsWebAuthority = () =>
