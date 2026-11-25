@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, u
 import { fetchCerebro } from "@/lib/cerebro-client";
 import { currentUserActor, currentUserRefreshDelayMs } from "@/lib/identity";
 import type { CurrentUser, CurrentUserResponse } from "@/lib/identity";
+import { registerCustomAuthorizationRoleBundles } from "@/lib/rbac";
 import {
   defaultUserPreferences,
   normalizeUserPreferences,
@@ -49,6 +50,7 @@ export type ConsoleConfig = {
   apiBase: string;
   serverAuthConfigured: boolean;
   forwardRequestAuth: boolean;
+  customRoles?: string;
 };
 
 type ConsoleConfigContextValue = {
@@ -332,7 +334,9 @@ export function ConsoleConfigProvider({ children }: { children: React.ReactNode 
           signal: controller.signal,
         });
         if (response.ok) {
-          setConfig((await response.json()) as ConsoleConfig);
+          const payload = (await response.json()) as ConsoleConfig;
+          registerCustomAuthorizationRoleBundles(payload.customRoles);
+          setConfig(payload);
         }
       } catch (error) {
         if (!(error instanceof Error && error.name === "AbortError")) setConfig(null);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   authorizationRoleLabelsForUser,
@@ -7,6 +7,7 @@ import {
   authorizationRoleCatalog,
   parseRoleClaimMappings,
   permissionForCerebroProxyRequest,
+  registerCustomAuthorizationRoleBundles,
   rolesFromClaimMappings,
 } from "./rbac";
 import type { CurrentUser } from "./identity";
@@ -250,5 +251,70 @@ describe("role catalog descriptions", () => {
     expect(responder?.description).toContain("runtime response");
     expect(responder?.permissions).toContain("runtime-response:write");
     expect(responder?.permissions).not.toContain("findings:write");
+  });
+});
+
+describe("modern role bundles", () => {
+  it("gives engineers configuration and operation writes", () => {
+    const permissions = effectiveAuthorizationPermissionsForUser(user(["engineer"]));
+    expect(permissions).toContain("vulnerabilities:write");
+    expect(permissions).toContain("connectors:write");
+    expect(permissions).toContain("source-runtimes:write");
+    expect(permissions).toContain("jobs:write");
+    expect(permissions).not.toContain("identity:admin");
+    expect(permissions).not.toContain("admin:read");
+  });
+
+  it("keeps analysts on triage and compliance on GRC", () => {
+    const analyst = effectiveAuthorizationPermissionsForUser(user(["analyst"]));
+    expect(analyst).toContain("findings:write");
+    expect(analyst).not.toContain("vulnerabilities:write");
+    expect(analyst).not.toContain("grc:policies:write");
+    const compliance = effectiveAuthorizationPermissionsForUser(user(["compliance"]));
+    expect(compliance).toContain("grc:policies:write");
+    expect(compliance).toContain("reports:run");
+    expect(compliance).not.toContain("findings:write");
+  });
+
+  it("keeps legacy cerebro bundles working beside the modern ones", () => {
+    expect(effectiveAuthorizationPermissionsForUser(user(["cerebro.source_manager"]))).toContain("vulnerabilities:write");
+  });
+});
+
+describe("custom roles", () => {
+  afterEach(() => {
+    registerCustomAuthorizationRoleBundles(undefined);
+  });
+
+  it("resolves a registered custom role to exactly its granted permissions", () => {
+    registerCustomAuthorizationRoleBundles(
+      JSON.stringify({ "vulnerability-manager": ["cerebro:read", "vulnerabilities:write"] }),
+    );
+    const permissions = effectiveAuthorizationPermissionsForUser(user(["vulnerability-manager"]));
+    expect(permissions).toEqual(["cerebro:read", "vulnerabilities:write"]);
+    expect(authorizationRoleLabelsForUser(user(["vulnerability-manager"]))).toEqual(["Vulnerability Manager"]);
+    expect(hasExplicitCerebroRoleOrScope(user(["vulnerability-manager"]))).toBe(true);
+  });
+
+  it("drops unknown permission names instead of granting them", () => {
+    registerCustomAuthorizationRoleBundles(
+      JSON.stringify({ "vulnerability-manager": ["cerebro:read", "not:a:permission"] }),
+    );
+    const permissions = effectiveAuthorizationPermissionsForUser(user(["vulnerability-manager"]));
+    expect(permissions).toEqual(["cerebro:read"]);
+  });
+
+  it("can grant a known elevated permission through a custom role", () => {
+    registerCustomAuthorizationRoleBundles(
+      JSON.stringify({ "tenant-admin": ["cerebro:read", "identity:admin"] }),
+    );
+    expect(effectiveAuthorizationPermissionsForUser(user(["tenant-admin"]))).toContain("identity:admin");
+  });
+
+  it("ignores malformed registries", () => {
+    registerCustomAuthorizationRoleBundles("not json");
+    expect(effectiveAuthorizationPermissionsForUser(user(["vulnerability-manager"]))).toEqual([]);
+    registerCustomAuthorizationRoleBundles(JSON.stringify({ "": ["cerebro:read"] }));
+    expect(hasExplicitCerebroRoleOrScope(user(["vulnerability-manager"]))).toBe(false);
   });
 });
