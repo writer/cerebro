@@ -86,7 +86,7 @@ describe("isSidebarLinkActive", () => {
 
     expect(risks?.label).toBe("Risks");
     expect(risks?.href).toBe("/risks");
-    expect(risks?.links.map((link) => link.href)).toEqual(["/verified"]);
+    expect(risks?.links.map((link) => link.href)).toEqual(["/verified", "/vulnerabilities"]);
     expect(inventory?.links.map((link) => link.href)).not.toContain("/verified");
   });
 
