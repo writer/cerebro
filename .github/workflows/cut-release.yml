@@ -150,7 +150,7 @@ jobs:
             rust_target: x86_64-apple-darwin
           - os: darwin
             arch: arm64
-            runner: macos-14
+            runner: macos-15
             rust_target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
