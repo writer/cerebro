@@ -74,9 +74,18 @@ export const sidebarNavGroups: SidebarNavGroup[] = [
     label: "Risks",
     iconHref: "/risks",
     // Verified findings have their own remediation flow, so they sit under the
-    // queue they feed rather than beside the inventory. Scanner vulnerability
-    // observations are the evidence layer those findings roll up.
-    links: linksFor(["/verified", "/vulnerabilities"]),
+    // queue they feed rather than beside the inventory.
+    links: linksFor(["/verified"]),
+  },
+  {
+    // Scanner-reported vulnerability observations are their own evidence
+    // surface, so they get a top-level entry beside Risks rather than a
+    // nested link under it.
+    href: "/vulnerabilities",
+    id: "vulnerabilities",
+    label: "Vulnerabilities",
+    iconHref: "/vulnerabilities",
+    links: [],
   },
   {
     href: "/inventory",
